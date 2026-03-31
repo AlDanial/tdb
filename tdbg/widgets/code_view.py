@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from rich.style import Style
+from rich.syntax import Syntax
 from rich.text import Text
 from textual.binding import Binding
 from textual.containers import VerticalScroll
@@ -67,6 +69,7 @@ class CodeView(VerticalScroll, can_focus=True):
         self._lines: list[str] = []
         self._breakpoint_lines: set[int] = set()
         self._content: _CodeContent | None = None
+        self._highlighted: list[Text] | None = None  # cached per file
 
     def compose(self):
         self._content = _CodeContent("")
@@ -79,6 +82,7 @@ class CodeView(VerticalScroll, can_focus=True):
         except OSError:
             text = f"<Could not read {path}>"
         self._lines = text.splitlines()
+        self._highlighted = self._highlight_source(text)
         self._render_code()
 
     def set_breakpoints(self, breakpoints: list[SourceBreakpoint]) -> None:
@@ -93,14 +97,59 @@ class CodeView(VerticalScroll, can_focus=True):
         half_height = self.size.height // 2
         self.scroll_to(y=max(0, target_y - half_height), animate=False)
 
+    @staticmethod
+    def _highlight_source(source: str) -> list[Text]:
+        """Use Rich Syntax to produce a list of highlighted Text lines.
+
+        Strips the theme background from each span so that the widget's
+        own background (or the current-line highlight) shows through.
+        """
+        syntax = Syntax(source, "python", theme="monokai", line_numbers=False)
+        text = syntax.highlight(source)
+        lines = text.split("\n")
+        for line in lines:
+            # Remove bgcolor from every span so we control the background
+            new_spans = []
+            for span in line._spans:
+                style = span.style
+                if isinstance(style, Style) and style.bgcolor:
+                    style = Style(
+                        color=style.color,
+                        bold=style.bold,
+                        italic=style.italic,
+                        underline=style.underline,
+                    )
+                new_spans.append(span._replace(style=style))
+            line._spans = new_spans
+        return lines
+
+    @staticmethod
+    def _apply_current_line_bg(line: Text) -> Text:
+        """Override the background of every span in a line for current-line highlighting."""
+        current_bg_color = "rgb(120,100,30)"
+        result = line.copy()
+        new_spans = []
+        for span in result._spans:
+            style = span.style
+            if isinstance(style, Style):
+                style = style + Style(bgcolor=current_bg_color)
+            new_spans.append(span._replace(style=style))
+        result._spans = new_spans
+        # Also set the base style so unstyled parts get the background
+        result.stylize(Style(bgcolor=current_bg_color))
+        return result
+
     def _render_code(self) -> None:
         """Rebuild the full code display as Rich Text."""
         if self._content is None:
             return
 
+        highlighted = self._highlighted or [Text(line) for line in self._lines]
+
         output = Text()
         for i, line_text in enumerate(self._lines):
             line_num = i + 1
+            is_current = self.current_line is not None and line_num == self.current_line
 
             # Breakpoint marker
             if line_num in self._breakpoint_lines:
@@ -109,14 +158,24 @@ class CodeView(VerticalScroll, can_focus=True):
                 output.append("  ")
 
             # Line number
-            output.append(f"{line_num:>4} ", style="bright_black")
-
-            # Source line
-            is_current = self.current_line is not None and line_num == self.current_line
             if is_current:
-                output.append(f"{line_text}\n", style="bold on dark_goldenrod")
+                output.append(f"{line_num:>4} ", style="bright_white on rgb(120,100,30)")
             else:
-                output.append(f"{line_text}\n")
+                output.append(f"{line_num:>4} ", style="bright_black")
+
+            # Syntax-highlighted source line
+            if i < len(highlighted):
+                hl_line = highlighted[i]
+            else:
+                hl_line = Text(line_text)
+
+            if is_current:
+                hl_line = self._apply_current_line_bg(hl_line)
+            else:
+                hl_line = hl_line.copy()
+
+            output.append_text(hl_line)
+            output.append("\n")
 
         self._content.update(output)
 

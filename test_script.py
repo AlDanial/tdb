@@ -1,4 +1,5 @@
 """Simple test script for debugging with tdbg."""
+import test_module
 
 
 def greet(name):
@@ -9,6 +10,7 @@ def greet(name):
 
 def main():
     names = ["Alice", "Bob", "Charlie"]
+    test_module.a_function()
     for name in names:
         result = greet(name)
         print(f"Result: {result}")
