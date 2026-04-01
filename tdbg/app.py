@@ -9,7 +9,7 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.message import Message
-from textual.widgets import Footer, Header
+from textual.widgets import Footer, Header, OptionList
 from textual.widgets._tree import TreeNode
 
 from tdbg.session.controller import (
@@ -25,6 +25,7 @@ from tdbg.widgets.breakpoint_view import BreakpointView
 from tdbg.widgets.code_view import CodeView
 from tdbg.widgets.console_view import ConsoleView
 from tdbg.widgets.evaluate_console import EvaluateConsole
+from tdbg.widgets.menu_bar import MenuBar, _MenuDropdown
 from tdbg.widgets.stack_view import StackView
 from tdbg.widgets.variable_view import VariableView
 
@@ -38,6 +39,10 @@ class TdbgApp(App):
     SUB_TITLE = "Python Debugger"
 
     CSS = """
+    Screen {
+        layers: default above;
+    }
+
     #main {
         height: 1fr;
     }
@@ -101,6 +106,14 @@ class TdbgApp(App):
 
     def compose(self) -> ComposeResult:
         yield Header()
+        yield MenuBar(
+            {
+                "File": ["Open"],
+                "Configure": ["Color Theme", "Keybindings"],
+                "Help": ["Documentation", "About"],
+            },
+            id="menu-bar",
+        )
         with Horizontal(id="main"):
             with Vertical(id="left-panel"):
                 yield CodeView(id="code-view")
@@ -292,6 +305,47 @@ class TdbgApp(App):
         result = await self.controller.evaluate(message.expression)
         eval_console = self.query_one("#eval-console", EvaluateConsole)
         eval_console.show_result(result)
+
+    # --- Menu handlers ---
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        """Handle dropdown menu selections (dropdowns are mounted on Screen)."""
+        if not isinstance(event.option_list, _MenuDropdown):
+            return
+        option_id = event.option.id or ""
+        if ":" not in option_id:
+            return
+        menu, item = option_id.split(":", 1)
+        # Close the dropdown
+        menu_bar = self.query_one("#menu-bar", MenuBar)
+        menu_bar._close_all()
+
+        if menu == "File" and item == "Open":
+            self.action_open_file()
+        elif menu == "Configure" and item == "Color Theme":
+            self.action_color_theme()
+        elif menu == "Configure" and item == "Keybindings":
+            self.action_keybindings()
+        elif menu == "Help" and item == "Documentation":
+            self.action_documentation()
+        elif menu == "Help" and item == "About":
+            self.action_about()
+        event.stop()
+
+    def action_open_file(self) -> None:
+        self.notify("Open file: not yet implemented", title="File")
+
+    def action_color_theme(self) -> None:
+        self.notify("Color theme: not yet implemented", title="Configure")
+
+    def action_keybindings(self) -> None:
+        self.notify("Keybindings: not yet implemented", title="Configure")
+
+    def action_documentation(self) -> None:
+        self.notify("tdbg — TUI Python Debugger\n\nKeys: n=step over, s=step in, o=step out, c=continue, b=breakpoint, p=pause", title="Documentation")
+
+    def action_about(self) -> None:
+        self.notify("tdbg v0.1.0\nA TUI-based Python debugger\nPowered by debugpy + textual", title="About")
 
     # --- Actions ---
 
