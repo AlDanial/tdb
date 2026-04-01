@@ -169,6 +169,7 @@ class TdbgApp(App):
             if message.thread_id is not None:
                 state.current_thread_id = message.thread_id
             await self.controller.fetch_stop_info()
+            await self.controller.cleanup_run_to_cursor()
             self._update_ui_state()
         except Exception:
             log.exception("Error handling stopped event")
@@ -267,6 +268,13 @@ class TdbgApp(App):
                 self._update_ui_state()
         except Exception:
             log.exception("Error executing debug action: %s", message.action)
+
+    async def on_code_view_run_to_cursor(self, message: CodeView.RunToCursor) -> None:
+        try:
+            await self.controller.run_to_cursor(message.source_path, message.line)
+            self._update_ui_state()
+        except Exception:
+            log.exception("Error in run to cursor")
 
     async def on_stack_view_frame_selected(self, message: StackView.FrameSelected) -> None:
         await self.controller.select_frame(message.frame_id)

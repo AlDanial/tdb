@@ -1,0 +1,25 @@
+- add a menu bar at the top with the following options:
+    - File
+        - Open
+    - Configure
+        - Color Theme
+        - Keybindings
+    - Help
+        - Documentation
+        - About
+
+- add a keybinding for `t` in the Code View to continue code execution until the line with the cursor
+- add a keybinding for `L` in the Code View to open a modal which asks which line to jump to, and then jump to that line
+- implement customizable keybindings in the Code View
+    - vim
+    - emacs
+- the default keybindings should be for vim
+- vim keybindings:
+    - `gg` to jump to the top of the file
+    - `g<N>` to jump to line `<N>`
+    - `G` to jump to the bottom of the file
+    - `k` to move the cursor one line up
+    - `j` to move the cursor one line down
+    - `]` to move the cursor one paragraph down
+    - `[` to move the cursor one paragraph up
+    - `/` to open a search modal, which allows the user to search for a string in the code and jump to the next occurrence of that string

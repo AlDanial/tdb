@@ -42,6 +42,7 @@ class CodeView(VerticalScroll, can_focus=True):
         Binding("c", "continue_", "Continue"),
         Binding("b", "toggle_breakpoint", "Toggle BP"),
         Binding("p", "pause", "Pause"),
+        Binding("t", "run_to_cursor", "Run To Cursor"),
     ]
 
     DEFAULT_CSS = """
@@ -52,6 +53,7 @@ class CodeView(VerticalScroll, can_focus=True):
 
     source_path: reactive[str | None] = reactive(None)
     current_line: reactive[int | None] = reactive(None)
+    cursor_line: reactive[int] = reactive(1)  # user-movable cursor (1-based)
 
     class BreakpointToggled(Message):
         def __init__(self, source_path: str, line: int) -> None:
@@ -62,6 +64,12 @@ class CodeView(VerticalScroll, can_focus=True):
     class DebugAction(Message):
         def __init__(self, action: str) -> None:
             self.action = action
+            super().__init__()
+
+    class RunToCursor(Message):
+        def __init__(self, source_path: str, line: int) -> None:
+            self.source_path = source_path
+            self.line = line
             super().__init__()
 
     def __init__(self, **kwargs) -> None:
@@ -124,19 +132,17 @@ class CodeView(VerticalScroll, can_focus=True):
         return lines
 
     @staticmethod
-    def _apply_current_line_bg(line: Text) -> Text:
-        """Override the background of every span in a line for current-line highlighting."""
-        current_bg_color = "rgb(120,100,30)"
+    def _apply_line_bg(line: Text, bgcolor: str) -> Text:
+        """Override the background of every span in a line."""
         result = line.copy()
         new_spans = []
         for span in result._spans:
             style = span.style
             if isinstance(style, Style):
-                style = style + Style(bgcolor=current_bg_color)
+                style = style + Style(bgcolor=bgcolor)
             new_spans.append(span._replace(style=style))
         result._spans = new_spans
-        # Also set the base style so unstyled parts get the background
-        result.stylize(Style(bgcolor=current_bg_color))
+        result.stylize(Style(bgcolor=bgcolor))
         return result
 
     def _render_code(self) -> None:
@@ -150,6 +156,7 @@ class CodeView(VerticalScroll, can_focus=True):
         for i, line_text in enumerate(self._lines):
             line_num = i + 1
             is_current = self.current_line is not None and line_num == self.current_line
+            is_cursor = line_num == self.cursor_line
 
             # Breakpoint marker
             if line_num in self._breakpoint_lines:
@@ -160,6 +167,8 @@ class CodeView(VerticalScroll, can_focus=True):
             # Line number
             if is_current:
                 output.append(f"{line_num:>4} ", style="bright_white on rgb(120,100,30)")
+            elif is_cursor:
+                output.append(f"{line_num:>4} ", style="bright_white on rgb(60,60,80)")
             else:
                 output.append(f"{line_num:>4} ", style="bright_black")
 
@@ -170,7 +179,9 @@ class CodeView(VerticalScroll, can_focus=True):
                 hl_line = Text(line_text)
 
             if is_current:
-                hl_line = self._apply_current_line_bg(hl_line)
+                hl_line = self._apply_line_bg(hl_line, "rgb(120,100,30)")
+            elif is_cursor:
+                hl_line = self._apply_line_bg(hl_line, "rgb(60,60,80)")
             else:
                 hl_line = hl_line.copy()
 
@@ -187,9 +198,15 @@ class CodeView(VerticalScroll, can_focus=True):
             self.post_message(self.BreakpointToggled(self.source_path, line))
 
     def watch_current_line(self, value: int | None) -> None:
+        if value is not None:
+            self.cursor_line = value  # snap cursor to the stopped line
         self._render_code()
         if value is not None:
             self.goto_line(value)
+
+    def watch_cursor_line(self, value: int) -> None:
+        self._render_code()
+        self.goto_line(value)
 
     # --- Debug action handlers (forward to app) ---
 
@@ -208,6 +225,33 @@ class CodeView(VerticalScroll, can_focus=True):
     def action_pause(self) -> None:
         self.post_message(self.DebugAction("pause"))
 
+    def action_run_to_cursor(self) -> None:
+        if self.source_path:
+            self.post_message(self.RunToCursor(self.source_path, self.cursor_line))
+
     def action_toggle_breakpoint(self) -> None:
-        if self.source_path and self.current_line:
-            self.post_message(self.BreakpointToggled(self.source_path, self.current_line))
+        if self.source_path:
+            self.post_message(self.BreakpointToggled(self.source_path, self.cursor_line))
+
+    def action_scroll_up(self) -> None:
+        if self.cursor_line > 1:
+            self.cursor_line -= 1
+
+    def action_scroll_down(self) -> None:
+        if self.cursor_line < len(self._lines):
+            self.cursor_line += 1
+
+    def action_page_up(self) -> None:
+        page = max(1, self.size.height - 2)
+        self.cursor_line = max(1, self.cursor_line - page)
+
+    def action_page_down(self) -> None:
+        page = max(1, self.size.height - 2)
+        self.cursor_line = min(len(self._lines), self.cursor_line + page)
+
+    def action_scroll_home(self) -> None:
+        self.cursor_line = 1
+
+    def action_scroll_end(self) -> None:
+        if self._lines:
+            self.cursor_line = len(self._lines)

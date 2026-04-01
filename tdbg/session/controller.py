@@ -162,6 +162,34 @@ class DebugController:
             self.state.clear_frame_data()
             await self.client.step_out(self.state.current_thread_id)
 
+    async def run_to_cursor(self, source_path: str, line: int) -> None:
+        """Set a temporary breakpoint at line, continue, then remove it."""
+        if self.state.current_thread_id is None:
+            return
+        # Add a temporary breakpoint
+        bps = list(self.state.breakpoints.get(source_path, []))
+        had_bp = any(bp.line == line for bp in bps)
+        if not had_bp:
+            bps.append(SourceBreakpoint(line=line))
+            if self.state.is_ready and not self.state.is_terminated:
+                await self.client.set_breakpoints(source_path, bps)
+        # Continue execution
+        self.state.is_running = True
+        self.state.clear_frame_data()
+        self._run_to_cursor_cleanup = (source_path, line) if not had_bp else None
+        await self.client.continue_(self.state.current_thread_id)
+
+    async def cleanup_run_to_cursor(self) -> None:
+        """Remove the temporary breakpoint after stopping."""
+        if not hasattr(self, "_run_to_cursor_cleanup") or self._run_to_cursor_cleanup is None:
+            return
+        source_path, line = self._run_to_cursor_cleanup
+        self._run_to_cursor_cleanup = None
+        bps = [bp for bp in self.state.breakpoints.get(source_path, []) if bp.line != line]
+        self.state.breakpoints[source_path] = bps
+        if self.state.is_ready and not self.state.is_terminated:
+            await self.client.set_breakpoints(source_path, bps)
+
     async def pause(self) -> None:
         if self.state.current_thread_id is not None:
             await self.client.pause(self.state.current_thread_id)
