@@ -9,22 +9,77 @@ from rich.style import Style
 from rich.syntax import Syntax
 from rich.text import Text
 from textual.binding import Binding
-from textual.containers import VerticalScroll
+from textual.containers import ScrollableContainer, Vertical
 from textual.events import Click
 from textual.message import Message
 from textual.reactive import reactive
-from textual.widgets import Static
+from textual.screen import ModalScreen
+from textual.widgets import Input, Label, Static
 
 if TYPE_CHECKING:
     from tdbg.dap.types import SourceBreakpoint
 
 
+class _GoToLineModal(ModalScreen[int | None]):
+    """Modal dialog prompting for a line number."""
+
+    DEFAULT_CSS = """
+    _GoToLineModal {
+        align: center middle;
+    }
+
+    _GoToLineModal #dialog {
+        width: 40;
+        height: auto;
+        max-height: 12;
+        border: solid $primary;
+        background: $surface;
+        padding: 1 2;
+    }
+
+    _GoToLineModal Input {
+        margin-top: 1;
+    }
+    """
+
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel", show=False),
+    ]
+
+    def compose(self):
+        with Vertical(id="dialog"):
+            yield Label("Go to line:")
+            yield Input(placeholder="Line number...", id="line-input")
+
+    def on_mount(self) -> None:
+        self.query_one("#line-input", Input).focus()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        value = event.value.strip()
+        if value.isdigit():
+            self.dismiss(int(value))
+        else:
+            self.dismiss(None)
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
 class _CodeContent(Static):
-    """Inner static widget that renders the actual source code."""
-    pass
+    """Inner static widget that renders the actual source code.
+
+    Uses width:auto so long lines expand the widget rather than wrapping.
+    This keeps 1 source line = 1 display row for reliable scroll positioning.
+    """
+
+    DEFAULT_CSS = """
+    _CodeContent {
+        width: auto;
+    }
+    """
 
 
-class CodeView(VerticalScroll, can_focus=True):
+class CodeView(ScrollableContainer, can_focus=True):
     """Source code viewer with breakpoint gutter and current-line highlighting."""
 
     BINDINGS = [
@@ -43,6 +98,7 @@ class CodeView(VerticalScroll, can_focus=True):
         Binding("b", "toggle_breakpoint", "Toggle BP"),
         Binding("p", "pause", "Pause"),
         Binding("t", "run_to_cursor", "Run To Cursor"),
+        Binding("L", "goto_line_prompt", "Go To Line"),
     ]
 
     DEFAULT_CSS = """
@@ -206,7 +262,8 @@ class CodeView(VerticalScroll, can_focus=True):
 
     def watch_cursor_line(self, value: int) -> None:
         self._render_code()
-        self.goto_line(value)
+        # Defer scroll so layout updates first (needed after modal dismiss)
+        self.call_later(self.goto_line, value)
 
     # --- Debug action handlers (forward to app) ---
 
@@ -255,3 +312,9 @@ class CodeView(VerticalScroll, can_focus=True):
     def action_scroll_end(self) -> None:
         if self._lines:
             self.cursor_line = len(self._lines)
+
+    def action_goto_line_prompt(self) -> None:
+        def on_dismiss(line: int | None) -> None:
+            if line is not None and self._lines:
+                self.cursor_line = max(1, min(line, len(self._lines)))
+        self.app.push_screen(_GoToLineModal(), callback=on_dismiss)

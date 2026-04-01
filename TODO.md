@@ -9,7 +9,7 @@
         - About
 
 - add a keybinding for `t` in the Code View to continue code execution until the line with the cursor
-- add a keybinding for `L` in the Code View to open a modal which asks which line to jump to, and then jump to that line
+- add a keybinding for `L` in the Code View to open a modal which prompts for a line number to jump to, and then jump to that line
 - implement customizable keybindings in the Code View
     - vim
     - emacs
