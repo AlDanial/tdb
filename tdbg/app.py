@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import logging
 
 from textual import work
@@ -73,6 +74,7 @@ class TdbgApp(App):
     BINDINGS = [
         Binding("ctrl+q", "quit_debugger", "Quit"),
         Binding("escape", "focus_code", "Code View", show=False),
+        Binding("ctrl+e", "focus_eval", "Evaluate", show=False),
     ]
 
     # --- Custom messages for UI updates ---
@@ -314,6 +316,50 @@ class TdbgApp(App):
         eval_console = self.query_one("#eval-console", EvaluateConsole)
         eval_console.show_result(result)
 
+    async def on_evaluate_console_help_requested(
+        self, message: EvaluateConsole.HelpRequested
+    ) -> None:
+        eval_console = self.query_one("#eval-console", EvaluateConsole)
+        obj = message.expression
+        parts: list[str] = []
+
+        # Try to get signature (may fail for C builtins or non-callables)
+        sig_result = await self.controller.evaluate(
+            f"str(__import__('inspect').signature({obj}))"
+        )
+        sig_result = _unquote_dap_string(sig_result)
+        # signature() returns "(param, ...)" on success; errors contain "Error"
+        if sig_result.startswith("("):
+            parts.append(f"{obj}{sig_result}")
+
+        # Get docstring
+        doc_result = await self.controller.evaluate(
+            f"getattr({obj}, '__doc__', None) or ''"
+        )
+        doc_result = _unquote_dap_string(doc_result)
+        if doc_result:
+            parts.append(doc_result)
+
+        if parts:
+            eval_console.show_result("\n".join(parts))
+        else:
+            eval_console.show_error("No documentation available")
+
+    async def on_evaluate_console_completion_requested(
+        self, message: EvaluateConsole.CompletionRequested
+    ) -> None:
+        try:
+            items = await self.controller.client.completions(
+                text=message.text,
+                column=message.column,
+                frame_id=self.controller.state.current_frame_id,
+            )
+            completions = [(item.label, item.text) for item in items]
+            eval_console = self.query_one("#eval-console", EvaluateConsole)
+            eval_console.apply_completion(message.text, completions)
+        except Exception:
+            log.exception("Error fetching completions")
+
     # --- Menu handlers ---
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
@@ -360,6 +406,26 @@ class TdbgApp(App):
     def action_focus_code(self) -> None:
         self.query_one("#code-view", CodeView).focus()
 
+    def action_focus_eval(self) -> None:
+        self.query_one("#eval-console", EvaluateConsole).focus_input()
+
     async def action_quit_debugger(self) -> None:
         await self.controller.stop()
         self.exit()
+
+
+def _unquote_dap_string(s: str) -> str:
+    """Strip repr quoting from a DAP evaluate result that is a Python string.
+
+    debugpy returns string results as their repr (e.g. "'hello\\nworld'").
+    This converts that back to the actual string content.
+    """
+    if not s:
+        return s
+    try:
+        value = ast.literal_eval(s)
+        if isinstance(value, str):
+            return value
+    except (ValueError, SyntaxError):
+        pass
+    return s

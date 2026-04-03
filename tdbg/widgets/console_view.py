@@ -26,6 +26,7 @@ class ConsoleView(RichLog):
             **kwargs,
         )
         self.border_title = "Console"
+        self.can_focus = False
 
     def write_output(self, text: str, category: str = "stdout") -> None:
         if category == "stderr":
