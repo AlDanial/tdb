@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+#!/usr/bin/env python3 -Xfrozen_modules=off
 """Wrapper script for tdbg: launches the TUI debugger with --stop-on-entry by default.
 
 Usage:
@@ -10,6 +11,8 @@ import os
 import sys
 import argparse
 from pathlib import Path
+
+# os.environ['PYDEVD_DISABLE_FILE_VALIDATION'] = '1'
 
 
 def main():
@@ -48,6 +51,7 @@ def main():
     )
 
     args = parser.parse_args()
+#   args.no_just_my_code = True
 
     # Resolve program path
     program_path = Path(args.program).resolve()
@@ -72,7 +76,8 @@ def main():
     if args.args:
         cmd.extend(args.args)
 
-    os.execv(str(venv_python), cmd)
+    venv_python_str = str(venv_python)
+    os.execv(venv_python, cmd)
 
 
 if __name__ == "__main__":
