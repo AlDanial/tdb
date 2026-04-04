@@ -10,7 +10,8 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.message import Message
-from textual.widgets import Footer, Header, OptionList
+from textual.screen import ModalScreen
+from textual.widgets import Footer, Header, Label, OptionList, Static
 from textual.widgets._tree import TreeNode
 
 from tdbg.session.controller import (
@@ -22,6 +23,7 @@ from tdbg.session.controller import (
     DapExited,
     DapOutput,
 )
+from tdbg.keybindings import KeybindingConfig, Mode
 from tdbg.widgets.breakpoint_view import BreakpointView
 from tdbg.widgets.code_view import CodeView
 from tdbg.widgets.console_view import ConsoleView
@@ -31,6 +33,55 @@ from tdbg.widgets.stack_view import StackView
 from tdbg.widgets.variable_view import VariableView
 
 log = logging.getLogger(__name__)
+
+
+class _KeybindingsModal(ModalScreen[None]):
+    """Modal showing the keybinding reference for both modes."""
+
+    DEFAULT_CSS = """
+    _KeybindingsModal {
+        align: center middle;
+    }
+    _KeybindingsModal #dialog {
+        width: 60;
+        height: auto;
+        max-height: 30;
+        border: solid $primary;
+        background: $surface;
+        padding: 1 2;
+    }
+    """
+
+    BINDINGS = [
+        Binding("escape", "dismiss_modal", "Close", show=False),
+        Binding("enter", "dismiss_modal", "Close", show=False),
+    ]
+
+    def __init__(self, config: KeybindingConfig) -> None:
+        super().__init__()
+        self._config = config
+
+    def compose(self):
+        lines = []
+        lines.append("[bold]Keybindings[/bold]  (ESC toggles mode)\n")
+
+        lines.append("[bold underline]Navigation Mode[/bold underline]")
+        for key_display, description in self._config.format_bindings(Mode.NAVIGATION):
+            lines.append(f"  [bold cyan]{key_display:<12}[/bold cyan] {description}")
+
+        lines.append("")
+        lines.append("[bold underline]Debug Mode[/bold underline]")
+        for key_display, description in self._config.format_bindings(Mode.DEBUG):
+            lines.append(f"  [bold cyan]{key_display:<12}[/bold cyan] {description}")
+
+        lines.append("")
+        lines.append("[dim]Press ESC or Enter to close[/dim]")
+
+        with Vertical(id="dialog"):
+            yield Static("\n".join(lines), markup=True)
+
+    def action_dismiss_modal(self) -> None:
+        self.dismiss(None)
 
 
 class TdbgApp(App):
@@ -73,7 +124,7 @@ class TdbgApp(App):
 
     BINDINGS = [
         Binding("ctrl+q", "quit_debugger", "Quit"),
-        Binding("escape", "focus_code", "Code View", show=False),
+        Binding("escape", "escape_handler", "Escape", show=False),
         Binding("ctrl+e", "focus_eval", "Evaluate", show=False),
     ]
 
@@ -129,10 +180,18 @@ class TdbgApp(App):
 
     def on_mount(self) -> None:
         code_view = self.query_one("#code-view", CodeView)
-        code_view.border_title = "Code"
+        self._update_code_title(code_view)
         code_view.load_file(self._program)
         code_view.focus()
         self._start_session()
+
+    def _update_code_title(self, code_view: CodeView) -> None:
+        mode_label = code_view.mode.value
+        code_view.border_title = f"Code \\[{mode_label}]"
+
+    def on_code_view_mode_changed(self, message: CodeView.ModeChanged) -> None:
+        code_view = self.query_one("#code-view", CodeView)
+        self._update_code_title(code_view)
 
     @work(exclusive=True)
     async def _start_session(self) -> None:
@@ -393,18 +452,22 @@ class TdbgApp(App):
         self.notify("Color theme: not yet implemented", title="Configure")
 
     def action_keybindings(self) -> None:
-        self.notify("Keybindings: not yet implemented", title="Configure")
+        code_view = self.query_one("#code-view", CodeView)
+        self.push_screen(_KeybindingsModal(code_view.keybindings))
 
     def action_documentation(self) -> None:
-        self.notify("tdbg — TUI Python Debugger\n\nKeys: n=step over, s=step in, o=step out, c=continue, b=breakpoint, p=pause", title="Documentation")
+        self.notify("tdbg — TUI Python Debugger\n\nESC toggles Navigation/Debug mode\nCtrl+E = Evaluate console\nConfigure > Keybindings for full reference", title="Documentation")
 
     def action_about(self) -> None:
         self.notify("tdbg v0.1.0\nA TUI-based Python debugger\nPowered by debugpy + textual", title="About")
 
     # --- Actions ---
 
-    def action_focus_code(self) -> None:
-        self.query_one("#code-view", CodeView).focus()
+    def action_escape_handler(self) -> None:
+        """ESC from non-CodeView widgets: focus the code view."""
+        code_view = self.query_one("#code-view", CodeView)
+        if not code_view.has_focus:
+            code_view.focus()
 
     def action_focus_eval(self) -> None:
         self.query_one("#eval-console", EvaluateConsole).focus_input()

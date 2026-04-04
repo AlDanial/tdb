@@ -15,11 +15,12 @@
     - emacs
 - the default keybindings should be for vim
 - vim keybindings:
-    - `gg` to jump to the top of the file
-    - `g<N>` to jump to line `<N>`
+    - `Ng` to jump to line `N`
     - `G` to jump to the bottom of the file
     - `k` to move the cursor one line up
+    - `Nk` to move the cursor up `N` lines
     - `j` to move the cursor one line down
+    - `Nj` to move the cursor down `N` lines
     - `]` to move the cursor one paragraph down
     - `[` to move the cursor one paragraph up
     - `/` to open a search modal, which allows the user to search for a string in the code and jump to the next occurrence of that string
