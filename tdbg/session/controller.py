@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+import shutil
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from textual.message import Message
 
 from tdbg.dap.client import DAPClient
-from tdbg.dap.messages import Event
+from tdbg.dap.messages import Event, Request
 from tdbg.dap.types import SourceBreakpoint
 from .state import DebugState
 
@@ -51,6 +53,59 @@ class DapOutput(Message):
         self.category = category
         super().__init__()
 
+class DapExternalTerminalStarted(Message):
+    pass
+
+
+# --- Terminal emulator detection and command building ---
+
+# Terminals that directly fork the child process (reliable for runInTerminal).
+# gnome-terminal is excluded: its D-Bus client/server architecture means the
+# client exits immediately and the command may not inherit the environment.
+_TERMINAL_CANDIDATES = [
+    "xterm",
+    "konsole",
+    "xfce4-terminal",
+    "kitty",
+    "alacritty",
+    "foot",
+]
+
+# Maps terminal basename to the flag(s) used before the command to execute.
+# The flag must accept the remaining args as the command + arguments.
+_TERMINAL_EXEC_FLAG: dict[str, list[str]] = {
+    "xfce4-terminal": ["-x"],  # -x takes rest of args; -e takes single string
+    "kitty": [],
+    # Default for xterm, konsole, alacritty, foot: ["-e"]
+}
+
+
+def _find_terminal() -> str:
+    """Find an available terminal emulator. Returns the full path."""
+    # User override
+    user_terminal = os.environ.get("TERMINAL")
+    if user_terminal:
+        path = shutil.which(user_terminal)
+        if path:
+            return path
+
+    for name in _TERMINAL_CANDIDATES:
+        path = shutil.which(name)
+        if path:
+            return path
+
+    raise RuntimeError(
+        "No terminal emulator found. Install xterm, konsole, kitty, "
+        "alacritty, or foot — or set the TERMINAL environment variable."
+    )
+
+
+def _build_terminal_cmd(terminal: str, args: list[str]) -> list[str]:
+    """Build the command to launch a terminal running the given args."""
+    basename = Path(terminal).name
+    exec_flag = _TERMINAL_EXEC_FLAG.get(basename, ["-e"])
+    return [terminal] + exec_flag + args
+
 
 class DebugController:
     """Orchestrates the debug session between DAP client and the TUI app."""
@@ -59,6 +114,7 @@ class DebugController:
         self.app = app
         self.client = DAPClient()
         self.state = DebugState()
+        self._external_terminal = False
 
     def _setup_event_handlers(self) -> None:
         self.client.on_event("stopped", self._on_stopped)
@@ -76,6 +132,7 @@ class DebugController:
         stop_on_entry: bool = False,
         just_my_code: bool = True,
         python: str | None = None,
+        external_terminal: bool = False,
     ) -> None:
         """Start the debug session.
 
@@ -86,7 +143,11 @@ class DebugController:
         4. on_dap_initialized handler sends breakpoints + configurationDone
         5. debugpy finally sends launch response
         """
+        self._external_terminal = external_terminal
         self._setup_event_handlers()
+
+        if external_terminal:
+            self.client.on_reverse_request("runInTerminal", self._handle_run_in_terminal)
 
         self._launch_params = {
             "program": program,
@@ -98,7 +159,7 @@ class DebugController:
         }
 
         await self.client.start(python=python)
-        await self.client.initialize()
+        await self.client.initialize(support_run_in_terminal=external_terminal)
 
         # Send launch — don't await response (debugpy holds it until configurationDone)
         p = self._launch_params
@@ -109,7 +170,36 @@ class DebugController:
             stop_on_entry=p["stop_on_entry"],
             just_my_code=p["just_my_code"],
             python=p["python"],
+            console="externalTerminal" if external_terminal else "internalConsole",
         )
+
+    async def _handle_run_in_terminal(self, request: Request) -> dict[str, Any]:
+        """Handle the runInTerminal reverse request from debugpy."""
+        cmd_args: list[str] = request.arguments.get("args", [])
+        cwd = request.arguments.get("cwd")
+        env = request.arguments.get("env")
+
+        terminal = _find_terminal()
+        full_cmd = _build_terminal_cmd(terminal, cmd_args)
+
+        log.info("Launching external terminal: %s", full_cmd)
+
+        # Merge request env into current env so the debuggee inherits
+        # PATH, DISPLAY, etc. needed to connect back to debugpy.
+        merged_env = {**os.environ, **(env or {})}
+
+        await asyncio.create_subprocess_exec(
+            *full_cmd,
+            cwd=cwd,
+            env=merged_env,
+            start_new_session=True,
+        )
+
+        self.app.post_message(DapExternalTerminalStarted())
+
+        # Don't return processId — for terminals that fork-and-exit (like
+        # gnome-terminal), the PID is meaningless and confuses debugpy.
+        return {}
 
     async def do_configure(self) -> None:
         """Called by app after 'initialized' event. Sends breakpoints + configurationDone.
@@ -124,7 +214,9 @@ class DebugController:
         await self.client.configuration_done()
 
         # Now await the launch response
-        response = await asyncio.wait_for(self._launch_future, timeout=30.0)
+        # External terminal needs more time: terminal startup + debuggee connect
+        timeout = 60.0 if self._external_terminal else 30.0
+        response = await asyncio.wait_for(self._launch_future, timeout=timeout)
         if not response.success:
             raise Exception(f"Launch failed: {response.message}")
 

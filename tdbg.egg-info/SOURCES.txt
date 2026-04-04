@@ -15,8 +15,6 @@ tdbg/dap/messages.py
 tdbg/dap/protocol.py
 tdbg/dap/types.py
 tdbg/keybindings/__init__.py
-tdbg/keybindings/emacs.py
-tdbg/keybindings/vim.py
 tdbg/session/__init__.py
 tdbg/session/controller.py
 tdbg/session/state.py
@@ -25,5 +23,6 @@ tdbg/widgets/breakpoint_view.py
 tdbg/widgets/code_view.py
 tdbg/widgets/console_view.py
 tdbg/widgets/evaluate_console.py
+tdbg/widgets/menu_bar.py
 tdbg/widgets/stack_view.py
 tdbg/widgets/variable_view.py

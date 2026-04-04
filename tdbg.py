@@ -49,6 +49,11 @@ def main():
         default=None,
         help="Python interpreter to use for debugging",
     )
+    parser.add_argument(
+        "--external-terminal",
+        action="store_true",
+        help="Run debuggee in an external terminal (for TUI programs)",
+    )
 
     args = parser.parse_args()
 #   args.no_just_my_code = True
@@ -72,6 +77,8 @@ def main():
         cmd.extend(["--cwd", args.cwd])
     if args.python:
         cmd.extend(["--python", args.python])
+    if args.external_terminal:
+        cmd.append("--external-terminal")
     cmd.append(str(program_path))
     if args.args:
         cmd.extend(args.args)

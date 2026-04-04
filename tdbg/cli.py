@@ -47,6 +47,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="default",
         help="Keybinding scheme for code navigation",
     )
+    parser.add_argument(
+        "--external-terminal",
+        action="store_true",
+        help="Run debuggee in an external terminal (for TUI programs)",
+    )
 
     args = parser.parse_args(argv)
 
@@ -78,5 +83,6 @@ def main(argv: list[str] | None = None) -> None:
         stop_on_entry=args.stop_on_entry,
         just_my_code=not args.no_just_my_code,
         python=args.python,
+        external_terminal=args.external_terminal,
     )
     app.run()

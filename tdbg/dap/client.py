@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import sys
-from typing import Any, Callable
+from typing import Any, Awaitable, Callable
 
 from .messages import Event, Request, Response, parse_message
 from .protocol import encode_message, read_message
@@ -23,6 +23,7 @@ from .types import (
 log = logging.getLogger(__name__)
 
 EventHandler = Callable[[Event], Any]
+ReverseRequestHandler = Callable[[Request], Awaitable[dict[str, Any]]]
 
 
 class DAPClient:
@@ -32,6 +33,7 @@ class DAPClient:
         self._seq = 0
         self._pending: dict[int, asyncio.Future[Response]] = {}
         self._event_handlers: dict[str, list[EventHandler]] = {}
+        self._reverse_request_handlers: dict[str, ReverseRequestHandler] = {}
         self._process: asyncio.subprocess.Process | None = None
         self._reader_task: asyncio.Task[None] | None = None
         self.capabilities = Capabilities()
@@ -43,11 +45,15 @@ class DAPClient:
     def on_event(self, event_name: str, handler: EventHandler) -> None:
         self._event_handlers.setdefault(event_name, []).append(handler)
 
+    def on_reverse_request(self, command: str, handler: ReverseRequestHandler) -> None:
+        """Register a handler for a reverse request from the adapter."""
+        self._reverse_request_handlers[command] = handler
+
     async def start(self, python: str | None = None) -> None:
         """Spawn the debugpy adapter subprocess."""
         python = python or sys.executable
         self._process = await asyncio.create_subprocess_exec(
-            python, "-m", "debugpy.adapter",
+            python, "-Xfrozen_modules=off", "-m", "debugpy.adapter",
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -85,12 +91,53 @@ class DAPClient:
                         handler(msg)
                     for handler in self._event_handlers.get("*", []):
                         handler(msg)
+                elif isinstance(msg, Request):
+                    log.debug("Reverse request: %s %s", msg.command, msg.arguments)
+                    await self._handle_reverse_request(msg)
         except (ConnectionError, asyncio.IncompleteReadError):
             log.debug("DAP stream closed")
         except asyncio.CancelledError:
             raise
         except Exception:
             log.exception("Error in DAP read loop")
+
+    async def _handle_reverse_request(self, request: Request) -> None:
+        """Dispatch a reverse request to its registered handler and respond."""
+        handler = self._reverse_request_handlers.get(request.command)
+        if handler is None:
+            log.warning("No handler for reverse request: %s", request.command)
+            await self._send_reverse_response(request, success=False, message="Not supported")
+            return
+        try:
+            body = await handler(request)
+            await self._send_reverse_response(request, success=True, body=body)
+        except Exception as e:
+            log.exception("Error handling reverse request: %s", request.command)
+            await self._send_reverse_response(request, success=False, message=str(e))
+
+    async def _send_reverse_response(
+        self,
+        request: Request,
+        success: bool,
+        body: dict[str, Any] | None = None,
+        message: str | None = None,
+    ) -> None:
+        """Send a response back to the adapter for a reverse request."""
+        assert self._process and self._process.stdin
+        seq = self._next_seq()
+        response_data: dict[str, Any] = {
+            "seq": seq,
+            "type": "response",
+            "request_seq": request.seq,
+            "command": request.command,
+            "success": success,
+        }
+        if body:
+            response_data["body"] = body
+        if message:
+            response_data["message"] = message
+        self._process.stdin.write(encode_message(response_data))
+        await self._process.stdin.drain()
 
     async def _send_raw(self, command: str, arguments: dict[str, Any] | None = None) -> asyncio.Future[Response]:
         """Send a DAP request. Returns the Future for the response (not awaited)."""
@@ -114,7 +161,7 @@ class DAPClient:
 
     # --- High-level DAP commands ---
 
-    async def initialize(self) -> Capabilities:
+    async def initialize(self, support_run_in_terminal: bool = False) -> Capabilities:
         resp = await self._send("initialize", {
             "clientID": "tdbg",
             "clientName": "tdbg",
@@ -122,7 +169,7 @@ class DAPClient:
             "pathFormat": "path",
             "linesStartAt1": True,
             "columnsStartAt1": True,
-            "supportsRunInTerminalRequest": False,
+            "supportsRunInTerminalRequest": support_run_in_terminal,
         })
         self.capabilities = Capabilities.from_dict(resp.body)
         return self.capabilities
@@ -136,6 +183,7 @@ class DAPClient:
         stop_on_entry: bool = False,
         just_my_code: bool = True,
         python: str | None = None,
+        console: str = "internalConsole",
     ) -> asyncio.Future[Response]:
         """Send launch request. Returns a Future for the response.
 
@@ -149,10 +197,11 @@ class DAPClient:
             "program": program,
             "args": args or [],
             "cwd": cwd or ".",
-            "console": "internalConsole",
-            "redirectOutput": True,
+            "console": console,
+            "redirectOutput": console == "internalConsole",
             "justMyCode": just_my_code,
             "stopOnEntry": stop_on_entry,
+            "pythonArgs": ["-Xfrozen_modules=off"],
         }
         if env:
             arguments["env"] = env

@@ -21,6 +21,7 @@ from tdbg.session.controller import (
     DapContinued,
     DapTerminated,
     DapExited,
+    DapExternalTerminalStarted,
     DapOutput,
 )
 from tdbg.keybindings import KeybindingConfig, Mode
@@ -147,6 +148,7 @@ class TdbgApp(App):
         stop_on_entry: bool = False,
         just_my_code: bool = True,
         python: str | None = None,
+        external_terminal: bool = False,
     ) -> None:
         super().__init__()
         self._program = program
@@ -155,6 +157,7 @@ class TdbgApp(App):
         self._stop_on_entry = stop_on_entry
         self._just_my_code = just_my_code
         self._python = python
+        self._external_terminal = external_terminal
         self.controller = DebugController(self)
 
     def compose(self) -> ComposeResult:
@@ -203,6 +206,7 @@ class TdbgApp(App):
                 stop_on_entry=self._stop_on_entry,
                 just_my_code=self._just_my_code,
                 python=self._python,
+                external_terminal=self._external_terminal,
             )
         except Exception:
             log.exception("Failed to start debug session")
@@ -211,8 +215,12 @@ class TdbgApp(App):
     # --- DAP event message handlers ---
     # These run in textual's message loop, so async is safe.
 
-    async def on_dap_initialized(self, message: DapInitialized) -> None:
+    def on_dap_initialized(self, message: DapInitialized) -> None:
         log.info("on_dap_initialized called")
+        self._do_configure_work()
+
+    @work(exclusive=True, group="configure")
+    async def _do_configure_work(self) -> None:
         try:
             await self.controller.do_configure()
             log.info("do_configure completed")
@@ -261,6 +269,17 @@ class TdbgApp(App):
             )
         except Exception:
             log.exception("Error handling exited event")
+
+    def on_dap_external_terminal_started(self, message: DapExternalTerminalStarted) -> None:
+        try:
+            console = self.query_one("#console-view", ConsoleView)
+            console.write_output(
+                "Debuggee running in external terminal window.\n"
+                "Program output will appear there, not here.\n",
+                "console",
+            )
+        except Exception:
+            log.exception("Error handling external terminal started")
 
     def on_dap_output(self, message: DapOutput) -> None:
         try:
