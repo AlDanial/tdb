@@ -31,9 +31,12 @@ class DapInitialized(Message):
 
 class DapStopped(Message):
     """debugpy sent a 'stopped' event."""
-    def __init__(self, thread_id: int | None, reason: str) -> None:
+    def __init__(self, thread_id: int | None, reason: str,
+                 description: str | None = None, text: str | None = None) -> None:
         self.thread_id = thread_id
         self.reason = reason
+        self.description = description  # short description (e.g. "ValueError")
+        self.text = text                # details (e.g. "invalid literal...")
         super().__init__()
 
 class DapContinued(Message):
@@ -206,6 +209,11 @@ class DebugController:
 
         This unblocks the launch response from debugpy.
         """
+        # Break on exceptions that crash the program or escape user code.
+        # "userUnhandled" avoids spurious stops on internal exceptions like
+        # GeneratorExit in traceback.walk_stack.
+        await self.client.set_exception_breakpoints(["userUnhandled"])
+
         # Send breakpoints
         for source_path, bps in self.state.breakpoints.items():
             await self.client.set_breakpoints(source_path, bps)
@@ -364,7 +372,9 @@ class DebugController:
     def _on_stopped(self, event: Event) -> None:
         thread_id = event.body.get("threadId")
         reason = event.body.get("reason", "unknown")
-        self.app.post_message(DapStopped(thread_id, reason))
+        description = event.body.get("description")
+        text = event.body.get("text")
+        self.app.post_message(DapStopped(thread_id, reason, description, text))
 
     def _on_continued(self, event: Event) -> None:
         self.app.post_message(DapContinued())

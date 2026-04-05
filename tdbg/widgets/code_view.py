@@ -288,6 +288,10 @@ class CodeView(ScrollableContainer, can_focus=True):
         elif action == "run_to_cursor":
             if self.source_path:
                 self.post_message(self.RunToCursor(self.source_path, self.cursor_line))
+        elif action == "stack_up":
+            self.post_message(self.DebugAction("stack_up"))
+        elif action == "stack_down":
+            self.post_message(self.DebugAction("stack_down"))
 
     # ---- Paragraph movement ----
 

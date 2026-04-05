@@ -87,6 +87,50 @@ class _KeybindingsModal(ModalScreen[None]):
         self.dismiss(None)
 
 
+class _TracebackModal(ModalScreen[None]):
+    """Scrollable modal showing a full exception traceback."""
+
+    DEFAULT_CSS = """
+    _TracebackModal {
+        align: center middle;
+    }
+    _TracebackModal #dialog {
+        width: 90%;
+        height: 80%;
+        border: solid $error;
+        background: $surface;
+        padding: 1 2;
+        overflow-y: auto;
+    }
+    """
+
+    BINDINGS = [
+        Binding("escape", "dismiss_modal", "Close", show=False),
+        Binding("enter", "dismiss_modal", "Close", show=False),
+        Binding("q", "dismiss_modal", "Close", show=False),
+    ]
+
+    def __init__(self, exception_text: str, frames_text: str) -> None:
+        super().__init__()
+        self._exception_text = exception_text
+        self._frames_text = frames_text
+
+    def compose(self):
+        lines = []
+        lines.append(f"[bold red]{self._exception_text}[/bold red]")
+        lines.append("")
+        lines.append("[bold]Traceback (most recent call last):[/bold]")
+        lines.append(self._frames_text)
+        lines.append("")
+        lines.append("[dim]Press ESC, Enter, or q to close[/dim]")
+
+        with Vertical(id="dialog"):
+            yield Static("\n".join(lines), markup=True)
+
+    def action_dismiss_modal(self) -> None:
+        self.dismiss(None)
+
+
 class TdbgApp(App):
     """TUI Python debugger."""
 
@@ -262,6 +306,27 @@ class TdbgApp(App):
         # Always update UI, even if fetch_stop_info partially failed
         self._update_ui_state()
 
+        if message.reason == "exception":
+            self._show_exception_modal(message)
+
+    def _show_exception_modal(self, message: DapStopped) -> None:
+        """Show a modal with the full exception traceback."""
+        state = self.controller.state
+
+        # Build exception header
+        desc = message.description or "Exception"
+        text = message.text or ""
+        exception_text = f"{desc}: {text}" if text else desc
+
+        # Build traceback from stack frames (bottom-up, like Python tracebacks)
+        lines = []
+        for frame in reversed(state.stack_frames):
+            source = frame.source.path if frame.source and frame.source.path else "<unknown>"
+            lines.append(f"  File \"{source}\", line {frame.line}, in {frame.name}")
+        frames_text = "\n".join(lines) if lines else "  <no frames available>"
+
+        self.push_screen(_TracebackModal(exception_text, frames_text))
+
     def on_dap_continued(self, message: DapContinued) -> None:
         try:
             state = self.controller.state
@@ -331,7 +396,7 @@ class TdbgApp(App):
         self.sub_title = f"Stopped ({reason})"
 
         stop_location, stop_line = state.get_stop_location()
-        status_bar.set_paused(stop_location, stop_line)
+        status_bar.set_paused(stop_location, stop_line, reason=reason)
 
         source_path = state.get_current_source_path()
         current_line = state.get_current_line()
@@ -366,6 +431,9 @@ class TdbgApp(App):
     async def on_code_view_debug_action(self, message: CodeView.DebugAction) -> None:
         log.info("on_code_view_debug_action called: %s", message.action)
         try:
+            if message.action in ("stack_up", "stack_down"):
+                await self._navigate_stack(message.action == "stack_up")
+                return
             handler = {
                 "continue_": self.controller.continue_,
                 "step_over": self.controller.step_over,
@@ -378,6 +446,24 @@ class TdbgApp(App):
                 self._update_ui_state()
         except Exception:
             log.exception("Error executing debug action: %s", message.action)
+
+    async def _navigate_stack(self, up: bool) -> None:
+        """Move to the next/previous frame in the call stack."""
+        state = self.controller.state
+        frames = state.stack_frames
+        if not frames or state.current_frame_id is None:
+            return
+        # Find current index
+        idx = next((i for i, f in enumerate(frames) if f.id == state.current_frame_id), None)
+        if idx is None:
+            return
+        # up = toward caller (higher index), down = toward callee (lower index)
+        new_idx = idx + 1 if up else idx - 1
+        if not (0 <= new_idx < len(frames)):
+            return
+        new_frame = frames[new_idx]
+        await self.controller.select_frame(new_frame.id)
+        self._update_ui_state()
 
     async def on_code_view_run_to_cursor(self, message: CodeView.RunToCursor) -> None:
         try:

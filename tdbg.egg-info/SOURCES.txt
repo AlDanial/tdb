@@ -25,4 +25,5 @@ tdbg/widgets/console_view.py
 tdbg/widgets/evaluate_console.py
 tdbg/widgets/menu_bar.py
 tdbg/widgets/stack_view.py
+tdbg/widgets/status_bar.py
 tdbg/widgets/variable_view.py

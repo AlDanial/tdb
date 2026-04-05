@@ -45,6 +45,8 @@ class KeybindingConfig:
         "b": "toggle_breakpoint",
         "p": "pause",
         "t": "run_to_cursor",
+        "u": "stack_up",
+        "d": "stack_down",
     })
 
     # Keys that work in both modes
@@ -92,6 +94,8 @@ class KeybindingConfig:
             "toggle_breakpoint": "Toggle breakpoint",
             "pause": "Pause",
             "run_to_cursor": "Run to cursor",
+            "stack_up": "Stack frame up (caller)",
+            "stack_down": "Stack frame down (callee)",
         }
         KEY_DISPLAY = {
             "right_square_bracket": "]",

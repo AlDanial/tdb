@@ -7,11 +7,15 @@ dependencies = [
     "textual>=8.0.0",
     "debugpy>=1.8.0",
     "pygments>=2.17.0",
+
     "numpy",
     "scipy",
     "matplotlib",
     "scikit-learn",
     "PyQt6",
+    "nats-py",
+    "pyyaml",
+
 ]
 
 [project.optional-dependencies]
