@@ -328,17 +328,24 @@ class DebugController:
         """After stopping, fetch threads, stack trace, scopes, and variables."""
         try:
             self.state.threads = await self.client.threads()
+        except Exception:
+            log.exception("Error fetching threads")
 
-            if self.state.current_thread_id is not None:
+        if self.state.current_thread_id is not None:
+            try:
                 self.state.stack_frames = await self.client.stack_trace(
                     self.state.current_thread_id
                 )
-                if self.state.stack_frames:
-                    top_frame = self.state.stack_frames[0]
-                    self.state.current_frame_id = top_frame.id
-                    await self.fetch_scopes_and_variables(top_frame.id)
-        except Exception:
-            log.exception("Error fetching stop info")
+            except Exception:
+                log.exception("Error fetching stack trace")
+
+            if self.state.stack_frames:
+                top = self.state.stack_frames[0]
+                self.state.current_frame_id = top.id
+                try:
+                    await self.fetch_scopes_and_variables(top.id)
+                except Exception:
+                    log.exception("Error fetching scopes/variables")
 
     async def fetch_scopes_and_variables(self, frame_id: int) -> None:
         self.state.scopes = await self.client.scopes(frame_id)

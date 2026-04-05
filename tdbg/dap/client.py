@@ -199,7 +199,7 @@ class DAPClient:
             "cwd": cwd or ".",
             "console": console,
             "redirectOutput": console == "internalConsole",
-            "justMyCode": just_my_code,
+            "justMyCode": False,  # Always get full stack traces; tdbg filters in UI
             "stopOnEntry": stop_on_entry,
             "pythonArgs": ["-Xfrozen_modules=off"],
         }

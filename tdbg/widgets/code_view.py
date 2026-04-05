@@ -481,7 +481,9 @@ class CodeView(ScrollableContainer, can_focus=True):
             self.cursor_line = value
         self._render_code()
         if value is not None:
-            self.goto_line(value)
+            # Defer scroll to allow layout to recompute virtual size after file load.
+            # call_later is not enough when switching files in a complex layout.
+            self.set_timer(0.05, lambda: self.goto_line(value))
 
     def watch_cursor_line(self, value: int) -> None:
         self._render_code()

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import logging
+import os
 
 from textual import work
 from textual.app import App, ComposeResult
@@ -31,6 +32,7 @@ from tdbg.widgets.console_view import ConsoleView
 from tdbg.widgets.evaluate_console import EvaluateConsole
 from tdbg.widgets.menu_bar import MenuBar, _MenuDropdown
 from tdbg.widgets.stack_view import StackView
+from tdbg.widgets.status_bar import StatusBar
 from tdbg.widgets.variable_view import VariableView
 
 log = logging.getLogger(__name__)
@@ -96,29 +98,41 @@ class TdbgApp(App):
         layers: default above;
     }
 
-    #main {
+    #upper {
+        height: 3fr;
+    }
+
+    #lower {
         height: 1fr;
     }
 
-    #left-panel {
+    #upper-left {
         width: 2fr;
     }
 
-    #right-panel {
+    #upper-right {
+        width: 1fr;
+    }
+
+    #lower-left {
+        width: 2fr;
+    }
+
+    #lower-right {
         width: 1fr;
     }
 
     #code-view {
-        height: 3fr;
+        height: 1fr;
         border: solid $primary;
         border-title-color: $text;
     }
 
-    #eval-console {
+    #upper-right > * {
         height: 1fr;
     }
 
-    #right-panel > * {
+    #lower-right > * {
         height: 1fr;
     }
     """
@@ -170,14 +184,18 @@ class TdbgApp(App):
             },
             id="menu-bar",
         )
-        with Horizontal(id="main"):
-            with Vertical(id="left-panel"):
+        with Horizontal(id="upper"):
+            with Vertical(id="upper-left"):
                 yield CodeView(id="code-view")
-                yield EvaluateConsole(id="eval-console")
-            with Vertical(id="right-panel"):
+            with Vertical(id="upper-right"):
                 yield ConsoleView(id="console-view")
                 yield VariableView(id="variable-view")
                 yield StackView(id="stack-view")
+        yield StatusBar(id="status-bar")
+        with Horizontal(id="lower"):
+            with Vertical(id="lower-left"):
+                yield EvaluateConsole(id="eval-console")
+            with Vertical(id="lower-right"):
                 yield BreakpointView(id="breakpoint-view")
         yield Footer()
 
@@ -239,9 +257,10 @@ class TdbgApp(App):
                 state.current_thread_id = message.thread_id
             await self.controller.fetch_stop_info()
             await self.controller.cleanup_run_to_cursor()
-            self._update_ui_state()
         except Exception:
             log.exception("Error handling stopped event")
+        # Always update UI, even if fetch_stop_info partially failed
+        self._update_ui_state()
 
     def on_dap_continued(self, message: DapContinued) -> None:
         try:
@@ -293,14 +312,17 @@ class TdbgApp(App):
     def _update_ui_state(self) -> None:
         state = self.controller.state
         code_view = self.query_one("#code-view", CodeView)
+        status_bar = self.query_one("#status-bar", StatusBar)
 
         if state.is_terminated:
             self.sub_title = "Terminated"
+            status_bar.set_terminated()
             code_view.current_line = None
             return
 
         if state.is_running:
             self.sub_title = "Running..."
+            status_bar.set_running()
             code_view.current_line = None
             return
 
@@ -308,8 +330,16 @@ class TdbgApp(App):
         reason = state.stop_reason or "stopped"
         self.sub_title = f"Stopped ({reason})"
 
+        stop_location, stop_line = state.get_stop_location()
+        status_bar.set_paused(stop_location, stop_line)
+
         source_path = state.get_current_source_path()
         current_line = state.get_current_line()
+
+        # Use stop_location as fallback if current frame has no source path
+        if not source_path and stop_location and os.path.isfile(stop_location):
+            source_path = stop_location
+            current_line = stop_line
 
         if source_path and source_path != code_view.source_path:
             code_view.load_file(source_path)

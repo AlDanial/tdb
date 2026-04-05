@@ -36,6 +36,7 @@ class DebugState:
     is_terminated: bool = False
     stop_reason: str | None = None
 
+
     def clear_frame_data(self) -> None:
         self.stack_frames.clear()
         self.scopes.clear()
@@ -53,3 +54,16 @@ class DebugState:
             if frame.id == self.current_frame_id:
                 return frame.line
         return None
+
+    def get_stop_location(self) -> tuple[str, int]:
+        """Return (location_string, line) for the actual stop point (top of stack).
+
+        Always returns a location, even for library code without source paths.
+        """
+        if self.stack_frames:
+            top = self.stack_frames[0]
+            if top.source and top.source.path:
+                return (top.source.path, top.line)
+            return (top.name, top.line)
+
+        return ("unknown", 0)
