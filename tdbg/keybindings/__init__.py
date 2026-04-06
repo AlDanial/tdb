@@ -47,6 +47,7 @@ class KeybindingConfig:
         "t": "run_to_cursor",
         "u": "stack_up",
         "d": "stack_down",
+        "R": "restart",
     })
 
     # Keys that work in both modes
@@ -96,6 +97,7 @@ class KeybindingConfig:
             "run_to_cursor": "Run to cursor",
             "stack_up": "Stack frame up (caller)",
             "stack_down": "Stack frame down (callee)",
+            "restart": "Restart program",
         }
         KEY_DISPLAY = {
             "right_square_bracket": "]",

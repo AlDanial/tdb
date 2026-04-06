@@ -194,6 +194,9 @@ class CodeView(ScrollableContainer, can_focus=True):
         self._search_term: str | None = None
         self._search_backward: bool = False
 
+        # When True, suppress the next click (it was a focus-gaining click)
+        self._suppress_next_click: bool = True
+
     def compose(self):
         self._content = _CodeContent("")
         yield self._content
@@ -202,6 +205,8 @@ class CodeView(ScrollableContainer, can_focus=True):
 
     async def _on_key(self, event: Key) -> None:
         """Custom key handler implementing vim-style count + action keys."""
+        # Any keypress means focus was gained via keyboard, not mouse click
+        self._suppress_next_click = False
         key = event.key
 
         # ESC toggles mode
@@ -292,6 +297,8 @@ class CodeView(ScrollableContainer, can_focus=True):
             self.post_message(self.DebugAction("stack_up"))
         elif action == "stack_down":
             self.post_message(self.DebugAction("stack_down"))
+        elif action == "restart":
+            self.post_message(self.DebugAction("restart"))
 
     # ---- Paragraph movement ----
 
@@ -460,11 +467,21 @@ class CodeView(ScrollableContainer, can_focus=True):
 
         self._content.update(output)
 
+    def on_blur(self) -> None:
+        """Arm suppression: the next click that gives us focus shouldn't toggle a breakpoint."""
+        self._suppress_next_click = True
+
     def on__code_content_line_clicked(self, event: _CodeContent.LineClicked) -> None:
+        if self._suppress_next_click:
+            self._suppress_next_click = False
+            return
         self._toggle_breakpoint_at_content_y(event.y)
 
     def on_click(self, event: Click) -> None:
         """Handle clicks on the empty area to the right of _CodeContent."""
+        if self._suppress_next_click:
+            self._suppress_next_click = False
+            return
         if self.source_path is None or self.mode != Mode.DEBUG:
             return
         # event.y on CodeView is NOT scroll-adjusted and includes border row

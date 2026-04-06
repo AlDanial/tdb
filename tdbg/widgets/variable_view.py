@@ -19,8 +19,6 @@ class VariableView(Tree[int]):
 
     DEFAULT_CSS = """
     VariableView {
-        border: solid $primary;
-        border-title-color: $text;
         height: 1fr;
     }
     """
@@ -38,6 +36,7 @@ class VariableView(Tree[int]):
         variables: dict[int, list[Variable]],
     ) -> None:
         """Rebuild the tree with current scope/variable data."""
+        self._pending_expand.clear()
         self.clear()
         for scope in scopes:
             scope_node = self.root.add(scope.name, data=scope.variables_reference)

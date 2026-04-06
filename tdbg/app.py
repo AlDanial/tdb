@@ -87,7 +87,7 @@ class _KeybindingsModal(ModalScreen[None]):
         self.dismiss(None)
 
 
-class _TracebackModal(ModalScreen[None]):
+class _TracebackModal(ModalScreen[str | None]):
     """Scrollable modal showing a full exception traceback."""
 
     DEFAULT_CSS = """
@@ -108,6 +108,7 @@ class _TracebackModal(ModalScreen[None]):
         Binding("escape", "dismiss_modal", "Close", show=False),
         Binding("enter", "dismiss_modal", "Close", show=False),
         Binding("q", "dismiss_modal", "Close", show=False),
+        Binding("R", "restart", "Restart", show=False),
     ]
 
     def __init__(self, exception_text: str, frames_text: str) -> None:
@@ -122,13 +123,16 @@ class _TracebackModal(ModalScreen[None]):
         lines.append("[bold]Traceback (most recent call last):[/bold]")
         lines.append(self._frames_text)
         lines.append("")
-        lines.append("[dim]Press ESC, Enter, or q to close[/dim]")
+        lines.append("[dim]Press ESC, Enter, or q to close · Press R to restart[/dim]")
 
         with Vertical(id="dialog"):
             yield Static("\n".join(lines), markup=True)
 
     def action_dismiss_modal(self) -> None:
         self.dismiss(None)
+
+    def action_restart(self) -> None:
+        self.dismiss("restart")
 
 
 class TdbgApp(App):
@@ -168,8 +172,6 @@ class TdbgApp(App):
 
     #code-view {
         height: 1fr;
-        border: solid $primary;
-        border-title-color: $text;
     }
 
     #upper-right > * {
@@ -178,6 +180,16 @@ class TdbgApp(App):
 
     #lower-right > * {
         height: 1fr;
+    }
+
+    /* Inactive pane borders are gray; active pane is blue */
+    .pane {
+        border: solid gray;
+        border-title-color: gray;
+    }
+    .pane.--active-pane {
+        border: solid $primary;
+        border-title-color: $text;
     }
     """
 
@@ -230,17 +242,17 @@ class TdbgApp(App):
         )
         with Horizontal(id="upper"):
             with Vertical(id="upper-left"):
-                yield CodeView(id="code-view")
+                yield CodeView(id="code-view", classes="pane")
             with Vertical(id="upper-right"):
-                yield ConsoleView(id="console-view")
-                yield VariableView(id="variable-view")
-                yield StackView(id="stack-view")
+                yield ConsoleView(id="console-view", classes="pane")
+                yield VariableView(id="variable-view", classes="pane")
+                yield StackView(id="stack-view", classes="pane")
         yield StatusBar(id="status-bar")
         with Horizontal(id="lower"):
             with Vertical(id="lower-left"):
-                yield EvaluateConsole(id="eval-console")
+                yield EvaluateConsole(id="eval-console", classes="pane")
             with Vertical(id="lower-right"):
-                yield BreakpointView(id="breakpoint-view")
+                yield BreakpointView(id="breakpoint-view", classes="pane")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -249,6 +261,18 @@ class TdbgApp(App):
         code_view.load_file(self._program)
         code_view.focus()
         self._start_session()
+
+    def on_descendant_focus(self, event: object) -> None:
+        """Update pane border highlight when focus changes."""
+        for pane in self.query(".pane"):
+            pane.remove_class("--active-pane")
+        # Walk up from focused widget to find the nearest .pane
+        node = self.focused
+        while node is not None:
+            if hasattr(node, "has_class") and node.has_class("pane"):
+                node.add_class("--active-pane")
+                break
+            node = getattr(node, "parent", None)
 
     def _update_code_title(self, code_view: CodeView) -> None:
         mode_label = code_view.mode.value
@@ -273,6 +297,45 @@ class TdbgApp(App):
         except Exception:
             log.exception("Failed to start debug session")
             self.sub_title = "Failed to start"
+
+    @work(exclusive=True)
+    async def _restart_session(self) -> None:
+        """Stop the current session and start a new one with the same arguments."""
+        log.info("Restarting debug session")
+        # Preserve breakpoints across restart
+        saved_breakpoints = dict(self.controller.state.breakpoints)
+
+        try:
+            await self.controller.stop()
+        except Exception:
+            log.exception("Error stopping session for restart")
+
+        # Create a fresh controller and restore breakpoints
+        self.controller = DebugController(self)
+        self.controller.state.breakpoints = saved_breakpoints
+
+        status_bar = self.query_one("#status-bar", StatusBar)
+        status_bar.set_idle()
+        self.sub_title = "Restarting..."
+
+        # Reload the source file in Code View
+        code_view = self.query_one("#code-view", CodeView)
+        code_view.load_file(self._program)
+        code_view.current_line = None
+
+        try:
+            await self.controller.start(
+                program=self._program,
+                args=self._args,
+                cwd=self._cwd,
+                stop_on_entry=self._stop_on_entry,
+                just_my_code=self._just_my_code,
+                python=self._python,
+                external_terminal=self._external_terminal,
+            )
+        except Exception:
+            log.exception("Failed to restart debug session")
+            self.sub_title = "Failed to restart"
 
     # --- DAP event message handlers ---
     # These run in textual's message loop, so async is safe.
@@ -325,7 +388,11 @@ class TdbgApp(App):
             lines.append(f"  File \"{source}\", line {frame.line}, in {frame.name}")
         frames_text = "\n".join(lines) if lines else "  <no frames available>"
 
-        self.push_screen(_TracebackModal(exception_text, frames_text))
+        def on_dismiss(result: str | None) -> None:
+            if result == "restart":
+                self._restart_session()
+
+        self.push_screen(_TracebackModal(exception_text, frames_text), callback=on_dismiss)
 
     def on_dap_continued(self, message: DapContinued) -> None:
         try:
@@ -434,6 +501,9 @@ class TdbgApp(App):
             if message.action in ("stack_up", "stack_down"):
                 await self._navigate_stack(message.action == "stack_up")
                 return
+            if message.action == "restart":
+                self._restart_session()
+                return
             handler = {
                 "continue_": self.controller.continue_,
                 "step_over": self.controller.step_over,
@@ -462,7 +532,11 @@ class TdbgApp(App):
         if not (0 <= new_idx < len(frames)):
             return
         new_frame = frames[new_idx]
-        await self.controller.select_frame(new_frame.id)
+        state.current_frame_id = new_frame.id
+        try:
+            await self.controller.fetch_scopes_and_variables(new_frame.id)
+        except Exception:
+            log.exception("Error fetching scopes for frame %d", new_frame.id)
         self._update_ui_state()
 
     async def on_code_view_run_to_cursor(self, message: CodeView.RunToCursor) -> None:
@@ -499,9 +573,13 @@ class TdbgApp(App):
         bp_view.update_breakpoints(state.breakpoints)
 
     async def on_tdbg_app_lazy_load_variables(self, message: LazyLoadVariables) -> None:
-        variables = await self.controller.client.variables(message.variables_reference)
-        var_view = self.query_one("#variable-view", VariableView)
-        var_view.load_children(message.node, variables)
+        try:
+            variables = await self.controller.client.variables(message.variables_reference)
+            var_view = self.query_one("#variable-view", VariableView)
+            var_view.load_children(message.node, variables)
+        except Exception:
+            log.debug("Failed to load variables (reference may be stale): %d",
+                      message.variables_reference)
 
     async def on_evaluate_console_evaluate_requested(
         self, message: EvaluateConsole.EvaluateRequested

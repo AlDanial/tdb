@@ -11,8 +11,6 @@ class ConsoleView(RichLog):
 
     DEFAULT_CSS = """
     ConsoleView {
-        border: solid $primary;
-        border-title-color: $text;
         height: 1fr;
     }
     """

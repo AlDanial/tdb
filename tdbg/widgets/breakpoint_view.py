@@ -17,8 +17,6 @@ class BreakpointView(DataTable):
 
     DEFAULT_CSS = """
     BreakpointView {
-        border: solid $primary;
-        border-title-color: $text;
         height: 1fr;
     }
     """

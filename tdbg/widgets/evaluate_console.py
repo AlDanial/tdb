@@ -34,8 +34,6 @@ class EvaluateConsole(Vertical):
 
     DEFAULT_CSS = """
     EvaluateConsole {
-        border: solid $primary;
-        border-title-color: $text;
         height: 1fr;
     }
 
