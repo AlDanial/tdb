@@ -223,6 +223,25 @@ class DAPClient:
         })
         return [Breakpoint.from_dict(bp) for bp in resp.body.get("breakpoints", [])]
 
+    async def breakpoint_locations(
+        self,
+        source_path: str,
+        start_line: int = 1,
+        end_line: int | None = None,
+    ) -> set[int]:
+        """Query valid breakpoint lines for a source file.
+
+        Returns a set of 1-based line numbers where breakpoints can be placed.
+        """
+        args: dict[str, Any] = {
+            "source": {"path": source_path},
+            "line": start_line,
+        }
+        if end_line is not None:
+            args["endLine"] = end_line
+        resp = await self._send("breakpointLocations", args)
+        return {bp["line"] for bp in resp.body.get("breakpoints", [])}
+
     async def set_exception_breakpoints(self, filters: list[str]) -> None:
         await self._send("setExceptionBreakpoints", {"filters": filters})
 

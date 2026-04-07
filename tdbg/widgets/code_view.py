@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import logging
 import re
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -21,6 +23,8 @@ from tdbg.keybindings import KeybindingConfig, Mode
 
 if TYPE_CHECKING:
     from tdbg.dap.types import SourceBreakpoint
+
+log = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -106,6 +110,79 @@ class _SearchModal(ModalScreen[str | None]):
         self.dismiss(None)
 
 
+class _BreakpointConditionModal(ModalScreen[tuple[str | None, str | None] | None]):
+    """Modal for editing breakpoint condition and hit count."""
+
+    DEFAULT_CSS = """
+    _BreakpointConditionModal {
+        align: center middle;
+    }
+    _BreakpointConditionModal #dialog {
+        width: 55;
+        height: auto;
+        max-height: 18;
+        border: solid $primary;
+        background: $surface;
+        padding: 1 2;
+    }
+    _BreakpointConditionModal Input {
+        margin-top: 1;
+    }
+    _BreakpointConditionModal .label {
+        margin-top: 1;
+    }
+    """
+
+    BINDINGS = [Binding("escape", "cancel", "Cancel", show=False)]
+
+    def __init__(
+        self,
+        source_path: str,
+        line: int,
+        condition: str | None = None,
+        hit_condition: str | None = None,
+    ) -> None:
+        super().__init__()
+        self._source_path = source_path
+        self._line = line
+        self._initial_condition = condition or ""
+        self._initial_hit_condition = hit_condition or ""
+
+    def compose(self):
+        filename = Path(self._source_path).name
+        with Vertical(id="dialog"):
+            yield Label(f"Breakpoint — {filename}:{self._line}")
+            yield Label("Condition (Python expression):", classes="label")
+            yield Input(
+                value=self._initial_condition,
+                placeholder="e.g. x > 10",
+                id="condition-input",
+            )
+            yield Label("Hit count (pause after N hits):", classes="label")
+            yield Input(
+                value=self._initial_hit_condition,
+                placeholder="e.g. 5",
+                id="hit-input",
+            )
+
+    def on_mount(self) -> None:
+        self.query_one("#condition-input", Input).focus()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.input.id == "condition-input":
+            self.query_one("#hit-input", Input).focus()
+        else:
+            self._apply()
+
+    def _apply(self) -> None:
+        condition = self.query_one("#condition-input", Input).value.strip() or None
+        hit_condition = self.query_one("#hit-input", Input).value.strip() or None
+        self.dismiss((condition, hit_condition))
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
 # ---------------------------------------------------------------------------
 # Code content widget
 # ---------------------------------------------------------------------------
@@ -123,14 +200,37 @@ class _CodeContent(Static):
     }
     """
 
+    DOUBLE_CLICK_THRESHOLD = 0.4  # seconds
+
     class LineClicked(Message):
         def __init__(self, y: int) -> None:
             self.y = y
             super().__init__()
 
+    class LineDoubleClicked(Message):
+        def __init__(self, y: int) -> None:
+            self.y = y
+            super().__init__()
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._last_click_time: float = 0.0
+        self._last_click_y: int = -1
+
     def on_click(self, event: Click) -> None:
         event.stop()
-        self.post_message(self.LineClicked(event.y))
+        now = time.monotonic()
+        if (
+            event.y == self._last_click_y
+            and (now - self._last_click_time) < self.DOUBLE_CLICK_THRESHOLD
+        ):
+            self._last_click_time = 0.0
+            self._last_click_y = -1
+            self.post_message(self.LineDoubleClicked(event.y))
+        else:
+            self._last_click_time = now
+            self._last_click_y = event.y
+            self.post_message(self.LineClicked(event.y))
 
 
 # ---------------------------------------------------------------------------
@@ -167,6 +267,12 @@ class CodeView(ScrollableContainer, can_focus=True):
             self.action = action
             super().__init__()
 
+    class BreakpointConditionRequested(Message):
+        def __init__(self, source_path: str, line: int) -> None:
+            self.source_path = source_path
+            self.line = line
+            super().__init__()
+
     class RunToCursor(Message):
         def __init__(self, source_path: str, line: int) -> None:
             self.source_path = source_path
@@ -182,6 +288,8 @@ class CodeView(ScrollableContainer, can_focus=True):
         super().__init__(**kwargs)
         self._lines: list[str] = []
         self._breakpoint_lines: set[int] = set()
+        self._conditional_bp_lines: set[int] = set()
+        self._breakpoints_disabled: bool = False
         self._content: _CodeContent | None = None
         self._highlighted: list[Text] | None = None
 
@@ -193,6 +301,9 @@ class CodeView(ScrollableContainer, can_focus=True):
         # Search state
         self._search_term: str | None = None
         self._search_backward: bool = False
+
+        # Valid breakpoint locations (empty = allow all if compile failed)
+        self._valid_bp_lines: set[int] = set()
 
         # When True, suppress the next click (it was a focus-gaining click)
         self._suppress_next_click: bool = True
@@ -288,7 +399,7 @@ class CodeView(ScrollableContainer, can_focus=True):
         elif action == "pause":
             self.post_message(self.DebugAction("pause"))
         elif action == "toggle_breakpoint":
-            if self.source_path:
+            if self.source_path and self._is_valid_bp_line(self.cursor_line):
                 self.post_message(self.BreakpointToggled(self.source_path, self.cursor_line))
         elif action == "run_to_cursor":
             if self.source_path:
@@ -376,12 +487,47 @@ class CodeView(ScrollableContainer, can_focus=True):
         except OSError:
             text = f"<Could not read {path}>"
         self._lines = text.splitlines()
+        self._valid_bp_lines = self._compute_executable_lines(text, path)
         self._highlighted = self._highlight_source(text)
         self._render_code()
 
+    @staticmethod
+    def _compute_executable_lines(source: str, filename: str) -> set[int]:
+        """Return the set of lines that contain executable bytecode."""
+        try:
+            code = compile(source, filename, "exec")
+        except SyntaxError:
+            return set()  # fallback: allow all lines
+
+        def _collect(co: object) -> set[int]:
+            lines: set[int] = set()
+            for _start, _end, lineno in co.co_lines():  # type: ignore[attr-defined]
+                if lineno is not None and lineno > 0:
+                    lines.add(lineno)
+            for const in co.co_consts:  # type: ignore[attr-defined]
+                if hasattr(const, "co_lines"):
+                    lines.update(_collect(const))
+            return lines
+
+        return _collect(code)
+
     def set_breakpoints(self, breakpoints: list[SourceBreakpoint]) -> None:
         self._breakpoint_lines = {bp.line for bp in breakpoints}
+        self._conditional_bp_lines = {
+            bp.line for bp in breakpoints
+            if bp.condition or bp.hit_condition
+        }
         self._render_code()
+
+    def set_breakpoints_disabled(self, disabled: bool) -> None:
+        self._breakpoints_disabled = disabled
+        self._render_code()
+
+    def _is_valid_bp_line(self, line: int) -> bool:
+        """Check if a line is a valid breakpoint location."""
+        if not self._valid_bp_lines:
+            return True  # Compilation failed — allow all as fallback
+        return line in self._valid_bp_lines
 
     def goto_line(self, line: int) -> None:
         if line < 1 or not self._lines:
@@ -437,7 +583,12 @@ class CodeView(ScrollableContainer, can_focus=True):
 
             # Breakpoint marker
             if line_num in self._breakpoint_lines:
-                output.append("● ", style="bold red")
+                if self._breakpoints_disabled:
+                    output.append("● ", style="bold blue")
+                elif line_num in self._conditional_bp_lines:
+                    output.append("● ", style="bold yellow")
+                else:
+                    output.append("● ", style="bold red")
             else:
                 output.append("  ")
 
@@ -486,15 +637,22 @@ class CodeView(ScrollableContainer, can_focus=True):
             return
         # event.y on CodeView is NOT scroll-adjusted and includes border row
         line = int(self.scroll_offset.y) + event.y
-        if 1 <= line <= len(self._lines):
+        if 1 <= line <= len(self._lines) and self._is_valid_bp_line(line):
             self.post_message(self.BreakpointToggled(self.source_path, line))
+
+    def on__code_content_line_double_clicked(self, event: _CodeContent.LineDoubleClicked) -> None:
+        if self.source_path is None or self.mode != Mode.DEBUG:
+            return
+        line = event.y + 1
+        if 1 <= line <= len(self._lines) and line in self._breakpoint_lines:
+            self.post_message(self.BreakpointConditionRequested(self.source_path, line))
 
     def _toggle_breakpoint_at_content_y(self, y: int) -> None:
         """Toggle breakpoint from _CodeContent click (y is scroll-adjusted)."""
         if self.source_path is None or self.mode != Mode.DEBUG:
             return
         line = y + 1
-        if 1 <= line <= len(self._lines):
+        if 1 <= line <= len(self._lines) and self._is_valid_bp_line(line):
             self.post_message(self.BreakpointToggled(self.source_path, line))
 
     def watch_current_line(self, value: int | None) -> None:

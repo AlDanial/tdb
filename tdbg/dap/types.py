@@ -142,6 +142,7 @@ class Capabilities:
     supports_conditional_breakpoints: bool = False
     supports_hit_conditional_breakpoints: bool = False
     supports_log_points: bool = False
+    supports_breakpoint_locations_request: bool = False
     exception_breakpoint_filters: list[dict[str, Any]] = field(default_factory=list)
 
     @classmethod
@@ -154,6 +155,7 @@ class Capabilities:
             supports_conditional_breakpoints=data.get("supportsConditionalBreakpoints", False),
             supports_hit_conditional_breakpoints=data.get("supportsHitConditionalBreakpoints", False),
             supports_log_points=data.get("supportsLogPoints", False),
+            supports_breakpoint_locations_request=data.get("supportsBreakpointLocationsRequest", False),
             exception_breakpoint_filters=data.get("exceptionBreakpointFilters", []),
         )
 

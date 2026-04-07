@@ -214,9 +214,10 @@ class DebugController:
         # GeneratorExit in traceback.walk_stack.
         await self.client.set_exception_breakpoints(["userUnhandled"])
 
-        # Send breakpoints
-        for source_path, bps in self.state.breakpoints.items():
-            await self.client.set_breakpoints(source_path, bps)
+        # Send breakpoints (skip if disabled)
+        if not self.state.breakpoints_disabled:
+            for source_path, bps in self.state.breakpoints.items():
+                await self.client.set_breakpoints(source_path, bps)
 
         # Signal configuration complete — this unblocks the launch response
         await self.client.configuration_done()
@@ -307,15 +308,42 @@ class DebugController:
             await self.client.set_breakpoints(source_path, bps)
 
     async def set_breakpoint_condition(
-        self, source_path: str, line: int, condition: str | None
+        self,
+        source_path: str,
+        line: int,
+        condition: str | None,
+        hit_condition: str | None = None,
     ) -> None:
         bps = self.state.breakpoints.get(source_path, [])
         for bp in bps:
             if bp.line == line:
                 bp.condition = condition
+                bp.hit_condition = hit_condition
                 break
         if self.state.is_ready and not self.state.is_terminated:
             await self.client.set_breakpoints(source_path, bps)
+
+    async def disable_all_breakpoints(self) -> None:
+        """Tell debugpy to remove all breakpoints without clearing them from state."""
+        self.state.breakpoints_disabled = True
+        if self.state.is_ready and not self.state.is_terminated:
+            for source_path in self.state.breakpoints:
+                await self.client.set_breakpoints(source_path, [])
+
+    async def enable_all_breakpoints(self) -> None:
+        """Re-send all breakpoints to debugpy."""
+        self.state.breakpoints_disabled = False
+        if self.state.is_ready and not self.state.is_terminated:
+            for source_path, bps in self.state.breakpoints.items():
+                await self.client.set_breakpoints(source_path, bps)
+
+    async def clear_all_breakpoints(self) -> None:
+        """Remove all breakpoints from state and debugpy."""
+        if self.state.is_ready and not self.state.is_terminated:
+            for source_path in self.state.breakpoints:
+                await self.client.set_breakpoints(source_path, [])
+        self.state.breakpoints.clear()
+        self.state.breakpoints_disabled = False
 
     async def evaluate(self, expression: str) -> str:
         try:

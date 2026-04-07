@@ -27,7 +27,7 @@ from tdbg.session.controller import (
 )
 from tdbg.keybindings import KeybindingConfig, Mode
 from tdbg.widgets.breakpoint_view import BreakpointView
-from tdbg.widgets.code_view import CodeView
+from tdbg.widgets.code_view import CodeView, _BreakpointConditionModal
 from tdbg.widgets.console_view import ConsoleView
 from tdbg.widgets.evaluate_console import EvaluateConsole
 from tdbg.widgets.menu_bar import MenuBar, _MenuDropdown
@@ -478,6 +478,7 @@ class TdbgApp(App):
         if source_path:
             bps = state.breakpoints.get(source_path, [])
             code_view.set_breakpoints(bps)
+        code_view.set_breakpoints_disabled(state.breakpoints_disabled)
         code_view.current_line = current_line
 
         stack_view = self.query_one("#stack-view", StackView)
@@ -494,6 +495,60 @@ class TdbgApp(App):
             self.post_message(self.BreakpointsChanged())
         except Exception:
             log.exception("Error toggling breakpoint")
+
+    class _ApplyBreakpointCondition(Message):
+        """Internal message to apply condition after modal dismisses."""
+        def __init__(self, source_path: str, line: int,
+                     condition: str | None, hit_condition: str | None) -> None:
+            self.source_path = source_path
+            self.line = line
+            self.condition = condition
+            self.hit_condition = hit_condition
+            super().__init__()
+
+    def _open_breakpoint_condition_modal(self, source_path: str, line: int) -> None:
+        """Show the condition/hit-count modal for a breakpoint."""
+        bps = self.controller.state.breakpoints.get(source_path, [])
+        bp = next((b for b in bps if b.line == line), None)
+        if bp is None:
+            return
+        modal = _BreakpointConditionModal(
+            source_path, line,
+            condition=bp.condition,
+            hit_condition=bp.hit_condition,
+        )
+
+        def on_dismiss(result: tuple[str | None, str | None] | None) -> None:
+            if result is None:
+                return
+            condition, hit_condition = result
+            self.post_message(self._ApplyBreakpointCondition(
+                source_path, line, condition, hit_condition,
+            ))
+
+        self.push_screen(modal, callback=on_dismiss)
+
+    async def on_tdbg_app__apply_breakpoint_condition(
+        self, message: _ApplyBreakpointCondition,
+    ) -> None:
+        try:
+            await self.controller.set_breakpoint_condition(
+                message.source_path, message.line,
+                message.condition, message.hit_condition,
+            )
+            self.post_message(self.BreakpointsChanged())
+        except Exception:
+            log.exception("Error setting breakpoint condition")
+
+    def on_code_view_breakpoint_condition_requested(
+        self, message: CodeView.BreakpointConditionRequested,
+    ) -> None:
+        self._open_breakpoint_condition_modal(message.source_path, message.line)
+
+    def on_breakpoint_view_breakpoint_condition_requested(
+        self, message: BreakpointView.BreakpointConditionRequested,
+    ) -> None:
+        self._open_breakpoint_condition_modal(message.source_path, message.line)
 
     async def on_code_view_debug_action(self, message: CodeView.DebugAction) -> None:
         log.info("on_code_view_debug_action called: %s", message.action)
@@ -569,8 +624,32 @@ class TdbgApp(App):
         if code_view.source_path:
             bps = state.breakpoints.get(code_view.source_path, [])
             code_view.set_breakpoints(bps)
+        code_view.set_breakpoints_disabled(state.breakpoints_disabled)
         bp_view = self.query_one("#breakpoint-view", BreakpointView)
         bp_view.update_breakpoints(state.breakpoints)
+        bp_view.set_disabled_state(state.breakpoints_disabled)
+
+    async def on_breakpoint_view_disable_all_requested(
+        self, message: BreakpointView.DisableAllRequested,
+    ) -> None:
+        try:
+            state = self.controller.state
+            if state.breakpoints_disabled:
+                await self.controller.enable_all_breakpoints()
+            else:
+                await self.controller.disable_all_breakpoints()
+            self.post_message(self.BreakpointsChanged())
+        except Exception:
+            log.exception("Error toggling breakpoint disable")
+
+    async def on_breakpoint_view_clear_all_requested(
+        self, message: BreakpointView.ClearAllRequested,
+    ) -> None:
+        try:
+            await self.controller.clear_all_breakpoints()
+            self.post_message(self.BreakpointsChanged())
+        except Exception:
+            log.exception("Error clearing breakpoints")
 
     async def on_tdbg_app_lazy_load_variables(self, message: LazyLoadVariables) -> None:
         try:

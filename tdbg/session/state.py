@@ -19,6 +19,7 @@ class DebugState:
 
     # Breakpoints keyed by source file path
     breakpoints: dict[str, list[SourceBreakpoint]] = field(default_factory=dict)
+    breakpoints_disabled: bool = False
 
     # Current thread/frame context
     threads: list[Thread] = field(default_factory=list)
