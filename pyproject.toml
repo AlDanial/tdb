@@ -7,6 +7,8 @@ dependencies = [
     "textual>=8.0.0",
     "debugpy>=1.8.0",
     "pygments>=2.17.0",
+    "fastapi>=0.115.0",
+    "uvicorn>=0.30.0",
 
     "numpy",
     "scipy",

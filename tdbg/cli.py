@@ -52,8 +52,28 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Run debuggee in an external terminal (for TUI programs)",
     )
+    parser.add_argument(
+        "--server",
+        action="store_true",
+        help="Start JSON-RPC debug server alongside the TUI",
+    )
+    parser.add_argument(
+        "--headless",
+        action="store_true",
+        help="Run as a headless JSON-RPC debug server (no TUI)",
+    )
+    parser.add_argument(
+        "--server-port",
+        type=int,
+        default=8150,
+        help="Port for the JSON-RPC debug server (default: 8150)",
+    )
 
     args = parser.parse_args(argv)
+
+    # --headless implies --server
+    if args.headless:
+        args.server = True
 
     # Resolve program path
     program_path = Path(args.program).resolve()
@@ -74,6 +94,30 @@ def main(argv: list[str] | None = None) -> None:
         format="%(asctime)s %(name)s %(levelname)s %(message)s",
     )
 
+    if args.headless:
+        _run_headless(args)
+    else:
+        _run_tui(args)
+
+
+def _run_headless(args: argparse.Namespace) -> None:
+    """Run in headless mode: JSON-RPC server only, no TUI."""
+    import asyncio
+    from tdbg.server.runner import run_headless
+
+    asyncio.run(run_headless(
+        program=args.program,
+        args=args.args,
+        cwd=args.cwd,
+        stop_on_entry=args.stop_on_entry,
+        just_my_code=not args.no_just_my_code,
+        python=args.python,
+        port=args.server_port,
+    ))
+
+
+def _run_tui(args: argparse.Namespace) -> None:
+    """Run with the TUI (optionally with the server alongside)."""
     from tdbg.app import TdbgApp
 
     app = TdbgApp(

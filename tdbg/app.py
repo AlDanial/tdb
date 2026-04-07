@@ -15,8 +15,8 @@ from textual.screen import ModalScreen
 from textual.widgets import Footer, Header, Label, OptionList, Static
 from textual.widgets._tree import TreeNode
 
-from tdbg.session.controller import (
-    DebugController,
+from tdbg.session.controller import DebugController
+from tdbg.session.messages import (
     DapInitialized,
     DapStopped,
     DapContinued,
@@ -25,6 +25,7 @@ from tdbg.session.controller import (
     DapExternalTerminalStarted,
     DapOutput,
 )
+from tdbg.session.textual_handler import TextualEventHandler
 from tdbg.keybindings import KeybindingConfig, Mode
 from tdbg.widgets.breakpoint_view import BreakpointView
 from tdbg.widgets.code_view import CodeView, _BreakpointConditionModal
@@ -228,7 +229,8 @@ class TdbgApp(App):
         self._just_my_code = just_my_code
         self._python = python
         self._external_terminal = external_terminal
-        self.controller = DebugController(self)
+        self._event_handler = TextualEventHandler(self)
+        self.controller = DebugController(self._event_handler)
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -311,7 +313,8 @@ class TdbgApp(App):
             log.exception("Error stopping session for restart")
 
         # Create a fresh controller and restore breakpoints
-        self.controller = DebugController(self)
+        self._event_handler = TextualEventHandler(self)
+        self.controller = DebugController(self._event_handler)
         self.controller.state.breakpoints = saved_breakpoints
 
         status_bar = self.query_one("#status-bar", StatusBar)
@@ -574,24 +577,10 @@ class TdbgApp(App):
 
     async def _navigate_stack(self, up: bool) -> None:
         """Move to the next/previous frame in the call stack."""
-        state = self.controller.state
-        frames = state.stack_frames
-        if not frames or state.current_frame_id is None:
-            return
-        # Find current index
-        idx = next((i for i, f in enumerate(frames) if f.id == state.current_frame_id), None)
-        if idx is None:
-            return
-        # up = toward caller (higher index), down = toward callee (lower index)
-        new_idx = idx + 1 if up else idx - 1
-        if not (0 <= new_idx < len(frames)):
-            return
-        new_frame = frames[new_idx]
-        state.current_frame_id = new_frame.id
         try:
-            await self.controller.fetch_scopes_and_variables(new_frame.id)
+            await self.controller.navigate_stack(up)
         except Exception:
-            log.exception("Error fetching scopes for frame %d", new_frame.id)
+            log.exception("Error navigating stack")
         self._update_ui_state()
 
     async def on_code_view_run_to_cursor(self, message: CodeView.RunToCursor) -> None:

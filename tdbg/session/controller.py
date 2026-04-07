@@ -1,4 +1,4 @@
-"""Debug session controller: bridges DAP client and TUI."""
+"""Debug session controller: bridges DAP client and event consumers."""
 
 from __future__ import annotations
 
@@ -7,57 +7,15 @@ import logging
 import os
 import shutil
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
-
-from textual.message import Message
+from typing import Any
 
 from tdbg.dap.client import DAPClient
 from tdbg.dap.messages import Event, Request
 from tdbg.dap.types import SourceBreakpoint
+from .event_bus import DebugEventHandler
 from .state import DebugState
 
-if TYPE_CHECKING:
-    from tdbg.app import TdbgApp
-
 log = logging.getLogger(__name__)
-
-
-# --- Messages posted from DAP event handlers to the app ---
-# These bridge the DAP read loop (asyncio task) into textual's message system.
-
-class DapInitialized(Message):
-    """debugpy sent the 'initialized' event."""
-    pass
-
-class DapStopped(Message):
-    """debugpy sent a 'stopped' event."""
-    def __init__(self, thread_id: int | None, reason: str,
-                 description: str | None = None, text: str | None = None) -> None:
-        self.thread_id = thread_id
-        self.reason = reason
-        self.description = description  # short description (e.g. "ValueError")
-        self.text = text                # details (e.g. "invalid literal...")
-        super().__init__()
-
-class DapContinued(Message):
-    pass
-
-class DapTerminated(Message):
-    pass
-
-class DapExited(Message):
-    def __init__(self, exit_code: int) -> None:
-        self.exit_code = exit_code
-        super().__init__()
-
-class DapOutput(Message):
-    def __init__(self, text: str, category: str) -> None:
-        self.text = text
-        self.category = category
-        super().__init__()
-
-class DapExternalTerminalStarted(Message):
-    pass
 
 
 # --- Terminal emulator detection and command building ---
@@ -111,13 +69,14 @@ def _build_terminal_cmd(terminal: str, args: list[str]) -> list[str]:
 
 
 class DebugController:
-    """Orchestrates the debug session between DAP client and the TUI app."""
+    """Orchestrates the debug session between DAP client and event consumers."""
 
-    def __init__(self, app: TdbgApp) -> None:
-        self.app = app
+    def __init__(self, event_handler: DebugEventHandler) -> None:
+        self.event_handler = event_handler
         self.client = DAPClient()
         self.state = DebugState()
         self._external_terminal = False
+        self._lock = asyncio.Lock()
 
     def _setup_event_handlers(self) -> None:
         self.client.on_event("stopped", self._on_stopped)
@@ -198,14 +157,14 @@ class DebugController:
             start_new_session=True,
         )
 
-        self.app.post_message(DapExternalTerminalStarted())
+        self.event_handler.on_external_terminal_started()
 
         # Don't return processId — for terminals that fork-and-exit (like
         # gnome-terminal), the PID is meaningless and confuses debugpy.
         return {}
 
     async def do_configure(self) -> None:
-        """Called by app after 'initialized' event. Sends breakpoints + configurationDone.
+        """Called after 'initialized' event. Sends breakpoints + configurationDone.
 
         This unblocks the launch response from debugpy.
         """
@@ -307,6 +266,41 @@ class DebugController:
         if self.state.is_ready and not self.state.is_terminated:
             await self.client.set_breakpoints(source_path, bps)
 
+    async def add_breakpoint(
+        self,
+        source_path: str,
+        line: int,
+        condition: str | None = None,
+        hit_condition: str | None = None,
+    ) -> None:
+        """Add a breakpoint (idempotent — updates condition if it already exists)."""
+        bps = self.state.breakpoints.get(source_path, [])
+        existing = next((bp for bp in bps if bp.line == line), None)
+        if existing:
+            existing.condition = condition
+            existing.hit_condition = hit_condition
+        else:
+            bps.append(SourceBreakpoint(
+                line=line, condition=condition, hit_condition=hit_condition,
+            ))
+            self.state.breakpoints[source_path] = bps
+
+        if self.state.is_ready and not self.state.is_terminated:
+            await self.client.set_breakpoints(
+                source_path, self.state.breakpoints[source_path],
+            )
+
+    async def remove_breakpoint(self, source_path: str, line: int) -> None:
+        """Remove a breakpoint at the given location (no-op if not set)."""
+        bps = self.state.breakpoints.get(source_path, [])
+        new_bps = [bp for bp in bps if bp.line != line]
+        if len(new_bps) == len(bps):
+            return  # nothing to remove
+        self.state.breakpoints[source_path] = new_bps
+
+        if self.state.is_ready and not self.state.is_terminated:
+            await self.client.set_breakpoints(source_path, new_bps)
+
     async def set_breakpoint_condition(
         self,
         source_path: str,
@@ -344,6 +338,29 @@ class DebugController:
                 await self.client.set_breakpoints(source_path, [])
         self.state.breakpoints.clear()
         self.state.breakpoints_disabled = False
+
+    async def navigate_stack(self, up: bool) -> bool:
+        """Move to the next/previous frame in the call stack.
+
+        Returns True if navigation succeeded, False if at boundary.
+        """
+        frames = self.state.stack_frames
+        if not frames or self.state.current_frame_id is None:
+            return False
+        idx = next(
+            (i for i, f in enumerate(frames) if f.id == self.state.current_frame_id),
+            None,
+        )
+        if idx is None:
+            return False
+        # up = toward caller (higher index), down = toward callee (lower index)
+        new_idx = idx + 1 if up else idx - 1
+        if not (0 <= new_idx < len(frames)):
+            return False
+        new_frame = frames[new_idx]
+        self.state.current_frame_id = new_frame.id
+        await self.fetch_scopes_and_variables(new_frame.id)
+        return True
 
     async def evaluate(self, expression: str) -> str:
         try:
@@ -392,29 +409,29 @@ class DebugController:
 
     # --- DAP event handlers ---
     # Called synchronously from the DAP read loop.
-    # They ONLY post textual Messages — all async work happens in app handlers.
+    # They delegate to the event_handler — all async work happens elsewhere.
 
     def _on_initialized(self, event: Event) -> None:
-        self.app.post_message(DapInitialized())
+        self.event_handler.on_initialized()
 
     def _on_stopped(self, event: Event) -> None:
         thread_id = event.body.get("threadId")
         reason = event.body.get("reason", "unknown")
         description = event.body.get("description")
         text = event.body.get("text")
-        self.app.post_message(DapStopped(thread_id, reason, description, text))
+        self.event_handler.on_stopped(thread_id, reason, description, text)
 
     def _on_continued(self, event: Event) -> None:
-        self.app.post_message(DapContinued())
+        self.event_handler.on_continued()
 
     def _on_terminated(self, event: Event) -> None:
-        self.app.post_message(DapTerminated())
+        self.event_handler.on_terminated()
 
     def _on_exited(self, event: Event) -> None:
         exit_code = event.body.get("exitCode", 0)
-        self.app.post_message(DapExited(exit_code))
+        self.event_handler.on_exited(exit_code)
 
     def _on_output(self, event: Event) -> None:
         text = event.body.get("output", "")
         category = event.body.get("category", "console")
-        self.app.post_message(DapOutput(text, category))
+        self.event_handler.on_output(text, category)
