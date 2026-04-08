@@ -1,4 +1,4 @@
-# Skill: Interactive Python Debugging with tdbg
+# Skill: Interactive Python Debugging with tdb
 
 Use this skill when you need to understand runtime behavior of Python code -- variable values, control flow, why a condition is or isn't met, what a function actually returns, or why an exception occurs. This is faster and more reliable than inserting print/logging statements.
 
@@ -15,20 +15,20 @@ Use this skill when you need to understand runtime behavior of Python code -- va
 ### 1. Start the debug server
 
 ```bash
-cd /home/al/projects/tdbg/work
-.venv/bin/python -m tdbg --headless --stop-on-entry /path/to/script.py &
+cd /home/al/projects/tdb/work
+.venv/bin/python -m tdb --headless --stop-on-entry /path/to/script.py &
 ```
 
 The server starts on `http://127.0.0.1:8150/rpc`.  Use `--server-port PORT` to change it.
 
 If the script takes arguments:
 ```bash
-.venv/bin/python -m tdbg --headless --stop-on-entry /path/to/script.py arg1 arg2 &
+.venv/bin/python -m tdb --headless --stop-on-entry /path/to/script.py arg1 arg2 &
 ```
 
 If the script needs a specific virtualenv:
 ```bash
-.venv/bin/python -m tdbg --headless --stop-on-entry --python /path/to/venv/bin/python /path/to/script.py &
+.venv/bin/python -m tdb --headless --stop-on-entry --python /path/to/venv/bin/python /path/to/script.py &
 ```
 
 ### 2. Send commands via JSON-RPC
@@ -114,7 +114,7 @@ When you know roughly where the bug is:
 
 ```bash
 # Start server
-.venv/bin/python -m tdbg --headless --stop-on-entry /path/to/script.py &
+.venv/bin/python -m tdb --headless --stop-on-entry /path/to/script.py &
 sleep 2
 
 # Set breakpoint at the suspicious line

@@ -1,4 +1,4 @@
-"""Main textual App for tdbg."""
+"""Main textual App for tdb."""
 
 from __future__ import annotations
 
@@ -16,8 +16,8 @@ from textual.screen import ModalScreen
 from textual.widgets import Footer, Header, Label, OptionList, Static
 from textual.widgets._tree import TreeNode
 
-from tdbg.session.controller import DebugController
-from tdbg.session.messages import (
+from tdb.session.controller import DebugController
+from tdb.session.messages import (
     DapInitialized,
     DapStopped,
     DapContinued,
@@ -26,16 +26,16 @@ from tdbg.session.messages import (
     DapExternalTerminalStarted,
     DapOutput,
 )
-from tdbg.session.textual_handler import TextualEventHandler
-from tdbg.keybindings import KeybindingConfig, Mode
-from tdbg.widgets.breakpoint_view import BreakpointView
-from tdbg.widgets.code_view import CodeView, _BreakpointConditionModal
-from tdbg.widgets.console_view import ConsoleView
-from tdbg.widgets.evaluate_console import EvaluateConsole
-from tdbg.widgets.menu_bar import MenuBar, _MenuDropdown
-from tdbg.widgets.stack_view import StackView
-from tdbg.widgets.status_bar import StatusBar
-from tdbg.widgets.variable_view import VariableView
+from tdb.session.textual_handler import TextualEventHandler
+from tdb.keybindings import KeybindingConfig, Mode
+from tdb.widgets.breakpoint_view import BreakpointView
+from tdb.widgets.code_view import CodeView, _BreakpointConditionModal
+from tdb.widgets.console_view import ConsoleView
+from tdb.widgets.evaluate_console import EvaluateConsole
+from tdb.widgets.menu_bar import MenuBar, _MenuDropdown
+from tdb.widgets.stack_view import StackView
+from tdb.widgets.status_bar import StatusBar
+from tdb.widgets.variable_view import VariableView
 
 log = logging.getLogger(__name__)
 
@@ -137,10 +137,10 @@ class _TracebackModal(ModalScreen[str | None]):
         self.dismiss("restart")
 
 
-class TdbgApp(App):
+class TdbApp(App):
     """TUI Python debugger."""
 
-    TITLE = "tdbg"
+    TITLE = "tdb"
     SUB_TITLE = "Python Debugger"
 
     CSS = """
@@ -235,8 +235,8 @@ class TdbgApp(App):
 
         self._textual_handler = TextualEventHandler(self)
         if server_port is not None:
-            from tdbg.server.event_handler import ServerEventHandler
-            from tdbg.session.event_bus import CompositeEventHandler
+            from tdb.server.event_handler import ServerEventHandler
+            from tdb.session.event_bus import CompositeEventHandler
             self._server_handler = ServerEventHandler()
             self._event_handler = CompositeEventHandler(
                 self._textual_handler, self._server_handler,
@@ -323,7 +323,7 @@ class TdbgApp(App):
     async def _start_server(self) -> None:
         """Start the JSON-RPC debug server alongside the TUI."""
         import uvicorn
-        from tdbg.server.app import ControllerRef, create_app
+        from tdb.server.app import ControllerRef, create_app
 
         assert self._server_handler is not None
         self._controller_ref = ControllerRef(self.controller)
@@ -353,7 +353,7 @@ class TdbgApp(App):
         # Create a fresh controller and restore breakpoints
         self._textual_handler = TextualEventHandler(self)
         if self._server_handler is not None:
-            from tdbg.session.event_bus import CompositeEventHandler
+            from tdb.session.event_bus import CompositeEventHandler
             self._server_handler.initialized_event.clear()
             self._server_handler.stopped_event.clear()
             self._server_handler.terminated_event.clear()
@@ -467,7 +467,7 @@ class TdbgApp(App):
         """If stderr contains a Python traceback, show it in a modal,
         build synthetic stack frames, and navigate Code View to the
         deepest frame."""
-        from tdbg.dap.types import Source, StackFrame
+        from tdb.dap.types import Source, StackFrame
 
         stderr = "".join(self._stderr_buffer)
         if "Traceback (most recent call last):" not in stderr:
@@ -680,7 +680,7 @@ class TdbgApp(App):
 
         self.push_screen(modal, callback=on_dismiss)
 
-    async def on_tdbg_app__apply_breakpoint_condition(
+    async def on_tdb_app__apply_breakpoint_condition(
         self, message: _ApplyBreakpointCondition,
     ) -> None:
         try:
@@ -756,7 +756,7 @@ class TdbgApp(App):
             code_view.load_file(message.source_path)
         code_view.goto_line(message.line)
 
-    def on_tdbg_app_breakpoints_changed(self, message: BreakpointsChanged) -> None:
+    def on_tdb_app_breakpoints_changed(self, message: BreakpointsChanged) -> None:
         state = self.controller.state
         code_view = self.query_one("#code-view", CodeView)
         if code_view.source_path:
@@ -789,7 +789,7 @@ class TdbgApp(App):
         except Exception:
             log.exception("Error clearing breakpoints")
 
-    async def on_tdbg_app_lazy_load_variables(self, message: LazyLoadVariables) -> None:
+    async def on_tdb_app_lazy_load_variables(self, message: LazyLoadVariables) -> None:
         try:
             variables = await self.controller.client.variables(message.variables_reference)
             var_view = self.query_one("#variable-view", VariableView)
@@ -886,10 +886,10 @@ class TdbgApp(App):
         self.push_screen(_KeybindingsModal(code_view.keybindings))
 
     def action_documentation(self) -> None:
-        self.notify("tdbg — TUI Python Debugger\n\nESC toggles Navigation/Debug mode\nCtrl+E = Evaluate console\nConfigure > Keybindings for full reference", title="Documentation")
+        self.notify("tdb — TUI Python Debugger\n\nESC toggles Navigation/Debug mode\nCtrl+E = Evaluate console\nConfigure > Keybindings for full reference", title="Documentation")
 
     def action_about(self) -> None:
-        self.notify("tdbg v0.1.0\nA TUI-based Python debugger\nPowered by debugpy + textual", title="About")
+        self.notify("tdb v0.1.0\nA TUI-based Python debugger\nPowered by debugpy + textual", title="About")
 
     # --- Actions ---
 

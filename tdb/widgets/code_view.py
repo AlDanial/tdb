@@ -19,10 +19,10 @@ from textual.reactive import reactive
 from textual.screen import ModalScreen
 from textual.widgets import Input, Label, Static
 
-from tdbg.keybindings import KeybindingConfig, Mode
+from tdb.keybindings import KeybindingConfig, Mode
 
 if TYPE_CHECKING:
-    from tdbg.dap.types import SourceBreakpoint
+    from tdb.dap.types import SourceBreakpoint
 
 log = logging.getLogger(__name__)
 

@@ -2,7 +2,7 @@
 
 import asyncio
 from pathlib import Path
-from tdbg.dap.client import DAPClient
+from tdb.dap.client import DAPClient
 
 async def main():
     client = DAPClient()

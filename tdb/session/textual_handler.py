@@ -19,13 +19,13 @@ from .messages import (
 log = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from tdbg.app import TdbgApp
+    from tdb.app import TdbApp
 
 
 class TextualEventHandler:
-    """Posts textual Messages to a TdbgApp for each DAP event."""
+    """Posts textual Messages to a TdbApp for each DAP event."""
 
-    def __init__(self, app: TdbgApp) -> None:
+    def __init__(self, app: TdbApp) -> None:
         self._app = app
 
     def on_initialized(self) -> None:

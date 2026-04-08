@@ -8,7 +8,7 @@ from textual.widgets import Tree
 from textual.widgets._tree import TreeNode
 
 if TYPE_CHECKING:
-    from tdbg.dap.types import Scope, Variable
+    from tdb.dap.types import Scope, Variable
 
 
 class VariableView(Tree[int]):

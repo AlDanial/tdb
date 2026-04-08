@@ -9,9 +9,9 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from tdbg.dap.client import DAPClient
-from tdbg.dap.messages import Event, Request
-from tdbg.dap.types import SourceBreakpoint
+from tdb.dap.client import DAPClient
+from tdb.dap.messages import Event, Request
+from tdb.dap.types import SourceBreakpoint
 from .event_bus import DebugEventHandler
 from .state import DebugState
 

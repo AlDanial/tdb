@@ -1,0 +1,80 @@
+"""Headless debug server runner."""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+from pathlib import Path
+
+import uvicorn
+
+from tdb.session.controller import DebugController
+from .app import ControllerRef, create_app
+from .event_handler import ServerEventHandler
+
+log = logging.getLogger(__name__)
+
+
+async def run_headless(
+    program: str,
+    args: list[str] | None = None,
+    cwd: str | None = None,
+    stop_on_entry: bool = False,
+    just_my_code: bool = True,
+    python: str | None = None,
+    port: int = 8150,
+    host: str = "127.0.0.1",
+) -> None:
+    """Run the debug server in headless mode (no TUI).
+
+    Starts the debugpy session and the FastAPI server on the same event loop.
+    """
+    handler = ServerEventHandler()
+    controller = DebugController(handler)
+
+    # Start the debug session
+    await controller.start(
+        program=program,
+        args=args,
+        cwd=cwd or str(Path(program).parent),
+        stop_on_entry=stop_on_entry,
+        just_my_code=just_my_code,
+        python=python,
+    )
+
+    # Wait for initialized event, then configure
+    await asyncio.wait_for(handler.initialized_event.wait(), timeout=10.0)
+    await controller.do_configure()
+
+    # If stop_on_entry, wait for the debuggee to actually stop
+    if stop_on_entry:
+        await handler.wait_for_stop(timeout=10.0)
+        state = controller.state
+        state.is_running = False
+        state.stop_reason = handler.last_stop_reason
+        if handler.last_stop_thread_id is not None:
+            state.current_thread_id = handler.last_stop_thread_id
+        await controller.fetch_stop_info()
+
+    log.info("Debug session ready (headless)")
+
+    # Create and start the FastAPI server
+    fastapi_app = create_app(ControllerRef(controller), handler)
+    config = uvicorn.Config(
+        fastapi_app,
+        host=host,
+        port=port,
+        log_level="warning",
+    )
+    server = uvicorn.Server(config)
+
+    print(f"tdb debug server listening on http://{host}:{port}/rpc")
+    print(f"Debugging: {program}")
+
+    await server.serve()
+
+    # Clean up
+    try:
+        await controller.stop()
+    except Exception:
+        pass

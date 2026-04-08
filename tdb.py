@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 #!/usr/bin/env python3 -Xfrozen_modules=off
-"""Wrapper script for tdbg: launches the TUI debugger with --stop-on-entry by default.
+"""Wrapper script for tdb: launches the TUI debugger with --stop-on-entry by default.
 
 Usage:
-    python tdbg.py script.py [args...]
-    python tdbg.py --no-stop-on-entry script.py
+    python tdb.py script.py [args...]
+    python tdb.py --no-stop-on-entry script.py
 """
 
 import os
@@ -84,7 +84,7 @@ def main():
     if not venv_python.exists():
         venv_python = Path(sys.executable)
 
-    cmd = [str(venv_python), "-m", "tdbg"]
+    cmd = [str(venv_python), "-m", "tdb"]
     if not args.no_stop_on_entry:
         cmd.append("--stop-on-entry")
     if args.no_just_my_code:

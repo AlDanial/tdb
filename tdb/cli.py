@@ -1,4 +1,4 @@
-"""CLI argument parsing for tdbg."""
+"""CLI argument parsing for tdb."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from pathlib import Path
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        prog="tdbg",
+        prog="tdb",
         description="TUI Python Debugger",
     )
     parser.add_argument(
@@ -89,7 +89,7 @@ def main(argv: list[str] | None = None) -> None:
 
     import logging
     logging.basicConfig(
-        filename="/tmp/tdbg.log",
+        filename="/tmp/tdb.log",
         level=logging.DEBUG,
         format="%(asctime)s %(name)s %(levelname)s %(message)s",
     )
@@ -103,7 +103,7 @@ def main(argv: list[str] | None = None) -> None:
 def _run_headless(args: argparse.Namespace) -> None:
     """Run in headless mode: JSON-RPC server only, no TUI."""
     import asyncio
-    from tdbg.server.runner import run_headless
+    from tdb.server.runner import run_headless
 
     asyncio.run(run_headless(
         program=args.program,
@@ -118,9 +118,9 @@ def _run_headless(args: argparse.Namespace) -> None:
 
 def _run_tui(args: argparse.Namespace) -> None:
     """Run with the TUI (optionally with the server alongside)."""
-    from tdbg.app import TdbgApp
+    from tdb.app import TdbApp
 
-    app = TdbgApp(
+    app = TdbApp(
         program=args.program,
         args=args.args,
         cwd=args.cwd,

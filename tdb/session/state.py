@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from tdbg.dap.types import (
+from tdb.dap.types import (
     Scope,
     SourceBreakpoint,
     StackFrame,

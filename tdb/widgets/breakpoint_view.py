@@ -10,7 +10,7 @@ from textual.message import Message
 from textual.widgets import DataTable
 
 if TYPE_CHECKING:
-    from tdbg.dap.types import SourceBreakpoint
+    from tdb.dap.types import SourceBreakpoint
 
 
 class BreakpointView(DataTable):

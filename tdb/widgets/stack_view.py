@@ -9,7 +9,7 @@ from textual.message import Message
 from textual.widgets import DataTable
 
 if TYPE_CHECKING:
-    from tdbg.dap.types import StackFrame
+    from tdb.dap.types import StackFrame
 
 
 class StackView(DataTable):

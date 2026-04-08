@@ -1,4 +1,4 @@
-"""Simple test script for debugging with tdbg."""
+"""Simple test script for debugging with tdb."""
 import test_module
 
 

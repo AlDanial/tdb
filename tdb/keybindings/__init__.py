@@ -1,4 +1,4 @@
-"""Keybinding configuration for tdbg.
+"""Keybinding configuration for tdb.
 
 Two modes:
   - NAVIGATION: vim-style movement with optional count prefix (e.g. 5j, 12g, G)

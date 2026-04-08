@@ -163,8 +163,8 @@ class DAPClient:
 
     async def initialize(self, support_run_in_terminal: bool = False) -> Capabilities:
         resp = await self._send("initialize", {
-            "clientID": "tdbg",
-            "clientName": "tdbg",
+            "clientID": "tdb",
+            "clientName": "tdb",
             "adapterID": "debugpy",
             "pathFormat": "path",
             "linesStartAt1": True,
@@ -199,7 +199,7 @@ class DAPClient:
             "cwd": cwd or ".",
             "console": console,
             "redirectOutput": console == "internalConsole",
-            "justMyCode": False,  # Always get full stack traces; tdbg filters in UI
+            "justMyCode": False,  # Always get full stack traces; tdb filters in UI
             "stopOnEntry": stop_on_entry,
             "pythonArgs": ["-Xfrozen_modules=off"],
         }
