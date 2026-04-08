@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import logging
 import os
+import re
 
 from textual import work
 from textual.app import App, ComposeResult
@@ -231,6 +232,8 @@ class TdbgApp(App):
         self._external_terminal = external_terminal
         self._event_handler = TextualEventHandler(self)
         self.controller = DebugController(self._event_handler)
+        self._stderr_buffer: list[str] = []
+        self._exception_modal_shown = False
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -317,6 +320,9 @@ class TdbgApp(App):
         self.controller = DebugController(self._event_handler)
         self.controller.state.breakpoints = saved_breakpoints
 
+        self._stderr_buffer.clear()
+        self._exception_modal_shown = False
+
         status_bar = self.query_one("#status-bar", StatusBar)
         status_bar.set_idle()
         self.sub_title = "Restarting..."
@@ -373,6 +379,7 @@ class TdbgApp(App):
         self._update_ui_state()
 
         if message.reason == "exception":
+            self._exception_modal_shown = True
             self._show_exception_modal(message)
 
     def _show_exception_modal(self, message: DapStopped) -> None:
@@ -397,8 +404,74 @@ class TdbgApp(App):
 
         self.push_screen(_TracebackModal(exception_text, frames_text), callback=on_dismiss)
 
+    _TB_FILE_RE = re.compile(
+        r'^\s*File "(.+)", line (\d+)(?:, in (.+))?', re.MULTILINE,
+    )
+
+    def _check_stderr_traceback(self) -> None:
+        """If stderr contains a Python traceback, show it in a modal,
+        build synthetic stack frames, and navigate Code View to the
+        deepest frame."""
+        from tdbg.dap.types import Source, StackFrame
+
+        stderr = "".join(self._stderr_buffer)
+        if "Traceback (most recent call last):" not in stderr:
+            return
+
+        # Extract the last traceback block from stderr
+        tb_start = stderr.rfind("Traceback (most recent call last):")
+        tb_text = stderr[tb_start:].rstrip()
+
+        # Parse all File "...", line N, in func entries
+        matches = list(self._TB_FILE_RE.finditer(tb_text))
+
+        # The exception line is typically the last non-empty line
+        lines = tb_text.split("\n")
+        exception_text = ""
+        for line in reversed(lines):
+            stripped = line.strip()
+            if not stripped:
+                continue
+            if stripped.startswith("File ") or stripped.startswith("Traceback "):
+                break
+            exception_text = stripped
+            break
+
+        # Build synthetic stack frames (reversed: deepest = index 0, like DAP)
+        state = self.controller.state
+        synthetic_frames: list[StackFrame] = []
+        for i, m in enumerate(reversed(matches)):
+            path = m.group(1)
+            line = int(m.group(2))
+            func = m.group(3) or "<module>"
+            synthetic_frames.append(StackFrame(
+                id=i,
+                name=func,
+                source=Source(path=path, name=os.path.basename(path)),
+                line=line,
+            ))
+
+        if synthetic_frames:
+            state.stack_frames = synthetic_frames
+            state.current_frame_id = synthetic_frames[0].id
+
+        # Show the raw traceback body (everything after the header line)
+        header_end = tb_text.index("\n") + 1 if "\n" in tb_text else len(tb_text)
+        frames_text = tb_text[header_end:].rstrip()
+
+        def on_dismiss(result: str | None) -> None:
+            if result == "restart":
+                self._restart_session()
+
+        self.push_screen(
+            _TracebackModal(exception_text or "Program crashed", frames_text),
+            callback=on_dismiss,
+        )
+
     def on_dap_continued(self, message: DapContinued) -> None:
         try:
+            self._stderr_buffer.clear()
+            self._exception_modal_shown = False
             state = self.controller.state
             state.is_running = True
             state.clear_frame_data()
@@ -407,10 +480,13 @@ class TdbgApp(App):
             log.exception("Error handling continued event")
 
     def on_dap_terminated(self, message: DapTerminated) -> None:
+        log.info("on_dap_terminated called")
         try:
             state = self.controller.state
             state.is_terminated = True
             state.is_running = False
+            if not self._exception_modal_shown:
+                self._check_stderr_traceback()
             self._update_ui_state()
         except Exception:
             log.exception("Error handling terminated event")
@@ -437,6 +513,8 @@ class TdbgApp(App):
 
     def on_dap_output(self, message: DapOutput) -> None:
         try:
+            if message.category == "stderr":
+                self._stderr_buffer.append(message.text)
             console = self.query_one("#console-view", ConsoleView)
             console.write_output(message.text, message.category)
         except Exception:
@@ -452,7 +530,19 @@ class TdbgApp(App):
         if state.is_terminated:
             self.sub_title = "Terminated"
             status_bar.set_terminated()
-            code_view.current_line = None
+            if state.stack_frames:
+                # Show crash location from synthetic or real stack frames
+                stack_view = self.query_one("#stack-view", StackView)
+                stack_view.update_frames(state.stack_frames, state.current_frame_id)
+                # Navigate Code View to the current frame
+                for frame in state.stack_frames:
+                    if frame.id == state.current_frame_id and frame.source and frame.source.path:
+                        if frame.source.path != code_view.source_path:
+                            code_view.load_file(frame.source.path)
+                        code_view.current_line = frame.line
+                        break
+            else:
+                code_view.current_line = None
             return
 
         if state.is_running:

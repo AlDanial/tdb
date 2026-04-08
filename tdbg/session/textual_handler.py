@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 from .event_bus import DebugEventHandler
@@ -14,6 +15,8 @@ from .messages import (
     DapStopped,
     DapTerminated,
 )
+
+log = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from tdbg.app import TdbgApp
@@ -35,6 +38,8 @@ class TextualEventHandler:
         description: str | None = None,
         text: str | None = None,
     ) -> None:
+        log.info("TextualEventHandler.on_stopped reason=%s desc=%s text=%s",
+                 reason, description, text)
         self._app.post_message(DapStopped(thread_id, reason, description, text))
 
     def on_continued(self) -> None:

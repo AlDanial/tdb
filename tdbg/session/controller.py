@@ -359,7 +359,8 @@ class DebugController:
             return False
         new_frame = frames[new_idx]
         self.state.current_frame_id = new_frame.id
-        await self.fetch_scopes_and_variables(new_frame.id)
+        if not self.state.is_terminated:
+            await self.fetch_scopes_and_variables(new_frame.id)
         return True
 
     async def evaluate(self, expression: str) -> str:
