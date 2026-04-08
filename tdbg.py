@@ -54,6 +54,22 @@ def main():
         action="store_true",
         help="Run debuggee in an external terminal (for TUI programs)",
     )
+    parser.add_argument(
+        "--server",
+        action="store_true",
+        help="Start JSON-RPC debug server alongside the TUI",
+    )
+    parser.add_argument(
+        "--headless",
+        action="store_true",
+        help="Run as a headless JSON-RPC debug server (no TUI)",
+    )
+    parser.add_argument(
+        "--server-port",
+        type=int,
+        default=8150,
+        help="Port for the JSON-RPC debug server (default: 8150)",
+    )
 
     args = parser.parse_args()
 #   args.no_just_my_code = True
@@ -79,6 +95,12 @@ def main():
         cmd.extend(["--python", args.python])
     if args.external_terminal:
         cmd.append("--external-terminal")
+    if args.headless:
+        cmd.append("--headless")
+    elif args.server:
+        cmd.append("--server")
+    if args.server or args.headless:
+        cmd.extend(["--server-port", str(args.server_port)])
     cmd.append(str(program_path))
     if args.args:
         cmd.extend(args.args)

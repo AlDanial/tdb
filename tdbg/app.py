@@ -221,6 +221,7 @@ class TdbgApp(App):
         just_my_code: bool = True,
         python: str | None = None,
         external_terminal: bool = False,
+        server_port: int | None = None,
     ) -> None:
         super().__init__()
         self._program = program
@@ -230,7 +231,20 @@ class TdbgApp(App):
         self._just_my_code = just_my_code
         self._python = python
         self._external_terminal = external_terminal
-        self._event_handler = TextualEventHandler(self)
+        self._server_port = server_port
+
+        self._textual_handler = TextualEventHandler(self)
+        if server_port is not None:
+            from tdbg.server.event_handler import ServerEventHandler
+            from tdbg.session.event_bus import CompositeEventHandler
+            self._server_handler = ServerEventHandler()
+            self._event_handler = CompositeEventHandler(
+                self._textual_handler, self._server_handler,
+            )
+        else:
+            self._server_handler = None
+            self._event_handler = self._textual_handler
+
         self.controller = DebugController(self._event_handler)
         self._stderr_buffer: list[str] = []
         self._exception_modal_shown = False
@@ -266,6 +280,8 @@ class TdbgApp(App):
         code_view.load_file(self._program)
         code_view.focus()
         self._start_session()
+        if self._server_port is not None:
+            self._start_server()
 
     def on_descendant_focus(self, event: object) -> None:
         """Update pane border highlight when focus changes."""
@@ -303,6 +319,25 @@ class TdbgApp(App):
             log.exception("Failed to start debug session")
             self.sub_title = "Failed to start"
 
+    @work(exclusive=True, group="server")
+    async def _start_server(self) -> None:
+        """Start the JSON-RPC debug server alongside the TUI."""
+        import uvicorn
+        from tdbg.server.app import ControllerRef, create_app
+
+        assert self._server_handler is not None
+        self._controller_ref = ControllerRef(self.controller)
+        fastapi_app = create_app(self._controller_ref, self._server_handler)
+        config = uvicorn.Config(
+            fastapi_app,
+            host="127.0.0.1",
+            port=self._server_port,
+            log_level="warning",
+        )
+        self._uvicorn_server = uvicorn.Server(config)
+        log.info("Starting debug server on port %d", self._server_port)
+        await self._uvicorn_server.serve()
+
     @work(exclusive=True)
     async def _restart_session(self) -> None:
         """Stop the current session and start a new one with the same arguments."""
@@ -316,9 +351,29 @@ class TdbgApp(App):
             log.exception("Error stopping session for restart")
 
         # Create a fresh controller and restore breakpoints
-        self._event_handler = TextualEventHandler(self)
+        self._textual_handler = TextualEventHandler(self)
+        if self._server_handler is not None:
+            from tdbg.session.event_bus import CompositeEventHandler
+            self._server_handler.initialized_event.clear()
+            self._server_handler.stopped_event.clear()
+            self._server_handler.terminated_event.clear()
+            self._server_handler.exit_code = None
+            self._server_handler.last_stop_thread_id = None
+            self._server_handler.last_stop_reason = None
+            self._server_handler.last_stop_description = None
+            self._server_handler.last_stop_text = None
+            self._server_handler._output_buffer.clear()
+            self._event_handler = CompositeEventHandler(
+                self._textual_handler, self._server_handler,
+            )
+        else:
+            self._event_handler = self._textual_handler
         self.controller = DebugController(self._event_handler)
         self.controller.state.breakpoints = saved_breakpoints
+
+        # Update the server's controller reference so RPC sees the new one
+        if hasattr(self, '_controller_ref'):
+            self._controller_ref.set(self.controller)
 
         self._stderr_buffer.clear()
         self._exception_modal_shown = False
@@ -529,20 +584,23 @@ class TdbgApp(App):
 
         if state.is_terminated:
             self.sub_title = "Terminated"
-            status_bar.set_terminated()
             if state.stack_frames:
                 # Show crash location from synthetic or real stack frames
                 stack_view = self.query_one("#stack-view", StackView)
                 stack_view.update_frames(state.stack_frames, state.current_frame_id)
-                # Navigate Code View to the current frame
+                # Navigate Code View and status bar to the current frame
                 for frame in state.stack_frames:
                     if frame.id == state.current_frame_id and frame.source and frame.source.path:
                         if frame.source.path != code_view.source_path:
                             code_view.load_file(frame.source.path)
                         code_view.current_line = frame.line
+                        status_bar.set_paused(frame.source.path, frame.line, reason="terminated")
                         break
+                else:
+                    status_bar.set_terminated()
             else:
                 code_view.current_line = None
+                status_bar.set_terminated()
             return
 
         if state.is_running:
@@ -555,16 +613,17 @@ class TdbgApp(App):
         reason = state.stop_reason or "stopped"
         self.sub_title = f"Stopped ({reason})"
 
-        stop_location, stop_line = state.get_stop_location()
-        status_bar.set_paused(stop_location, stop_line, reason=reason)
-
         source_path = state.get_current_source_path()
         current_line = state.get_current_line()
+        status_bar.set_paused(source_path, current_line, reason=reason)
 
-        # Use stop_location as fallback if current frame has no source path
-        if not source_path and stop_location and os.path.isfile(stop_location):
-            source_path = stop_location
-            current_line = stop_line
+        # Use top-of-stack as fallback if current frame has no source path
+        if not source_path:
+            stop_location, stop_line = state.get_stop_location()
+            if stop_location and os.path.isfile(stop_location):
+                source_path = stop_location
+                current_line = stop_line
+                status_bar.set_paused(source_path, current_line, reason=reason)
 
         if source_path and source_path != code_view.source_path:
             code_view.load_file(source_path)
@@ -845,6 +904,8 @@ class TdbgApp(App):
 
     async def action_quit_debugger(self) -> None:
         await self.controller.stop()
+        if hasattr(self, '_uvicorn_server'):
+            self._uvicorn_server.should_exit = True
         self.exit()
 
 

@@ -306,7 +306,7 @@ class CodeView(ScrollableContainer, can_focus=True):
         self._valid_bp_lines: set[int] = set()
 
         # When True, suppress the next click (it was a focus-gaining click)
-        self._suppress_next_click: bool = True
+        self._suppress_next_click: bool = False
 
     def compose(self):
         self._content = _CodeContent("")

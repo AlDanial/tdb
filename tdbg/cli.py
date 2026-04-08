@@ -128,5 +128,6 @@ def _run_tui(args: argparse.Namespace) -> None:
         just_my_code=not args.no_just_my_code,
         python=args.python,
         external_terminal=args.external_terminal,
+        server_port=args.server_port if args.server else None,
     )
     app.run()
