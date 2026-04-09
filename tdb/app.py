@@ -189,7 +189,7 @@ class TdbApp(App):
         border: solid gray;
         border-title-color: gray;
     }
-    .pane.--active-pane {
+    .pane:focus-within {
         border: solid $primary;
         border-title-color: $text;
     }
@@ -198,7 +198,12 @@ class TdbApp(App):
     BINDINGS = [
         Binding("ctrl+q", "quit_debugger", "Quit"),
         Binding("escape", "escape_handler", "Escape", show=False),
+        Binding("ctrl+c", "focus_code", "Code", show=False),
+        Binding("ctrl+o", "focus_console", "Console", show=False),
         Binding("ctrl+e", "focus_eval", "Evaluate", show=False),
+        Binding("ctrl+v", "focus_variables", "Variables", show=False),
+        Binding("ctrl+s", "focus_stack", "Stack", show=False),
+        Binding("ctrl+b", "focus_breakpoints", "Breakpoints", show=False),
     ]
 
     # --- Custom messages for UI updates ---
@@ -282,18 +287,6 @@ class TdbApp(App):
         self._start_session()
         if self._server_port is not None:
             self._start_server()
-
-    def on_descendant_focus(self, event: object) -> None:
-        """Update pane border highlight when focus changes."""
-        for pane in self.query(".pane"):
-            pane.remove_class("--active-pane")
-        # Walk up from focused widget to find the nearest .pane
-        node = self.focused
-        while node is not None:
-            if hasattr(node, "has_class") and node.has_class("pane"):
-                node.add_class("--active-pane")
-                break
-            node = getattr(node, "parent", None)
 
     def _update_code_title(self, code_view: CodeView) -> None:
         mode_label = code_view.mode.value
@@ -899,8 +892,23 @@ class TdbApp(App):
         if not code_view.has_focus:
             code_view.focus()
 
+    def action_focus_code(self) -> None:
+        self.query_one("#code-view", CodeView).focus()
+
+    def action_focus_console(self) -> None:
+        self.query_one("#console-view", ConsoleView).focus()
+
     def action_focus_eval(self) -> None:
         self.query_one("#eval-console", EvaluateConsole).focus_input()
+
+    def action_focus_variables(self) -> None:
+        self.query_one("#variable-view", VariableView).focus()
+
+    def action_focus_stack(self) -> None:
+        self.query_one("#stack-view", StackView).focus()
+
+    def action_focus_breakpoints(self) -> None:
+        self.query_one("#breakpoint-view", BreakpointView).focus()
 
     async def action_quit_debugger(self) -> None:
         await self.controller.stop()

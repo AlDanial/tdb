@@ -24,3 +24,11 @@
     - `]` to move the cursor one paragraph down
     - `[` to move the cursor one paragraph up
     - `/` to open a search modal, which allows the user to search for a string in the code and jump to the next occurrence of that string
+
+
+- remote attach, --remote-attach
+- command line breakpoints -k/--breakpoint
+- capture information on all asyncio tasks, including their stack traces and current state (running, pending, done)
+- capture information on all threads, including their stack traces and current state (running, pending, done)
+- capture information on all multiprocessing.Process, including their stack traces and current state (running, pending, done)
+- implement a "step back" feature, which allows the user to step back in the code execution to a previous line and inspect the state of the program at that point.  the number of steps allowed to step back should be configurable, with a default of 10 steps.

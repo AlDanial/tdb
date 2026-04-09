@@ -73,6 +73,17 @@ The Code View shows syntax-highlighted Python source with line numbers. A cursor
 
 Switch between Navigation and Debug modes with `Escape`.
 
+**View focus shortcuts (global):**
+
+| Key | View |
+|-----|------|
+| `Ctrl+C` | Code View |
+| `Ctrl+O` | Console View |
+| `Ctrl+E` | Evaluate Console |
+| `Ctrl+V` | Variable View |
+| `Ctrl+S` | Stack View |
+| `Ctrl+B` | Breakpoint View |
+
 ### Debugging Controls
 
 In Debug mode, single keys control execution:

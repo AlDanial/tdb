@@ -644,7 +644,11 @@ class CodeView(ScrollableContainer, can_focus=True):
         if self.source_path is None or self.mode != Mode.DEBUG:
             return
         line = event.y + 1
-        if 1 <= line <= len(self._lines) and line in self._breakpoint_lines:
+        if 1 <= line <= len(self._lines):
+            # The first click of the double-click toggled the breakpoint.
+            # If that removed it, re-add it so the modal has a breakpoint to edit.
+            if line not in self._breakpoint_lines:
+                self.post_message(self.BreakpointToggled(self.source_path, line))
             self.post_message(self.BreakpointConditionRequested(self.source_path, line))
 
     def _toggle_breakpoint_at_content_y(self, y: int) -> None:
