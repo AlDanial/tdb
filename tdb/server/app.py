@@ -12,6 +12,7 @@ from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 
 from tdb.session.controller import DebugController
+from tdb.widgets.async_tasks_modal import TASK_COLLECT_EXPR, parse_task_json
 from .event_handler import ServerEventHandler
 from .rpc_types import RpcRequest, RpcResponse
 
@@ -248,6 +249,61 @@ def create_app(controller_ref: ControllerRef, handler: ServerEventHandler) -> Fa
             return RpcResponse.error(f"Cannot read file: {e}")
         return RpcResponse.ok(text)
 
+    async def _list_tasks(params: list[Any]) -> RpcResponse:
+        if _ctrl().state.is_running:
+            return RpcResponse.error("Cannot list tasks while program is running")
+        if _ctrl().state.is_terminated:
+            return RpcResponse.error("Program has terminated")
+        try:
+            raw = await _ctrl().evaluate(TASK_COLLECT_EXPR)
+            tasks = parse_task_json(raw)
+        except Exception as e:
+            return RpcResponse.error(f"Failed to collect tasks: {e}")
+        if not tasks:
+            return RpcResponse.ok("No asyncio tasks found")
+        lines = []
+        for t in tasks:
+            lines.append(f"{t.name}  [{t.state}]  {t.coro}")
+        return RpcResponse.ok("\n".join(lines))
+
+    async def _inspect_task(params: list[Any]) -> RpcResponse:
+        if not params:
+            return RpcResponse.error("params[0] must be a task name")
+        if _ctrl().state.is_running:
+            return RpcResponse.error("Cannot inspect tasks while program is running")
+        if _ctrl().state.is_terminated:
+            return RpcResponse.error("Program has terminated")
+        target_name = str(params[0])
+        try:
+            raw = await _ctrl().evaluate(TASK_COLLECT_EXPR)
+            tasks = parse_task_json(raw)
+        except Exception as e:
+            return RpcResponse.error(f"Failed to collect tasks: {e}")
+        task = next((t for t in tasks if t.name == target_name), None)
+        if task is None:
+            names = [t.name for t in tasks]
+            return RpcResponse.error(f"Task '{target_name}' not found. Active tasks: {names}")
+        lines = [
+            f"Name:  {task.name}",
+            f"State: {task.state}",
+            f"Coro:  {task.coro}",
+            "",
+            "Stack:",
+        ]
+        if task.stack:
+            for i, frame in enumerate(task.stack):
+                lines.append(f"  #{i} {frame}")
+        else:
+            lines.append("  (no stack frames — task may be awaiting)")
+        lines.append("")
+        lines.append("Variables:")
+        if task.variables:
+            for name, value in sorted(task.variables.items()):
+                lines.append(f"  {name} = {value}")
+        else:
+            lines.append("  (no variables — frame not available)")
+        return RpcResponse.ok("\n".join(lines))
+
     async def _list_breakpoints(params: list[Any]) -> RpcResponse:
         bps = _ctrl().state.breakpoints
         if not bps:
@@ -280,6 +336,8 @@ def create_app(controller_ref: ControllerRef, handler: ServerEventHandler) -> Fa
         "get_stack_trace": "params: []",
         "get_output": "params: []  -- drain buffered stdout/stderr",
         "get_source": 'params: ["file_path"]  -- read source file contents',
+        "list_tasks": "params: []  -- list all asyncio tasks",
+        "inspect_task": 'params: ["task_name"]  -- inspect a specific asyncio task',
         "restart": "params: []",
         "status": "params: []",
         "quit": "params: []",
@@ -308,6 +366,8 @@ def create_app(controller_ref: ControllerRef, handler: ServerEventHandler) -> Fa
         "get_stack_trace": _get_stack_trace,
         "get_output": _get_output,
         "get_source": _get_source,
+        "list_tasks": _list_tasks,
+        "inspect_task": _inspect_task,
         "restart": _restart,
         "status": _status,
         "quit": _quit,

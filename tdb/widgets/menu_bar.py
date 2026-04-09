@@ -39,7 +39,7 @@ class _MenuDropdown(OptionList):
 
 
 class MenuBar(Widget):
-    """A horizontal menu bar with dropdown menus."""
+    """A horizontal menu bar with dropdown menus and direct-action labels."""
 
     DEFAULT_CSS = """
     MenuBar {
@@ -66,6 +66,19 @@ class MenuBar(Widget):
         background: $accent;
         color: $text;
     }
+
+    MenuBar .action-label {
+        width: auto;
+        padding: 0 2;
+        height: 1;
+        background: $primary-background;
+        color: $text;
+    }
+
+    MenuBar .action-label:hover {
+        background: $accent;
+        color: $text;
+    }
     """
 
     BINDINGS = [
@@ -79,9 +92,22 @@ class MenuBar(Widget):
             self.item = item
             super().__init__()
 
-    def __init__(self, menus: dict[str, list[str]], **kwargs) -> None:
+    class ActionLabelClicked(Message):
+        """Posted when a direct-action label is clicked."""
+        def __init__(self, label_id: str) -> None:
+            self.label_id = label_id
+            super().__init__()
+
+    def __init__(
+        self,
+        menus: dict[str, list[str]],
+        *,
+        action_labels: dict[str, str] | None = None,
+        **kwargs,
+    ) -> None:
         super().__init__(**kwargs)
         self._menus = menus
+        self._action_labels = action_labels or {}  # id -> display text
         self._open_menu: str | None = None
         self._dropdowns_mounted = False
 
@@ -92,6 +118,12 @@ class MenuBar(Widget):
                     f" {menu_name} ",
                     classes="menu-label",
                     id=f"menu-{menu_name.lower().replace(' ', '-')}",
+                )
+            for label_id, text in self._action_labels.items():
+                yield Label(
+                    f" {text} ",
+                    classes="action-label",
+                    id=label_id,
                 )
 
     def on_mount(self) -> None:
@@ -109,7 +141,11 @@ class MenuBar(Widget):
 
     def on_click(self, event: Click) -> None:
         target = event.widget
-        if isinstance(target, Label) and "menu-label" in target.classes:
+        if isinstance(target, Label) and "action-label" in target.classes:
+            self._close_all()
+            self.post_message(self.ActionLabelClicked(target.id or ""))
+            event.stop()
+        elif isinstance(target, Label) and "menu-label" in target.classes:
             menu_name = target.render().plain.strip()
             if self._open_menu == menu_name:
                 self._close_all()
@@ -140,6 +176,14 @@ class MenuBar(Widget):
         if self._dropdowns_mounted:
             for dropdown in self.screen.query(_MenuDropdown):
                 dropdown.remove_class("--visible")
+
+    def update_action_label(self, label_id: str, text: str) -> None:
+        """Update the display text of a direct-action label."""
+        try:
+            label = self.query_one(f"#{label_id}", Label)
+            label.update(f" {text} ")
+        except Exception:
+            pass
 
     def action_close_menu(self) -> None:
         self._close_all()

@@ -35,6 +35,7 @@ from tdb.widgets.evaluate_console import EvaluateConsole
 from tdb.widgets.menu_bar import MenuBar, _MenuDropdown
 from tdb.widgets.stack_view import StackView
 from tdb.widgets.status_bar import StatusBar
+from tdb.widgets.async_tasks_modal import AsyncTasksModal, AsyncTaskInfo, TASK_COLLECT_EXPR, parse_task_json
 from tdb.widgets.variable_view import VariableView
 
 log = logging.getLogger(__name__)
@@ -217,6 +218,9 @@ class TdbApp(App):
             self.node = node
             super().__init__()
 
+    class RefreshAsyncTasks(Message):
+        pass
+
     def __init__(
         self,
         program: str,
@@ -262,6 +266,7 @@ class TdbApp(App):
                 "Configure": ["Color Theme", "Keybindings"],
                 "Help": ["Documentation", "About"],
             },
+            action_labels={"async-tasks-label": "Async Tasks"},
             id="menu-bar",
         )
         with Horizontal(id="upper"):
@@ -425,6 +430,7 @@ class TdbApp(App):
             log.exception("Error handling stopped event")
         # Always update UI, even if fetch_stop_info partially failed
         self._update_ui_state()
+        self._fetch_async_task_count()
 
         if message.reason == "exception":
             self._exception_modal_shown = True
@@ -883,6 +889,66 @@ class TdbApp(App):
 
     def action_about(self) -> None:
         self.notify("tdb v0.1.0\nA TUI-based Python debugger\nPowered by debugpy + textual", title="About")
+
+    # --- Async tasks ---
+
+    def on_menu_bar_action_label_clicked(self, message: MenuBar.ActionLabelClicked) -> None:
+        if message.label_id == "async-tasks-label":
+            self._open_async_tasks()
+
+    @work(exclusive=True, group="async-tasks")
+    async def _fetch_async_task_count(self) -> None:
+        """Evaluate asyncio.all_tasks() count and update the menu bar label."""
+        if self.controller.state.is_terminated or self.controller.state.is_running:
+            return
+        try:
+            result = await self.controller.evaluate(
+                "len(__import__('asyncio').all_tasks())"
+            )
+            # Result is a string like "5"
+            count = int(result)
+            menu_bar = self.query_one("#menu-bar", MenuBar)
+            menu_bar.update_action_label("async-tasks-label", f"Async Tasks ({count})")
+        except Exception:
+            log.debug("Could not fetch async task count (program may not use asyncio)")
+
+    @work(exclusive=True, group="async-tasks-open")
+    async def _open_async_tasks(self) -> None:
+        """Fetch full task info and open the modal."""
+        if self.controller.state.is_terminated:
+            self.notify("Program has terminated", title="Async Tasks")
+            return
+        if self.controller.state.is_running:
+            self.notify("Program is running — pause first", title="Async Tasks")
+            return
+        try:
+            raw = await self.controller.evaluate(TASK_COLLECT_EXPR)
+            tasks = parse_task_json(raw)
+        except Exception:
+            log.exception("Error fetching async tasks")
+            tasks = []
+
+        if not tasks:
+            # Show the raw evaluate result so failures aren't silent
+            log.warning("Async task collection returned no tasks. Raw: %s", raw[:300] if raw else "(empty)")
+            self.notify("No asyncio tasks found (program may not use asyncio)", title="Async Tasks")
+            return
+
+        self._async_tasks_modal = AsyncTasksModal(tasks)
+        self.push_screen(self._async_tasks_modal)
+
+    async def on_tdb_app_refresh_async_tasks(self, message: RefreshAsyncTasks) -> None:
+        """Handle refresh request from the async tasks modal."""
+        if self.controller.state.is_terminated or self.controller.state.is_running:
+            return
+        try:
+            raw = await self.controller.evaluate(TASK_COLLECT_EXPR)
+            tasks = parse_task_json(raw)
+        except Exception:
+            log.exception("Error refreshing async tasks")
+            return
+        if hasattr(self, "_async_tasks_modal"):
+            self._async_tasks_modal.update_tasks(tasks)
 
     # --- Actions ---
 

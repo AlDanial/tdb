@@ -159,6 +159,28 @@ When the debuggee raises an unhandled exception, tdb:
 3. Populates the Stack View with the exception's call stack
 4. Lets you press `R` to restart or `Escape` to dismiss
 
+### Async Task Inspector
+
+For programs using `asyncio`, the menu bar shows an **Async Tasks (N)** label with the count of active tasks (updated each time the program stops). Click it to open a full-screen modal:
+
+- **Left pane**: list of all tasks with name, state (pending/done/cancelled), and coroutine
+- **Right pane**: detail view with full stack trace for the selected task
+- Navigate with arrow keys; press `r` to refresh, `Escape` to close
+
+RPC equivalents:
+
+```bash
+# List all tasks
+curl -s -X POST http://127.0.0.1:8150/rpc \
+  -H 'Content-Type: application/json' \
+  -d '{"action":"list_tasks","params":[]}'
+
+# Inspect a specific task by name
+curl -s -X POST http://127.0.0.1:8150/rpc \
+  -H 'Content-Type: application/json' \
+  -d '{"action":"inspect_task","params":["Task-1"]}'
+```
+
 ### External Terminal Support
 
 For debugging TUI programs (curses, textual, rich) that need direct terminal access:
@@ -251,6 +273,8 @@ curl -s -X POST http://127.0.0.1:8150/rpc \
 | `get_stack_trace` | `[]` | Full call stack |
 | `get_output` | `[]` | Drain buffered stdout/stderr |
 | `get_source` | `["file_path"]` | Read a source file |
+| `list_tasks` | `[]` | List all asyncio tasks |
+| `inspect_task` | `["task_name"]` | Inspect a specific asyncio task |
 | `restart` | `[]` | Restart session (preserves breakpoints) |
 | `quit` | `[]` | Shut down |
 
