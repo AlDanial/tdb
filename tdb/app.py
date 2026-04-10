@@ -35,6 +35,7 @@ from tdb.widgets.evaluate_console import EvaluateConsole
 from tdb.widgets.menu_bar import MenuBar, _MenuDropdown
 from tdb.widgets.stack_view import StackView
 from tdb.widgets.status_bar import StatusBar
+from tdb.persist import load_breakpoints, save_breakpoints
 from tdb.widgets.async_tasks_modal import AsyncTasksModal, AsyncTaskInfo, TASK_COLLECT_EXPR, TASK_LOCALS_EXPR, parse_task_json
 from tdb.widgets.variable_view import VariableView
 
@@ -230,6 +231,7 @@ class TdbApp(App):
         just_my_code: bool = True,
         python: str | None = None,
         external_terminal: bool = False,
+        keybindings: str = "vim",
         server_port: int | None = None,
     ) -> None:
         super().__init__()
@@ -240,6 +242,7 @@ class TdbApp(App):
         self._just_my_code = just_my_code
         self._python = python
         self._external_terminal = external_terminal
+        self._keybindings = keybindings
         self._server_port = server_port
 
         self._textual_handler = TextualEventHandler(self)
@@ -286,9 +289,18 @@ class TdbApp(App):
 
     def on_mount(self) -> None:
         code_view = self.query_one("#code-view", CodeView)
+        code_view.keybindings = KeybindingConfig.from_scheme(self._keybindings)
         self._update_code_title(code_view)
         code_view.load_file(self._program)
         code_view.focus()
+        # Restore breakpoints from previous run
+        saved = load_breakpoints()
+        if saved:
+            self.controller.state.breakpoints = saved
+            bps = saved.get(code_view.source_path, []) if code_view.source_path else []
+            code_view.set_breakpoints(bps)
+            bp_view = self.query_one("#breakpoint-view", BreakpointView)
+            bp_view.update_breakpoints(saved)
         self._start_session()
         if self._server_port is not None:
             self._start_server()
@@ -1001,6 +1013,7 @@ class TdbApp(App):
         self.query_one("#breakpoint-view", BreakpointView).focus()
 
     async def action_quit_debugger(self) -> None:
+        save_breakpoints(self.controller.state.breakpoints)
         await self.controller.stop()
         if hasattr(self, '_uvicorn_server'):
             self._uvicorn_server.should_exit = True

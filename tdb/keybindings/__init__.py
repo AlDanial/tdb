@@ -18,47 +18,93 @@ class Mode(Enum):
     DEBUG = "Debug"
 
 
+_VIM_NAV = {
+    "g": "goto_line",           # Ng = jump to line N
+    "G": "goto_end",            # G = jump to end of file
+    "k": "cursor_up",           # k / Nk = move cursor up
+    "j": "cursor_down",         # j / Nj = move cursor down
+    "right_square_bracket": "paragraph_down",  # ]
+    "left_square_bracket": "paragraph_up",     # [
+    "slash": "search",                # /
+    "question_mark": "search_back",   # ?
+    "n": "search_next",              # n = next search result
+    "N": "search_prev",              # N = previous search result
+    "pageup": "page_up",
+    "pagedown": "page_down",
+}
+
+_EMACS_NAV = {
+    "ctrl+n": "cursor_down",
+    "ctrl+p": "cursor_up",
+    "ctrl+f": "page_down",
+    "ctrl+b_emacs": "page_up",
+    "ctrl+a": "goto_home",
+    "ctrl+end": "goto_end",
+    "ctrl+s_search": "search",
+    "ctrl+r": "search_back",
+    "n": "search_next",
+    "N": "search_prev",
+    "right_square_bracket": "paragraph_down",
+    "left_square_bracket": "paragraph_up",
+    "pageup": "page_up",
+    "pagedown": "page_down",
+}
+
+_DEFAULT_NAV = {
+    "slash": "search",
+    "question_mark": "search_back",
+    "n": "search_next",
+    "N": "search_prev",
+    "right_square_bracket": "paragraph_down",
+    "left_square_bracket": "paragraph_up",
+    "pageup": "page_up",
+    "pagedown": "page_down",
+}
+
+_DEBUG = {
+    "n": "step_over",
+    "s": "step_in",
+    "o": "step_out",
+    "c": "continue_",
+    "b": "toggle_breakpoint",
+    "p": "pause",
+    "t": "run_to_cursor",
+    "u": "stack_up",
+    "d": "stack_down",
+    "R": "restart",
+}
+
+_SHARED = {
+    "up": "cursor_up",
+    "down": "cursor_down",
+    "pageup": "page_up",
+    "pagedown": "page_down",
+    "home": "goto_home",
+    "end": "goto_end",
+}
+
+
 @dataclass
 class KeybindingConfig:
     """Maps key names to action names for each mode."""
 
-    navigation: dict[str, str] = field(default_factory=lambda: {
-        "g": "goto_line",           # Ng = jump to line N
-        "G": "goto_end",            # G = jump to end of file
-        "k": "cursor_up",           # k / Nk = move cursor up
-        "j": "cursor_down",         # j / Nj = move cursor down
-        "right_square_bracket": "paragraph_down",  # ]
-        "left_square_bracket": "paragraph_up",     # [
-        "slash": "search",                # /
-        "question_mark": "search_back",   # ?
-        "n": "search_next",              # n = next search result
-        "N": "search_prev",              # N = previous search result
-        "pageup": "page_up",
-        "pagedown": "page_down",
-    })
-
-    debug: dict[str, str] = field(default_factory=lambda: {
-        "n": "step_over",
-        "s": "step_in",
-        "o": "step_out",
-        "c": "continue_",
-        "b": "toggle_breakpoint",
-        "p": "pause",
-        "t": "run_to_cursor",
-        "u": "stack_up",
-        "d": "stack_down",
-        "R": "restart",
-    })
+    scheme: str = "vim"
+    navigation: dict[str, str] = field(default_factory=lambda: dict(_VIM_NAV))
+    debug: dict[str, str] = field(default_factory=lambda: dict(_DEBUG))
 
     # Keys that work in both modes
-    shared: dict[str, str] = field(default_factory=lambda: {
-        "up": "cursor_up",
-        "down": "cursor_down",
-        "pageup": "page_up",
-        "pagedown": "page_down",
-        "home": "goto_home",
-        "end": "goto_end",
-    })
+    shared: dict[str, str] = field(default_factory=lambda: dict(_SHARED))
+
+    @classmethod
+    def from_scheme(cls, scheme: str) -> KeybindingConfig:
+        """Create a keybinding config from a named scheme."""
+        if scheme == "emacs":
+            return cls(scheme=scheme, navigation=dict(_EMACS_NAV))
+        elif scheme == "default":
+            return cls(scheme=scheme, navigation=dict(_DEFAULT_NAV))
+        else:
+            # "vim" or anything else
+            return cls(scheme="vim", navigation=dict(_VIM_NAV))
 
     def lookup(self, mode: Mode, key: str) -> str | None:
         """Return the action name for a key in the given mode, or None."""
@@ -110,6 +156,14 @@ class KeybindingConfig:
             "down": "Down",
             "home": "Home",
             "end": "End",
+            "ctrl+n": "Ctrl+N",
+            "ctrl+p": "Ctrl+P",
+            "ctrl+f": "Ctrl+F",
+            "ctrl+b_emacs": "Ctrl+B",
+            "ctrl+a": "Ctrl+A",
+            "ctrl+end": "Ctrl+End",
+            "ctrl+s_search": "Ctrl+S",
+            "ctrl+r": "Ctrl+R",
         }
 
         bindings = self.navigation if mode == Mode.NAVIGATION else self.debug
@@ -117,7 +171,7 @@ class KeybindingConfig:
         for key, action in bindings.items():
             display = KEY_DISPLAY.get(key, key)
             label = ACTION_LABELS.get(action, action)
-            if action in ("goto_line", "cursor_up", "cursor_down"):
+            if action in ("goto_line", "cursor_up", "cursor_down") and self.scheme == "vim":
                 display = f"[N]{display}"
             result.append((display, label))
 

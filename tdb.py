@@ -50,6 +50,12 @@ def main():
         help="Python interpreter to use for debugging",
     )
     parser.add_argument(
+        "--keybindings",
+        choices=["default", "vim", "emacs"],
+        default=None,
+        help="Keybinding scheme for code navigation (saved to config)",
+    )
+    parser.add_argument(
         "--external-terminal",
         action="store_true",
         help="Run debuggee in an external terminal (for TUI programs)",
@@ -93,6 +99,8 @@ def main():
         cmd.extend(["--cwd", args.cwd])
     if args.python:
         cmd.extend(["--python", args.python])
+    if args.keybindings:
+        cmd.extend(["--keybindings", args.keybindings])
     if args.external_terminal:
         cmd.append("--external-terminal")
     if args.headless:

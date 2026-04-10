@@ -44,8 +44,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--keybindings",
         choices=["default", "vim", "emacs"],
-        default="default",
-        help="Keybinding scheme for code navigation",
+        default=None,
+        help="Keybinding scheme for code navigation (saved to config)",
     )
     parser.add_argument(
         "--external-terminal",
@@ -119,6 +119,14 @@ def _run_headless(args: argparse.Namespace) -> None:
 def _run_tui(args: argparse.Namespace) -> None:
     """Run with the TUI (optionally with the server alongside)."""
     from tdb.app import TdbApp
+    from tdb.persist import load_keybinding_scheme, save_config
+
+    # CLI flag overrides saved config; if neither, default to "vim"
+    keybindings = args.keybindings
+    if keybindings is None:
+        keybindings = load_keybinding_scheme() or "vim"
+    else:
+        save_config(keybindings=keybindings)
 
     app = TdbApp(
         program=args.program,
@@ -128,6 +136,7 @@ def _run_tui(args: argparse.Namespace) -> None:
         just_my_code=not args.no_just_my_code,
         python=args.python,
         external_terminal=args.external_terminal,
+        keybindings=keybindings,
         server_port=args.server_port if args.server else None,
     )
     app.run()
