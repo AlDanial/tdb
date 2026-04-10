@@ -79,6 +79,11 @@ class MenuBar(Widget):
         background: $accent;
         color: $text;
     }
+
+    MenuBar .menu-spacer {
+        width: 1fr;
+        height: 1;
+    }
     """
 
     BINDINGS = [
@@ -103,9 +108,11 @@ class MenuBar(Widget):
         menus: dict[str, list[str]],
         *,
         action_labels: dict[str, str] | None = None,
+        right_menus: list[str] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
+        self._right_menu_names = set(right_menus or [])
         self._menus = menus
         self._action_labels = action_labels or {}  # id -> display text
         self._open_menu: str | None = None
@@ -114,6 +121,8 @@ class MenuBar(Widget):
     def compose(self) -> ComposeResult:
         with Horizontal():
             for menu_name in self._menus:
+                if menu_name in self._right_menu_names:
+                    continue
                 yield Label(
                     f" {menu_name} ",
                     classes="menu-label",
@@ -125,6 +134,17 @@ class MenuBar(Widget):
                     classes="action-label",
                     id=label_id,
                 )
+            # Spacer pushes right-aligned menus to the end
+            if self._right_menu_names:
+                yield Label("", classes="menu-spacer")
+                for menu_name in self._menus:
+                    if menu_name not in self._right_menu_names:
+                        continue
+                    yield Label(
+                        f" {menu_name} ",
+                        classes="menu-label",
+                        id=f"menu-{menu_name.lower().replace(' ', '-')}",
+                    )
 
     def on_mount(self) -> None:
         """Mount dropdown widgets on the Screen so they render above everything."""

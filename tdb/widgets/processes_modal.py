@@ -188,9 +188,12 @@ class ProcessesModal(ModalScreen[None]):
     def on_mount(self) -> None:
         table = self.query_one("#proc-table", DataTable)
         table.add_columns("PID", "Name", "Status")
-        self._populate_table()
         if self._processes:
+            self._populate_table()
             self._show_detail(0)
+        else:
+            info = self.query_one("#proc-info", Static)
+            info.update(Text("Loading...", style="dim italic"))
 
     def _populate_table(self) -> None:
         table = self.query_one("#proc-table", DataTable)

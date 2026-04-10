@@ -279,6 +279,7 @@ class TdbApp(App):
                 "processes-label": "Processes",
                 "async-tasks-label": "Async Tasks",
             },
+            right_menus=["Help"],
             id="menu-bar",
         )
         with Horizontal(id="upper"):
@@ -1170,23 +1171,24 @@ class TdbApp(App):
         else:
             menu_bar.update_action_label("processes-label", "Processes")
 
-    @work(exclusive=True, group="processes-open")
-    async def _open_processes(self) -> None:
-        """Fetch child process info and open the modal."""
+    def _open_processes(self) -> None:
+        """Open the modal immediately, then fetch process info."""
         if self.controller.state.is_terminated:
             self.notify("Program has terminated", title="Processes")
             return
         if self.controller.state.is_running:
             self.notify("Program is running — pause first", title="Processes")
             return
-        processes = await self._get_processes()
-        if not processes:
-            self.notify(
-                "No child processes found", title="Processes",
-            )
-            return
-        self._processes_modal = ProcessesModal(processes)
+        self._processes_modal = ProcessesModal([])
         self.push_screen(self._processes_modal)
+        self._load_processes()
+
+    @work(exclusive=True, group="processes-open")
+    async def _load_processes(self) -> None:
+        """Fetch process info and update the already-open modal."""
+        processes = await self._get_processes()
+        if hasattr(self, "_processes_modal"):
+            self._processes_modal.update_processes(processes)
 
     async def on_processes_modal_refresh_processes(
         self, message: ProcessesModal.RefreshProcesses,
