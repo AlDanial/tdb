@@ -21,7 +21,15 @@ def main():
         usage="%(prog)s [options] script.py [args...]",
     )
     parser.add_argument(
+        "-r", "--remote-attach",
+        metavar="[HOST:]PORT",
+        default=None,
+        help="Attach to a remote debugpy server (e.g. 5678 or localhost:5678)",
+    )
+    parser.add_argument(
         "program",
+        nargs="?",
+        default=None,
         help="Python script to debug",
     )
     parser.add_argument(
@@ -87,10 +95,9 @@ def main():
     args = parser.parse_args()
 #   args.no_just_my_code = True
 
-    # Resolve program path
-    program_path = Path(args.program).resolve()
-    if not program_path.exists():
-        parser.error(f"File not found: {args.program}")
+    # Validate: need either --remote-attach or a program
+    if args.remote_attach is None and args.program is None:
+        parser.error("either a program or --remote-attach is required")
 
     # Build the command
     venv_python = Path(__file__).resolve().parent / ".venv" / "bin" / "python"
@@ -98,31 +105,41 @@ def main():
         venv_python = Path(sys.executable)
 
     cmd = [str(venv_python), "-m", "tdb"]
-    if not args.no_stop_on_entry:
-        cmd.append("--stop-on-entry")
-    if args.no_just_my_code:
-        cmd.append("--no-just-my-code")
-    if args.cwd:
-        cmd.extend(["--cwd", args.cwd])
-    if args.python:
-        cmd.extend(["--python", args.python])
+
+    if args.remote_attach:
+        cmd.extend(["--remote-attach", args.remote_attach])
+    else:
+        # Resolve program path
+        program_path = Path(args.program).resolve()
+        if not program_path.exists():
+            parser.error(f"File not found: {args.program}")
+        if not args.no_stop_on_entry:
+            cmd.append("--stop-on-entry")
+        if args.no_just_my_code:
+            cmd.append("--no-just-my-code")
+        if args.cwd:
+            cmd.extend(["--cwd", args.cwd])
+        if args.python:
+            cmd.extend(["--python", args.python])
+        if args.external_terminal:
+            cmd.append("--external-terminal")
+
     if args.keybindings:
         cmd.extend(["--keybindings", args.keybindings])
     for bp in args.breakpoint:
         cmd.extend(["-k", bp])
-    if args.external_terminal:
-        cmd.append("--external-terminal")
     if args.headless:
         cmd.append("--headless")
     elif args.server:
         cmd.append("--server")
     if args.server or args.headless:
         cmd.extend(["--server-port", str(args.server_port)])
-    cmd.append(str(program_path))
-    if args.args:
-        cmd.extend(args.args)
 
-    venv_python_str = str(venv_python)
+    if args.program and not args.remote_attach:
+        cmd.append(str(program_path))
+        if args.args:
+            cmd.extend(args.args)
+
     os.execv(venv_python, cmd)
 
 

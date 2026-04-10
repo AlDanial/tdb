@@ -236,6 +236,8 @@ class TdbApp(App):
         external_terminal: bool = False,
         keybindings: str = "vim",
         cli_breakpoints: list[tuple[str, int]] | None = None,
+        attach_host: str | None = None,
+        attach_port: int | None = None,
         server_port: int | None = None,
     ) -> None:
         super().__init__()
@@ -248,6 +250,8 @@ class TdbApp(App):
         self._external_terminal = external_terminal
         self._keybindings = keybindings
         self._cli_breakpoints = cli_breakpoints or []
+        self._attach_host = attach_host
+        self._attach_port = attach_port
         self._server_port = server_port
 
         self._textual_handler = TextualEventHandler(self)
@@ -301,10 +305,11 @@ class TdbApp(App):
         code_view = self.query_one("#code-view", CodeView)
         code_view.keybindings = KeybindingConfig.from_scheme(self._keybindings)
         self._update_code_title(code_view)
-        code_view.load_file(self._program)
+        if self._program:
+            code_view.load_file(self._program)
         code_view.focus()
         # Restore breakpoints from previous run, filtered to current project
-        program_dir = str(Path(self._program).resolve().parent)
+        program_dir = str(Path(self._program).resolve().parent) if self._program else ""
         saved = load_breakpoints()
         if saved:
             self.controller.state.breakpoints = {
@@ -340,15 +345,21 @@ class TdbApp(App):
     @work(exclusive=True)
     async def _start_session(self) -> None:
         try:
-            await self.controller.start(
-                program=self._program,
-                args=self._args,
-                cwd=self._cwd,
-                stop_on_entry=self._stop_on_entry,
-                just_my_code=self._just_my_code,
-                python=self._python,
-                external_terminal=self._external_terminal,
-            )
+            if self._attach_host is not None and self._attach_port is not None:
+                await self.controller.remote_attach(
+                    host=self._attach_host,
+                    port=self._attach_port,
+                )
+            else:
+                await self.controller.start(
+                    program=self._program,
+                    args=self._args,
+                    cwd=self._cwd,
+                    stop_on_entry=self._stop_on_entry,
+                    just_my_code=self._just_my_code,
+                    python=self._python,
+                    external_terminal=self._external_terminal,
+                )
         except Exception:
             log.exception("Failed to start debug session")
             self.sub_title = "Failed to start"

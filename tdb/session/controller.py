@@ -143,6 +143,25 @@ class DebugController:
             console="externalTerminal" if external_terminal else "internalConsole",
         )
 
+    async def remote_attach(self, host: str, port: int) -> None:
+        """Attach to a remote debugpy server listening on host:port.
+
+        DAP sequence (same as launch, but with attach instead):
+        1. connect via TCP to debugpy server
+        2. initialize → response
+        3. attach (fire, don't await — debugpy holds the response)
+        4. debugpy sends 'initialized' event
+        5. on_dap_initialized handler sends breakpoints + configurationDone
+        6. debugpy sends attach response
+        """
+        self._setup_event_handlers()
+        self._launch_params = {}
+
+        await self.client.connect(host, port)
+        await self.client.initialize()
+
+        self._launch_future = await self.client.attach(host=host, port=port)
+
     async def _handle_run_in_terminal(self, request: Request) -> dict[str, Any]:
         """Handle the runInTerminal reverse request from debugpy."""
         cmd_args: list[str] = request.arguments.get("args", [])

@@ -13,7 +13,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         description="TUI Python Debugger",
     )
     parser.add_argument(
+        "-r", "--remote-attach",
+        metavar="[HOST:]PORT",
+        default=None,
+        help="Attach to a remote debugpy server (e.g. 5678 or localhost:5678)",
+    )
+    parser.add_argument(
         "program",
+        nargs="?",
+        default=None,
         help="Python script to debug",
     )
     parser.add_argument(
@@ -82,11 +90,32 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     if args.headless:
         args.server = True
 
-    # Resolve program path
-    program_path = Path(args.program).resolve()
-    if not program_path.exists():
-        parser.error(f"File not found: {args.program}")
-    args.program = str(program_path)
+    # Parse --remote-attach into (host, port)
+    args.attach_host = None
+    args.attach_port = None
+    if args.remote_attach:
+        spec = args.remote_attach
+        if ":" in spec:
+            host_part, port_part = spec.rsplit(":", 1)
+            args.attach_host = host_part or "127.0.0.1"
+        else:
+            port_part = spec
+            args.attach_host = "127.0.0.1"
+        try:
+            args.attach_port = int(port_part)
+        except ValueError:
+            parser.error(f"Invalid port in --remote-attach: {spec}")
+
+    # Validate: need either --remote-attach or a program
+    if args.remote_attach is None and args.program is None:
+        parser.error("either a program or --remote-attach is required")
+
+    # Resolve program path (only when launching)
+    if args.program and not args.remote_attach:
+        program_path = Path(args.program).resolve()
+        if not program_path.exists():
+            parser.error(f"File not found: {args.program}")
+        args.program = str(program_path)
 
     # Parse -k / --breakpoint specs into (resolved_path, line) tuples
     parsed_bps: list[tuple[str, int]] = []
@@ -153,7 +182,7 @@ def _run_tui(args: argparse.Namespace) -> None:
         save_config(keybindings=keybindings)
 
     app = TdbApp(
-        program=args.program,
+        program=args.program or "",
         args=args.args,
         cwd=args.cwd,
         stop_on_entry=args.stop_on_entry,
@@ -162,6 +191,8 @@ def _run_tui(args: argparse.Namespace) -> None:
         external_terminal=args.external_terminal,
         keybindings=keybindings,
         cli_breakpoints=args.breakpoint,
+        attach_host=args.attach_host,
+        attach_port=args.attach_port,
         server_port=args.server_port if args.server else None,
     )
     app.run()
