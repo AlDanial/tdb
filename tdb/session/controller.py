@@ -77,6 +77,12 @@ class DebugController:
         self.state = DebugState()
         self._external_terminal = False
         self._lock = asyncio.Lock()
+        # Child process debug sessions (pid → DAPClient)
+        self._child_clients: dict[int, DAPClient] = {}
+        self._child_attach_lock = asyncio.Lock()
+        # The "active" client is the one whose stop event we're currently
+        # inspecting.  Defaults to the parent client.
+        self._active_client: DAPClient = self.client
 
     def _setup_event_handlers(self) -> None:
         self.client.on_event("stopped", self._on_stopped)
@@ -85,6 +91,8 @@ class DebugController:
         self.client.on_event("exited", self._on_exited)
         self.client.on_event("output", self._on_output)
         self.client.on_event("initialized", self._on_initialized)
+        # Child process debugging
+        self.client.on_event("debugpyAttach", self._on_child_attach)
 
     async def start(
         self,
@@ -192,6 +200,13 @@ class DebugController:
         self.state.is_running = True
 
     async def stop(self) -> None:
+        for pid, child in list(self._child_clients.items()):
+            try:
+                await child.disconnect(terminate=False)
+                await child.stop()
+            except Exception:
+                pass
+        self._child_clients.clear()
         await self.client.disconnect(terminate=True)
         await self.client.stop()
         self.state.is_terminated = True
@@ -202,7 +217,30 @@ class DebugController:
         if self.state.current_thread_id is not None:
             self.state.is_running = True
             self.state.clear_frame_data()
-            await self.client.continue_(self.state.current_thread_id)
+            # Continue the active client (might be child or parent)
+            ac = self._active_client
+            try:
+                await ac.continue_(self.state.current_thread_id)
+            except Exception:
+                pass
+            # Also continue all other processes
+            self._active_client = self.client
+            if ac is not self.client:
+                try:
+                    threads = await self.client.threads()
+                    if threads:
+                        await self.client.continue_(threads[0].id)
+                except Exception:
+                    pass
+            for pid, child in list(self._child_clients.items()):
+                if child is ac:
+                    continue
+                try:
+                    threads = await child.threads()
+                    if threads:
+                        await child.continue_(threads[0].id)
+                except Exception:
+                    pass
 
     async def step_over(self) -> None:
         if self.state.current_thread_id is not None:
@@ -251,8 +289,19 @@ class DebugController:
             await self.client.set_breakpoints(source_path, bps)
 
     async def pause(self) -> None:
+        """Pause all processes (parent + children)."""
         if self.state.current_thread_id is not None:
-            await self.client.pause(self.state.current_thread_id)
+            try:
+                await self.client.pause(self.state.current_thread_id)
+            except Exception:
+                pass
+        for pid, child in list(self._child_clients.items()):
+            try:
+                threads = await child.threads()
+                if threads:
+                    await child.pause(threads[0].id)
+            except Exception:
+                pass
 
     async def toggle_breakpoint(self, source_path: str, line: int) -> None:
         bps = self.state.breakpoints.get(source_path, [])
@@ -265,6 +314,7 @@ class DebugController:
 
         if self.state.is_ready and not self.state.is_terminated:
             await self.client.set_breakpoints(source_path, bps)
+
 
     async def add_breakpoint(
         self,
@@ -317,6 +367,7 @@ class DebugController:
         if self.state.is_ready and not self.state.is_terminated:
             await self.client.set_breakpoints(source_path, bps)
 
+
     async def disable_all_breakpoints(self) -> None:
         """Tell debugpy to remove all breakpoints without clearing them from state."""
         self.state.breakpoints_disabled = True
@@ -330,6 +381,7 @@ class DebugController:
         if self.state.is_ready and not self.state.is_terminated:
             for source_path, bps in self.state.breakpoints.items():
                 await self.client.set_breakpoints(source_path, bps)
+    
 
     async def clear_all_breakpoints(self) -> None:
         """Remove all breakpoints from state and debugpy."""
@@ -363,9 +415,14 @@ class DebugController:
             await self.fetch_scopes_and_variables(new_frame.id)
         return True
 
+    @property
+    def active_client(self) -> DAPClient:
+        """The client (parent or child) that is currently being inspected."""
+        return self._active_client
+
     async def evaluate(self, expression: str) -> str:
         try:
-            result, _ = await self.client.evaluate(
+            result, _ = await self._active_client.evaluate(
                 expression,
                 frame_id=self.state.current_frame_id,
                 context="repl",
@@ -374,20 +431,63 @@ class DebugController:
         except Exception as e:
             return str(e)
 
+    def get_child_pids(self) -> list[int]:
+        """Return PIDs of tracked child processes."""
+        return list(self._child_clients.keys())
+
+    async def evaluate_on_parent(self, expression: str) -> str:
+        """Evaluate an expression on the parent process (not the active child).
+
+        Fetches a frame from the parent if needed so the evaluate has
+        proper scope context.  Retries briefly if the parent isn't stopped yet.
+        """
+        from tdb.dap.client import DAPError
+
+        for attempt in range(3):
+            try:
+                # Get a frame_id from the parent process
+                frame_id = None
+                if self._active_client is self.client:
+                    frame_id = self.state.current_frame_id
+                else:
+                    threads = await self.client.threads()
+                    if threads:
+                        frames = await self.client.stack_trace(threads[0].id)
+                        if frames:
+                            frame_id = frames[0].id
+                result, _ = await self.client.evaluate(
+                    expression, frame_id=frame_id, context="repl",
+                )
+                return result
+            except DAPError as e:
+                if "Unable to find thread" in str(e) and attempt < 2:
+                    # Parent may not be stopped yet — wait and retry
+                    await asyncio.sleep(0.5)
+                    continue
+                return str(e)
+            except Exception as e:
+                return str(e)
+        return ""
+
     async def select_frame(self, frame_id: int) -> None:
         self.state.current_frame_id = frame_id
         await self.fetch_scopes_and_variables(frame_id)
 
     async def fetch_stop_info(self) -> None:
-        """After stopping, fetch threads, stack trace, scopes, and variables."""
+        """After stopping, fetch threads, stack trace, scopes, and variables.
+
+        Uses _active_client which points to whichever client (parent or
+        child) most recently stopped at a breakpoint/exception.
+        """
+        ac = self._active_client
         try:
-            self.state.threads = await self.client.threads()
+            self.state.threads = await ac.threads()
         except Exception:
             log.exception("Error fetching threads")
 
         if self.state.current_thread_id is not None:
             try:
-                self.state.stack_frames = await self.client.stack_trace(
+                self.state.stack_frames = await ac.stack_trace(
                     self.state.current_thread_id
                 )
             except Exception:
@@ -402,10 +502,11 @@ class DebugController:
                     log.exception("Error fetching scopes/variables")
 
     async def fetch_scopes_and_variables(self, frame_id: int) -> None:
-        self.state.scopes = await self.client.scopes(frame_id)
+        ac = self._active_client
+        self.state.scopes = await ac.scopes(frame_id)
         self.state.variables.clear()
         for scope in self.state.scopes:
-            variables = await self.client.variables(scope.variables_reference)
+            variables = await ac.variables(scope.variables_reference)
             self.state.variables[scope.variables_reference] = variables
 
     # --- DAP event handlers ---
@@ -420,7 +521,10 @@ class DebugController:
         reason = event.body.get("reason", "unknown")
         description = event.body.get("description")
         text = event.body.get("text")
+        self._active_client = self.client
         self.event_handler.on_stopped(thread_id, reason, description, text)
+        if self._child_clients and reason not in ("pause",):
+            asyncio.get_event_loop().create_task(self._pause_children())
 
     def _on_continued(self, event: Event) -> None:
         self.event_handler.on_continued()
@@ -435,4 +539,112 @@ class DebugController:
     def _on_output(self, event: Event) -> None:
         text = event.body.get("output", "")
         category = event.body.get("category", "console")
+        # In external terminal mode, program stdout/stderr goes to the
+        # terminal directly — don't duplicate it in the Console View.
+        if self._external_terminal and category in ("stdout", "stderr"):
+            return
         self.event_handler.on_output(text, category)
+
+    # --- Child process debugging ---
+
+    def _on_child_attach(self, event: Event) -> None:
+        """debugpyAttach: a child process is ready for debugging."""
+        body = event.body
+        host = body.get("connect", {}).get("host", "127.0.0.1")
+        port = body.get("connect", {}).get("port")
+        pid = body.get("subProcessId") or body.get("processId")
+        if not port:
+            log.warning("debugpyAttach missing port: %s", body)
+            return
+        log.info("Child process detected: pid=%s port=%s", pid, port)
+        asyncio.get_event_loop().create_task(
+            self._attach_child(host, port, pid)
+        )
+
+    async def _attach_child(self, host: str, port: int, pid: int | None = None) -> None:
+        """Connect to the adapter for a child process and configure breakpoints."""
+        async with self._child_attach_lock:
+            child = DAPClient()
+            try:
+                await child.connect(host, port)
+
+                # Wait for 'initialized' event before configuring
+                initialized = asyncio.Event()
+                child.on_event("initialized", lambda e: initialized.set())
+
+                # Forward stopped events: pause all others on breakpoint/exception
+                def on_child_stopped(event: Event, _child: DAPClient = child) -> None:
+                    reason = event.body.get("reason", "unknown")
+                    self._active_client = _child
+                    if reason not in ("pause",):
+                        asyncio.get_event_loop().create_task(self._pause_parent())
+                    thread_id = event.body.get("threadId")
+                    description = event.body.get("description")
+                    text = event.body.get("text")
+                    self.event_handler.on_stopped(thread_id, reason, description, text)
+
+                def on_child_terminated(event: Event) -> None:
+                    # Find and remove this client
+                    for pid, c in list(self._child_clients.items()):
+                        if c is child:
+                            self._child_clients.pop(pid, None)
+                            break
+
+                child.on_event("stopped", on_child_stopped)
+                child.on_event("terminated", on_child_terminated)
+                child.on_event("exited", on_child_terminated)
+                child.on_event("output", self._on_output)
+
+                await child.initialize()
+
+                # Send attach with subProcessId (not processId) to route
+                # to the right child without triggering ptrace injection.
+                attach_future = await child.attach(
+                    host=host, port=port, sub_process_id=pid,
+                )
+
+                await asyncio.wait_for(initialized.wait(), timeout=10.0)
+
+                # Configure breakpoints
+                await child.set_exception_breakpoints(["userUnhandled"])
+                if not self.state.breakpoints_disabled:
+                    for source_path, bps in self.state.breakpoints.items():
+                        try:
+                            await child.set_breakpoints(source_path, bps)
+                        except Exception:
+                            pass
+
+                await child.configuration_done()
+                await asyncio.wait_for(attach_future, timeout=30.0)
+
+                key = pid or port
+                self._child_clients[key] = child
+                log.info("Attached to child process pid=%s (port %d)", pid, port)
+
+            except Exception:
+                log.exception("Failed to attach to child (port %d)", port)
+                try:
+                    await child.stop()
+                except Exception:
+                    pass
+
+    async def _pause_parent(self) -> None:
+        """Pause the parent process and wait for it to stop."""
+        try:
+            threads = await self.client.threads()
+            if threads:
+                await self.client.pause(threads[0].id)
+        except Exception:
+            pass
+
+    async def _pause_children(self) -> None:
+        """Pause all child processes."""
+        for pid, child in list(self._child_clients.items()):
+            try:
+                threads = await child.threads()
+                if threads:
+                    await child.pause(threads[0].id)
+            except Exception:
+                pass
+
+

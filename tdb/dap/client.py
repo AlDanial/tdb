@@ -27,7 +27,12 @@ ReverseRequestHandler = Callable[[Request], Awaitable[dict[str, Any]]]
 
 
 class DAPClient:
-    """Async DAP client that spawns and communicates with a debugpy adapter."""
+    """Async DAP client that communicates with a debugpy adapter.
+
+    Supports two connection modes:
+    - ``start()`` — spawn adapter subprocess, communicate over stdio pipes
+    - ``connect()`` — connect to an adapter over TCP (for child processes)
+    """
 
     def __init__(self) -> None:
         self._seq = 0
@@ -35,6 +40,8 @@ class DAPClient:
         self._event_handlers: dict[str, list[EventHandler]] = {}
         self._reverse_request_handlers: dict[str, ReverseRequestHandler] = {}
         self._process: asyncio.subprocess.Process | None = None
+        self._reader: asyncio.StreamReader | None = None
+        self._writer: asyncio.StreamWriter | None = None
         self._reader_task: asyncio.Task[None] | None = None
         self.capabilities = Capabilities()
 
@@ -59,24 +66,33 @@ class DAPClient:
             stderr=asyncio.subprocess.PIPE,
             start_new_session=True,  # isolate from terminal so it can't interfere with TUI
         )
+        self._reader = self._process.stdout
+        self._reader_task = asyncio.create_task(self._read_loop())
+
+    async def connect(self, host: str, port: int) -> None:
+        """Connect to an already-running debugpy adapter over TCP."""
+        self._reader, self._writer = await asyncio.open_connection(host, port)
         self._reader_task = asyncio.create_task(self._read_loop())
 
     async def stop(self) -> None:
-        """Shut down the adapter."""
+        """Shut down the connection."""
         if self._reader_task:
             self._reader_task.cancel()
             try:
                 await self._reader_task
             except asyncio.CancelledError:
                 pass
+        if self._writer:
+            self._writer.close()
+            self._writer = None
         if self._process:
             self._process.terminate()
             await self._process.wait()
 
     async def _read_loop(self) -> None:
-        """Continuously read DAP messages from adapter stdout."""
-        assert self._process and self._process.stdout
-        reader = self._process.stdout
+        """Continuously read DAP messages from the adapter."""
+        assert self._reader is not None
+        reader = self._reader
         try:
             while True:
                 data = await read_message(reader)
@@ -115,6 +131,13 @@ class DAPClient:
             log.exception("Error handling reverse request: %s", request.command)
             await self._send_reverse_response(request, success=False, message=str(e))
 
+    def _get_write_stream(self) -> asyncio.StreamWriter:
+        """Return the stream used for writing DAP messages."""
+        if self._writer:
+            return self._writer
+        assert self._process and self._process.stdin
+        return self._process.stdin
+
     async def _send_reverse_response(
         self,
         request: Request,
@@ -123,7 +146,7 @@ class DAPClient:
         message: str | None = None,
     ) -> None:
         """Send a response back to the adapter for a reverse request."""
-        assert self._process and self._process.stdin
+        writer = self._get_write_stream()
         seq = self._next_seq()
         response_data: dict[str, Any] = {
             "seq": seq,
@@ -136,19 +159,19 @@ class DAPClient:
             response_data["body"] = body
         if message:
             response_data["message"] = message
-        self._process.stdin.write(encode_message(response_data))
-        await self._process.stdin.drain()
+        writer.write(encode_message(response_data))
+        await writer.drain()
 
     async def _send_raw(self, command: str, arguments: dict[str, Any] | None = None) -> asyncio.Future[Response]:
         """Send a DAP request. Returns the Future for the response (not awaited)."""
-        assert self._process and self._process.stdin
+        writer = self._get_write_stream()
         seq = self._next_seq()
         request = Request(seq=seq, command=command, arguments=arguments or {})
         future: asyncio.Future[Response] = asyncio.get_running_loop().create_future()
         self._pending[seq] = future
         data = encode_message(request.to_dict())
-        self._process.stdin.write(data)
-        await self._process.stdin.drain()
+        writer.write(data)
+        await writer.drain()
         return future
 
     async def _send(self, command: str, arguments: dict[str, Any] | None = None) -> Response:
@@ -201,6 +224,7 @@ class DAPClient:
             "redirectOutput": console == "internalConsole",
             "justMyCode": False,  # Always get full stack traces; tdb filters in UI
             "stopOnEntry": stop_on_entry,
+            "subProcess": True,  # Track child processes for debugging
             "pythonArgs": ["-Xfrozen_modules=off"],
         }
         if env:
@@ -208,6 +232,28 @@ class DAPClient:
         if python:
             arguments["debugLauncherPython"] = python
         return await self._send_raw("launch", arguments)
+
+    async def attach(
+        self,
+        host: str = "127.0.0.1",
+        port: int = 0,
+        sub_process_id: int | None = None,
+    ) -> asyncio.Future[Response]:
+        """Send attach request. Returns a Future (same pattern as launch).
+
+        Use subProcessId (not processId) to route to a child session
+        without triggering ptrace injection.
+        """
+        arguments: dict[str, Any] = {
+            "type": "debugpy",
+            "request": "attach",
+            "connect": {"host": host, "port": port},
+            "justMyCode": False,
+            "subProcess": True,
+        }
+        if sub_process_id is not None:
+            arguments["subProcessId"] = sub_process_id
+        return await self._send_raw("attach", arguments)
 
     async def configuration_done(self) -> None:
         await self._send("configurationDone")

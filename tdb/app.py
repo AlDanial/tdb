@@ -38,7 +38,7 @@ from tdb.widgets.stack_view import StackView
 from tdb.widgets.status_bar import StatusBar
 from tdb.persist import load_breakpoints, save_breakpoints
 from tdb.widgets.async_tasks_modal import AsyncTasksModal, AsyncTaskInfo, TASK_COLLECT_EXPR, TASK_LOCALS_EXPR, parse_task_json
-from tdb.widgets.processes_modal import ProcessesModal, PROCESS_COLLECT_EXPR, parse_process_json
+from tdb.widgets.processes_modal import ProcessesModal, ProcessInfo, PROCESS_COLLECT_EXPR, parse_process_json
 from tdb.widgets.threads_modal import ThreadsModal
 from tdb.widgets.variable_view import VariableView
 
@@ -827,7 +827,7 @@ class TdbApp(App):
 
     async def on_tdb_app_lazy_load_variables(self, message: LazyLoadVariables) -> None:
         try:
-            variables = await self.controller.client.variables(message.variables_reference)
+            variables = await self.controller.active_client.variables(message.variables_reference)
             var_view = self.query_one("#variable-view", VariableView)
             var_view.load_children(message.node, variables)
         except Exception:
@@ -874,7 +874,7 @@ class TdbApp(App):
         self, message: EvaluateConsole.CompletionRequested
     ) -> None:
         try:
-            items = await self.controller.client.completions(
+            items = await self.controller.active_client.completions(
                 text=message.text,
                 column=message.column,
                 frame_id=self.controller.state.current_frame_id,
@@ -943,7 +943,7 @@ class TdbApp(App):
         if self.controller.state.is_terminated or self.controller.state.is_running:
             return
         try:
-            result = await self.controller.evaluate(
+            result = await self.controller.evaluate_on_parent(
                 "len(__import__('asyncio').all_tasks())"
             )
             # Result is a string like "5"
@@ -1001,13 +1001,13 @@ class TdbApp(App):
             return
         try:
             expr = TASK_LOCALS_EXPR.format(task_name=message.task_name)
-            _result, var_ref = await self.controller.client.evaluate(
+            _result, var_ref = await self.controller.active_client.evaluate(
                 expr,
                 frame_id=self.controller.state.current_frame_id,
                 context="repl",
             )
             if var_ref > 0:
-                variables = await self.controller.client.variables(var_ref)
+                variables = await self.controller.active_client.variables(var_ref)
             else:
                 variables = []
         except Exception:
@@ -1103,25 +1103,72 @@ class TdbApp(App):
 
     # --- Processes ---
 
+    def _get_processes_from_pids(self) -> list[ProcessInfo]:
+        """Build ProcessInfo list from tracked child PIDs via /proc."""
+        result = []
+        for pid in self.controller.get_child_pids():
+            try:
+                cmdline_path = Path(f"/proc/{pid}/cmdline")
+                if not cmdline_path.exists():
+                    continue
+                cmdline = cmdline_path.read_bytes().replace(b"\x00", b" ").decode().strip()
+                # Read process status for the name
+                status_path = Path(f"/proc/{pid}/status")
+                name = f"Process-{pid}"
+                if status_path.exists():
+                    for line in status_path.read_text().splitlines():
+                        if line.startswith("Name:"):
+                            name = line.split(":", 1)[1].strip()
+                            break
+                result.append(ProcessInfo(
+                    name=name,
+                    pid=pid,
+                    alive=True,
+                    exitcode=None,
+                    daemon=False,
+                    target=cmdline[:200] if cmdline else "unknown",
+                    args="()",
+                    kwargs="{}",
+                    start_method="",
+                ))
+            except Exception:
+                pass
+        return result
+
+    async def _get_processes(self) -> list[ProcessInfo]:
+        """Get child process info, trying eval on parent first, then /proc."""
+        try:
+            raw = await self.controller.evaluate_on_parent(PROCESS_COLLECT_EXPR)
+            processes = parse_process_json(raw)
+            if processes:
+                return processes
+        except Exception:
+            pass
+        return self._get_processes_from_pids()
+
     @work(exclusive=True, group="process-count")
     async def _fetch_process_count(self) -> None:
-        """Evaluate multiprocessing.active_children() count and update label."""
+        """Update the Processes label with child process count."""
         if self.controller.state.is_terminated or self.controller.state.is_running:
             return
-        try:
-            result = await self.controller.evaluate(
-                "len(__import__('multiprocessing').active_children())"
-            )
-            count = int(result)
-            menu_bar = self.query_one("#menu-bar", MenuBar)
-            if count >= 2:
-                menu_bar.update_action_label(
-                    "processes-label", f"Processes ({count})",
+        # Use tracked PIDs as primary source — always available
+        count = len(self.controller.get_child_pids())
+        if count == 0:
+            # Try eval as fallback (works when parent is the active process)
+            try:
+                result = await self.controller.evaluate_on_parent(
+                    "len(__import__('multiprocessing').active_children())"
                 )
-            else:
-                menu_bar.update_action_label("processes-label", "Processes")
-        except Exception:
-            log.debug("Could not fetch process count")
+                count = int(result)
+            except Exception:
+                pass
+        menu_bar = self.query_one("#menu-bar", MenuBar)
+        if count >= 2:
+            menu_bar.update_action_label(
+                "processes-label", f"Processes ({count})",
+            )
+        else:
+            menu_bar.update_action_label("processes-label", "Processes")
 
     @work(exclusive=True, group="processes-open")
     async def _open_processes(self) -> None:
@@ -1132,12 +1179,7 @@ class TdbApp(App):
         if self.controller.state.is_running:
             self.notify("Program is running — pause first", title="Processes")
             return
-        try:
-            raw = await self.controller.evaluate(PROCESS_COLLECT_EXPR)
-            processes = parse_process_json(raw)
-        except Exception:
-            log.exception("Error fetching processes")
-            processes = []
+        processes = await self._get_processes()
         if not processes:
             self.notify(
                 "No child processes found", title="Processes",
@@ -1152,14 +1194,40 @@ class TdbApp(App):
         """Handle refresh request from the processes modal."""
         if self.controller.state.is_terminated or self.controller.state.is_running:
             return
-        try:
-            raw = await self.controller.evaluate(PROCESS_COLLECT_EXPR)
-            processes = parse_process_json(raw)
-        except Exception:
-            log.exception("Error refreshing processes")
-            return
+        processes = await self._get_processes()
         if hasattr(self, "_processes_modal"):
             self._processes_modal.update_processes(processes)
+
+    async def on_processes_modal_load_process_detail(
+        self, message: ProcessesModal.LoadProcessDetail,
+    ) -> None:
+        """Fetch stack trace and variables for a child process via its DAPClient."""
+        if not hasattr(self, "_processes_modal"):
+            return
+        pid = message.pid
+        child = self.controller._child_clients.get(pid)
+        if child is None:
+            # Try matching by checking all tracked PIDs
+            # (PIDs from /proc might not exactly match _child_clients keys)
+            self._processes_modal.show_process_detail(pid, [], [], {})
+            return
+        frames: list = []
+        scopes: list = []
+        variables: dict = {}
+        try:
+            threads = await child.threads()
+            if threads:
+                frames = await child.stack_trace(threads[0].id)
+                if frames:
+                    top_frame = frames[0]
+                    scopes = await child.scopes(top_frame.id)
+                    for scope in scopes:
+                        variables[scope.variables_reference] = (
+                            await child.variables(scope.variables_reference)
+                        )
+        except Exception:
+            log.debug("Failed to fetch detail for child process %d", pid)
+        self._processes_modal.show_process_detail(pid, frames, scopes, variables)
 
     # --- Actions ---
 

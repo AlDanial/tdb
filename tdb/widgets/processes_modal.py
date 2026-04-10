@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from pathlib import Path
+from typing import TYPE_CHECKING
 
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -12,6 +14,11 @@ from textual.message import Message
 from textual.screen import ModalScreen
 from rich.text import Text
 from textual.widgets import DataTable, Label, Static
+
+from tdb.widgets.variable_view import VariableView
+
+if TYPE_CHECKING:
+    from tdb.dap.types import Scope, StackFrame, Variable
 
 log = logging.getLogger(__name__)
 
@@ -100,7 +107,7 @@ def parse_process_json(raw: str) -> list[ProcessInfo]:
 
 
 class ProcessesModal(ModalScreen[None]):
-    """Near-full-screen modal showing child processes."""
+    """Near-full-screen modal showing child processes with stack and variables."""
 
     DEFAULT_CSS = """
     ProcessesModal {
@@ -137,8 +144,16 @@ class ProcessesModal(ModalScreen[None]):
     }
     ProcessesModal #proc-detail-pane {
         width: 3fr;
-        padding: 1 2;
         overflow-y: auto;
+    }
+    ProcessesModal #proc-info {
+        padding: 1 2;
+        height: auto;
+        max-height: 50%;
+    }
+    ProcessesModal #proc-vars {
+        height: 1fr;
+        padding: 0 1;
     }
     ProcessesModal DataTable {
         height: 1fr;
@@ -166,7 +181,8 @@ class ProcessesModal(ModalScreen[None]):
                     table.cursor_type = "row"
                     yield table
                 with Vertical(id="proc-detail-pane"):
-                    yield Static("", id="proc-detail")
+                    yield Static("", id="proc-info")
+                    yield VariableView(id="proc-vars")
             yield Label("ESC close  |  r refresh", id="procs-footer")
 
     def on_mount(self) -> None:
@@ -203,6 +219,7 @@ class ProcessesModal(ModalScreen[None]):
 
     def _show_detail(self, index: int) -> None:
         proc = self._processes[index]
+        # Show basic info immediately; stack + vars arrive via message
         content = Text()
         content.append("Name:    ", style="bold")
         content.append(proc.name + "\n")
@@ -224,19 +241,82 @@ class ProcessesModal(ModalScreen[None]):
             content.append("Method:  ", style="bold")
             content.append(proc.start_method + "\n")
         content.append("\n")
-        content.append("Target:  ", style="bold")
-        content.append(proc.target + "\n")
-        content.append("Args:    ", style="bold")
-        content.append(proc.args + "\n")
-        if proc.kwargs and proc.kwargs != "{}":
-            content.append("Kwargs:  ", style="bold")
-            content.append(proc.kwargs + "\n")
+        if proc.alive:
+            content.append("Loading stack...\n", style="dim")
+        info = self.query_one("#proc-info", Static)
+        info.update(content)
 
-        detail = self.query_one("#proc-detail", Static)
-        detail.update(content)
+        # Clear vars while loading
+        var_view = self.query_one("#proc-vars", VariableView)
+        var_view.clear()
+
+        # Request stack + variables from the app
+        if proc.pid is not None and proc.alive:
+            self.post_message(self.LoadProcessDetail(proc.pid))
+
+    class LoadProcessDetail(Message):
+        """Request to fetch stack trace and variables for a child process."""
+        def __init__(self, pid: int) -> None:
+            self.pid = pid
+            super().__init__()
 
     class RefreshProcesses(Message):
         """Request to refresh the process list."""
+
+    def show_process_detail(
+        self,
+        pid: int,
+        frames: list[StackFrame],
+        scopes: list[Scope],
+        variables: dict[int, list[Variable]],
+    ) -> None:
+        """Populate the detail pane with stack trace and variables."""
+        proc = next((p for p in self._processes if p.pid == pid), None)
+        if proc is None:
+            return
+
+        content = Text()
+        content.append("Name:    ", style="bold")
+        content.append(proc.name + "\n")
+        content.append("PID:     ", style="bold")
+        content.append(str(proc.pid) + "\n")
+        content.append("Status:  ", style="bold")
+        if proc.alive:
+            content.append("alive\n", style="green")
+        elif proc.exitcode is not None:
+            style = "" if proc.exitcode == 0 else "red"
+            content.append(f"exited (code {proc.exitcode})\n", style=style)
+        else:
+            content.append("unknown\n", style="dim")
+        content.append("Daemon:  ", style="bold")
+        content.append(str(proc.daemon) + "\n")
+        if proc.start_method:
+            content.append("Method:  ", style="bold")
+            content.append(proc.start_method + "\n")
+        content.append("\n")
+
+        if frames:
+            content.append("Stack:\n", style="bold")
+            for i, frame in enumerate(frames):
+                loc = ""
+                if frame.source and frame.source.path:
+                    loc = f" at {Path(frame.source.path).name}:{frame.line}"
+                elif frame.source and frame.source.name:
+                    loc = f" at {frame.source.name}:{frame.line}"
+                content.append(f"  #{i} {frame.name}{loc}\n")
+        else:
+            content.append("No stack frames available\n", style="dim")
+
+        info = self.query_one("#proc-info", Static)
+        info.update(content)
+
+        # Populate variable tree
+        var_view = self.query_one("#proc-vars", VariableView)
+        if scopes:
+            var_view.update_variables(scopes, variables)
+        else:
+            var_view.clear()
+            var_view.root.add_leaf("(no variables available)")
 
     def update_processes(self, processes: list[ProcessInfo]) -> None:
         """Replace process list and refresh the display."""
@@ -247,8 +327,10 @@ class ProcessesModal(ModalScreen[None]):
         if self._processes:
             self._show_detail(0)
         else:
-            detail = self.query_one("#proc-detail", Static)
-            detail.update(Text("No child processes found", style="dim"))
+            info = self.query_one("#proc-info", Static)
+            info.update(Text("No child processes found", style="dim"))
+            var_view = self.query_one("#proc-vars", VariableView)
+            var_view.clear()
 
     def action_dismiss_modal(self) -> None:
         self.dismiss(None)
