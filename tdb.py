@@ -71,6 +71,13 @@ def main():
         help="Run as a headless JSON-RPC debug server (no TUI)",
     )
     parser.add_argument(
+        "-k", "--breakpoint",
+        action="append",
+        default=[],
+        metavar="FILE:LINE",
+        help="Set a breakpoint at FILE:LINE (may be repeated)",
+    )
+    parser.add_argument(
         "--server-port",
         type=int,
         default=8150,
@@ -101,6 +108,8 @@ def main():
         cmd.extend(["--python", args.python])
     if args.keybindings:
         cmd.extend(["--keybindings", args.keybindings])
+    for bp in args.breakpoint:
+        cmd.extend(["-k", bp])
     if args.external_terminal:
         cmd.append("--external-terminal")
     if args.headless:

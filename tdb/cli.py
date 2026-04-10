@@ -63,6 +63,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Run as a headless JSON-RPC debug server (no TUI)",
     )
     parser.add_argument(
+        "-k", "--breakpoint",
+        action="append",
+        default=[],
+        metavar="FILE:LINE",
+        help="Set a breakpoint at FILE:LINE (may be repeated)",
+    )
+    parser.add_argument(
         "--server-port",
         type=int,
         default=8150,
@@ -80,6 +87,22 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     if not program_path.exists():
         parser.error(f"File not found: {args.program}")
     args.program = str(program_path)
+
+    # Parse -k / --breakpoint specs into (resolved_path, line) tuples
+    parsed_bps: list[tuple[str, int]] = []
+    for spec in args.breakpoint:
+        if ":" not in spec:
+            parser.error(f"Invalid breakpoint format (expected FILE:LINE): {spec}")
+        file_part, line_part = spec.rsplit(":", 1)
+        try:
+            line = int(line_part)
+        except ValueError:
+            parser.error(f"Invalid line number in breakpoint: {spec}")
+        bp_path = Path(file_part).resolve()
+        if not bp_path.is_file():
+            parser.error(f"Breakpoint file not found: {file_part}")
+        parsed_bps.append((str(bp_path), line))
+    args.breakpoint = parsed_bps
 
     return args
 
@@ -113,6 +136,7 @@ def _run_headless(args: argparse.Namespace) -> None:
         just_my_code=not args.no_just_my_code,
         python=args.python,
         port=args.server_port,
+        cli_breakpoints=args.breakpoint,
     ))
 
 
@@ -137,6 +161,7 @@ def _run_tui(args: argparse.Namespace) -> None:
         python=args.python,
         external_terminal=args.external_terminal,
         keybindings=keybindings,
+        cli_breakpoints=args.breakpoint,
         server_port=args.server_port if args.server else None,
     )
     app.run()

@@ -232,6 +232,7 @@ class TdbApp(App):
         python: str | None = None,
         external_terminal: bool = False,
         keybindings: str = "vim",
+        cli_breakpoints: list[tuple[str, int]] | None = None,
         server_port: int | None = None,
     ) -> None:
         super().__init__()
@@ -243,6 +244,7 @@ class TdbApp(App):
         self._python = python
         self._external_terminal = external_terminal
         self._keybindings = keybindings
+        self._cli_breakpoints = cli_breakpoints or []
         self._server_port = server_port
 
         self._textual_handler = TextualEventHandler(self)
@@ -297,10 +299,20 @@ class TdbApp(App):
         saved = load_breakpoints()
         if saved:
             self.controller.state.breakpoints = saved
-            bps = saved.get(code_view.source_path, []) if code_view.source_path else []
+        # Add CLI breakpoints (additive, won't duplicate)
+        for bp_path, bp_line in self._cli_breakpoints:
+            bps = self.controller.state.breakpoints.get(bp_path, [])
+            if not any(bp.line == bp_line for bp in bps):
+                from tdb.dap.types import SourceBreakpoint
+                bps.append(SourceBreakpoint(line=bp_line))
+                self.controller.state.breakpoints[bp_path] = bps
+        # Update visuals
+        if self.controller.state.breakpoints:
+            all_bps = self.controller.state.breakpoints
+            bps = all_bps.get(code_view.source_path, []) if code_view.source_path else []
             code_view.set_breakpoints(bps)
             bp_view = self.query_one("#breakpoint-view", BreakpointView)
-            bp_view.update_breakpoints(saved)
+            bp_view.update_breakpoints(all_bps)
         self._start_session()
         if self._server_port is not None:
             self._start_server()
