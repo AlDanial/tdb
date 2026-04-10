@@ -4,13 +4,20 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
+from textual.message import Message
 from textual.screen import ModalScreen
-from rich.markup import escape
+from rich.text import Text
 from textual.widgets import DataTable, Label, Static
+
+from tdb.widgets.variable_view import VariableView
+
+if TYPE_CHECKING:
+    from tdb.dap.types import Variable
 
 log = logging.getLogger(__name__)
 
@@ -34,15 +41,6 @@ import asyncio, json
 _result = []
 for _t in sorted(asyncio.all_tasks(), key=lambda t: t.get_name()):
     _coro = _t.get_coro()
-    _frame = getattr(_coro, "cr_frame", None) if _coro is not None else None
-    _vars = {}
-    if _frame is not None:
-        for _k, _v in _frame.f_locals.items():
-            if not _k.startswith("__"):
-                try:
-                    _vars[_k] = repr(_v)[:200]
-                except Exception:
-                    _vars[_k] = "<repr failed>"
     _result.append({
         "name": _t.get_name(),
         "state": "cancelled" if _t.cancelled() else ("done" if _t.done() else "pending"),
@@ -51,9 +49,14 @@ for _t in sorted(asyncio.all_tasks(), key=lambda t: t.get_name()):
             f"{_f.f_code.co_name} at {_f.f_code.co_filename}:{_f.f_lineno}"
             for _f in (_t.get_stack() or [])
         ],
-        "variables": _vars,
     })
 ''', _ns), _ns.get('json', __import__('json')).dumps(_ns['_result']))[-1])({})
+"""
+
+# Expression template to get a task's cr_frame.f_locals as a DAP-inspectable
+# object.  The placeholder {task_name} is replaced with the task name.
+TASK_LOCALS_EXPR = """\
+[_t for _t in __import__('asyncio').all_tasks() if _t.get_name() == {task_name!r}][0].get_coro().cr_frame.f_locals\
 """
 
 
@@ -130,8 +133,16 @@ class AsyncTasksModal(ModalScreen[None]):
     }
     AsyncTasksModal #task-detail-pane {
         width: 3fr;
-        padding: 1 2;
         overflow-y: auto;
+    }
+    AsyncTasksModal #task-info {
+        padding: 1 2;
+        height: auto;
+        max-height: 50%;
+    }
+    AsyncTasksModal #task-vars {
+        height: 1fr;
+        padding: 0 1;
     }
     AsyncTasksModal DataTable {
         height: 1fr;
@@ -157,7 +168,8 @@ class AsyncTasksModal(ModalScreen[None]):
                     table.cursor_type = "row"
                     yield table
                 with Vertical(id="task-detail-pane"):
-                    yield Static("", id="task-detail")
+                    yield Static("", id="task-info")
+                    yield VariableView(id="task-vars")
             yield Label("ESC close  |  r refresh", id="tasks-footer")
 
     def on_mount(self) -> None:
@@ -172,7 +184,7 @@ class AsyncTasksModal(ModalScreen[None]):
         table.clear()
         for task in self._tasks:
             coro = task.coro if len(task.coro) <= 40 else task.coro[:37] + "..."
-            table.add_row(escape(task.name), escape(task.state), escape(coro))
+            table.add_row(Text(task.name), Text(task.state), Text(coro))
 
     def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
         if event.cursor_row is not None and 0 <= event.cursor_row < len(self._tasks):
@@ -180,26 +192,47 @@ class AsyncTasksModal(ModalScreen[None]):
 
     def _show_detail(self, index: int) -> None:
         task = self._tasks[index]
-        lines = []
-        lines.append(f"[bold]Name:[/bold]  {escape(task.name)}")
-        lines.append(f"[bold]State:[/bold] {escape(task.state)}")
-        lines.append(f"[bold]Coro:[/bold]  {escape(task.coro)}")
-        lines.append("")
+        # Task info (name, state, coro, stack) in the Static widget
+        content = Text()
+        content.append("Name:  ", style="bold")
+        content.append(task.name + "\n")
+        content.append("State: ", style="bold")
+        content.append(task.state + "\n")
+        content.append("Coro:  ", style="bold")
+        content.append(task.coro + "\n")
+        content.append("\n")
         if task.stack:
-            lines.append("[bold]Stack:[/bold]")
+            content.append("Stack:\n", style="bold")
             for i, frame in enumerate(task.stack):
-                lines.append(f"  #{i} {escape(frame)}")
+                content.append(f"  #{i} {frame}\n")
         else:
-            lines.append("[dim]No stack frames (task may be awaiting)[/dim]")
-        lines.append("")
-        if task.variables:
-            lines.append("[bold]Variables:[/bold]")
-            for name, value in sorted(task.variables.items()):
-                lines.append(f"  [cyan]{escape(name)}[/cyan] = {escape(value)}")
-        else:
-            lines.append("[dim]No variables (frame not available)[/dim]")
-        detail = self.query_one("#task-detail", Static)
-        detail.update("\n".join(lines))
+            content.append("No stack frames (task may be awaiting)\n", style="dim")
+        info = self.query_one("#task-info", Static)
+        info.update(content)
+
+        # Request variable loading from the app
+        self.post_message(self.LoadTaskVariables(task.name))
+
+    class LoadTaskVariables(Message):
+        """Request to load variables for a task via DAP evaluate."""
+        def __init__(self, task_name: str) -> None:
+            self.task_name = task_name
+            super().__init__()
+
+    def show_task_variables(self, variables: list[Variable]) -> None:
+        """Populate the variable tree with DAP variables."""
+        var_view = self.query_one("#task-vars", VariableView)
+        var_view.clear()
+        if not variables:
+            var_view.root.add_leaf("(no variables — frame not available)")
+            return
+        for var in variables:
+            label = VariableView._format_variable(var)
+            if var.variables_reference > 0:
+                node = var_view.root.add(label, data=var.variables_reference)
+                node.add_leaf("...")
+            else:
+                var_view.root.add_leaf(label, data=0)
 
     def update_tasks(self, tasks: list[AsyncTaskInfo]) -> None:
         """Replace task list and refresh the display."""
@@ -210,8 +243,10 @@ class AsyncTasksModal(ModalScreen[None]):
         if self._tasks:
             self._show_detail(0)
         else:
-            detail = self.query_one("#task-detail", Static)
-            detail.update("[dim]No asyncio tasks found[/dim]")
+            info = self.query_one("#task-info", Static)
+            info.update(Text("No asyncio tasks found", style="dim"))
+            var_view = self.query_one("#task-vars", VariableView)
+            var_view.clear()
 
     def action_dismiss_modal(self) -> None:
         self.dismiss(None)

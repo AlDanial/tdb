@@ -35,7 +35,7 @@ from tdb.widgets.evaluate_console import EvaluateConsole
 from tdb.widgets.menu_bar import MenuBar, _MenuDropdown
 from tdb.widgets.stack_view import StackView
 from tdb.widgets.status_bar import StatusBar
-from tdb.widgets.async_tasks_modal import AsyncTasksModal, AsyncTaskInfo, TASK_COLLECT_EXPR, parse_task_json
+from tdb.widgets.async_tasks_modal import AsyncTasksModal, AsyncTaskInfo, TASK_COLLECT_EXPR, TASK_LOCALS_EXPR, parse_task_json
 from tdb.widgets.variable_view import VariableView
 
 log = logging.getLogger(__name__)
@@ -949,6 +949,30 @@ class TdbApp(App):
             return
         if hasattr(self, "_async_tasks_modal"):
             self._async_tasks_modal.update_tasks(tasks)
+
+    async def on_async_tasks_modal_load_task_variables(
+        self, message: AsyncTasksModal.LoadTaskVariables
+    ) -> None:
+        """Fetch a task's local variables via DAP and populate the tree."""
+        if self.controller.state.is_terminated or self.controller.state.is_running:
+            return
+        if not hasattr(self, "_async_tasks_modal"):
+            return
+        try:
+            expr = TASK_LOCALS_EXPR.format(task_name=message.task_name)
+            _result, var_ref = await self.controller.client.evaluate(
+                expr,
+                frame_id=self.controller.state.current_frame_id,
+                context="repl",
+            )
+            if var_ref > 0:
+                variables = await self.controller.client.variables(var_ref)
+            else:
+                variables = []
+        except Exception:
+            log.debug("Failed to load variables for task %s", message.task_name)
+            variables = []
+        self._async_tasks_modal.show_task_variables(variables)
 
     # --- Actions ---
 

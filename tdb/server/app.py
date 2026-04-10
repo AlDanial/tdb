@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 
 from tdb.session.controller import DebugController
-from tdb.widgets.async_tasks_modal import TASK_COLLECT_EXPR, parse_task_json
+from tdb.widgets.async_tasks_modal import TASK_COLLECT_EXPR, TASK_LOCALS_EXPR, parse_task_json
 from .event_handler import ServerEventHandler
 from .rpc_types import RpcRequest, RpcResponse
 
@@ -297,10 +297,21 @@ def create_app(controller_ref: ControllerRef, handler: ServerEventHandler) -> Fa
             lines.append("  (no stack frames — task may be awaiting)")
         lines.append("")
         lines.append("Variables:")
-        if task.variables:
-            for name, value in sorted(task.variables.items()):
-                lines.append(f"  {name} = {value}")
-        else:
+        try:
+            expr = TASK_LOCALS_EXPR.format(task_name=target_name)
+            _result, var_ref = await _ctrl().client.evaluate(
+                expr,
+                frame_id=_ctrl().state.current_frame_id,
+                context="repl",
+            )
+            if var_ref > 0:
+                variables = await _ctrl().client.variables(var_ref)
+                for v in variables:
+                    type_str = f" ({v.type})" if v.type else ""
+                    lines.append(f"  {v.name}{type_str} = {v.value}")
+            else:
+                lines.append("  (no variables — frame not available)")
+        except Exception:
             lines.append("  (no variables — frame not available)")
         return RpcResponse.ok("\n".join(lines))
 
