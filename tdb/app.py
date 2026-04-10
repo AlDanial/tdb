@@ -6,6 +6,7 @@ import ast
 import logging
 import os
 import re
+from pathlib import Path
 
 from textual import work
 from textual.app import App, ComposeResult
@@ -301,10 +302,14 @@ class TdbApp(App):
         self._update_code_title(code_view)
         code_view.load_file(self._program)
         code_view.focus()
-        # Restore breakpoints from previous run
+        # Restore breakpoints from previous run, filtered to current project
+        program_dir = str(Path(self._program).resolve().parent)
         saved = load_breakpoints()
         if saved:
-            self.controller.state.breakpoints = saved
+            self.controller.state.breakpoints = {
+                path: bps for path, bps in saved.items()
+                if path.startswith(program_dir + "/")
+            }
         # Add CLI breakpoints (additive, won't duplicate)
         for bp_path, bp_line in self._cli_breakpoints:
             bps = self.controller.state.breakpoints.get(bp_path, [])
@@ -1183,7 +1188,14 @@ class TdbApp(App):
         self.query_one("#breakpoint-view", BreakpointView).focus()
 
     async def action_quit_debugger(self) -> None:
-        save_breakpoints(self.controller.state.breakpoints)
+        # Merge current breakpoints back into the full saved set so other
+        # projects' breakpoints are preserved.
+        program_dir = str(Path(self._program).resolve().parent) + "/"
+        all_bps = load_breakpoints()
+        # Remove old entries for this project, replace with current
+        all_bps = {p: bps for p, bps in all_bps.items() if not p.startswith(program_dir)}
+        all_bps.update(self.controller.state.breakpoints)
+        save_breakpoints(all_bps)
         await self.controller.stop()
         if hasattr(self, '_uvicorn_server'):
             self._uvicorn_server.should_exit = True
