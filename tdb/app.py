@@ -37,6 +37,7 @@ from tdb.widgets.stack_view import StackView
 from tdb.widgets.status_bar import StatusBar
 from tdb.persist import load_breakpoints, save_breakpoints
 from tdb.widgets.async_tasks_modal import AsyncTasksModal, AsyncTaskInfo, TASK_COLLECT_EXPR, TASK_LOCALS_EXPR, parse_task_json
+from tdb.widgets.threads_modal import ThreadsModal
 from tdb.widgets.variable_view import VariableView
 
 log = logging.getLogger(__name__)
@@ -271,7 +272,10 @@ class TdbApp(App):
                 "Configure": ["Color Theme", "Keybindings"],
                 "Help": ["Documentation", "About"],
             },
-            action_labels={"async-tasks-label": "Async Tasks"},
+            action_labels={
+                "threads-label": "Threads",
+                "async-tasks-label": "Async Tasks",
+            },
             id="menu-bar",
         )
         with Horizontal(id="upper"):
@@ -454,6 +458,7 @@ class TdbApp(App):
             log.exception("Error handling stopped event")
         # Always update UI, even if fetch_stop_info partially failed
         self._update_ui_state()
+        self._update_thread_count()
         self._fetch_async_task_count()
 
         if message.reason == "exception":
@@ -917,7 +922,9 @@ class TdbApp(App):
     # --- Async tasks ---
 
     def on_menu_bar_action_label_clicked(self, message: MenuBar.ActionLabelClicked) -> None:
-        if message.label_id == "async-tasks-label":
+        if message.label_id == "threads-label":
+            self._open_threads()
+        elif message.label_id == "async-tasks-label":
             self._open_async_tasks()
 
     @work(exclusive=True, group="async-tasks")
@@ -997,6 +1004,92 @@ class TdbApp(App):
             log.debug("Failed to load variables for task %s", message.task_name)
             variables = []
         self._async_tasks_modal.show_task_variables(variables)
+
+    # --- Threads ---
+
+    def _update_thread_count(self) -> None:
+        """Update the Threads label with the current thread count."""
+        threads = self.controller.state.threads
+        menu_bar = self.query_one("#menu-bar", MenuBar)
+        if len(threads) >= 2:
+            menu_bar.update_action_label(
+                "threads-label", f"Threads ({len(threads)})",
+            )
+        else:
+            menu_bar.update_action_label("threads-label", "Threads")
+
+    @work(exclusive=True, group="threads-open")
+    async def _open_threads(self) -> None:
+        """Fetch threads and open the modal."""
+        if self.controller.state.is_terminated:
+            self.notify("Program has terminated", title="Threads")
+            return
+        if self.controller.state.is_running:
+            self.notify("Program is running — pause first", title="Threads")
+            return
+        try:
+            threads = await self.controller.client.threads()
+        except Exception:
+            log.exception("Error fetching threads")
+            self.notify("Failed to fetch threads", title="Threads")
+            return
+        if not threads:
+            self.notify("No threads found", title="Threads")
+            return
+        self._threads_modal = ThreadsModal(
+            threads, self.controller.state.current_thread_id,
+        )
+        self.push_screen(self._threads_modal)
+
+    async def on_threads_modal_load_thread_detail(
+        self, message: ThreadsModal.LoadThreadDetail,
+    ) -> None:
+        """Fetch stack trace and variables for a thread."""
+        if self.controller.state.is_terminated or self.controller.state.is_running:
+            return
+        if not hasattr(self, "_threads_modal"):
+            return
+        thread_id = message.thread_id
+        try:
+            frames = await self.controller.client.stack_trace(thread_id)
+        except Exception:
+            log.debug("Failed to fetch stack trace for thread %d", thread_id)
+            frames = []
+        scopes: list = []
+        variables: dict = {}
+        if frames:
+            top_frame = frames[0]
+            try:
+                scopes = await self.controller.client.scopes(top_frame.id)
+                for scope in scopes:
+                    variables[scope.variables_reference] = (
+                        await self.controller.client.variables(
+                            scope.variables_reference,
+                        )
+                    )
+            except Exception:
+                log.debug(
+                    "Failed to fetch variables for thread %d", thread_id,
+                )
+        self._threads_modal.show_thread_detail(
+            thread_id, frames, scopes, variables,
+        )
+
+    async def on_threads_modal_refresh_threads(
+        self, message: ThreadsModal.RefreshThreads,
+    ) -> None:
+        """Handle refresh request from the threads modal."""
+        if self.controller.state.is_terminated or self.controller.state.is_running:
+            return
+        try:
+            threads = await self.controller.client.threads()
+        except Exception:
+            log.exception("Error refreshing threads")
+            return
+        if hasattr(self, "_threads_modal"):
+            self._threads_modal.update_threads(
+                threads, self.controller.state.current_thread_id,
+            )
 
     # --- Actions ---
 

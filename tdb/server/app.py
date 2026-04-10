@@ -315,6 +315,71 @@ def create_app(controller_ref: ControllerRef, handler: ServerEventHandler) -> Fa
             lines.append("  (no variables — frame not available)")
         return RpcResponse.ok("\n".join(lines))
 
+    async def _list_threads(params: list[Any]) -> RpcResponse:
+        if _ctrl().state.is_running:
+            return RpcResponse.error("Cannot list threads while program is running")
+        if _ctrl().state.is_terminated:
+            return RpcResponse.error("Program has terminated")
+        try:
+            threads = await _ctrl().client.threads()
+        except Exception as e:
+            return RpcResponse.error(f"Failed to fetch threads: {e}")
+        if not threads:
+            return RpcResponse.ok("No threads found")
+        current_id = _ctrl().state.current_thread_id
+        lines = []
+        for t in threads:
+            marker = " *" if t.id == current_id else ""
+            lines.append(f"{t.id}: {t.name}{marker}")
+        return RpcResponse.ok("\n".join(lines))
+
+    async def _inspect_thread(params: list[Any]) -> RpcResponse:
+        if not params:
+            return RpcResponse.error("params[0] must be a thread ID")
+        if _ctrl().state.is_running:
+            return RpcResponse.error("Cannot inspect threads while program is running")
+        if _ctrl().state.is_terminated:
+            return RpcResponse.error("Program has terminated")
+        try:
+            thread_id = int(params[0])
+        except (ValueError, TypeError):
+            return RpcResponse.error(f"Invalid thread ID: {params[0]}")
+        try:
+            threads = await _ctrl().client.threads()
+        except Exception as e:
+            return RpcResponse.error(f"Failed to fetch threads: {e}")
+        thread = next((t for t in threads if t.id == thread_id), None)
+        if thread is None:
+            ids = [t.id for t in threads]
+            return RpcResponse.error(f"Thread {thread_id} not found. Active threads: {ids}")
+        lines = [
+            f"Thread ID: {thread.id}",
+            f"Name:      {thread.name}",
+            "",
+            "Stack:",
+        ]
+        try:
+            frames = await _ctrl().client.stack_trace(thread_id)
+            if frames:
+                for i, frame in enumerate(frames):
+                    src = frame.source.path if frame.source and frame.source.path else "<unknown>"
+                    lines.append(f"  #{i} {frame.name} at {src}:{frame.line}")
+                # Show variables from top frame
+                top = frames[0]
+                scopes = await _ctrl().client.scopes(top.id)
+                lines.append("")
+                lines.append("Variables:")
+                for scope in scopes:
+                    variables = await _ctrl().client.variables(scope.variables_reference)
+                    for v in variables:
+                        type_str = f" ({v.type})" if v.type else ""
+                        lines.append(f"  {v.name}{type_str} = {v.value}")
+            else:
+                lines.append("  (no stack frames)")
+        except Exception:
+            lines.append("  (failed to fetch stack trace)")
+        return RpcResponse.ok("\n".join(lines))
+
     async def _list_breakpoints(params: list[Any]) -> RpcResponse:
         bps = _ctrl().state.breakpoints
         if not bps:
@@ -347,6 +412,8 @@ def create_app(controller_ref: ControllerRef, handler: ServerEventHandler) -> Fa
         "get_stack_trace": "params: []",
         "get_output": "params: []  -- drain buffered stdout/stderr",
         "get_source": 'params: ["file_path"]  -- read source file contents',
+        "list_threads": "params: []  -- list all threads",
+        "inspect_thread": 'params: [thread_id]  -- inspect a specific thread',
         "list_tasks": "params: []  -- list all asyncio tasks",
         "inspect_task": 'params: ["task_name"]  -- inspect a specific asyncio task',
         "restart": "params: []",
@@ -377,6 +444,8 @@ def create_app(controller_ref: ControllerRef, handler: ServerEventHandler) -> Fa
         "get_stack_trace": _get_stack_trace,
         "get_output": _get_output,
         "get_source": _get_source,
+        "list_threads": _list_threads,
+        "inspect_thread": _inspect_thread,
         "list_tasks": _list_tasks,
         "inspect_task": _inspect_task,
         "restart": _restart,
