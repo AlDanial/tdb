@@ -13,6 +13,7 @@ from fastapi.responses import StreamingResponse
 
 from tdb.session.controller import DebugController
 from tdb.widgets.async_tasks_modal import TASK_COLLECT_EXPR, TASK_LOCALS_EXPR, parse_task_json
+from tdb.widgets.processes_modal import PROCESS_COLLECT_EXPR, parse_process_json
 from .event_handler import ServerEventHandler
 from .rpc_types import RpcRequest, RpcResponse
 
@@ -380,6 +381,62 @@ def create_app(controller_ref: ControllerRef, handler: ServerEventHandler) -> Fa
             lines.append("  (failed to fetch stack trace)")
         return RpcResponse.ok("\n".join(lines))
 
+    async def _list_processes(params: list[Any]) -> RpcResponse:
+        if _ctrl().state.is_running:
+            return RpcResponse.error("Cannot list processes while program is running")
+        if _ctrl().state.is_terminated:
+            return RpcResponse.error("Program has terminated")
+        try:
+            raw = await _ctrl().evaluate(PROCESS_COLLECT_EXPR)
+            processes = parse_process_json(raw)
+        except Exception as e:
+            return RpcResponse.error(f"Failed to collect processes: {e}")
+        if not processes:
+            return RpcResponse.ok("No child processes found")
+        lines = []
+        for p in processes:
+            status = "alive" if p.alive else f"exited({p.exitcode})"
+            pid = str(p.pid) if p.pid is not None else "—"
+            lines.append(f"{pid}: {p.name}  [{status}]  {p.target}")
+        return RpcResponse.ok("\n".join(lines))
+
+    async def _inspect_process(params: list[Any]) -> RpcResponse:
+        if not params:
+            return RpcResponse.error("params[0] must be a process name or PID")
+        if _ctrl().state.is_running:
+            return RpcResponse.error("Cannot inspect processes while program is running")
+        if _ctrl().state.is_terminated:
+            return RpcResponse.error("Program has terminated")
+        target = str(params[0])
+        try:
+            raw = await _ctrl().evaluate(PROCESS_COLLECT_EXPR)
+            processes = parse_process_json(raw)
+        except Exception as e:
+            return RpcResponse.error(f"Failed to collect processes: {e}")
+        # Match by PID (numeric) or name
+        proc = None
+        try:
+            pid = int(target)
+            proc = next((p for p in processes if p.pid == pid), None)
+        except ValueError:
+            proc = next((p for p in processes if p.name == target), None)
+        if proc is None:
+            names = [f"{p.pid}:{p.name}" for p in processes]
+            return RpcResponse.error(f"Process '{target}' not found. Active: {names}")
+        lines = [
+            f"Name:    {proc.name}",
+            f"PID:     {proc.pid if proc.pid is not None else 'not started'}",
+            f"Status:  {'alive' if proc.alive else f'exited (code {proc.exitcode})'}",
+            f"Daemon:  {proc.daemon}",
+        ]
+        if proc.start_method:
+            lines.append(f"Method:  {proc.start_method}")
+        lines.append(f"Target:  {proc.target}")
+        lines.append(f"Args:    {proc.args}")
+        if proc.kwargs and proc.kwargs != "{}":
+            lines.append(f"Kwargs:  {proc.kwargs}")
+        return RpcResponse.ok("\n".join(lines))
+
     async def _list_breakpoints(params: list[Any]) -> RpcResponse:
         bps = _ctrl().state.breakpoints
         if not bps:
@@ -414,6 +471,8 @@ def create_app(controller_ref: ControllerRef, handler: ServerEventHandler) -> Fa
         "get_source": 'params: ["file_path"]  -- read source file contents',
         "list_threads": "params: []  -- list all threads",
         "inspect_thread": 'params: [thread_id]  -- inspect a specific thread',
+        "list_processes": "params: []  -- list child processes (multiprocessing)",
+        "inspect_process": 'params: ["name_or_pid"]  -- inspect a specific child process',
         "list_tasks": "params: []  -- list all asyncio tasks",
         "inspect_task": 'params: ["task_name"]  -- inspect a specific asyncio task',
         "restart": "params: []",
@@ -446,6 +505,8 @@ def create_app(controller_ref: ControllerRef, handler: ServerEventHandler) -> Fa
         "get_source": _get_source,
         "list_threads": _list_threads,
         "inspect_thread": _inspect_thread,
+        "list_processes": _list_processes,
+        "inspect_process": _inspect_process,
         "list_tasks": _list_tasks,
         "inspect_task": _inspect_task,
         "restart": _restart,

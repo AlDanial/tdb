@@ -37,6 +37,7 @@ from tdb.widgets.stack_view import StackView
 from tdb.widgets.status_bar import StatusBar
 from tdb.persist import load_breakpoints, save_breakpoints
 from tdb.widgets.async_tasks_modal import AsyncTasksModal, AsyncTaskInfo, TASK_COLLECT_EXPR, TASK_LOCALS_EXPR, parse_task_json
+from tdb.widgets.processes_modal import ProcessesModal, PROCESS_COLLECT_EXPR, parse_process_json
 from tdb.widgets.threads_modal import ThreadsModal
 from tdb.widgets.variable_view import VariableView
 
@@ -274,6 +275,7 @@ class TdbApp(App):
             },
             action_labels={
                 "threads-label": "Threads",
+                "processes-label": "Processes",
                 "async-tasks-label": "Async Tasks",
             },
             id="menu-bar",
@@ -459,6 +461,7 @@ class TdbApp(App):
         # Always update UI, even if fetch_stop_info partially failed
         self._update_ui_state()
         self._update_thread_count()
+        self._fetch_process_count()
         self._fetch_async_task_count()
 
         if message.reason == "exception":
@@ -924,6 +927,8 @@ class TdbApp(App):
     def on_menu_bar_action_label_clicked(self, message: MenuBar.ActionLabelClicked) -> None:
         if message.label_id == "threads-label":
             self._open_threads()
+        elif message.label_id == "processes-label":
+            self._open_processes()
         elif message.label_id == "async-tasks-label":
             self._open_async_tasks()
 
@@ -1090,6 +1095,66 @@ class TdbApp(App):
             self._threads_modal.update_threads(
                 threads, self.controller.state.current_thread_id,
             )
+
+    # --- Processes ---
+
+    @work(exclusive=True, group="process-count")
+    async def _fetch_process_count(self) -> None:
+        """Evaluate multiprocessing.active_children() count and update label."""
+        if self.controller.state.is_terminated or self.controller.state.is_running:
+            return
+        try:
+            result = await self.controller.evaluate(
+                "len(__import__('multiprocessing').active_children())"
+            )
+            count = int(result)
+            menu_bar = self.query_one("#menu-bar", MenuBar)
+            if count >= 2:
+                menu_bar.update_action_label(
+                    "processes-label", f"Processes ({count})",
+                )
+            else:
+                menu_bar.update_action_label("processes-label", "Processes")
+        except Exception:
+            log.debug("Could not fetch process count")
+
+    @work(exclusive=True, group="processes-open")
+    async def _open_processes(self) -> None:
+        """Fetch child process info and open the modal."""
+        if self.controller.state.is_terminated:
+            self.notify("Program has terminated", title="Processes")
+            return
+        if self.controller.state.is_running:
+            self.notify("Program is running — pause first", title="Processes")
+            return
+        try:
+            raw = await self.controller.evaluate(PROCESS_COLLECT_EXPR)
+            processes = parse_process_json(raw)
+        except Exception:
+            log.exception("Error fetching processes")
+            processes = []
+        if not processes:
+            self.notify(
+                "No child processes found", title="Processes",
+            )
+            return
+        self._processes_modal = ProcessesModal(processes)
+        self.push_screen(self._processes_modal)
+
+    async def on_processes_modal_refresh_processes(
+        self, message: ProcessesModal.RefreshProcesses,
+    ) -> None:
+        """Handle refresh request from the processes modal."""
+        if self.controller.state.is_terminated or self.controller.state.is_running:
+            return
+        try:
+            raw = await self.controller.evaluate(PROCESS_COLLECT_EXPR)
+            processes = parse_process_json(raw)
+        except Exception:
+            log.exception("Error refreshing processes")
+            return
+        if hasattr(self, "_processes_modal"):
+            self._processes_modal.update_processes(processes)
 
     # --- Actions ---
 
