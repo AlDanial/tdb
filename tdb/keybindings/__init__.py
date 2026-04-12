@@ -65,6 +65,8 @@ _DEBUG = {
     "n": "step_over",
     "s": "step_in",
     "o": "step_out",
+    "f": "step_out",
+    "r": "step_out",
     "c": "continue_",
     "b": "toggle_breakpoint",
     "p": "pause",

@@ -280,21 +280,33 @@ class DebugController:
             await self.client.step_out(self.state.current_thread_id)
 
     async def run_to_cursor(self, source_path: str, line: int) -> None:
-        """Set a temporary breakpoint at line, continue, then remove it."""
+        """Set a temporary breakpoint at line, continue, then remove it.
+
+        Sets the breakpoint on the parent and all child clients so the
+        breakpoint fires regardless of which process reaches the line.
+        """
         if self.state.current_thread_id is None:
             return
-        # Add a temporary breakpoint
+        # Add a temporary breakpoint to the saved set
         bps = list(self.state.breakpoints.get(source_path, []))
         had_bp = any(bp.line == line for bp in bps)
         if not had_bp:
             bps.append(SourceBreakpoint(line=line))
+            self.state.breakpoints[source_path] = bps
             if self.state.is_ready and not self.state.is_terminated:
-                await self.client.set_breakpoints(source_path, bps)
-        # Continue execution
-        self.state.is_running = True
-        self.state.clear_frame_data()
+                # Propagate to parent and all child clients
+                try:
+                    await self.client.set_breakpoints(source_path, bps)
+                except Exception:
+                    pass
+                for _pid, child in list(self._child_clients.items()):
+                    try:
+                        await child.set_breakpoints(source_path, bps)
+                    except Exception:
+                        pass
         self._run_to_cursor_cleanup = (source_path, line) if not had_bp else None
-        await self.client.continue_(self.state.current_thread_id)
+        # Use the same continue-all logic as the normal continue command
+        await self.continue_()
 
     async def cleanup_run_to_cursor(self) -> None:
         """Remove the temporary breakpoint after stopping."""
@@ -305,7 +317,15 @@ class DebugController:
         bps = [bp for bp in self.state.breakpoints.get(source_path, []) if bp.line != line]
         self.state.breakpoints[source_path] = bps
         if self.state.is_ready and not self.state.is_terminated:
-            await self.client.set_breakpoints(source_path, bps)
+            try:
+                await self.client.set_breakpoints(source_path, bps)
+            except Exception:
+                pass
+            for _pid, child in list(self._child_clients.items()):
+                try:
+                    await child.set_breakpoints(source_path, bps)
+                except Exception:
+                    pass
 
     async def pause(self) -> None:
         """Pause all processes (parent + children)."""

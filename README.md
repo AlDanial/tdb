@@ -92,13 +92,15 @@ In Debug mode, single keys control execution:
 |-----|--------|
 | `n` | Step over (next line) |
 | `s` | Step into function call |
-| `o` | Step out of current function |
+| `o` / `f` / `r` | Step out of current function (also aliased as "finish" and "return") |
 | `c` | Continue execution |
 | `p` | Pause a running program |
 | `t` | Run to cursor position |
 | `u` / `d` | Navigate stack up (caller) / down (callee) |
 | `R` | Restart the debug session |
 | `Ctrl+Q` | Quit |
+
+> **Note:** `f` ("finish") and `r` ("return") are both aliases for step-out. DAP's only "exit-a-function" primitive is `stepOut`, which runs the rest of the current function normally and stops at the return point. A true gdb-style immediate-return (skipping remaining code in the function without executing side effects) is not supported by DAP/debugpy.
 
 ### Breakpoints
 
