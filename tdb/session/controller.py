@@ -558,6 +558,9 @@ class DebugController:
     def _on_output(self, event: Event) -> None:
         text = event.body.get("output", "")
         category = event.body.get("category", "console")
+        # Drop DAP telemetry events (debugpy/ptvsd version info) — not program output
+        if category == "telemetry":
+            return
         # In external terminal mode, program stdout/stderr goes to the
         # terminal directly — don't duplicate it in the Console View.
         if self._external_terminal and category in ("stdout", "stderr"):

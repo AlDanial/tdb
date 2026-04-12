@@ -308,14 +308,11 @@ class TdbApp(App):
         if self._program:
             code_view.load_file(self._program)
         code_view.focus()
-        # Restore breakpoints from previous run, filtered to current project
-        program_dir = str(Path(self._program).resolve().parent) if self._program else ""
-        saved = load_breakpoints()
+        # Restore breakpoints saved for this specific program
+        program_key = str(Path(self._program).resolve()) if self._program else ""
+        saved = load_breakpoints(program=program_key) if program_key else {}
         if saved:
-            self.controller.state.breakpoints = {
-                path: bps for path, bps in saved.items()
-                if path.startswith(program_dir + "/")
-            }
+            self.controller.state.breakpoints = saved
         # Add CLI breakpoints (additive, won't duplicate)
         for bp_path, bp_line in self._cli_breakpoints:
             bps = self.controller.state.breakpoints.get(bp_path, [])
@@ -1269,14 +1266,11 @@ class TdbApp(App):
         self.query_one("#breakpoint-view", BreakpointView).focus()
 
     async def action_quit_debugger(self) -> None:
-        # Merge current breakpoints back into the full saved set so other
-        # projects' breakpoints are preserved.
-        program_dir = str(Path(self._program).resolve().parent) + "/"
-        all_bps = load_breakpoints()
-        # Remove old entries for this project, replace with current
-        all_bps = {p: bps for p, bps in all_bps.items() if not p.startswith(program_dir)}
-        all_bps.update(self.controller.state.breakpoints)
-        save_breakpoints(all_bps)
+        # Save this program's breakpoints under its own key, preserving
+        # breakpoints saved for other programs.
+        if self._program:
+            program_key = str(Path(self._program).resolve())
+            save_breakpoints(self.controller.state.breakpoints, program=program_key)
         await self.controller.stop()
         if hasattr(self, '_uvicorn_server'):
             self._uvicorn_server.should_exit = True

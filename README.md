@@ -164,7 +164,7 @@ When the debuggee raises an unhandled exception, tdb:
 For programs using `asyncio`, the menu bar shows an **Async Tasks (N)** label with the count of active tasks (updated each time the program stops). Click it to open a full-screen modal:
 
 - **Left pane**: list of all tasks with name, state (pending/done/cancelled), and coroutine
-- **Right pane**: detail view with full stack trace for the selected task
+- **Right pane**: detail view with full stack trace and an expandable variable tree (same as the main Variables View) for the selected task
 - Navigate with arrow keys; press `r` to refresh, `Escape` to close
 
 RPC equivalents:
@@ -180,6 +180,73 @@ curl -s -X POST http://127.0.0.1:8150/rpc \
   -H 'Content-Type: application/json' \
   -d '{"action":"inspect_task","params":["Task-1"]}'
 ```
+
+### Thread Inspector
+
+The menu bar shows a **Threads (N)** label when the program has 2 or more threads. Click it to open a modal with:
+
+- **Left pane**: list of threads with ID and name (current thread shown in bold)
+- **Right pane**: full stack trace and expandable variable tree for the selected thread's top frame
+- Navigate with arrow keys; press `r` to refresh, `Escape` to close
+
+RPC equivalents:
+
+```bash
+# List all threads (* marks current)
+curl -s -X POST http://127.0.0.1:8150/rpc \
+  -H 'Content-Type: application/json' \
+  -d '{"action":"list_threads","params":[]}'
+
+# Inspect a specific thread by ID
+curl -s -X POST http://127.0.0.1:8150/rpc \
+  -H 'Content-Type: application/json' \
+  -d '{"action":"inspect_thread","params":[1]}'
+```
+
+### Process Inspector
+
+For programs using `multiprocessing`, the menu bar shows a **Processes (N)** label when there are 2 or more child processes. Click it to open a modal with:
+
+- **Left pane**: list of child processes with PID, name, and status (alive/exited)
+- **Right pane**: process details, full stack trace, and expandable variable tree for the selected process
+
+tdb automatically attaches to child processes spawned via `multiprocessing.Process`, `multiprocessing.Pool`, or `concurrent.futures.ProcessPoolExecutor`. Breakpoints set in the parent are propagated to all child processes. When any process hits a breakpoint, all other processes are paused. Pressing `p` pauses all processes; `c` continues all.
+
+RPC equivalents:
+
+```bash
+# List all child processes
+curl -s -X POST http://127.0.0.1:8150/rpc \
+  -H 'Content-Type: application/json' \
+  -d '{"action":"list_processes","params":[]}'
+
+# Inspect a specific process by name or PID
+curl -s -X POST http://127.0.0.1:8150/rpc \
+  -H 'Content-Type: application/json' \
+  -d '{"action":"inspect_process","params":["ForkPoolWorker-1"]}'
+```
+
+### Remote Attach
+
+Attach to a Python program that is already running with debugpy:
+
+```python
+# In the target program:
+import debugpy
+debugpy.listen(("0.0.0.0", 5678))
+debugpy.wait_for_client()  # optional: pause until debugger connects
+```
+
+```bash
+# Attach from tdb:
+./tdb.py -r 5678
+./tdb.py -r 192.168.1.10:5678
+
+# With breakpoints:
+./tdb.py -r 5678 -k my_script.py:42
+```
+
+All debugging features (breakpoints, stepping, variable inspection, threads, processes, async tasks) work in remote attach mode. The Code View automatically navigates to the source file when the program stops.
 
 ### External Terminal Support
 
@@ -199,7 +266,7 @@ The debuggee runs in a separate terminal window (auto-detects xterm, gnome-termi
 ./tdb.py --keybindings default my_script.py
 ```
 
-View the full keybinding reference from the menu: **Configure > Keybindings**.
+The keybinding choice is saved to `~/.config/tdb/config.json` and remembered for subsequent runs. View the full keybinding reference from the menu: **Configure > Keybindings**.
 
 ## JSON-RPC Server Mode
 
@@ -273,6 +340,10 @@ curl -s -X POST http://127.0.0.1:8150/rpc \
 | `get_stack_trace` | `[]` | Full call stack |
 | `get_output` | `[]` | Drain buffered stdout/stderr |
 | `get_source` | `["file_path"]` | Read a source file |
+| `list_threads` | `[]` | List all threads |
+| `inspect_thread` | `[thread_id]` | Inspect a specific thread |
+| `list_processes` | `[]` | List child processes (multiprocessing) |
+| `inspect_process` | `["name_or_pid"]` | Inspect a specific child process |
 | `list_tasks` | `[]` | List all asyncio tasks |
 | `inspect_task` | `["task_name"]` | Inspect a specific asyncio task |
 | `restart` | `[]` | Restart session (preserves breakpoints) |
@@ -291,23 +362,37 @@ Events: `initialized`, `stopped`, `continued`, `terminated`, `exited`, `output`.
 ## CLI Reference
 
 ```
-usage: tdb [-h] [--cwd CWD] [--stop-on-entry] [--no-just-my-code]
-           [--python PYTHON] [--external-terminal] [--keybindings {default,vim,emacs}]
+usage: tdb [-h] [-r [HOST:]PORT] [-k FILE:LINE] [--cwd CWD]
+           [--stop-on-entry] [--no-just-my-code] [--python PYTHON]
+           [--external-terminal] [--keybindings {default,vim,emacs}]
            [--server] [--headless] [--server-port PORT]
-           program [args ...]
+           [program] [args ...]
 ```
 
 | Flag | Description |
 |------|-------------|
+| `-r`, `--remote-attach HOST:PORT` | Attach to a remote debugpy server |
+| `-k`, `--breakpoint FILE:LINE` | Set a breakpoint (may be repeated) |
 | `--stop-on-entry` | Pause at the first line (default in `tdb.py` wrapper) |
 | `--cwd DIR` | Working directory for the debuggee |
 | `--python PATH` | Python interpreter for the debuggee |
 | `--no-just-my-code` | Also step through library code |
 | `--external-terminal` | Run debuggee in a separate terminal window |
-| `--keybindings SCHEME` | `default`, `vim`, or `emacs` |
+| `--keybindings SCHEME` | `default`, `vim`, or `emacs` (saved to config) |
 | `--server` | Enable JSON-RPC server alongside TUI |
 | `--headless` | JSON-RPC server only, no TUI |
 | `--server-port PORT` | Server port (default: 8150) |
+
+## Configuration
+
+tdb stores configuration and state in `~/.config/tdb/`:
+
+| File | Contents |
+|------|----------|
+| `config.json` | User preferences (keybinding scheme) |
+| `last_run.json` | Breakpoints from previous sessions, keyed by project directory |
+
+Breakpoints are automatically saved on exit and restored when debugging a program in the same directory. Each project's breakpoints are independent.
 
 ## Tech Stack
 

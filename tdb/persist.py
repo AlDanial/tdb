@@ -15,12 +15,13 @@ STATE_FILE = CONFIG_DIR / "last_run.json"
 CONFIG_FILE = CONFIG_DIR / "config.json"
 
 
-def save_breakpoints(breakpoints: dict[str, list[SourceBreakpoint]]) -> None:
-    """Write breakpoints to the state file."""
-    data = {}
+def _encode_bps(
+    breakpoints: dict[str, list[SourceBreakpoint]],
+) -> dict[str, list[dict]]:
+    out = {}
     for source_path, bps in breakpoints.items():
         if bps:
-            data[source_path] = [
+            out[source_path] = [
                 {
                     "line": bp.line,
                     "condition": bp.condition,
@@ -28,33 +29,76 @@ def save_breakpoints(breakpoints: dict[str, list[SourceBreakpoint]]) -> None:
                 }
                 for bp in bps
             ]
+    return out
+
+
+def _decode_bps(raw: dict) -> dict[str, list[SourceBreakpoint]]:
+    result: dict[str, list[SourceBreakpoint]] = {}
+    for source_path, bp_list in raw.items():
+        bps = []
+        for entry in bp_list:
+            bps.append(SourceBreakpoint(
+                line=entry["line"],
+                condition=entry.get("condition"),
+                hit_condition=entry.get("hit_condition"),
+            ))
+        if bps:
+            result[source_path] = bps
+    return result
+
+
+def _read_state() -> dict:
+    if not STATE_FILE.is_file():
+        return {}
     try:
+        return json.loads(STATE_FILE.read_text())
+    except Exception:
+        log.exception("Failed to read state file %s", STATE_FILE)
+        return {}
+
+
+def save_breakpoints(
+    breakpoints: dict[str, list[SourceBreakpoint]],
+    program: str | None = None,
+) -> None:
+    """Write breakpoints to the state file, keyed by program path.
+
+    When program is None, writes to the flat legacy format.
+    """
+    data = _encode_bps(breakpoints)
+    try:
+        existing = _read_state()
+        if program:
+            programs = existing.get("programs", {})
+            if data:
+                programs[program] = data
+            else:
+                programs.pop(program, None)
+            existing["programs"] = programs
+        else:
+            existing["breakpoints"] = data
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-        STATE_FILE.write_text(json.dumps({"breakpoints": data}, indent=2) + "\n")
-        log.debug("Saved %d breakpoint(s) to %s", sum(len(v) for v in data.values()), STATE_FILE)
+        STATE_FILE.write_text(json.dumps(existing, indent=2) + "\n")
+        log.debug("Saved %d breakpoint(s) for %s", sum(len(v) for v in data.values()), program or "(default)")
     except Exception:
         log.exception("Failed to save breakpoints to %s", STATE_FILE)
 
 
-def load_breakpoints() -> dict[str, list[SourceBreakpoint]]:
-    """Read breakpoints from the state file. Returns empty dict on any error."""
-    if not STATE_FILE.is_file():
-        return {}
+def load_breakpoints(
+    program: str | None = None,
+) -> dict[str, list[SourceBreakpoint]]:
+    """Read breakpoints for a specific program. Returns empty dict on any error.
+
+    When program is given, returns only breakpoints saved for that program.
+    When program is None, returns the legacy flat "breakpoints" dict (used
+    during migration — see migrate_legacy_breakpoints).
+    """
+    raw = _read_state()
     try:
-        raw = json.loads(STATE_FILE.read_text())
-        result: dict[str, list[SourceBreakpoint]] = {}
-        for source_path, bp_list in raw.get("breakpoints", {}).items():
-            bps = []
-            for entry in bp_list:
-                bps.append(SourceBreakpoint(
-                    line=entry["line"],
-                    condition=entry.get("condition"),
-                    hit_condition=entry.get("hit_condition"),
-                ))
-            if bps:
-                result[source_path] = bps
-        log.debug("Loaded %d breakpoint(s) from %s", sum(len(v) for v in result.values()), STATE_FILE)
-        return result
+        if program:
+            programs = raw.get("programs", {})
+            return _decode_bps(programs.get(program, {}))
+        return _decode_bps(raw.get("breakpoints", {}))
     except Exception:
         log.exception("Failed to load breakpoints from %s", STATE_FILE)
         return {}
