@@ -23,6 +23,8 @@ class BreakpointView(DataTable):
     """
 
     BINDINGS = [
+        Binding("d", "toggle_enabled_under_cursor", "Enable/Disable"),
+        Binding("c", "clear_under_cursor", "Clear"),
         Binding("D", "toggle_disable_all", "Disable All"),
         Binding("C", "clear_all", "Clear All"),
     ]
@@ -45,6 +47,12 @@ class BreakpointView(DataTable):
             self.line = line
             super().__init__()
 
+    class BreakpointToggleEnabledRequested(Message):
+        def __init__(self, source_path: str, line: int) -> None:
+            self.source_path = source_path
+            self.line = line
+            super().__init__()
+
     class DisableAllRequested(Message):
         pass
 
@@ -58,7 +66,7 @@ class BreakpointView(DataTable):
         self._entries: list[tuple[str, int]] = []
 
     def on_mount(self) -> None:
-        self.add_columns("File", "Line", "Condition", "Hits")
+        self.add_columns("", "File", "Line", "Condition", "Hits")
 
     def update_breakpoints(self, breakpoints: dict[str, list[SourceBreakpoint]]) -> None:
         self.clear()
@@ -69,7 +77,8 @@ class BreakpointView(DataTable):
                 filename = Path(source_path).name
                 condition = bp.condition or ""
                 hit_condition = bp.hit_condition or ""
-                self.add_row(filename, str(bp.line), condition, hit_condition)
+                marker = "✓" if bp.enabled else "·"
+                self.add_row(marker, filename, str(bp.line), condition, hit_condition)
                 self._entries.append((source_path, bp.line))
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
@@ -90,3 +99,15 @@ class BreakpointView(DataTable):
 
     def action_clear_all(self) -> None:
         self.post_message(self.ClearAllRequested())
+
+    def action_clear_under_cursor(self) -> None:
+        row_idx = self.cursor_row
+        if row_idx is not None and 0 <= row_idx < len(self._entries):
+            source_path, line = self._entries[row_idx]
+            self.post_message(self.BreakpointDeleteRequested(source_path, line))
+
+    def action_toggle_enabled_under_cursor(self) -> None:
+        row_idx = self.cursor_row
+        if row_idx is not None and 0 <= row_idx < len(self._entries):
+            source_path, line = self._entries[row_idx]
+            self.post_message(self.BreakpointToggleEnabledRequested(source_path, line))

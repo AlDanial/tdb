@@ -53,6 +53,11 @@ def main():
         help="Also debug library code",
     )
     parser.add_argument(
+        "--no-subprocess",
+        action="store_true",
+        help="Disable debugpy's subprocess tracking (use when debugging tdb itself)",
+    )
+    parser.add_argument(
         "--python",
         default=None,
         help="Python interpreter to use for debugging",
@@ -117,6 +122,8 @@ def main():
             cmd.append("--stop-on-entry")
         if args.no_just_my_code:
             cmd.append("--no-just-my-code")
+        if args.no_subprocess:
+            cmd.append("--no-subprocess")
         if args.cwd:
             cmd.extend(["--cwd", args.cwd])
         if args.python:

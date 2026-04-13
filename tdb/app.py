@@ -238,6 +238,7 @@ class TdbApp(App):
         cli_breakpoints: list[tuple[str, int]] | None = None,
         attach_host: str | None = None,
         attach_port: int | None = None,
+        sub_process: bool = True,
         server_port: int | None = None,
     ) -> None:
         super().__init__()
@@ -252,6 +253,7 @@ class TdbApp(App):
         self._cli_breakpoints = cli_breakpoints or []
         self._attach_host = attach_host
         self._attach_port = attach_port
+        self._sub_process = sub_process
         self._server_port = server_port
 
         self._textual_handler = TextualEventHandler(self)
@@ -356,6 +358,7 @@ class TdbApp(App):
                     just_my_code=self._just_my_code,
                     python=self._python,
                     external_terminal=self._external_terminal,
+                    sub_process=self._sub_process,
                 )
         except Exception:
             log.exception("Failed to start debug session")
@@ -438,6 +441,7 @@ class TdbApp(App):
                 just_my_code=self._just_my_code,
                 python=self._python,
                 external_terminal=self._external_terminal,
+                sub_process=self._sub_process,
             )
         except Exception:
             log.exception("Failed to restart debug session")
@@ -833,6 +837,26 @@ class TdbApp(App):
             self.post_message(self.BreakpointsChanged())
         except Exception:
             log.exception("Error clearing breakpoints")
+
+    async def on_breakpoint_view_breakpoint_delete_requested(
+        self, message: BreakpointView.BreakpointDeleteRequested,
+    ) -> None:
+        try:
+            await self.controller.remove_breakpoint(message.source_path, message.line)
+            self.post_message(self.BreakpointsChanged())
+        except Exception:
+            log.exception("Error deleting breakpoint")
+
+    async def on_breakpoint_view_breakpoint_toggle_enabled_requested(
+        self, message: BreakpointView.BreakpointToggleEnabledRequested,
+    ) -> None:
+        try:
+            await self.controller.toggle_breakpoint_enabled(
+                message.source_path, message.line,
+            )
+            self.post_message(self.BreakpointsChanged())
+        except Exception:
+            log.exception("Error toggling breakpoint enabled state")
 
     async def on_tdb_app_lazy_load_variables(self, message: LazyLoadVariables) -> None:
         try:

@@ -47,6 +47,7 @@ class SourceBreakpoint:
     condition: str | None = None
     hit_condition: str | None = None
     log_message: str | None = None
+    enabled: bool = True  # tdb-local flag; not part of DAP wire format
 
     def to_dict(self) -> dict[str, Any]:
         d: dict[str, Any] = {"line": self.line}

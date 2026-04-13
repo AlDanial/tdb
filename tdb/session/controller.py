@@ -84,6 +84,11 @@ class DebugController:
         # inspecting.  Defaults to the parent client.
         self._active_client: DAPClient = self.client
 
+    @staticmethod
+    def _enabled_bps(bps: list[SourceBreakpoint]) -> list[SourceBreakpoint]:
+        """Return only the breakpoints that are enabled."""
+        return [bp for bp in bps if bp.enabled]
+
     def _setup_event_handlers(self) -> None:
         self.client.on_event("stopped", self._on_stopped)
         self.client.on_event("continued", self._on_continued)
@@ -103,6 +108,7 @@ class DebugController:
         just_my_code: bool = True,
         python: str | None = None,
         external_terminal: bool = False,
+        sub_process: bool = True,
     ) -> None:
         """Start the debug session.
 
@@ -126,6 +132,7 @@ class DebugController:
             "stop_on_entry": stop_on_entry,
             "just_my_code": just_my_code,
             "python": python,
+            "sub_process": sub_process,
         }
 
         await self.client.start(python=python)
@@ -141,6 +148,7 @@ class DebugController:
             just_my_code=p["just_my_code"],
             python=p["python"],
             console="externalTerminal" if external_terminal else "internalConsole",
+            sub_process=p["sub_process"],
         )
 
     async def remote_attach(self, host: str, port: int) -> None:
@@ -200,10 +208,12 @@ class DebugController:
         # GeneratorExit in traceback.walk_stack.
         await self.client.set_exception_breakpoints(["userUnhandled"])
 
-        # Send breakpoints (skip if disabled)
+        # Send breakpoints (skip if globally disabled; also filter per-bp enabled)
         if not self.state.breakpoints_disabled:
             for source_path, bps in self.state.breakpoints.items():
-                await self.client.set_breakpoints(source_path, bps)
+                await self.client.set_breakpoints(
+                    source_path, self._enabled_bps(bps),
+                )
 
         # Signal configuration complete — this unblocks the launch response
         await self.client.configuration_done()
@@ -265,19 +275,19 @@ class DebugController:
         if self.state.current_thread_id is not None:
             self.state.is_running = True
             self.state.clear_frame_data()
-            await self.client.next(self.state.current_thread_id)
+            await self._active_client.next(self.state.current_thread_id)
 
     async def step_in(self) -> None:
         if self.state.current_thread_id is not None:
             self.state.is_running = True
             self.state.clear_frame_data()
-            await self.client.step_in(self.state.current_thread_id)
+            await self._active_client.step_in(self.state.current_thread_id)
 
     async def step_out(self) -> None:
         if self.state.current_thread_id is not None:
             self.state.is_running = True
             self.state.clear_frame_data()
-            await self.client.step_out(self.state.current_thread_id)
+            await self._active_client.step_out(self.state.current_thread_id)
 
     async def run_to_cursor(self, source_path: str, line: int) -> None:
         """Set a temporary breakpoint at line, continue, then remove it.
@@ -295,13 +305,14 @@ class DebugController:
             self.state.breakpoints[source_path] = bps
             if self.state.is_ready and not self.state.is_terminated:
                 # Propagate to parent and all child clients
+                sent = self._enabled_bps(bps)
                 try:
-                    await self.client.set_breakpoints(source_path, bps)
+                    await self.client.set_breakpoints(source_path, sent)
                 except Exception:
                     pass
                 for _pid, child in list(self._child_clients.items()):
                     try:
-                        await child.set_breakpoints(source_path, bps)
+                        await child.set_breakpoints(source_path, sent)
                     except Exception:
                         pass
         self._run_to_cursor_cleanup = (source_path, line) if not had_bp else None
@@ -317,13 +328,14 @@ class DebugController:
         bps = [bp for bp in self.state.breakpoints.get(source_path, []) if bp.line != line]
         self.state.breakpoints[source_path] = bps
         if self.state.is_ready and not self.state.is_terminated:
+            sent = self._enabled_bps(bps)
             try:
-                await self.client.set_breakpoints(source_path, bps)
+                await self.client.set_breakpoints(source_path, sent)
             except Exception:
                 pass
             for _pid, child in list(self._child_clients.items()):
                 try:
-                    await child.set_breakpoints(source_path, bps)
+                    await child.set_breakpoints(source_path, sent)
                 except Exception:
                     pass
 
@@ -352,8 +364,23 @@ class DebugController:
         self.state.breakpoints[source_path] = bps
 
         if self.state.is_ready and not self.state.is_terminated:
-            await self.client.set_breakpoints(source_path, bps)
+            await self.client.set_breakpoints(source_path, self._enabled_bps(bps))
 
+    async def toggle_breakpoint_enabled(self, source_path: str, line: int) -> None:
+        """Toggle the enabled state of a single breakpoint.
+
+        When disabled, the bp stays in the state (so it's visible in the UI
+        and persisted) but is filtered out when sending to debugpy.
+        """
+        bps = self.state.breakpoints.get(source_path, [])
+        for bp in bps:
+            if bp.line == line:
+                bp.enabled = not bp.enabled
+                break
+        else:
+            return  # not found
+        if self.state.is_ready and not self.state.is_terminated:
+            await self.client.set_breakpoints(source_path, self._enabled_bps(bps))
 
     async def add_breakpoint(
         self,
@@ -376,7 +403,8 @@ class DebugController:
 
         if self.state.is_ready and not self.state.is_terminated:
             await self.client.set_breakpoints(
-                source_path, self.state.breakpoints[source_path],
+                source_path,
+                self._enabled_bps(self.state.breakpoints[source_path]),
             )
 
     async def remove_breakpoint(self, source_path: str, line: int) -> None:
@@ -388,7 +416,7 @@ class DebugController:
         self.state.breakpoints[source_path] = new_bps
 
         if self.state.is_ready and not self.state.is_terminated:
-            await self.client.set_breakpoints(source_path, new_bps)
+            await self.client.set_breakpoints(source_path, self._enabled_bps(new_bps))
 
     async def set_breakpoint_condition(
         self,
@@ -404,7 +432,7 @@ class DebugController:
                 bp.hit_condition = hit_condition
                 break
         if self.state.is_ready and not self.state.is_terminated:
-            await self.client.set_breakpoints(source_path, bps)
+            await self.client.set_breakpoints(source_path, self._enabled_bps(bps))
 
 
     async def disable_all_breakpoints(self) -> None:
@@ -419,8 +447,7 @@ class DebugController:
         self.state.breakpoints_disabled = False
         if self.state.is_ready and not self.state.is_terminated:
             for source_path, bps in self.state.breakpoints.items():
-                await self.client.set_breakpoints(source_path, bps)
-    
+                await self.client.set_breakpoints(source_path, self._enabled_bps(bps))
 
     async def clear_all_breakpoints(self) -> None:
         """Remove all breakpoints from state and debugpy."""
@@ -641,8 +668,11 @@ class DebugController:
 
                 # Send attach with subProcessId (not processId) to route
                 # to the right child without triggering ptrace injection.
+                # Inherit parent's just_my_code setting.
+                jmc = self._launch_params.get("just_my_code", True)
                 attach_future = await child.attach(
                     host=host, port=port, sub_process_id=pid,
+                    just_my_code=jmc,
                 )
 
                 await asyncio.wait_for(initialized.wait(), timeout=10.0)
@@ -652,7 +682,9 @@ class DebugController:
                 if not self.state.breakpoints_disabled:
                     for source_path, bps in self.state.breakpoints.items():
                         try:
-                            await child.set_breakpoints(source_path, bps)
+                            await child.set_breakpoints(
+                                source_path, self._enabled_bps(bps),
+                            )
                         except Exception:
                             pass
 

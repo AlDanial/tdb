@@ -289,6 +289,7 @@ class CodeView(ScrollableContainer, can_focus=True):
         self._lines: list[str] = []
         self._breakpoint_lines: set[int] = set()
         self._conditional_bp_lines: set[int] = set()
+        self._disabled_bp_lines: set[int] = set()
         self._breakpoints_disabled: bool = False
         self._content: _CodeContent | None = None
         self._highlighted: list[Text] | None = None
@@ -517,6 +518,9 @@ class CodeView(ScrollableContainer, can_focus=True):
             bp.line for bp in breakpoints
             if bp.condition or bp.hit_condition
         }
+        self._disabled_bp_lines = {
+            bp.line for bp in breakpoints if not bp.enabled
+        }
         self._render_code()
 
     def set_breakpoints_disabled(self, disabled: bool) -> None:
@@ -583,7 +587,7 @@ class CodeView(ScrollableContainer, can_focus=True):
 
             # Breakpoint marker
             if line_num in self._breakpoint_lines:
-                if self._breakpoints_disabled:
+                if self._breakpoints_disabled or line_num in self._disabled_bp_lines:
                     output.append("● ", style="bold blue")
                 elif line_num in self._conditional_bp_lines:
                     output.append("● ", style="bold yellow")

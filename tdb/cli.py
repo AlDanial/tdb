@@ -45,6 +45,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Also debug library code",
     )
     parser.add_argument(
+        "--no-subprocess",
+        action="store_true",
+        help="Disable debugpy's subprocess tracking (use when debugging tdb itself)",
+    )
+    parser.add_argument(
         "--python",
         default=None,
         help="Python interpreter to use for debugging",
@@ -193,6 +198,7 @@ def _run_tui(args: argparse.Namespace) -> None:
         cli_breakpoints=args.breakpoint,
         attach_host=args.attach_host,
         attach_port=args.attach_port,
+        sub_process=not args.no_subprocess,
         server_port=args.server_port if args.server else None,
     )
     app.run()

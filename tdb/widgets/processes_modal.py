@@ -169,6 +169,7 @@ class ProcessesModal(ModalScreen[None]):
     def __init__(self, processes: list[ProcessInfo]) -> None:
         super().__init__()
         self._processes = processes
+        self._mounted = False
 
     def compose(self) -> ComposeResult:
         with Vertical(id="dialog"):
@@ -188,6 +189,7 @@ class ProcessesModal(ModalScreen[None]):
     def on_mount(self) -> None:
         table = self.query_one("#proc-table", DataTable)
         table.add_columns("PID", "Name", "Status")
+        self._mounted = True
         if self._processes:
             self._populate_table()
             self._show_detail(0)
@@ -324,6 +326,9 @@ class ProcessesModal(ModalScreen[None]):
     def update_processes(self, processes: list[ProcessInfo]) -> None:
         """Replace process list and refresh the display."""
         self._processes = processes
+        # If not mounted yet, on_mount will pick up _processes
+        if not self._mounted:
+            return
         header = self.query_one("#procs-header", Label)
         header.update(f"Processes ({len(self._processes)})")
         self._populate_table()

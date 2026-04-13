@@ -207,6 +207,7 @@ class DAPClient:
         just_my_code: bool = True,
         python: str | None = None,
         console: str = "internalConsole",
+        sub_process: bool = True,
     ) -> asyncio.Future[Response]:
         """Send launch request. Returns a Future for the response.
 
@@ -222,9 +223,9 @@ class DAPClient:
             "cwd": cwd or ".",
             "console": console,
             "redirectOutput": console == "internalConsole",
-            "justMyCode": False,  # Always get full stack traces; tdb filters in UI
+            "justMyCode": just_my_code,
             "stopOnEntry": stop_on_entry,
-            "subProcess": True,  # Track child processes for debugging
+            "subProcess": sub_process,
             "pythonArgs": ["-Xfrozen_modules=off"],
         }
         if env:
@@ -238,6 +239,7 @@ class DAPClient:
         host: str = "127.0.0.1",
         port: int = 0,
         sub_process_id: int | None = None,
+        just_my_code: bool = True,
     ) -> asyncio.Future[Response]:
         """Send attach request. Returns a Future (same pattern as launch).
 
@@ -248,7 +250,7 @@ class DAPClient:
             "type": "debugpy",
             "request": "attach",
             "connect": {"host": host, "port": port},
-            "justMyCode": False,
+            "justMyCode": just_my_code,
             "subProcess": True,
         }
         if sub_process_id is not None:

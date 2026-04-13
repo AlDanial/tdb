@@ -214,6 +214,8 @@ For programs using `multiprocessing`, the menu bar shows a **Processes (N)** lab
 
 tdb automatically attaches to child processes spawned via `multiprocessing.Process`, `multiprocessing.Pool`, or `concurrent.futures.ProcessPoolExecutor`. Breakpoints set in the parent are propagated to all child processes. When any process hits a breakpoint, all other processes are paused. Pressing `p` pauses all processes; `c` continues all.
 
+**Stepping in multi-process programs:** step commands (`n`, `s`, `o`, `f`, `r`) apply only to the process whose stack is currently shown in the Code View (the one that hit the breakpoint). Other processes remain paused throughout the step. To step in a different process, open the Processes tab and select it first — the Code View switches focus to that process, and subsequent step commands operate on it.
+
 RPC equivalents:
 
 ```bash
@@ -378,7 +380,7 @@ usage: tdb [-h] [-r [HOST:]PORT] [-k FILE:LINE] [--cwd CWD]
 | `--stop-on-entry` | Pause at the first line (default in `tdb.py` wrapper) |
 | `--cwd DIR` | Working directory for the debuggee |
 | `--python PATH` | Python interpreter for the debuggee |
-| `--no-just-my-code` | Also step through library code |
+| `--no-just-my-code` | Step into stdlib/site-packages code instead of skipping it (default: skipped). On uncaught exceptions, the crash modal always shows the full traceback including library frames, regardless of this flag. |
 | `--external-terminal` | Run debuggee in a separate terminal window |
 | `--keybindings SCHEME` | `default`, `vim`, or `emacs` (saved to config) |
 | `--server` | Enable JSON-RPC server alongside TUI |

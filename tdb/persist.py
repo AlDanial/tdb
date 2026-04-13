@@ -26,6 +26,7 @@ def _encode_bps(
                     "line": bp.line,
                     "condition": bp.condition,
                     "hit_condition": bp.hit_condition,
+                    "enabled": bp.enabled,
                 }
                 for bp in bps
             ]
@@ -41,6 +42,7 @@ def _decode_bps(raw: dict) -> dict[str, list[SourceBreakpoint]]:
                 line=entry["line"],
                 condition=entry.get("condition"),
                 hit_condition=entry.get("hit_condition"),
+                enabled=entry.get("enabled", True),
             ))
         if bps:
             result[source_path] = bps
