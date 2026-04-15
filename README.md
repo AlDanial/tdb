@@ -1,30 +1,47 @@
-# tdb — A TUI-Based Python Debugger
+# `textual-debugger` — A TUI Python Debugger Based on `textual` and `debugpy`
 
-tdb is a terminal-based Python debugger built on [textual](https://github.com/Textualize/textual) and [debugpy](https://github.com/microsoft/debugpy) (the Debug Adapter Protocol engine behind VS Code's Python debugger). It provides a rich interactive interface for stepping through code, inspecting variables, managing breakpoints, and evaluating expressions — all from your terminal.
+`textual-debugger` (the package) provides `tdb` (the command-line tool), a full-featured
+terminal-based Python debugger with an intuitive interface and powerful features, all without leaving your terminal.
 
-It also includes a JSON-RPC server mode for programmatic debug control, making it suitable for automated debugging workflows and AI-assisted debugging.
+`tdb` is built with [textual](https://github.com/Textualize/textual)
+and [debugpy](https://github.com/microsoft/debugpy) (the Debug Adapter Protocol engine behind
+VS Code's Python debugger). It provides a rich interactive interface for stepping through code,
+inspecting variables, managing breakpoints, and evaluating expressions for complex Python programs.
+It can debug Python code that uses
+- `asyncio` (with a built-in async task inspector)
+- `threading` (with a thread inspector)
+- `multiprocessing` / `concurrent.futures` (with automatic child process attachment and a process inspector)
+and supports remote attachment to any debugpy-enabled Python program.
+
+It also includes a JSON-RPC server mode for programmatic debug control, making it suitable for
+automated debugging workflows and AI-assisted debugging.
+
+## AI Assistance
+
+The bulk of the code and documentation for `textual-debugger` was generated with Claude Code.
+Thank you, Anthropic, for providing access to Claude Code through the
+[Claude for Open Source](https://claude.com/contact-sales/claude-for-oss) program.
 
 ## Installation
 
 ```bash
-cd work
-uv pip install -e .
+pip install textual-debugger
 ```
 
 ## Quick Start
 
 ```bash
 # Debug a script (stops at first line by default)
-./tdb.py my_script.py
+tdb my_script.py
 
 # Debug with arguments
-./tdb.py my_script.py arg1 arg2
+tdb my_script.py arg1 arg2
 
 # Use a specific virtualenv
-./tdb.py --python /path/to/venv/bin/python my_script.py
+tdb --python /path/to/venv/bin/python my_script.py
 
 # Don't stop on entry — run until first breakpoint or exit
-./tdb.py --no-stop-on-entry my_script.py
+tdb --no-stop-on-entry my_script.py
 ```
 
 Or use the installed entry point:
@@ -243,11 +260,11 @@ debugpy.wait_for_client()  # optional: pause until debugger connects
 
 ```bash
 # Attach from tdb:
-./tdb.py -r 5678
-./tdb.py -r 192.168.1.10:5678
+tdb -r 5678
+tdb -r 192.168.1.10:5678
 
 # With breakpoints:
-./tdb.py -r 5678 -k my_script.py:42
+tdb -r 5678 -k my_script.py:42
 ```
 
 All debugging features (breakpoints, stepping, variable inspection, threads, processes, async tasks) work in remote attach mode. The Code View automatically navigates to the source file when the program stops.
@@ -257,7 +274,7 @@ All debugging features (breakpoints, stepping, variable inspection, threads, pro
 For debugging TUI programs (curses, textual, rich) that need direct terminal access:
 
 ```bash
-./tdb.py --external-terminal my_tui_app.py
+tdb --external-terminal my_tui_app.py
 ```
 
 The debuggee runs in a separate terminal window (auto-detects xterm, gnome-terminal, konsole, kitty, alacritty, foot, xfce4-terminal). Breakpoints, stepping, and variable inspection still work in tdb.
@@ -265,9 +282,9 @@ The debuggee runs in a separate terminal window (auto-detects xterm, gnome-termi
 ### Keybinding Schemes
 
 ```bash
-./tdb.py --keybindings vim my_script.py    # default
-./tdb.py --keybindings emacs my_script.py
-./tdb.py --keybindings default my_script.py
+tdb --keybindings vim my_script.py    # default
+tdb --keybindings emacs my_script.py
+tdb --keybindings default my_script.py
 ```
 
 The keybinding choice is saved to `~/.config/tdb/config.json` and remembered for subsequent runs. View the full keybinding reference from the menu: **Configure > Keybindings**.
@@ -287,7 +304,7 @@ The server listens on `http://127.0.0.1:8150/rpc` (change with `--server-port`).
 ### Dual Mode (TUI + server)
 
 ```bash
-./tdb.py --server my_script.py
+tdb --server my_script.py
 ```
 
 Both the interactive TUI and the JSON-RPC server run simultaneously.
@@ -377,7 +394,7 @@ usage: tdb [-h] [-r [HOST:]PORT] [-k FILE:LINE] [--cwd CWD]
 |------|-------------|
 | `-r`, `--remote-attach HOST:PORT` | Attach to a remote debugpy server |
 | `-k`, `--breakpoint FILE:LINE` | Set a breakpoint (may be repeated) |
-| `--stop-on-entry` | Pause at the first line (default in `tdb.py` wrapper) |
+| `--stop-on-entry` | Pause at the first line (default in `tdb` wrapper) |
 | `--cwd DIR` | Working directory for the debuggee |
 | `--python PATH` | Python interpreter for the debuggee |
 | `--no-just-my-code` | Step into stdlib/site-packages code instead of skipping it (default: skipped). On uncaught exceptions, the crash modal always shows the full traceback including library frames, regardless of this flag. |
