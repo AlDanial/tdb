@@ -38,7 +38,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--no-stop-on-entry",
         action="store_true",
         dest="no_stop_on_entry",
-        help="Stop at the first line of the program",
+        help="Do not stop at the first line of the program (default: stop on entry)",
     )
     parser.add_argument(
         "--no-just-my-code",
