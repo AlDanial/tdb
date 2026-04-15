@@ -35,8 +35,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Working directory for the debugged program",
     )
     parser.add_argument(
-        "--stop-on-entry",
+        "--no-stop-on-entry",
         action="store_true",
+        dest="no_stop_on_entry",
         help="Stop at the first line of the program",
     )
     parser.add_argument(
@@ -90,6 +91,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
 
     args = parser.parse_args(argv)
+    args.stop_on_entry = not args.no_stop_on_entry
 
     # --headless implies --server
     if args.headless:

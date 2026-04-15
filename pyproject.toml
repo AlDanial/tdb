@@ -1,37 +1,46 @@
-[project]
-name = "tdb"
-version = "0.1.0"
-description = "A TUI-based Python debugger using debugpy and textual"
-requires-python = ">=3.10"
-dependencies = [
-    "textual>=8.0.0",
-    "debugpy>=1.8.0",
-    "pygments>=2.17.0",
-    "fastapi>=0.115.0",
-    "uvicorn>=0.30.0",
+  [project]
+  name = "textual-debugger"
+  version = "0.0.1"
+  description = "A TUI Python debugger based on textual and debugpy"
+  readme = "README.md"
+  requires-python = ">=3.10"
+  license = {file = "LICENSE"}
+  authors = [{name = "Al Danial", email = "al.danial@gmail.com"}]
+  keywords = ["debugger", "tui", "textual", "debugpy", "debug"]
+  classifiers = [
+      "Development Status :: 4 - Beta",
+      "Environment :: Console",
+      "Intended Audience :: Developers",
+      "License :: OSI Approved :: MIT License",
+      "Operating System :: POSIX :: Linux",
+      "Programming Language :: Python :: 3",
+      "Programming Language :: Python :: 3.10",
+      "Programming Language :: Python :: 3.11",
+      "Programming Language :: Python :: 3.12",
+      "Topic :: Software Development :: Debuggers",
+  ]
+  dependencies = [
+      "textual>=8.0.0",
+      "debugpy>=1.8.0",
+      "pygments>=2.17.0",
+      "fastapi>=0.115.0",
+      "uvicorn>=0.30.0",
+  ]
 
-    "numpy",
-    "scipy",
-    "matplotlib",
-    "scikit-learn",
-    "PyQt6",
-    "nats-py",
-    "pyyaml",
+  [project.optional-dependencies]
+  dev = ["pytest", "pytest-asyncio"]
 
-]
+  [project.urls]
+  Homepage = "https://github.com/AlDanial/tdb"
+  Issues = "https://github.com/AlDanial/tdb/issues"
+  Source = "https://github.com/AlDanial/tdb"
 
-[project.optional-dependencies]
-dev = [
-    "pytest",
-    "pytest-asyncio",
-]
+  [project.scripts]
+  tdb = "tdb.cli:main"
 
-[project.scripts]
-tdb = "tdb.cli:main"
+  [build-system]
+  requires = ["setuptools>=68.0"]
+  build-backend = "setuptools.build_meta"
 
-[tool.setuptools]
-packages = ["tdb", "tdb.dap", "tdb.session", "tdb.widgets", "tdb.keybindings", "tdb.server"]
-
-[build-system]
-requires = ["setuptools>=68.0"]
-build-backend = "setuptools.build_meta"
+  [tool.setuptools.packages.find]
+  where = ["src"]
