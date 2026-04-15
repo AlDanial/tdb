@@ -1,34 +1,17 @@
-- add a menu bar at the top with the following options:
+- menu bar items that are non-functional:
     - File
-        - Open
+        - Open                  x
     - Configure
-        - Color Theme
-        - Keybindings
+        - Color Theme           x
+        - Keybindings           x
     - Help
-        - Documentation
-        - About
-
-- add a keybinding for `t` in the Code View to continue code execution until the line with the cursor
-- add a keybinding for `L` in the Code View to open a modal which prompts for a line number to jump to, and then jump to that line
-- implement customizable keybindings in the Code View
-    - vim
-    - emacs
-- the default keybindings should be for vim
-- vim keybindings:
-    - `Ng` to jump to line `N`
-    - `G` to jump to the bottom of the file
-    - `k` to move the cursor one line up
-    - `Nk` to move the cursor up `N` lines
-    - `j` to move the cursor one line down
-    - `Nj` to move the cursor down `N` lines
-    - `]` to move the cursor one paragraph down
-    - `[` to move the cursor one paragraph up
-    - `/` to open a search modal, which allows the user to search for a string in the code and jump to the next occurrence of that string
+        - Documentation         ?
+        - About                 OK
 
 
-- remote attach, --remote-attach
-- command line breakpoints -k/--breakpoint
-- capture information on all asyncio tasks, including their stack traces and current state (running, pending, done)
-- capture information on all threads, including their stack traces and current state (running, pending, done)
-- capture information on all multiprocessing.Process, including their stack traces and current state (running, pending, done)
-- implement a "step back" feature, which allows the user to step back in the code execution to a previous line and inspect the state of the program at that point.  the number of steps allowed to step back should be configurable, with a default of 10 steps.
+- implement a "step back" feature, which allows the user to step back in the code
+  execution to a previous line and inspect the state of the program at that point.
+  the number of steps allowed to step back should be configurable, with a default of 10 steps.
+
+- rename --external-terminal to -t/--terminal and add an option to specify the terminal
+  emulator to use (e.g. gnome-terminal, xterm, ghostty, konsole, kitty)
