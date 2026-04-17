@@ -108,18 +108,26 @@ class MenuBar(Widget):
         menus: dict[str, list[str]],
         *,
         action_labels: dict[str, str] | None = None,
+        leading_action_labels: dict[str, str] | None = None,
         right_menus: list[str] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
         self._right_menu_names = set(right_menus or [])
         self._menus = menus
+        self._leading_action_labels = leading_action_labels or {}
         self._action_labels = action_labels or {}  # id -> display text
         self._open_menu: str | None = None
         self._dropdowns_mounted = False
 
     def compose(self) -> ComposeResult:
         with Horizontal():
+            for label_id, text in self._leading_action_labels.items():
+                yield Label(
+                    f" {text} ",
+                    classes="action-label",
+                    id=label_id,
+                )
             for menu_name in self._menus:
                 if menu_name in self._right_menu_names:
                     continue

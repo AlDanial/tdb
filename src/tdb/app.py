@@ -14,7 +14,7 @@ from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.message import Message
 from textual.screen import ModalScreen
-from textual.widgets import Footer, Header, Label, OptionList, RadioButton, RadioSet, Static
+from textual.widgets import DirectoryTree, Footer, Header, Label, OptionList, RadioButton, RadioSet, Static
 from textual.widgets._tree import TreeNode
 
 from tdb.session.controller import DebugController
@@ -108,14 +108,22 @@ class _KeybindingsModal(ModalScreen[None]):
                 yield Static(self._render_bindings(), id="bindings-display", markup=True)
 
     def _render_bindings(self) -> str:
+        def fmt(key_display: str, description: str) -> str:
+            # Pad before escaping so the visible column width stays at 12;
+            # \[ renders as one character, so visual alignment is preserved.
+            key_padded = f"{key_display:<12}"
+            key_escaped = key_padded.replace("[", r"\[")
+            desc_escaped = description.replace("[", r"\[")
+            return f"  [bold cyan]{key_escaped}[/bold cyan] {desc_escaped}"
+
         lines = []
         lines.append("[bold underline]Navigation Mode[/bold underline]")
         for key_display, description in self._config.format_bindings(Mode.NAVIGATION):
-            lines.append(f"  [bold cyan]{key_display:<12}[/bold cyan] {description}")
+            lines.append(fmt(key_display, description))
         lines.append("")
         lines.append("[bold underline]Debug Mode[/bold underline]")
         for key_display, description in self._config.format_bindings(Mode.DEBUG):
-            lines.append(f"  [bold cyan]{key_display:<12}[/bold cyan] {description}")
+            lines.append(fmt(key_display, description))
         lines.append("")
         lines.append("[dim]Press ESC or q to close[/dim]")
         return "\n".join(lines)
@@ -132,6 +140,107 @@ class _KeybindingsModal(ModalScreen[None]):
         self._config = KeybindingConfig.from_scheme(scheme)
         self._on_scheme_change(scheme)
         self.query_one("#bindings-display", Static).update(self._render_bindings())
+
+    def action_dismiss_modal(self) -> None:
+        self.dismiss(None)
+
+
+class _PyFileTree(DirectoryTree):
+    """DirectoryTree that only shows directories and .py files."""
+
+    def filter_paths(self, paths):
+        return [p for p in paths if p.is_dir() or p.suffix == ".py"]
+
+
+class _OpenFileModal(ModalScreen[str | None]):
+    """Modal file picker for selecting a .py file to debug."""
+
+    DEFAULT_CSS = """
+    _OpenFileModal {
+        align: center middle;
+    }
+    _OpenFileModal #dialog {
+        width: 80%;
+        height: 80%;
+        border: solid $primary;
+        background: $surface;
+        padding: 1 2;
+    }
+    _OpenFileModal DirectoryTree {
+        height: 1fr;
+    }
+    _OpenFileModal DirectoryTree > .directory-tree--extension {
+        text-style: none;
+    }
+    _OpenFileModal #open-header {
+        height: auto;
+    }
+    _OpenFileModal #open-path {
+        height: auto;
+        color: $text-muted;
+        margin-bottom: 1;
+    }
+    _OpenFileModal #up-dir {
+        height: auto;
+        margin-bottom: 1;
+        padding: 0 1;
+        background: $primary-background;
+        color: $text;
+    }
+    _OpenFileModal #up-dir:hover {
+        background: $accent;
+    }
+    _OpenFileModal #open-footer {
+        height: auto;
+        margin-top: 1;
+        color: $text-muted;
+    }
+    """
+
+    BINDINGS = [
+        Binding("escape", "dismiss_modal", "Close", show=False),
+        Binding("q", "dismiss_modal", "Close", show=False),
+        Binding("backspace", "go_up", "Parent", show=False),
+    ]
+
+    def __init__(self, initial_path: str) -> None:
+        super().__init__()
+        self._current_path = Path(initial_path).resolve()
+
+    def compose(self):
+        with Vertical(id="dialog"):
+            yield Static("[bold]Open file to debug[/bold]  (.py files only)", id="open-header", markup=True)
+            yield Static(str(self._current_path), id="open-path")
+            yield Label(" ⬆  .. (parent directory) ", id="up-dir")
+            yield _PyFileTree(str(self._current_path), id="file-tree")
+            yield Static("[dim]Enter: open   Backspace: up a directory   ESC: cancel[/dim]", id="open-footer", markup=True)
+
+    def on_mount(self) -> None:
+        self.query_one("#file-tree", _PyFileTree).focus()
+
+    def on_directory_tree_file_selected(
+        self, event: DirectoryTree.FileSelected,
+    ) -> None:
+        path = Path(event.path)
+        if path.suffix == ".py":
+            self.dismiss(str(path))
+
+    def on_click(self, event) -> None:
+        target = getattr(event, "widget", None)
+        if target is not None and target.id == "up-dir":
+            self.action_go_up()
+            event.stop()
+
+    def action_go_up(self) -> None:
+        parent = self._current_path.parent
+        if parent == self._current_path:
+            return
+        self._current_path = parent
+        tree = self.query_one("#file-tree", _PyFileTree)
+        tree.path = str(parent)
+        tree.reload()
+        tree.focus()
+        self.query_one("#open-path", Static).update(str(parent))
 
     def action_dismiss_modal(self) -> None:
         self.dismiss(None)
@@ -319,9 +428,11 @@ class TdbApp(App):
         yield Header()
         yield MenuBar(
             {
-                "File": ["Open"],
                 "Configure": ["Color Theme", "Keybindings"],
                 "Help": ["Documentation", "About"],
+            },
+            leading_action_labels={
+                "open-file-label": "File",
             },
             action_labels={
                 "threads-label": "Threads",
@@ -427,11 +538,33 @@ class TdbApp(App):
         await self._uvicorn_server.serve()
 
     @work(exclusive=True)
-    async def _restart_session(self) -> None:
-        """Stop the current session and start a new one with the same arguments."""
-        log.info("Restarting debug session")
-        # Preserve breakpoints across restart
-        saved_breakpoints = dict(self.controller.state.breakpoints)
+    async def _restart_session(self, new_program: str | None = None) -> None:
+        """Stop the current session and start a new one.
+
+        If new_program is given, switch to that program (saving the old
+        program's breakpoints under its key, and loading any saved
+        breakpoints for the new program). Otherwise reuse self._program.
+        """
+        if new_program:
+            log.info("Switching debug session to: %s", new_program)
+            if self._program:
+                try:
+                    old_key = str(Path(self._program).resolve())
+                    save_breakpoints(
+                        self.controller.state.breakpoints, program=old_key,
+                    )
+                except Exception:
+                    log.exception("Failed to save breakpoints for previous program")
+            new_key = str(Path(new_program).resolve())
+            saved_breakpoints = load_breakpoints(program=new_key)
+            self._program = new_program
+            self._cli_breakpoints = []
+            self._args = []
+            self._cwd = None
+        else:
+            log.info("Restarting debug session")
+            # Preserve breakpoints across restart
+            saved_breakpoints = dict(self.controller.state.breakpoints)
 
         try:
             await self.controller.stop()
@@ -803,6 +936,9 @@ class TdbApp(App):
             if message.action == "restart":
                 self._restart_session()
                 return
+            if message.action == "quit":
+                await self.action_quit_debugger()
+                return
             handler = {
                 "continue_": self.controller.continue_,
                 "step_over": self.controller.step_over,
@@ -975,9 +1111,7 @@ class TdbApp(App):
         menu_bar = self.query_one("#menu-bar", MenuBar)
         menu_bar._close_all()
 
-        if menu == "File" and item == "Open":
-            self.action_open_file()
-        elif menu == "Configure" and item == "Color Theme":
+        if menu == "Configure" and item == "Color Theme":
             self.action_color_theme()
         elif menu == "Configure" and item == "Keybindings":
             self.action_keybindings()
@@ -988,7 +1122,15 @@ class TdbApp(App):
         event.stop()
 
     def action_open_file(self) -> None:
-        self.notify("Open file: not yet implemented", title="File")
+        initial = self._cwd or (
+            str(Path(self._program).parent) if self._program else str(Path.cwd())
+        )
+
+        def on_dismiss(path: str | None) -> None:
+            if path:
+                self._restart_session(new_program=path)
+
+        self.push_screen(_OpenFileModal(initial), callback=on_dismiss)
 
     def action_color_theme(self) -> None:
         self.notify("Color theme: not yet implemented", title="Configure")
@@ -1012,7 +1154,9 @@ class TdbApp(App):
     # --- Async tasks ---
 
     def on_menu_bar_action_label_clicked(self, message: MenuBar.ActionLabelClicked) -> None:
-        if message.label_id == "threads-label":
+        if message.label_id == "open-file-label":
+            self.action_open_file()
+        elif message.label_id == "threads-label":
             self._open_threads()
         elif message.label_id == "processes-label":
             self._open_processes()
@@ -1253,23 +1397,24 @@ class TdbApp(App):
             menu_bar.update_action_label("processes-label", "Processes")
 
     def _open_processes(self) -> None:
-        """Open the modal immediately, then fetch process info."""
+        """Fetch process info, then open the modal only if there are any."""
         if self.controller.state.is_terminated:
             self.notify("Program has terminated", title="Processes")
             return
         if self.controller.state.is_running:
             self.notify("Program is running — pause first", title="Processes")
             return
-        self._processes_modal = ProcessesModal([])
-        self.push_screen(self._processes_modal)
-        self._load_processes()
+        self._open_processes_worker()
 
     @work(exclusive=True, group="processes-open")
-    async def _load_processes(self) -> None:
-        """Fetch process info and update the already-open modal."""
+    async def _open_processes_worker(self) -> None:
+        """Background: fetch processes, then open modal or notify."""
         processes = await self._get_processes()
-        if hasattr(self, "_processes_modal"):
-            self._processes_modal.update_processes(processes)
+        if not processes:
+            self.notify("No extra processes", title="Processes")
+            return
+        self._processes_modal = ProcessesModal(processes)
+        self.push_screen(self._processes_modal)
 
     async def on_processes_modal_refresh_processes(
         self, message: ProcessesModal.RefreshProcesses,

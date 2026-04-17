@@ -84,6 +84,7 @@ _SHARED = {
     "pagedown": "page_down",
     "home": "goto_home",
     "end": "goto_end",
+    "q": "quit",
 }
 
 
@@ -148,6 +149,7 @@ class KeybindingConfig:
             "stack_up": "Move up the stack",
             "stack_down": "Move down the stack",
             "restart": "Restart program",
+            "quit": "Quit tdb",
         }
         KEY_DISPLAY = {
             "right_square_bracket": "]",

@@ -413,6 +413,8 @@ class CodeView(ScrollableContainer, can_focus=True):
             self.post_message(self.DebugAction("stack_down"))
         elif action == "restart":
             self.post_message(self.DebugAction("restart"))
+        elif action == "quit":
+            self.post_message(self.DebugAction("quit"))
 
     # ---- Paragraph movement ----
 
