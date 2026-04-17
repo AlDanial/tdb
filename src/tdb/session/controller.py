@@ -18,54 +18,42 @@ from .state import DebugState
 log = logging.getLogger(__name__)
 
 
-# --- Terminal emulator detection and command building ---
+# --- Terminal emulator command building ---
 
-# Terminals that directly fork the child process (reliable for runInTerminal).
-# gnome-terminal is excluded: its D-Bus client/server architecture means the
-# client exits immediately and the command may not inherit the environment.
-_TERMINAL_CANDIDATES = [
-    "xterm",
-    "konsole",
-    "xfce4-terminal",
-    "kitty",
-    "alacritty",
-    "foot",
-]
-
-# Maps terminal basename to the flag(s) used before the command to execute.
-# The flag must accept the remaining args as the command + arguments.
-_TERMINAL_EXEC_FLAG: dict[str, list[str]] = {
-    "xfce4-terminal": ["-x"],  # -x takes rest of args; -e takes single string
-    "kitty": [],
-    # Default for xterm, konsole, alacritty, foot: ["-e"]
+# Maps the CLI --terminal choice to (executable name, flags before the command).
+# The flags accept the remaining args as the command + arguments.
+_TERMINAL_SPECS: dict[str, tuple[str, list[str]]] = {
+    "xterm":          ("xterm",          ["-e"]),
+    "konsole":        ("konsole",        ["-e"]),
+    "gnome-terminal": ("gnome-terminal", ["--wait", "--"]),
+    "ghostty":        ("ghostty",        ["-e"]),
+    "kitty":          ("kitty",          []),
+    "iterm2":         ("iterm2",         ["-e"]),
+    "warp":           ("warp",           ["-e"]),
+    "wezterm":        ("wezterm",        ["start", "--"]),
+    "terminator":     ("terminator",     ["-x"]),
 }
 
 
-def _find_terminal() -> str:
-    """Find an available terminal emulator. Returns the full path."""
-    # User override
-    user_terminal = os.environ.get("TERMINAL")
-    if user_terminal:
-        path = shutil.which(user_terminal)
-        if path:
-            return path
-
-    for name in _TERMINAL_CANDIDATES:
-        path = shutil.which(name)
-        if path:
-            return path
-
-    raise RuntimeError(
-        "No terminal emulator found. Install xterm, konsole, kitty, "
-        "alacritty, or foot — or set the TERMINAL environment variable."
-    )
+def _resolve_terminal(choice: str) -> str:
+    """Resolve a --terminal choice to a full executable path."""
+    spec = _TERMINAL_SPECS.get(choice)
+    if spec is None:
+        raise RuntimeError(f"Unknown terminal choice: {choice}")
+    exe, _ = spec
+    path = shutil.which(exe)
+    if not path:
+        raise RuntimeError(
+            f"Terminal '{choice}' not found on PATH. Install it or pick a different --terminal.",
+        )
+    return path
 
 
-def _build_terminal_cmd(terminal: str, args: list[str]) -> list[str]:
-    """Build the command to launch a terminal running the given args."""
-    basename = Path(terminal).name
-    exec_flag = _TERMINAL_EXEC_FLAG.get(basename, ["-e"])
-    return [terminal] + exec_flag + args
+def _build_terminal_cmd(choice: str, args: list[str]) -> list[str]:
+    """Build the command to launch the chosen terminal running the given args."""
+    path = _resolve_terminal(choice)
+    _, exec_flag = _TERMINAL_SPECS[choice]
+    return [path] + exec_flag + args
 
 
 class DebugController:
@@ -75,7 +63,7 @@ class DebugController:
         self.event_handler = event_handler
         self.client = DAPClient()
         self.state = DebugState()
-        self._external_terminal = False
+        self._terminal: str | None = None
         self._lock = asyncio.Lock()
         # Child process debug sessions (pid → DAPClient)
         self._child_clients: dict[int, DAPClient] = {}
@@ -107,7 +95,7 @@ class DebugController:
         stop_on_entry: bool = False,
         just_my_code: bool = True,
         python: str | None = None,
-        external_terminal: bool = False,
+        terminal: str | None = None,
         sub_process: bool = True,
     ) -> None:
         """Start the debug session.
@@ -119,10 +107,10 @@ class DebugController:
         4. on_dap_initialized handler sends breakpoints + configurationDone
         5. debugpy finally sends launch response
         """
-        self._external_terminal = external_terminal
+        self._terminal = terminal
         self._setup_event_handlers()
 
-        if external_terminal:
+        if terminal is not None:
             self.client.on_reverse_request("runInTerminal", self._handle_run_in_terminal)
 
         self._launch_params = {
@@ -136,7 +124,7 @@ class DebugController:
         }
 
         await self.client.start(python=python)
-        await self.client.initialize(support_run_in_terminal=external_terminal)
+        await self.client.initialize(support_run_in_terminal=terminal is not None)
 
         # Send launch — don't await response (debugpy holds it until configurationDone)
         p = self._launch_params
@@ -147,7 +135,7 @@ class DebugController:
             stop_on_entry=p["stop_on_entry"],
             just_my_code=p["just_my_code"],
             python=p["python"],
-            console="externalTerminal" if external_terminal else "internalConsole",
+            console="externalTerminal" if terminal is not None else "internalConsole",
             sub_process=p["sub_process"],
         )
 
@@ -176,8 +164,9 @@ class DebugController:
         cwd = request.arguments.get("cwd")
         env = request.arguments.get("env")
 
-        terminal = _find_terminal()
-        full_cmd = _build_terminal_cmd(terminal, cmd_args)
+        if self._terminal is None:
+            raise RuntimeError("runInTerminal requested but no --terminal was set")
+        full_cmd = _build_terminal_cmd(self._terminal, cmd_args)
 
         log.info("Launching external terminal: %s", full_cmd)
 
@@ -220,7 +209,7 @@ class DebugController:
 
         # Now await the launch response
         # External terminal needs more time: terminal startup + debuggee connect
-        timeout = 60.0 if self._external_terminal else 30.0
+        timeout = 60.0 if self._terminal is not None else 30.0
         response = await asyncio.wait_for(self._launch_future, timeout=timeout)
         if not response.success:
             raise Exception(f"Launch failed: {response.message}")
@@ -610,7 +599,7 @@ class DebugController:
             return
         # In external terminal mode, program stdout/stderr goes to the
         # terminal directly — don't duplicate it in the Console View.
-        if self._external_terminal and category in ("stdout", "stderr"):
+        if self._terminal is not None and category in ("stdout", "stderr"):
             return
         self.event_handler.on_output(text, category)
 

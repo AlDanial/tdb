@@ -62,9 +62,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Keybinding scheme for code navigation (saved to config)",
     )
     parser.add_argument(
-        "--external-terminal",
-        action="store_true",
-        help="Run debuggee in an external terminal (for TUI programs)",
+        "--terminal",
+        choices=[
+            "xterm", "konsole", "gnome-terminal", "ghostty", "kitty",
+            "iterm2", "warp", "wezterm", "terminator",
+        ],
+        default=None,
+        help="Run debuggee in the named external terminal (for TUI programs)",
     )
     parser.add_argument(
         "--server",
@@ -195,7 +199,7 @@ def _run_tui(args: argparse.Namespace) -> None:
         stop_on_entry=args.stop_on_entry,
         just_my_code=not args.no_just_my_code,
         python=args.python,
-        external_terminal=args.external_terminal,
+        terminal=args.terminal,
         keybindings=keybindings,
         cli_breakpoints=args.breakpoint,
         attach_host=args.attach_host,

@@ -385,7 +385,7 @@ class TdbApp(App):
         stop_on_entry: bool = False,
         just_my_code: bool = True,
         python: str | None = None,
-        external_terminal: bool = False,
+        terminal: str | None = None,
         keybindings: str = "vim",
         cli_breakpoints: list[tuple[str, int]] | None = None,
         attach_host: str | None = None,
@@ -400,7 +400,7 @@ class TdbApp(App):
         self._stop_on_entry = stop_on_entry
         self._just_my_code = just_my_code
         self._python = python
-        self._external_terminal = external_terminal
+        self._terminal = terminal
         self._keybindings = keybindings
         self._cli_breakpoints = cli_breakpoints or []
         self._attach_host = attach_host
@@ -511,7 +511,7 @@ class TdbApp(App):
                     stop_on_entry=self._stop_on_entry,
                     just_my_code=self._just_my_code,
                     python=self._python,
-                    external_terminal=self._external_terminal,
+                    terminal=self._terminal,
                     sub_process=self._sub_process,
                 )
         except Exception:
@@ -616,7 +616,7 @@ class TdbApp(App):
                 stop_on_entry=self._stop_on_entry,
                 just_my_code=self._just_my_code,
                 python=self._python,
-                external_terminal=self._external_terminal,
+                terminal=self._terminal,
                 sub_process=self._sub_process,
             )
         except Exception:

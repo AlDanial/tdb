@@ -189,7 +189,7 @@ def create_app(controller_ref: ControllerRef, handler: ServerEventHandler) -> Fa
         ctrl.client.__init__()
         ctrl.state.__init__()
         ctrl.state.breakpoints = saved_breakpoints
-        ctrl._external_terminal = False
+        ctrl._terminal = None
 
         # Reset handler events
         handler.initialized_event.clear()

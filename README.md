@@ -44,10 +44,10 @@ tdb --python /path/to/venv/bin/python my_script.py
 tdb --no-stop-on-entry my_script.py
 ```
 
-Or use the installed entry point:
+Or use the module entry point:
 
 ```bash
-python -m tdb --stop-on-entry my_script.py
+python -m tdb my_script.py
 ```
 
 ## Layout
@@ -274,10 +274,10 @@ All debugging features (breakpoints, stepping, variable inspection, threads, pro
 For debugging TUI programs (curses, textual, rich) that need direct terminal access:
 
 ```bash
-tdb --external-terminal my_tui_app.py
+tdb --terminal kitty my_tui_app.py
 ```
 
-The debuggee runs in a separate terminal window (auto-detects xterm, gnome-terminal, konsole, kitty, alacritty, foot, xfce4-terminal). Breakpoints, stepping, and variable inspection still work in tdb.
+The debuggee runs in a separate window of the named terminal. Supported choices: `xterm`, `konsole`, `gnome-terminal`, `ghostty`, `kitty`, `iterm2`, `warp`, `wezterm`, `terminator`. The selected terminal must be on `PATH`. Breakpoints, stepping, and variable inspection still work in tdb.
 
 ### Keybinding Schemes
 
@@ -296,7 +296,7 @@ tdb includes a built-in debug server for programmatic control — useful for scr
 ### Headless Mode (no TUI)
 
 ```bash
-python -m tdb --headless --stop-on-entry my_script.py &
+python -m tdb --headless my_script.py &
 ```
 
 The server listens on `http://127.0.0.1:8150/rpc` (change with `--server-port`).
@@ -384,8 +384,9 @@ Events: `initialized`, `stopped`, `continued`, `terminated`, `exited`, `output`.
 
 ```
 usage: tdb [-h] [-r [HOST:]PORT] [-k FILE:LINE] [--cwd CWD]
-           [--stop-on-entry] [--no-just-my-code] [--python PYTHON]
-           [--external-terminal] [--keybindings {default,vim,emacs}]
+           [--no-stop-on-entry] [--no-just-my-code] [--no-subprocess]
+           [--python PYTHON] [--keybindings {default,vim,emacs}]
+           [--terminal {xterm,konsole,gnome-terminal,ghostty,kitty,iterm2,warp,wezterm,terminator}]
            [--server] [--headless] [--server-port PORT]
            [program] [args ...]
 ```
@@ -394,11 +395,12 @@ usage: tdb [-h] [-r [HOST:]PORT] [-k FILE:LINE] [--cwd CWD]
 |------|-------------|
 | `-r`, `--remote-attach HOST:PORT` | Attach to a remote debugpy server |
 | `-k`, `--breakpoint FILE:LINE` | Set a breakpoint (may be repeated) |
-| `--stop-on-entry` | Pause at the first line (default in `tdb` wrapper) |
+| `--no-stop-on-entry` | Do not pause at the first line (default: stop on entry) |
 | `--cwd DIR` | Working directory for the debuggee |
 | `--python PATH` | Python interpreter for the debuggee |
 | `--no-just-my-code` | Step into stdlib/site-packages code instead of skipping it (default: skipped). On uncaught exceptions, the crash modal always shows the full traceback including library frames, regardless of this flag. |
-| `--external-terminal` | Run debuggee in a separate terminal window |
+| `--no-subprocess` | Disable debugpy's subprocess tracking (use when debugging tdb itself) |
+| `--terminal TERM` | Run debuggee in the named external terminal: `xterm`, `konsole`, `gnome-terminal`, `ghostty`, `kitty`, `iterm2`, `warp`, `wezterm`, or `terminator` |
 | `--keybindings SCHEME` | `default`, `vim`, or `emacs` (saved to config) |
 | `--server` | Enable JSON-RPC server alongside TUI |
 | `--headless` | JSON-RPC server only, no TUI |
