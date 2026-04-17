@@ -37,9 +37,11 @@ class AsyncTaskInfo:
 # Handles None coroutines, missing cr_frame, and repr() failures.
 TASK_COLLECT_EXPR = """\
 (lambda _ns: (exec('''
-import asyncio, json
+import asyncio, json, re
+def _natkey(_s):
+    return [int(_p) if _p.isdigit() else _p for _p in re.split(r"(\\d+)", _s)]
 _result = []
-for _t in sorted(asyncio.all_tasks(), key=lambda t: t.get_name()):
+for _t in sorted(asyncio.all_tasks(), key=lambda t: _natkey(t.get_name())):
     _coro = _t.get_coro()
     _result.append({
         "name": _t.get_name(),
