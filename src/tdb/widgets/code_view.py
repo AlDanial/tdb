@@ -363,6 +363,8 @@ class CodeView(ScrollableContainer, can_focus=True):
         elif action == "goto_line":
             if self._lines:
                 self.cursor_line = max(1, min(count, len(self._lines)))
+        elif action == "goto_line_prompt":
+            self._open_goto_line()
         elif action == "goto_end":
             if self._lines:
                 self.cursor_line = len(self._lines)
@@ -449,6 +451,12 @@ class CodeView(ScrollableContainer, can_focus=True):
             return max(i, 1)
 
     # ---- Search ----
+
+    def _open_goto_line(self) -> None:
+        def on_dismiss(value: int | None) -> None:
+            if value is not None and self._lines:
+                self.cursor_line = max(1, min(value, len(self._lines)))
+        self.app.push_screen(_GoToLineModal(), callback=on_dismiss)
 
     def _open_search(self, backward: bool = False) -> None:
         self._search_backward = backward

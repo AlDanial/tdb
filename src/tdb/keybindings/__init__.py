@@ -73,6 +73,7 @@ _DEBUG = {
     "t": "run_to_cursor",
     "u": "stack_up",
     "d": "stack_down",
+    "L": "goto_line_prompt",
     "R": "restart",
 }
 
@@ -124,6 +125,7 @@ class KeybindingConfig:
         """Return (key_display, description) pairs for display."""
         ACTION_LABELS = {
             "goto_line": "Go to line N",
+            "goto_line_prompt": "Go to line (prompt)",
             "goto_end": "Go to end of file",
             "goto_home": "Go to start of file",
             "cursor_up": "Move cursor up",
@@ -143,8 +145,8 @@ class KeybindingConfig:
             "toggle_breakpoint": "Toggle breakpoint",
             "pause": "Pause",
             "run_to_cursor": "Run to cursor",
-            "stack_up": "Stack frame up (caller)",
-            "stack_down": "Stack frame down (callee)",
+            "stack_up": "Move up the stack",
+            "stack_down": "Move down the stack",
             "restart": "Restart program",
         }
         KEY_DISPLAY = {

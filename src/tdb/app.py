@@ -11,10 +11,10 @@ from pathlib import Path
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.message import Message
 from textual.screen import ModalScreen
-from textual.widgets import Footer, Header, Label, OptionList, Static
+from textual.widgets import Footer, Header, Label, OptionList, RadioButton, RadioSet, Static
 from textual.widgets._tree import TreeNode
 
 from tdb.session.controller import DebugController
@@ -36,7 +36,7 @@ from tdb.widgets.evaluate_console import EvaluateConsole
 from tdb.widgets.menu_bar import MenuBar, _MenuDropdown
 from tdb.widgets.stack_view import StackView
 from tdb.widgets.status_bar import StatusBar
-from tdb.persist import load_breakpoints, save_breakpoints
+from tdb.persist import load_breakpoints, save_breakpoints, save_config
 from tdb.widgets.async_tasks_modal import AsyncTasksModal, AsyncTaskInfo, TASK_COLLECT_EXPR, TASK_LOCALS_EXPR, parse_task_json
 from tdb.widgets.processes_modal import ProcessesModal, ProcessInfo, PROCESS_COLLECT_EXPR, parse_process_json
 from tdb.widgets.threads_modal import ThreadsModal
@@ -46,49 +46,92 @@ log = logging.getLogger(__name__)
 
 
 class _KeybindingsModal(ModalScreen[None]):
-    """Modal showing the keybinding reference for both modes."""
+    """Modal showing the keybinding reference for both modes.
+
+    Includes a scheme selector (vim / emacs / default); choosing a scheme
+    updates the CodeView live and persists the choice to config.
+    """
 
     DEFAULT_CSS = """
     _KeybindingsModal {
         align: center middle;
     }
     _KeybindingsModal #dialog {
-        width: 60;
-        height: auto;
-        max-height: 30;
+        width: 62;
+        height: 80%;
+        max-height: 40;
         border: solid $primary;
         background: $surface;
         padding: 1 2;
+    }
+    _KeybindingsModal #scheme-select {
+        border: none;
+        padding: 0;
+        margin: 0 0 1 0;
+        height: auto;
+    }
+    _KeybindingsModal RadioButton {
+        border: none;
+        padding: 0 1;
+    }
+    _KeybindingsModal #bindings-scroll {
+        height: 1fr;
+        overflow-y: auto;
+        scrollbar-size-vertical: 1;
     }
     """
 
     BINDINGS = [
         Binding("escape", "dismiss_modal", "Close", show=False),
-        Binding("enter", "dismiss_modal", "Close", show=False),
+        Binding("q", "dismiss_modal", "Close", show=False),
     ]
 
-    def __init__(self, config: KeybindingConfig) -> None:
+    _SCHEMES = ("vim", "emacs", "default")
+
+    def __init__(self, config: KeybindingConfig, on_scheme_change) -> None:
         super().__init__()
         self._config = config
+        self._on_scheme_change = on_scheme_change
 
     def compose(self):
-        lines = []
-        lines.append("[bold]Keybindings[/bold]  (ESC toggles mode)\n")
+        with Vertical(id="dialog"):
+            yield Static("[bold]Keybindings[/bold]  (ESC toggles mode)", markup=True)
+            yield Static("Scheme:", markup=True)
+            with RadioSet(id="scheme-select"):
+                for scheme in self._SCHEMES:
+                    yield RadioButton(
+                        scheme.capitalize(),
+                        value=(self._config.scheme == scheme),
+                        id=f"scheme-{scheme}",
+                    )
+            with VerticalScroll(id="bindings-scroll"):
+                yield Static(self._render_bindings(), id="bindings-display", markup=True)
 
+    def _render_bindings(self) -> str:
+        lines = []
         lines.append("[bold underline]Navigation Mode[/bold underline]")
         for key_display, description in self._config.format_bindings(Mode.NAVIGATION):
             lines.append(f"  [bold cyan]{key_display:<12}[/bold cyan] {description}")
-
         lines.append("")
         lines.append("[bold underline]Debug Mode[/bold underline]")
         for key_display, description in self._config.format_bindings(Mode.DEBUG):
             lines.append(f"  [bold cyan]{key_display:<12}[/bold cyan] {description}")
-
         lines.append("")
-        lines.append("[dim]Press ESC or Enter to close[/dim]")
+        lines.append("[dim]Press ESC or q to close[/dim]")
+        return "\n".join(lines)
 
-        with Vertical(id="dialog"):
-            yield Static("\n".join(lines), markup=True)
+    def on_radio_set_changed(self, event: RadioSet.Changed) -> None:
+        if event.radio_set.id != "scheme-select" or event.pressed is None:
+            return
+        pressed_id = event.pressed.id or ""
+        if not pressed_id.startswith("scheme-"):
+            return
+        scheme = pressed_id[len("scheme-"):]
+        if scheme == self._config.scheme:
+            return
+        self._config = KeybindingConfig.from_scheme(scheme)
+        self._on_scheme_change(scheme)
+        self.query_one("#bindings-display", Static).update(self._render_bindings())
 
     def action_dismiss_modal(self) -> None:
         self.dismiss(None)
@@ -952,7 +995,13 @@ class TdbApp(App):
 
     def action_keybindings(self) -> None:
         code_view = self.query_one("#code-view", CodeView)
-        self.push_screen(_KeybindingsModal(code_view.keybindings))
+
+        def on_scheme_change(scheme: str) -> None:
+            code_view.keybindings = KeybindingConfig.from_scheme(scheme)
+            self._keybindings = scheme
+            save_config(keybindings=scheme)
+
+        self.push_screen(_KeybindingsModal(code_view.keybindings, on_scheme_change))
 
     def action_documentation(self) -> None:
         self.notify("tdb — TUI Python Debugger\n\nESC toggles Navigation/Debug mode\nCtrl+E = Evaluate console\nConfigure > Keybindings for full reference", title="Documentation")
