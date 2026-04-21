@@ -526,7 +526,65 @@ class DebugController:
 
     async def select_frame(self, frame_id: int) -> None:
         self.state.current_frame_id = frame_id
+        if self.state.is_post_mortem:
+            # All data is pre-populated; just swap in the selected frame's scopes.
+            self.state.scopes = self.state.frame_scopes.get(frame_id, [])
+            return
         await self.fetch_scopes_and_variables(frame_id)
+
+    def load_post_mortem(self, snapshot: dict) -> None:
+        """Populate state from a snapshot produced by tdb.exception_hook.
+
+        After this call the controller holds a frozen view of the crash:
+        stack_frames, scopes, and variables are all set, no DAP session is
+        active, and is_post_mortem / is_terminated are True.
+        """
+        from tdb.dap.types import Scope, Source, StackFrame, Variable
+
+        self.state.is_post_mortem = True
+        self.state.is_terminated = True
+        self.state.is_running = False
+        self.state.stop_reason = "exception"
+
+        frames_data = snapshot.get("frames", [])
+        vars_data: dict[str, list[dict]] = snapshot.get("variables", {})
+
+        # Rebuild variables keyed by int reference.
+        self.state.variables = {}
+        for ref_str, entries in vars_data.items():
+            ref = int(ref_str)
+            self.state.variables[ref] = [
+                Variable(
+                    name=e.get("name", ""),
+                    value=e.get("value", ""),
+                    type=e.get("type", ""),
+                    variables_reference=e.get("variablesReference", 0),
+                )
+                for e in entries
+            ]
+
+        # Rebuild frames + per-frame scopes.
+        self.state.stack_frames = []
+        self.state.frame_scopes = {}
+        for fd in frames_data:
+            fid = fd["id"]
+            path = fd.get("filename", "")
+            frame = StackFrame(
+                id=fid,
+                name=fd.get("funcname", "<frame>"),
+                source=Source(path=path, name=os.path.basename(path) if path else None),
+                line=fd.get("lineno", 0),
+            )
+            self.state.stack_frames.append(frame)
+            self.state.frame_scopes[fid] = [
+                Scope(name=s["name"], variables_reference=s["variablesReference"])
+                for s in fd.get("scopes", [])
+            ]
+
+        if self.state.stack_frames:
+            top = self.state.stack_frames[0]
+            self.state.current_frame_id = top.id
+            self.state.scopes = self.state.frame_scopes.get(top.id, [])
 
     async def fetch_stop_info(self) -> None:
         """After stopping, fetch threads, stack trace, scopes, and variables.

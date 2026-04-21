@@ -37,6 +37,13 @@ class DebugState:
     is_terminated: bool = False
     stop_reason: str | None = None
 
+    # Post-mortem mode: no live debuggee, all frame/variable data is
+    # pre-populated from a snapshot. Stepping/continue/breakpoints are
+    # disabled; variable lazy-loading reads from `variables` instead of DAP.
+    is_post_mortem: bool = False
+    # Per-frame scope lists, keyed by frame.id. Populated only in post-mortem.
+    frame_scopes: dict[int, list[Scope]] = field(default_factory=dict)
+
 
     def clear_frame_data(self) -> None:
         self.stack_frames.clear()

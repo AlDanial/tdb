@@ -405,6 +405,7 @@ class TdbApp(App):
         attach_port: int | None = None,
         sub_process: bool = True,
         server_port: int | None = None,
+        post_mortem_snapshot: dict | None = None,
     ) -> None:
         super().__init__()
         self._program = program
@@ -420,6 +421,7 @@ class TdbApp(App):
         self._attach_port = attach_port
         self._sub_process = sub_process
         self._server_port = server_port
+        self._post_mortem_snapshot = post_mortem_snapshot
 
         self._textual_handler = TextualEventHandler(self)
         if server_port is not None:
@@ -474,6 +476,11 @@ class TdbApp(App):
         code_view = self.query_one("#code-view", CodeView)
         code_view.keybindings = KeybindingConfig.from_scheme(self._keybindings)
         self._update_code_title(code_view)
+
+        if self._post_mortem_snapshot is not None:
+            self._enter_post_mortem(code_view)
+            return
+
         if self._program:
             code_view.load_file(self._program)
         code_view.focus()
@@ -499,6 +506,46 @@ class TdbApp(App):
         self._start_session()
         if self._server_port is not None:
             self._start_server()
+
+    def _enter_post_mortem(self, code_view: CodeView) -> None:
+        """Populate the UI from a frozen crash snapshot (no DAP session)."""
+        snapshot = self._post_mortem_snapshot
+        assert snapshot is not None
+        self.controller.load_post_mortem(snapshot)
+        state = self.controller.state
+
+        exc = snapshot.get("exception", {})
+        self.sub_title = f"Post-mortem · {exc.get('type', 'Exception')}"
+
+        # Pipe the formatted traceback into the console view so the user
+        # can scroll through the full chain.
+        tb_text = exc.get("traceback_text", "")
+        if tb_text:
+            console = self.query_one("#console-view", ConsoleView)
+            console.write_output(tb_text, "stderr")
+
+        # Load crash site into Code View.
+        if state.stack_frames:
+            top = state.stack_frames[0]
+            if top.source and top.source.path and os.path.isfile(top.source.path):
+                code_view.load_file(top.source.path)
+            code_view.current_line = top.line
+
+        # Populate stack + variables panes.
+        stack_view = self.query_one("#stack-view", StackView)
+        stack_view.update_frames(state.stack_frames, state.current_frame_id)
+        var_view = self.query_one("#variable-view", VariableView)
+        var_view.update_variables(state.scopes, state.variables)
+
+        status_bar = self.query_one("#status-bar", StatusBar)
+        if state.stack_frames:
+            top = state.stack_frames[0]
+            src = top.source.path if top.source else None
+            status_bar.set_paused(src, top.line, reason="exception")
+        else:
+            status_bar.set_terminated()
+
+        code_view.focus()
 
     def _update_code_title(self, code_view: CodeView) -> None:
         mode_label = code_view.mode.value
@@ -866,9 +913,17 @@ class TdbApp(App):
         status_bar = self.query_one("#status-bar", StatusBar)
 
         if state.is_terminated:
-            self.sub_title = "Terminated"
+            if state.is_post_mortem:
+                exc_type = "Exception"
+                if self._post_mortem_snapshot is not None:
+                    exc_type = self._post_mortem_snapshot.get(
+                        "exception", {},
+                    ).get("type", "Exception")
+                self.sub_title = f"Post-mortem · {exc_type}"
+            else:
+                self.sub_title = "Terminated"
             if state.stack_frames:
-                # Show crash location from synthetic or real stack frames
+                reason = "exception" if state.is_post_mortem else "terminated"
                 stack_view = self.query_one("#stack-view", StackView)
                 stack_view.update_frames(state.stack_frames, state.current_frame_id)
                 # Navigate Code View and status bar to the current frame
@@ -877,10 +932,16 @@ class TdbApp(App):
                         if frame.source.path != code_view.source_path:
                             code_view.load_file(frame.source.path)
                         code_view.current_line = frame.line
-                        status_bar.set_paused(frame.source.path, frame.line, reason="terminated")
+                        status_bar.set_paused(frame.source.path, frame.line, reason=reason)
                         break
                 else:
                     status_bar.set_terminated()
+                if state.is_post_mortem:
+                    # Post-mortem has per-frame scopes — refresh the var tree
+                    # so frame navigation actually shows the selected frame's
+                    # locals.
+                    var_view = self.query_one("#variable-view", VariableView)
+                    var_view.update_variables(state.scopes, state.variables)
             else:
                 code_view.current_line = None
                 status_bar.set_terminated()
@@ -925,6 +986,12 @@ class TdbApp(App):
     # --- Widget message handlers ---
 
     async def on_code_view_breakpoint_toggled(self, message: CodeView.BreakpointToggled) -> None:
+        if self.controller.state.is_post_mortem:
+            self.notify(
+                "Breakpoints disabled in post-mortem mode",
+                title="tdb", severity="warning",
+            )
+            return
         try:
             await self.controller.toggle_breakpoint(message.source_path, message.line)
             self.post_message(self.BreakpointsChanged())
@@ -991,11 +1058,18 @@ class TdbApp(App):
             if message.action in ("stack_up", "stack_down"):
                 await self._navigate_stack(message.action == "stack_up")
                 return
-            if message.action == "restart":
-                self._restart_session()
-                return
             if message.action == "quit":
                 await self.action_quit_debugger()
+                return
+            if self.controller.state.is_post_mortem:
+                # Frozen snapshot — no live debuggee to step/continue/restart.
+                self.notify(
+                    "Not available in post-mortem mode",
+                    title="tdb", severity="warning",
+                )
+                return
+            if message.action == "restart":
+                self._restart_session()
                 return
             handler = {
                 "continue_": self.controller.continue_,
@@ -1096,6 +1170,19 @@ class TdbApp(App):
             log.exception("Error toggling breakpoint enabled state")
 
     async def on_tdb_app_lazy_load_variables(self, message: LazyLoadVariables) -> None:
+        # Post-mortem: all variables are pre-populated in state.variables.
+        # Look them up directly — there is no live DAP session to query.
+        if self.controller.state.is_post_mortem:
+            source = message.source
+            variables = self.controller.state.variables.get(
+                message.variables_reference, [],
+            )
+            target = source if source is not None else self.query_one(
+                "#variable-view", VariableView,
+            )
+            target.load_children(message.node, variables)
+            return
+
         # If the request originated from the Processes modal's VariableView,
         # resolve the child DAPClient for the currently-selected process —
         # the variablesReference is scoped to that session, not the parent's.

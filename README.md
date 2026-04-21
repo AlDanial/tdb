@@ -178,6 +178,36 @@ When the debuggee raises an unhandled exception, tdb:
 3. Populates the Stack View with the exception's call stack
 4. Lets you press `R` to restart or `Escape` to dismiss
 
+### Post-Mortem Exception Hook
+
+You can have tdb pop open automatically when *any* Python program crashes — no need to launch through `tdb` up front. Install the hook once at the top of your program:
+
+```python
+import sys
+import tdb
+
+sys.excepthook = tdb.exception_hook
+```
+
+When an uncaught exception reaches the hook, tdb:
+
+1. Prints the standard Python traceback to stderr (so your scrollback still has a record)
+2. Snapshots every frame in the traceback — locals, plus one level of recursion into containers (`dict`, `list`, `tuple`, `set`) and objects with `__dict__`
+3. Launches the TUI in **post-mortem mode**, inheriting the current terminal
+
+In post-mortem mode you can:
+
+- Navigate the call stack (`u` / `d` or the Stack View) and see each frame's locals
+- Expand nested containers and object attributes in the Variables View
+- Read the full traceback (including chained `cause`/`context` exceptions) in the Console View
+- Jump around the source with the full Code View (syntax highlighting, goto-line, etc.)
+
+Stepping, `continue`, breakpoints, restart, and Evaluate are disabled — the original interpreter is gone, the view is a frozen snapshot. Press `q` to exit.
+
+The hook is a no-op when stdin/stdout aren't a tty (e.g. when your program is piped or run from cron), so it's safe to leave installed in production-style code. Snapshots are written to a temp file that is deleted as soon as tdb exits.
+
+Snapshot depth / breadth is capped (5 levels, 50 children per container) to keep the capture cheap even for pathological object graphs; cycles are handled via identity memoization.
+
 ### Async Task Inspector
 
 For programs using `asyncio`, the menu bar shows an **Async Tasks (N)** label with the count of active tasks (updated each time the program stops). Click it to open a full-screen modal:

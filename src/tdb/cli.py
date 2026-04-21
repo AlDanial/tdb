@@ -93,6 +93,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=8150,
         help="Port for the JSON-RPC debug server (default: 8150)",
     )
+    parser.add_argument(
+        "--post-mortem",
+        metavar="SNAPSHOT_FILE",
+        default=None,
+        help=argparse.SUPPRESS,  # invoked by tdb.exception_hook, not the user
+    )
 
     args = parser.parse_args(argv)
     args.stop_on_entry = not args.no_stop_on_entry
@@ -100,6 +106,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     # --headless implies --server
     if args.headless:
         args.server = True
+
+    # --post-mortem short-circuits everything else: no program needed.
+    if args.post_mortem:
+        return args
 
     # Parse --remote-attach into (host, port)
     args.attach_host = None
@@ -157,10 +167,31 @@ def main(argv: list[str] | None = None) -> None:
         format="%(asctime)s %(name)s %(levelname)s %(message)s",
     )
 
-    if args.headless:
+    if args.post_mortem:
+        _run_post_mortem(args)
+    elif args.headless:
         _run_headless(args)
     else:
         _run_tui(args)
+
+
+def _run_post_mortem(args: argparse.Namespace) -> None:
+    """Load a snapshot written by tdb.exception_hook and display it."""
+    import json
+    from tdb.app import TdbApp
+    from tdb.persist import load_keybinding_scheme
+
+    with open(args.post_mortem) as f:
+        snapshot = json.load(f)
+
+    keybindings = args.keybindings or load_keybinding_scheme() or "vim"
+
+    app = TdbApp(
+        program="",
+        keybindings=keybindings,
+        post_mortem_snapshot=snapshot,
+    )
+    app.run()
 
 
 def _run_headless(args: argparse.Namespace) -> None:
