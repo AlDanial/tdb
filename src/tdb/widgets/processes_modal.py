@@ -170,6 +170,10 @@ class ProcessesModal(ModalScreen[None]):
         super().__init__()
         self._processes = processes
         self._mounted = False
+        # PID of the process whose detail pane is currently displayed.
+        # Used by the app to route variable lazy-loads to the correct
+        # child DAPClient (variablesReference is scoped per-session).
+        self._current_pid: int | None = None
 
     def compose(self) -> ComposeResult:
         with Vertical(id="dialog"):
@@ -279,6 +283,7 @@ class ProcessesModal(ModalScreen[None]):
         proc = next((p for p in self._processes if p.pid == pid), None)
         if proc is None:
             return
+        self._current_pid = pid
 
         content = Text()
         content.append("Name:    ", style="bold")

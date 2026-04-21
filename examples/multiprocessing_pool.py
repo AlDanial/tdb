@@ -24,8 +24,10 @@ if __name__ == "__main__":
     start_time = time.time()
     
     # Create a pool of workers equal to the number of CPU cores
-    print(f"Starting pool with {multiprocessing.cpu_count()} cores...")
-    with multiprocessing.Pool(6) as pool:
+    num_cores = multiprocessing.cpu_count()
+    num_procs = 6
+    print(f"Starting pool with {num_procs} processes (CPU cores: {num_cores})")
+    with multiprocessing.Pool(num_procs) as pool:
         # map() blocks until all are done, maintaining order
         results = pool.map(heavy_computation, numbers)
         

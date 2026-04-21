@@ -80,7 +80,7 @@ class VariableView(Tree[int]):
             if len(children) == 1 and children[0].label == Text("..."):
                 self._pending_expand.add(node.data)
                 self.post_message(
-                    self.app.LazyLoadVariables(node.data, node)  # type: ignore[attr-defined]
+                    self.app.LazyLoadVariables(node.data, node, self)  # type: ignore[attr-defined]
                 )
 
     def load_children(

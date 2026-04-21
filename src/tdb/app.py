@@ -374,9 +374,17 @@ class TdbApp(App):
         pass
 
     class LazyLoadVariables(Message):
-        def __init__(self, variables_reference: int, node: TreeNode[int]) -> None:
+        def __init__(
+            self,
+            variables_reference: int,
+            node: TreeNode[int],
+            source: VariableView | None = None,
+        ) -> None:
             self.variables_reference = variables_reference
             self.node = node
+            # The VariableView the request originated from. When None, the
+            # main #variable-view is assumed (for backward compatibility).
+            self.source = source
             super().__init__()
 
     class RefreshAsyncTasks(Message):
@@ -1088,6 +1096,29 @@ class TdbApp(App):
             log.exception("Error toggling breakpoint enabled state")
 
     async def on_tdb_app_lazy_load_variables(self, message: LazyLoadVariables) -> None:
+        # If the request originated from the Processes modal's VariableView,
+        # resolve the child DAPClient for the currently-selected process —
+        # the variablesReference is scoped to that session, not the parent's.
+        source = message.source
+        if source is not None and source.id == "proc-vars":
+            modal = getattr(self, "_processes_modal", None)
+            pid = getattr(modal, "_current_pid", None) if modal is not None else None
+            child = self.controller._child_clients.get(pid) if pid is not None else None
+            if child is None:
+                source.load_children(message.node, [])
+                return
+            try:
+                variables = await child.variables(message.variables_reference)
+            except Exception:
+                log.debug(
+                    "Failed to load child (pid=%s) variables (ref=%d)",
+                    pid, message.variables_reference,
+                )
+                source.load_children(message.node, [])
+                return
+            source.load_children(message.node, variables)
+            return
+
         try:
             variables = await self.controller.active_client.variables(message.variables_reference)
             var_view = self.query_one("#variable-view", VariableView)
@@ -1447,24 +1478,32 @@ class TdbApp(App):
             menu_bar.update_action_label("processes-label", "Processes")
 
     def _open_processes(self) -> None:
-        """Fetch process info, then open the modal only if there are any."""
+        """Open the Processes modal immediately (showing Loading...) and
+        fetch process info in the background. If no processes are found,
+        dismiss the modal and show a toast instead."""
         if self.controller.state.is_terminated:
             self.notify("Program has terminated", title="Processes")
             return
         if self.controller.state.is_running:
             self.notify("Program is running — pause first", title="Processes")
             return
+        self._processes_modal = ProcessesModal([])
+        self.push_screen(self._processes_modal)
         self._open_processes_worker()
 
     @work(exclusive=True, group="processes-open")
     async def _open_processes_worker(self) -> None:
-        """Background: fetch processes, then open modal or notify."""
+        """Background: fetch processes and populate the already-open modal,
+        or dismiss it and toast when there are none."""
         processes = await self._get_processes()
+        modal = getattr(self, "_processes_modal", None)
+        if modal is None:
+            return
         if not processes:
+            modal.dismiss(None)
             self.notify("No extra processes", title="Processes")
             return
-        self._processes_modal = ProcessesModal(processes)
-        self.push_screen(self._processes_modal)
+        modal.update_processes(processes)
 
     async def on_processes_modal_refresh_processes(
         self, message: ProcessesModal.RefreshProcesses,
