@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import asyncio
 import logging
 import os
 import re
@@ -276,11 +277,15 @@ class _TracebackModal(ModalScreen[str | None]):
         self._frames_text = frames_text
 
     def compose(self):
+        # Escape bare '[' so exception messages like "list[int]" or
+        # chained-traceback separator text don't get parsed as Rich markup.
+        exc_safe = self._exception_text.replace("[", r"\[")
+        frames_safe = self._frames_text.replace("[", r"\[")
         lines = []
-        lines.append(f"[bold red]{self._exception_text}[/bold red]")
+        lines.append(f"[bold red]{exc_safe}[/bold red]")
         lines.append("")
         lines.append("[bold]Traceback (most recent call last):[/bold]")
-        lines.append(self._frames_text)
+        lines.append(frames_safe)
         lines.append("")
         lines.append("[dim]Press ESC, Enter, or q to close · Press R to restart[/dim]")
 
@@ -695,18 +700,33 @@ class TdbApp(App):
         from tdb.dap.types import Source, StackFrame
 
         stderr = "".join(self._stderr_buffer)
-        if "Traceback (most recent call last):" not in stderr:
+        tb_header = "Traceback (most recent call last):"
+        if tb_header not in stderr:
             return
 
-        # Extract the last traceback block from stderr
-        tb_start = stderr.rfind("Traceback (most recent call last):")
+        # Capture from the FIRST traceback header to the end, so chained
+        # exceptions ("The above exception was the direct cause..." /
+        # "During handling of the above exception...") are preserved in full.
+        tb_start = stderr.find(tb_header)
         tb_text = stderr[tb_start:].rstrip()
 
-        # Parse all File "...", line N, in func entries
-        matches = list(self._TB_FILE_RE.finditer(tb_text))
+        # Split into individual traceback blocks (one per chained exception).
+        # Each block starts with the header line.
+        block_starts = [m.start() for m in re.finditer(re.escape(tb_header), tb_text)]
+        blocks: list[str] = []
+        for i, s in enumerate(block_starts):
+            e = block_starts[i + 1] if i + 1 < len(block_starts) else len(tb_text)
+            blocks.append(tb_text[s:e].rstrip())
 
-        # The exception line is typically the last non-empty line
-        lines = tb_text.split("\n")
+        # Synthetic stack frames come from the LAST block — that is the
+        # exception that actually terminated the process (Python prints
+        # cause/context first, final exception last).
+        final_block = blocks[-1] if blocks else tb_text
+        matches = list(self._TB_FILE_RE.finditer(final_block))
+
+        # The exception line is the last non-empty, non-indented line of the
+        # final block (Python prints it after all "File" frames).
+        lines = final_block.split("\n")
         exception_text = ""
         for line in reversed(lines):
             stripped = line.strip()
@@ -714,6 +734,9 @@ class TdbApp(App):
                 continue
             if stripped.startswith("File ") or stripped.startswith("Traceback "):
                 break
+            # Skip source-code snippet and caret lines (they are indented).
+            if line.startswith("    ") or line.startswith("\t"):
+                continue
             exception_text = stripped
             break
 
@@ -735,9 +758,12 @@ class TdbApp(App):
             state.stack_frames = synthetic_frames
             state.current_frame_id = synthetic_frames[0].id
 
-        # Show the raw traceback body (everything after the header line)
-        header_end = tb_text.index("\n") + 1 if "\n" in tb_text else len(tb_text)
-        frames_text = tb_text[header_end:].rstrip()
+        # Modal body: show every block's body (after its header line), joined
+        # by the chaining separator text that already lives between them in
+        # stderr. Easiest way: reuse tb_text but strip only the very first
+        # header line so the modal's own "Traceback" label isn't duplicated.
+        first_header_end = tb_text.index("\n") + 1 if "\n" in tb_text else len(tb_text)
+        frames_text = tb_text[first_header_end:].rstrip()
 
         def on_dismiss(result: str | None) -> None:
             if result == "restart":
@@ -759,17 +785,41 @@ class TdbApp(App):
         except Exception:
             log.exception("Error handling continued event")
 
-    def on_dap_terminated(self, message: DapTerminated) -> None:
+    async def on_dap_terminated(self, message: DapTerminated) -> None:
         log.info("on_dap_terminated called")
         try:
             state = self.controller.state
             state.is_terminated = True
             state.is_running = False
             if not self._exception_modal_shown:
+                # debugpy may still be delivering OutputEvents for late stderr
+                # (chained tracebacks in particular span many lines). Wait for
+                # the buffer to stabilize before parsing, otherwise the modal
+                # shows a partial traceback.
+                await self._wait_for_stderr_quiescent()
                 self._check_stderr_traceback()
             self._update_ui_state()
         except Exception:
             log.exception("Error handling terminated event")
+
+    async def _wait_for_stderr_quiescent(
+        self, quiet_for: float = 0.15, max_wait: float = 1.5,
+    ) -> None:
+        """Sleep in short ticks until stderr stops growing (or max_wait elapses)."""
+        deadline = asyncio.get_event_loop().time() + max_wait
+        last_len = len(self._stderr_buffer)
+        last_change = asyncio.get_event_loop().time()
+        while True:
+            await asyncio.sleep(0.05)
+            now = asyncio.get_event_loop().time()
+            cur_len = len(self._stderr_buffer)
+            if cur_len != last_len:
+                last_len = cur_len
+                last_change = now
+            if now - last_change >= quiet_for:
+                return
+            if now >= deadline:
+                return
 
     def on_dap_exited(self, message: DapExited) -> None:
         try:
