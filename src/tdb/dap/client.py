@@ -135,8 +135,12 @@ class DAPClient:
         """Return the stream used for writing DAP messages."""
         if self._writer:
             return self._writer
-        assert self._process and self._process.stdin
-        return self._process.stdin
+        if self._process and self._process.stdin:
+            return self._process.stdin
+        # Shutdown race: caller invoked disconnect/_send after the writer
+        # was closed (or before connect). Surface as ConnectionError so the
+        # normal disconnect error-handling path swallows it.
+        raise ConnectionError("DAPClient has no active write stream")
 
     async def _send_reverse_response(
         self,

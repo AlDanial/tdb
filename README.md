@@ -208,6 +208,33 @@ The hook is a no-op when stdin/stdout aren't a tty (e.g. when your program is pi
 
 Snapshot depth / breadth is capped (5 levels, 50 children per container) to keep the capture cheap even for pathological object graphs; cycles are handled via identity memoization.
 
+### Live Breakpoint Hook
+
+For the `pdb.set_trace()` use case — pausing at a specific line to inspect, then continuing — use `tdb.breakpoint()`:
+
+```python
+import tdb
+
+def compute(n):
+    total = sum(range(n))
+    tdb.breakpoint()  # pause here and drop into tdb
+    return total
+```
+
+Or hook it into the builtin `breakpoint()` function for the whole program:
+
+```bash
+PYTHONBREAKPOINT=tdb.breakpoint python myscript.py
+```
+
+When the call is reached, tdb starts an in-process `debugpy` server on a loopback port, spawns `python -m tdb -r <port>` as a subprocess so the TUI takes over the terminal, and pauses the calling thread. When you press `Ctrl+Q` to quit tdb, your program resumes past the breakpoint.
+
+This differs from `tdb.exception_hook` in two ways:
+- **Requires `debugpy`** as a runtime dependency (only imported when the hook actually fires).
+- **Live, not frozen**: because the interpreter is still alive, variable inspection reads real objects — though stepping/`continue`/breakpoint setting from the tdb side are not wired up in this iteration; quitting tdb is how you resume.
+
+As with `exception_hook`, the call is a no-op when stdin/stdout aren't a tty, so it's safe to leave in code paths that sometimes run headless.
+
 ### Async Task Inspector
 
 For programs using `asyncio`, the menu bar shows an **Async Tasks (N)** label with the count of active tasks (updated each time the program stops). Click it to open a full-screen modal:

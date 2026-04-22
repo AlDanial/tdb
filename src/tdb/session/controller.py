@@ -71,6 +71,10 @@ class DebugController:
         # The "active" client is the one whose stop event we're currently
         # inspecting.  Defaults to the parent client.
         self._active_client: DAPClient = self.client
+        # In remote-attach mode we do NOT own the debuggee; quitting tdb
+        # must detach without terminating it (otherwise tdb.breakpoint()
+        # and similar attach workflows would kill the user's program).
+        self._is_remote_attach: bool = False
 
     @staticmethod
     def _enabled_bps(bps: list[SourceBreakpoint]) -> list[SourceBreakpoint]:
@@ -152,6 +156,7 @@ class DebugController:
         """
         self._setup_event_handlers()
         self._launch_params = {}
+        self._is_remote_attach = True
 
         await self.client.connect(host, port)
         await self.client.initialize()
@@ -225,7 +230,7 @@ class DebugController:
             except Exception:
                 pass
         self._child_clients.clear()
-        await self.client.disconnect(terminate=True)
+        await self.client.disconnect(terminate=not self._is_remote_attach)
         await self.client.stop()
         self.state.is_terminated = True
 
