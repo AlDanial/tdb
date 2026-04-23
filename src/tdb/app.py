@@ -299,6 +299,39 @@ class _TracebackModal(ModalScreen[str | None]):
         self.dismiss("restart")
 
 
+class _QuitConfirmModal(ModalScreen):
+    """Small modal: `q` confirms quit, escape/other cancels."""
+
+    DEFAULT_CSS = """
+    _QuitConfirmModal {
+        align: center middle;
+    }
+    _QuitConfirmModal #dialog {
+        width: 32;
+        height: 5;
+        border: solid $warning;
+        background: $surface;
+        padding: 1 2;
+        content-align: center middle;
+    }
+    """
+
+    BINDINGS = [
+        Binding("q", "confirm", "Quit", show=False),
+        Binding("escape", "cancel", "Cancel", show=False),
+    ]
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="dialog"):
+            yield Static("[bold]Hit q again to quit[/bold]", markup=True)
+
+    def action_confirm(self) -> None:
+        self.dismiss(True)
+
+    def action_cancel(self) -> None:
+        self.dismiss(False)
+
+
 class TdbApp(App):
     """TUI Python debugger."""
 
@@ -359,6 +392,7 @@ class TdbApp(App):
 
     BINDINGS = [
         Binding("ctrl+q", "quit_debugger", "Quit"),
+        Binding("q", "confirm_quit", "Quit", show=False),
         Binding("escape", "escape_handler", "Escape", show=False),
         Binding("ctrl+c", "focus_code", "Code", show=False),
         Binding("ctrl+o", "focus_console", "Console", show=False),
@@ -1059,7 +1093,7 @@ class TdbApp(App):
                 await self._navigate_stack(message.action == "stack_up")
                 return
             if message.action == "quit":
-                await self.action_quit_debugger()
+                self.action_confirm_quit()
                 return
             if self.controller.state.is_post_mortem:
                 # Frozen snapshot — no live debuggee to step/continue/restart.
@@ -1669,6 +1703,16 @@ class TdbApp(App):
         if hasattr(self, '_uvicorn_server'):
             self._uvicorn_server.should_exit = True
         self.exit()
+
+    def action_confirm_quit(self) -> None:
+        if isinstance(self.screen, _QuitConfirmModal):
+            return
+
+        def on_dismiss(confirmed: bool | None) -> None:
+            if confirmed:
+                self.run_worker(self.action_quit_debugger())
+
+        self.push_screen(_QuitConfirmModal(), callback=on_dismiss)
 
 
 def _unquote_dap_string(s: str) -> str:
