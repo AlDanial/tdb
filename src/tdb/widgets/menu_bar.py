@@ -205,6 +205,29 @@ class MenuBar(Widget):
             for dropdown in self.screen.query(_MenuDropdown):
                 dropdown.remove_class("--visible")
 
+    def close_menus(self) -> None:
+        """Close any open dropdown. Safe to call when none is open."""
+        self._close_all()
+
+    def open_menu(self, menu_name: str) -> bool:
+        """Programmatically open (or toggle closed) a dropdown by its label.
+
+        Returns True if the menu was opened, False if the name is unknown
+        or it was toggled closed. Used by keyboard shortcuts.
+        """
+        if menu_name not in self._menus:
+            return False
+        if self._open_menu == menu_name:
+            self._close_all()
+            return False
+        label_id = f"menu-{menu_name.lower().replace(' ', '-')}"
+        try:
+            label = self.query_one(f"#{label_id}", Label)
+        except Exception:
+            return False
+        self._open_dropdown(menu_name, label)
+        return True
+
     def update_action_label(self, label_id: str, text: str) -> None:
         """Update the display text of a direct-action label."""
         try:

@@ -400,6 +400,18 @@ class TdbApp(App):
         Binding("ctrl+v", "focus_variables", "Variables", show=False),
         Binding("ctrl+s", "focus_stack", "Stack", show=False),
         Binding("ctrl+b", "focus_breakpoints", "Breakpoints", show=False),
+        # Menu-bar shortcuts: Alt+first-letter matches the convention used
+        # by nano, mc, htop, and every desktop menu bar. Hidden from the
+        # footer to keep it uncluttered; they appear in the Keybindings modal.
+        # Textual's ANSI parser rewrites ESC+f / ESC+b (what terminals send
+        # for Alt+F / Alt+B) to ctrl+right / ctrl+left — readline word-motion
+        # convention. So we bind both forms for File; a user pressing Alt+F
+        # gets ctrl+right delivered to tdb, which still opens the menu.
+        Binding("alt+f,ctrl+right", "menu_file", "File menu", show=False),
+        Binding("alt+c", "menu_configure", "Configure menu", show=False),
+        Binding("alt+t", "menu_threads", "Threads", show=False),
+        Binding("alt+p", "menu_processes", "Processes", show=False),
+        Binding("alt+a", "menu_async_tasks", "Async Tasks", show=False),
     ]
 
     # --- Custom messages for UI updates ---
@@ -1376,6 +1388,34 @@ class TdbApp(App):
             self._open_processes()
         elif message.label_id == "async-tasks-label":
             self._open_async_tasks()
+
+    # --- Menu-bar keyboard shortcuts (Alt+first-letter) ---
+
+    def _close_open_menu(self) -> None:
+        """Close any open dropdown before firing a different menu action."""
+        try:
+            self.query_one("#menu-bar", MenuBar).close_menus()
+        except Exception:
+            pass
+
+    def action_menu_file(self) -> None:
+        self._close_open_menu()
+        self.action_open_file()
+
+    def action_menu_configure(self) -> None:
+        self.query_one("#menu-bar", MenuBar).open_menu("Configure")
+
+    def action_menu_threads(self) -> None:
+        self._close_open_menu()
+        self._open_threads()
+
+    def action_menu_processes(self) -> None:
+        self._close_open_menu()
+        self._open_processes()
+
+    def action_menu_async_tasks(self) -> None:
+        self._close_open_menu()
+        self._open_async_tasks()
 
     @work(exclusive=True, group="async-tasks")
     async def _fetch_async_task_count(self) -> None:
