@@ -6,17 +6,34 @@ terminal-based Python debugger with an intuitive interface and powerful features
 `tdb` is built with [textual](https://github.com/Textualize/textual)
 and [debugpy](https://github.com/microsoft/debugpy) (the Debug Adapter Protocol engine behind
 VS Code's Python debugger). It provides a rich interactive interface for stepping through code,
-inspecting variables, managing breakpoints, and evaluating expressions for complex Python programs.
+inspecting variables, managing breakpoints, and evaluating expressions in complex Python programs.
 It can debug Python code that uses
 - `asyncio` (with a built-in async task inspector)
 - `threading` (with a thread inspector)
 - `multiprocessing` / `concurrent.futures` (with automatic child process attachment and a process inspector)
 and supports remote attachment to any debugpy-enabled Python program.
 
-It also includes a JSON-RPC server mode for programmatic debug control, making it suitable for
+It includes a JSON-RPC server mode for programmatic debug control, making it suitable for
 automated debugging workflows and AI-assisted debugging.
 
-## AI Assistance
+It can spawn the debuggee in an external terminal for debugging TUI applications
+built with `prompt-toolkit`, `urwid`, `curses`, `textual`, `rich`, and so on.
+
+`tdb` also comes with a post-mortem exception hook you can install in any Python program to have
+the debugger pop open automatically on uncaught exceptions, letting you inspect the
+full traceback and variable state at the moment of the crash.
+
+## Acknowledgments
+
+Will McGugan's `textual` module is a marvel that
+continually delights me with its responsiveness and capabilities.
+`tdb` would be a pale shadow of itself had I used any other TUI framework.
+Fantastic work, Will.
+
+Microsoft's Debug Adapter Protocol (DAP) its implementation in the `debugpy`
+library make it possible to bring the full power of their Python Debugger
+extension for Visual Studio Code to the terminal.  Thank you, Microsoft, for making `debugpy`
+and the Python Debugger extension itself open source.
 
 The bulk of the code and documentation for `textual-debugger` was generated with Claude Code.
 Thank you, Anthropic, for providing access to Claude Code through the
@@ -27,6 +44,13 @@ Thank you, Anthropic, for providing access to Claude Code through the
 ```bash
 pip install textual-debugger
 ```
+
+or even better with
+
+```bash
+uv pip install textual-debugger
+```
+
 
 ## Quick Start
 
@@ -100,6 +124,21 @@ Switch between Navigation and Debug modes with `Escape`.
 | `Ctrl+V` | Variable View |
 | `Ctrl+S` | Stack View |
 | `Ctrl+B` | Breakpoint View |
+
+**Menu-bar shortcuts (global):**
+
+`Alt+<first-letter>` opens the corresponding tab in the menu bar.
+
+| Key | Menu |
+|-----|------|
+| `Alt+F` | File (open a different script to debug) |
+| `Alt+C` | Configure (Color Theme, Keybindings) |
+| `Alt+T` | Threads |
+| `Alt+P` | Processes |
+| `Alt+A` | Async Tasks |
+| `Alt+H` | Help (Documentation, About) |
+
+> **Note:** Many terminals send the byte sequence `ESC+f` for `Alt+F`, which Textual's ANSI parser rewrites to `Ctrl+Right` (the readline "forward-word" convention). tdb binds both so `Alt+F` works as expected regardless.
 
 ### Debugging Controls
 
