@@ -106,7 +106,10 @@ def load_breakpoints(
         return {}
 
 
-def save_config(keybindings: str | None = None) -> None:
+def save_config(
+    keybindings: str | None = None,
+    theme: str | None = None,
+) -> None:
     """Write user preferences to the config file.
 
     Merges with existing config so callers can update individual fields.
@@ -115,6 +118,8 @@ def save_config(keybindings: str | None = None) -> None:
         existing = load_config_raw()
         if keybindings is not None:
             existing["keybindings"] = keybindings
+        if theme is not None:
+            existing["theme"] = theme
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
         CONFIG_FILE.write_text(json.dumps(existing, indent=2) + "\n")
         log.debug("Saved config to %s", CONFIG_FILE)
@@ -136,3 +141,8 @@ def load_config_raw() -> dict:
 def load_keybinding_scheme() -> str | None:
     """Return the saved keybinding scheme name, or None if not set."""
     return load_config_raw().get("keybindings")
+
+
+def load_theme() -> str | None:
+    """Return the saved textual theme name, or None if not set."""
+    return load_config_raw().get("theme")

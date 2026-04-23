@@ -37,7 +37,7 @@ from tdb.widgets.evaluate_console import EvaluateConsole
 from tdb.widgets.menu_bar import MenuBar, _MenuDropdown
 from tdb.widgets.stack_view import StackView
 from tdb.widgets.status_bar import StatusBar
-from tdb.persist import load_breakpoints, save_breakpoints, save_config
+from tdb.persist import load_breakpoints, load_theme, save_breakpoints, save_config
 from tdb.widgets.async_tasks_modal import AsyncTasksModal, AsyncTaskInfo, TASK_COLLECT_EXPR, TASK_LOCALS_EXPR, parse_task_json
 from tdb.widgets.processes_modal import ProcessesModal, ProcessInfo, PROCESS_COLLECT_EXPR, parse_process_json
 from tdb.widgets.threads_modal import ThreadsModal
@@ -507,6 +507,10 @@ class TdbApp(App):
         yield Footer()
 
     def on_mount(self) -> None:
+        saved_theme = load_theme()
+        if saved_theme and saved_theme in self.available_themes:
+            self.theme = saved_theme
+
         code_view = self.query_one("#code-view", CodeView)
         code_view.keybindings = KeybindingConfig.from_scheme(self._keybindings)
         self._update_code_title(code_view)
@@ -1335,7 +1339,15 @@ class TdbApp(App):
         self.push_screen(_OpenFileModal(initial), callback=on_dismiss)
 
     def action_color_theme(self) -> None:
-        self.notify("Color theme: not yet implemented", title="Configure")
+        # Opens textual's built-in fuzzy-search theme palette. The watch_theme
+        # hook below persists the choice when the user selects one.
+        self.action_change_theme()
+
+    def watch_theme(self, theme: str) -> None:
+        # Fires on any theme change (startup + user-initiated). Save the
+        # user-facing picks; startup-restored value is already what's on
+        # disk so re-saving is a harmless no-op.
+        save_config(theme=theme)
 
     def action_keybindings(self) -> None:
         code_view = self.query_one("#code-view", CodeView)
