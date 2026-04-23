@@ -56,11 +56,18 @@ class DAPClient:
         """Register a handler for a reverse request from the adapter."""
         self._reverse_request_handlers[command] = handler
 
-    async def start(self, python: str | None = None) -> None:
-        """Spawn the debugpy adapter subprocess."""
-        python = python or sys.executable
+    async def start(self) -> None:
+        """Spawn the debugpy adapter subprocess.
+
+        Always uses ``sys.executable`` (tdb's own Python, which has debugpy
+        installed). The user's ``--python`` is for the *debuggee*, not the
+        adapter — it's threaded through as ``debugLauncherPython`` in the
+        launch request instead. Running the adapter on a Python without
+        debugpy would make this subprocess die immediately with
+        ``ModuleNotFoundError`` and tdb would hang waiting on stdout.
+        """
         self._process = await asyncio.create_subprocess_exec(
-            python, "-Xfrozen_modules=off", "-m", "debugpy.adapter",
+            sys.executable, "-Xfrozen_modules=off", "-m", "debugpy.adapter",
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -68,6 +75,36 @@ class DAPClient:
         )
         self._reader = self._process.stdout
         self._reader_task = asyncio.create_task(self._read_loop())
+        # Watch for premature death — if the adapter exits before tdb is
+        # done with it, surface stderr so the user sees an actionable error
+        # instead of a silent hang.
+        asyncio.create_task(self._watch_adapter_death())
+
+    async def _watch_adapter_death(self) -> None:
+        if self._process is None:
+            return
+        rc = await self._process.wait()
+        stderr_bytes = b""
+        if self._process.stderr is not None:
+            try:
+                stderr_bytes = await self._process.stderr.read()
+            except Exception:
+                pass
+        stderr_text = stderr_bytes.decode("utf-8", errors="replace").strip()
+        log.error(
+            "debugpy adapter exited with code %s%s",
+            rc,
+            f"\nstderr:\n{stderr_text}" if stderr_text else "",
+        )
+        # Fail any still-pending requests so callers don't await forever.
+        err = ConnectionError(
+            f"debugpy adapter died (exit {rc}): "
+            f"{stderr_text.splitlines()[-1] if stderr_text else 'no output'}"
+        )
+        for fut in list(self._pending.values()):
+            if not fut.done():
+                fut.set_exception(err)
+        self._pending.clear()
 
     async def connect(self, host: str, port: int) -> None:
         """Connect to an already-running debugpy adapter over TCP."""
@@ -235,7 +272,10 @@ class DAPClient:
         if env:
             arguments["env"] = env
         if python:
-            arguments["debugLauncherPython"] = python
+            # "python" sets the debuggee interpreter; the adapter defaults
+            # "debugLauncherPython" from this (they're different components
+            # but here we want them to match).
+            arguments["python"] = python
         return await self._send_raw("launch", arguments)
 
     async def attach(

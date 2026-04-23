@@ -127,7 +127,7 @@ class DebugController:
             "sub_process": sub_process,
         }
 
-        await self.client.start(python=python)
+        await self.client.start()
         await self.client.initialize(support_run_in_terminal=terminal is not None)
 
         # Send launch — don't await response (debugpy holds it until configurationDone)
