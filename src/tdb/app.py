@@ -299,6 +299,49 @@ class _TracebackModal(ModalScreen[str | None]):
         self.dismiss("restart")
 
 
+class _DocumentationModal(ModalScreen):
+    """Full-screen markdown viewer for README.md."""
+
+    DEFAULT_CSS = """
+    _DocumentationModal {
+        align: center middle;
+    }
+    _DocumentationModal #dialog {
+        width: 90%;
+        height: 90%;
+        border: solid $primary;
+        background: $surface;
+        padding: 0;
+    }
+    _DocumentationModal MarkdownViewer {
+        height: 1fr;
+    }
+    _DocumentationModal #doc-footer {
+        height: 1;
+        color: $text-muted;
+        padding: 0 1;
+    }
+    """
+
+    BINDINGS = [
+        Binding("escape", "dismiss_modal", "Close", show=False),
+        Binding("q", "dismiss_modal", "Close", show=False),
+    ]
+
+    def __init__(self, markdown_text: str) -> None:
+        super().__init__()
+        self._markdown_text = markdown_text
+
+    def compose(self) -> ComposeResult:
+        from textual.widgets import MarkdownViewer
+        with Vertical(id="dialog"):
+            yield MarkdownViewer(self._markdown_text, show_table_of_contents=True)
+            yield Static("[dim]ESC or q to close[/dim]", id="doc-footer", markup=True)
+
+    def action_dismiss_modal(self) -> None:
+        self.dismiss(None)
+
+
 class _QuitConfirmModal(ModalScreen):
     """Small modal: `q` confirms quit, escape/other cancels."""
 
@@ -412,6 +455,7 @@ class TdbApp(App):
         Binding("alt+t", "menu_threads", "Threads", show=False),
         Binding("alt+p", "menu_processes", "Processes", show=False),
         Binding("alt+a", "menu_async_tasks", "Async Tasks", show=False),
+        Binding("alt+h", "menu_help", "Help menu", show=False),
     ]
 
     # --- Custom messages for UI updates ---
@@ -1372,7 +1416,14 @@ class TdbApp(App):
         self.push_screen(_KeybindingsModal(code_view.keybindings, on_scheme_change))
 
     def action_documentation(self) -> None:
-        self.notify("tdb — TUI Python Debugger\n\nESC toggles Navigation/Debug mode\nCtrl+E = Evaluate console\nConfigure > Keybindings for full reference", title="Documentation")
+        readme = _find_readme()
+        if readme is None:
+            self.notify(
+                "README.md not found in the installation.",
+                title="Documentation", severity="warning",
+            )
+            return
+        self.push_screen(_DocumentationModal(readme))
 
     def action_about(self) -> None:
         self.notify("tdb v0.1.0\nA TUI-based Python debugger\nPowered by debugpy + textual", title="About")
@@ -1416,6 +1467,9 @@ class TdbApp(App):
     def action_menu_async_tasks(self) -> None:
         self._close_open_menu()
         self._open_async_tasks()
+
+    def action_menu_help(self) -> None:
+        self.query_one("#menu-bar", MenuBar).open_menu("Help")
 
     @work(exclusive=True, group="async-tasks")
     async def _fetch_async_task_count(self) -> None:
@@ -1765,6 +1819,43 @@ class TdbApp(App):
                 self.run_worker(self.action_quit_debugger())
 
         self.push_screen(_QuitConfirmModal(), callback=on_dismiss)
+
+
+def _find_readme() -> str | None:
+    """Locate README.md across install layouts.
+
+    Order: walk up from the tdb package dir (catches source checkouts and
+    editable installs); try importlib.resources for a bundled README
+    (catches pip installs that package it alongside the code); finally try
+    the distribution's metadata directory.
+    """
+    import tdb as _tdb_pkg
+
+    pkg_dir = Path(_tdb_pkg.__file__).resolve().parent
+    for parent in [pkg_dir, *pkg_dir.parents]:
+        candidate = parent / "README.md"
+        if candidate.is_file():
+            try:
+                return candidate.read_text(encoding="utf-8")
+            except OSError:
+                pass
+
+    try:
+        import importlib.resources as ires
+        with ires.files("tdb").joinpath("README.md").open("r", encoding="utf-8") as f:
+            return f.read()
+    except (FileNotFoundError, ModuleNotFoundError, AttributeError, OSError):
+        pass
+
+    try:
+        import importlib.metadata as md
+        text = md.distribution("textual-debugger").read_text("README.md")
+        if text:
+            return text
+    except Exception:
+        pass
+
+    return None
 
 
 def _unquote_dap_string(s: str) -> str:

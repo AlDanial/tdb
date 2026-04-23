@@ -188,9 +188,23 @@ class MenuBar(Widget):
         dropdown_id = f"dropdown-{menu_name.lower().replace(' ', '-')}"
         try:
             dropdown = self.screen.query_one(f"#{dropdown_id}", _MenuDropdown)
-            # Position: below the menu bar, aligned to the label's x
-            x = label.region.x
             y = self.region.y + self.region.height
+            if menu_name in self._right_menu_names:
+                # Right-align the dropdown's right edge to the label's right
+                # edge so longer entries (e.g. "Documentation" in Help) stay
+                # on-screen instead of spilling past the terminal edge.
+                dropdown_width = max(
+                    (len(opt.prompt.plain) if hasattr(opt.prompt, "plain") else len(str(opt.prompt)))
+                    for opt in dropdown._options
+                ) + 2  # +2 for the border
+                screen_width = self.screen.region.width
+                x = min(
+                    label.region.right - dropdown_width,
+                    screen_width - dropdown_width,
+                )
+                x = max(0, x)
+            else:
+                x = label.region.x
             dropdown.styles.offset = (x, y)
             dropdown.add_class("--visible")
             dropdown.focus()

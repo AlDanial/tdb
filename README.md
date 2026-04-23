@@ -1,4 +1,4 @@
-# `textual-debugger` — A TUI Python Debugger Based on `textual` and `debugpy`
+# `textual-debugger` — A TUI Python Debugger
 
 `textual-debugger` (the package) provides `tdb` (the command-line tool), a full-featured
 terminal-based Python debugger with an intuitive interface and powerful features, all without leaving your terminal.
