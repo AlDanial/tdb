@@ -66,7 +66,13 @@ tdb --python /path/to/venv/bin/python my_script.py
 
 # Don't stop on entry — run until first breakpoint or exit
 tdb --no-stop-on-entry my_script.py
+
+# Debuggee takes its own options that collide with tdb's — use `--` to
+# mark the end of tdb's options; everything after is passed to the debuggee:
+tdb --python /path/to/venv/bin/python -- my_script.py --min-frame-duration 17
 ```
+
+> **Note:** When the debuggee has options starting with `-` or `--` that argparse would try to consume for tdb (e.g. `--min-frame-duration`), put `--` between tdb's options and the debuggee's program + args. Without it, tdb will error out trying to parse the debuggee's flags as its own.
 
 Or use the module entry point:
 

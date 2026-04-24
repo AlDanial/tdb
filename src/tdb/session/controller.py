@@ -246,24 +246,31 @@ class DebugController:
                 await ac.continue_(self.state.current_thread_id)
             except Exception:
                 pass
-            # Also continue all other processes
+            # Also resume the parent and other children, but don't block
+            # waiting for their responses: a target that isn't currently
+            # stopped (e.g. parent blocked in p.join()) will never reply,
+            # and we'd hang here for the full DAP timeout. The next stopped
+            # event from any process will wake the caller anyway.
             self._active_client = self.client
             if ac is not self.client:
-                try:
-                    threads = await self.client.threads()
-                    if threads:
-                        await self.client.continue_(threads[0].id)
-                except Exception:
-                    pass
-            for pid, child in list(self._child_clients.items()):
+                asyncio.get_event_loop().create_task(self._resume_client(self.client))
+            for _pid, child in list(self._child_clients.items()):
                 if child is ac:
                     continue
-                try:
-                    threads = await child.threads()
-                    if threads:
-                        await child.continue_(threads[0].id)
-                except Exception:
-                    pass
+                asyncio.get_event_loop().create_task(self._resume_client(child))
+
+    async def _resume_client(self, client: DAPClient) -> None:
+        """Best-effort continue on a client that may or may not be stopped."""
+        try:
+            threads = await client.threads()
+        except Exception:
+            return
+        if not threads:
+            return
+        try:
+            await client.continue_(threads[0].id)
+        except Exception:
+            pass
 
     async def step_over(self) -> None:
         if self.state.current_thread_id is not None:
