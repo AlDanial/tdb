@@ -75,6 +75,9 @@ class DebugController:
         # must detach without terminating it (otherwise tdb.breakpoint()
         # and similar attach workflows would kill the user's program).
         self._is_remote_attach: bool = False
+        # Strong references to fire-and-forget tasks so they aren't
+        # garbage-collected mid-execution (asyncio holds only weak refs).
+        self._bg_tasks: set[asyncio.Task] = set()
 
     @staticmethod
     def _enabled_bps(bps: list[SourceBreakpoint]) -> list[SourceBreakpoint]:
@@ -240,24 +243,34 @@ class DebugController:
         if self.state.current_thread_id is not None:
             self.state.is_running = True
             self.state.clear_frame_data()
-            # Continue the active client (might be child or parent)
+            # Fire-and-forget continue to every known client. We don't await
+            # responses: debugpy does not reply to `continue` when the target
+            # isn't currently stopped (e.g. parent blocked in p.join(), or a
+            # child already resumed by a prior continue), so awaiting would
+            # stall for the full DAP timeout and cascade on subsequent calls.
+            # The next stopped event from any process is what wakes the caller.
             ac = self._active_client
+            self._active_client = self.client
             try:
-                await ac.continue_(self.state.current_thread_id)
+                await ac.continue_nowait(self.state.current_thread_id)
             except Exception:
                 pass
-            # Also resume the parent and other children, but don't block
-            # waiting for their responses: a target that isn't currently
-            # stopped (e.g. parent blocked in p.join()) will never reply,
-            # and we'd hang here for the full DAP timeout. The next stopped
-            # event from any process will wake the caller anyway.
-            self._active_client = self.client
             if ac is not self.client:
-                asyncio.get_event_loop().create_task(self._resume_client(self.client))
+                self._spawn_bg(self._resume_client(self.client))
             for _pid, child in list(self._child_clients.items()):
                 if child is ac:
                     continue
-                asyncio.get_event_loop().create_task(self._resume_client(child))
+                self._spawn_bg(self._resume_client(child))
+
+    def _spawn_bg(self, coro: Any) -> None:
+        """Schedule a fire-and-forget task with a strong reference.
+
+        asyncio's event loop only keeps weak refs to tasks, so without this
+        the task can be garbage-collected before it ever runs.
+        """
+        task = asyncio.get_event_loop().create_task(coro)
+        self._bg_tasks.add(task)
+        task.add_done_callback(self._bg_tasks.discard)
 
     async def _resume_client(self, client: DAPClient) -> None:
         """Best-effort continue on a client that may or may not be stopped."""
@@ -268,7 +281,7 @@ class DebugController:
         if not threads:
             return
         try:
-            await client.continue_(threads[0].id)
+            await client.continue_nowait(threads[0].id)
         except Exception:
             pass
 
@@ -649,7 +662,7 @@ class DebugController:
         self._active_client = self.client
         self.event_handler.on_stopped(thread_id, reason, description, text)
         if self._child_clients and reason not in ("pause",):
-            asyncio.get_event_loop().create_task(self._pause_children())
+            self._spawn_bg(self._pause_children())
 
     def _on_continued(self, event: Event) -> None:
         self.event_handler.on_continued()
@@ -685,9 +698,7 @@ class DebugController:
             log.warning("debugpyAttach missing port: %s", body)
             return
         log.info("Child process detected: pid=%s port=%s", pid, port)
-        asyncio.get_event_loop().create_task(
-            self._attach_child(host, port, pid)
-        )
+        self._spawn_bg(self._attach_child(host, port, pid))
 
     async def _attach_child(self, host: str, port: int, pid: int | None = None) -> None:
         """Connect to the adapter for a child process and configure breakpoints."""
@@ -705,7 +716,7 @@ class DebugController:
                     reason = event.body.get("reason", "unknown")
                     self._active_client = _child
                     if reason not in ("pause",):
-                        asyncio.get_event_loop().create_task(self._pause_parent())
+                        self._spawn_bg(self._pause_parent())
                     thread_id = event.body.get("threadId")
                     description = event.body.get("description")
                     text = event.body.get("text")

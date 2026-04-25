@@ -95,7 +95,10 @@ def create_app(controller_ref: ControllerRef, handler: ServerEventHandler) -> Fa
             return RpcResponse.error("Program is already running")
         handler.reset_for_continue()
         await action_fn()
-        stopped = await handler.wait_for_stop(timeout=30.0)
+        # Long timeout: after releasing all breakpoint hits in a multi-process
+        # program, the remainder of the script can run for a while before the
+        # `terminated` event wakes us. 30s was too short to span that tail.
+        stopped = await handler.wait_for_stop(timeout=600.0)
         if not stopped:
             return RpcResponse.error("Timeout waiting for stop")
         _sync_state_from_stop()

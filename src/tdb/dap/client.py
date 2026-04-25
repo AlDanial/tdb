@@ -400,6 +400,16 @@ class DAPClient:
     async def continue_(self, thread_id: int) -> None:
         await self._send("continue", {"threadId": thread_id})
 
+    async def continue_nowait(self, thread_id: int) -> None:
+        """Send continue without awaiting the response.
+
+        debugpy does not respond to `continue` requests against a target
+        that isn't currently stopped, so awaiting can block for the full
+        `_send` timeout. This variant just writes the request and moves on;
+        the orphaned response (if any) is dropped in the read loop.
+        """
+        await self._send_raw("continue", {"threadId": thread_id})
+
     async def next(self, thread_id: int) -> None:
         await self._send("next", {"threadId": thread_id})
 
