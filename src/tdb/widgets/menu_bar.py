@@ -16,6 +16,21 @@ from textual.widgets import Label, OptionList
 from textual.widgets.option_list import Option
 
 
+def _highlight_first(text: str, color: str, char: str | None = None) -> str:
+    """Wrap the first letter (or first occurrence of `char`) of `text` in
+    `[bold {color}]...[/]` markup. Used to give menu/view labels a keybinding
+    cue. Returns the original text if the requested char isn't present."""
+    if char is None:
+        idx = 0
+    else:
+        idx = text.find(char)
+        if idx < 0:
+            return text
+    if not text:
+        return text
+    return f"{text[:idx]}[bold {color}]{text[idx]}[/]{text[idx + 1:]}"
+
+
 class _MenuDropdown(OptionList):
     """An OptionList used as a menu dropdown, mounted on the Screen layer."""
 
@@ -124,7 +139,7 @@ class MenuBar(Widget):
         with Horizontal():
             for label_id, text in self._leading_action_labels.items():
                 yield Label(
-                    f" {text} ",
+                    f" {_highlight_first(text, 'green')} ",
                     classes="action-label",
                     id=label_id,
                 )
@@ -132,13 +147,13 @@ class MenuBar(Widget):
                 if menu_name in self._right_menu_names:
                     continue
                 yield Label(
-                    f" {menu_name} ",
+                    f" {_highlight_first(menu_name, 'green')} ",
                     classes="menu-label",
                     id=f"menu-{menu_name.lower().replace(' ', '-')}",
                 )
             for label_id, text in self._action_labels.items():
                 yield Label(
-                    f" {text} ",
+                    f" {_highlight_first(text, 'green')} ",
                     classes="action-label",
                     id=label_id,
                 )
@@ -149,7 +164,7 @@ class MenuBar(Widget):
                     if menu_name not in self._right_menu_names:
                         continue
                     yield Label(
-                        f" {menu_name} ",
+                        f" {_highlight_first(menu_name, 'green')} ",
                         classes="menu-label",
                         id=f"menu-{menu_name.lower().replace(' ', '-')}",
                     )
@@ -246,7 +261,7 @@ class MenuBar(Widget):
         """Update the display text of a direct-action label."""
         try:
             label = self.query_one(f"#{label_id}", Label)
-            label.update(f" {text} ")
+            label.update(f" {_highlight_first(text, 'green')} ")
         except Exception:
             pass
 

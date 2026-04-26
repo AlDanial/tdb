@@ -25,7 +25,7 @@ class VariableView(Tree[int]):
 
     def __init__(self, **kwargs) -> None:
         super().__init__("Variables", **kwargs)
-        self.border_title = "Variables"
+        self.border_title = "[bold orange]V[/]ariables"
         self.show_root = False
         self.guide_depth = 3
         self._pending_expand: set[int] = set()

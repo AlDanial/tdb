@@ -61,7 +61,7 @@ class BreakpointView(DataTable):
 
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
-        self.border_title = "Breakpoints"
+        self.border_title = "[bold orange]B[/]reakpoints"
         self.cursor_type = "row"
         self._entries: list[tuple[str, int]] = []
 

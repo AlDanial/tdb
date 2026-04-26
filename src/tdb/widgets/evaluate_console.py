@@ -69,7 +69,7 @@ class EvaluateConsole(Vertical):
 
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
-        self.border_title = "Evaluate"
+        self.border_title = "[bold orange]E[/]valuate"
         self._history: list[str] = []
         self._history_idx = 0
 

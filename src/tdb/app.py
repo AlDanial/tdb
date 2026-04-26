@@ -344,6 +344,52 @@ class _DocumentationModal(ModalScreen):
         self.dismiss(None)
 
 
+class _AboutModal(ModalScreen):
+    """About box: shows version and project info, dismissed with ESC."""
+
+    DEFAULT_CSS = """
+    _AboutModal {
+        align: center middle;
+    }
+    _AboutModal #dialog {
+        width: auto;
+        height: auto;
+        min-width: 56;
+        border: solid $primary;
+        background: $surface;
+        padding: 1 2;
+    }
+    _AboutModal #about-body {
+        width: auto;
+        height: auto;
+    }
+    _AboutModal #about-footer {
+        height: 1;
+        color: $text-muted;
+        content-align: center middle;
+        margin-top: 1;
+    }
+    """
+
+    BINDINGS = [
+        Binding("escape", "dismiss_modal", "Close", show=False),
+        Binding("q", "dismiss_modal", "Close", show=False),
+        Binding("enter", "dismiss_modal", "Close", show=False),
+    ]
+
+    def __init__(self, body: str) -> None:
+        super().__init__()
+        self._body = body
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="dialog"):
+            yield Static(self._body, id="about-body", markup=True)
+            yield Static("[dim]ESC to close[/dim]", id="about-footer", markup=True)
+
+    def action_dismiss_modal(self) -> None:
+        self.dismiss(None)
+
+
 class _QuitConfirmModal(ModalScreen):
     """Small modal: `q` confirms quit, escape/other cancels."""
 
@@ -352,7 +398,7 @@ class _QuitConfirmModal(ModalScreen):
         align: center middle;
     }
     _QuitConfirmModal #dialog {
-        width: 32;
+        width: 42;
         height: 5;
         border: solid $warning;
         background: $surface;
@@ -368,7 +414,7 @@ class _QuitConfirmModal(ModalScreen):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="dialog"):
-            yield Static("[bold]Hit q again to quit[/bold]", markup=True)
+            yield Static("[bold]Hit q again to quit[/bold]     ESC: cancel", markup=True)
 
     def action_confirm(self) -> None:
         self.dismiss(True)
@@ -645,7 +691,8 @@ class TdbApp(App):
 
     def _update_code_title(self, code_view: CodeView) -> None:
         mode_label = code_view.mode.value
-        code_view.border_title = f"Code \\[{mode_label}]"
+        styled = f"[lightskyblue]{mode_label}[/]" if mode_label.lower() == "navigation" else mode_label
+        code_view.border_title = f"[bold orange]C[/]ode \\[{styled}]"
 
     def on_code_view_mode_changed(self, message: CodeView.ModeChanged) -> None:
         code_view = self.query_one("#code-view", CodeView)
@@ -1428,13 +1475,16 @@ class TdbApp(App):
         self.push_screen(_DocumentationModal(readme))
 
     def action_about(self) -> None:
-        self.notify(dedent(f"""\
-                    tdb v{tdb_version}
-                    by Al Danial and Claude Code
-                    GitHub: https://github.com/AlDanial/tdb
-                    PyPI  : https://pypi.org/project/textual-debugger/
-                    A TUI-based Python debugger
-                    Powered by debugpy + textual"""), title="About")
+        body = dedent(f"""\
+            [bold]tdb v{tdb_version}[/bold]
+            by Al Danial and Claude Code
+            Copyright (c) 2026
+
+            GitHub: https://github.com/AlDanial/tdb
+            PyPI  : https://pypi.org/project/textual-debugger/
+
+            A TUI Python debugger based on debugpy and textual""")
+        self.push_screen(_AboutModal(body))
 
     # --- Async tasks ---
 

@@ -30,7 +30,7 @@ class StackView(DataTable):
 
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
-        self.border_title = "Stack"
+        self.border_title = "[bold orange]S[/]tack"
         self.cursor_type = "row"
         self.zebra_stripes = True
         self._frame_ids: list[int] = []

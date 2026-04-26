@@ -1,43 +1,54 @@
-# `textual-debugger` — A TUI Python Debugger
+# `textual-debugger`
 
-`textual-debugger` (the package) provides `tdb` (the command-line tool), a full-featured
-terminal-based Python debugger with an intuitive interface and powerful features, all without leaving your terminal.
+`textual-debugger` (the package) provides `tdb` (the command-line tool and module),
+a full-featured
+terminal-based Python debugger.
 
 `tdb` is built with [textual](https://github.com/Textualize/textual)
 and [debugpy](https://github.com/microsoft/debugpy) (the Debug Adapter Protocol engine behind
 VS Code's Python debugger). It provides a rich interactive interface for stepping through code,
 inspecting variables, managing breakpoints, and evaluating expressions in complex Python programs.
-It can debug Python code that uses
-- `asyncio` (with a built-in async task inspector)
-- `threading` (with a thread inspector)
-- `multiprocessing` / `concurrent.futures` (with automatic child process attachment and a process inspector)
-and supports remote attachment to any debugpy-enabled Python program.
 
-It includes a JSON-RPC server mode for programmatic debug control, making it suitable for
-automated debugging workflows and AI-assisted debugging.
+## Feature Overview
 
-It can spawn the debuggee in an external terminal for debugging TUI applications
-built with `prompt-toolkit`, `urwid`, `curses`, `textual`, `rich`, and so on.
+`tdb`:
 
-`tdb` also comes with a post-mortem exception hook you can install in any Python program to have
-the debugger pop open automatically on uncaught exceptions, letting you inspect the
-full traceback and variable state at the moment of the crash.
+- supports debugging of synchronous, asynchronous, multi-threaded, and multi-process Python code.
+It specifically supports
+    - `asyncio` (with a built-in async task inspector)
+    - `threading` (with a thread inspector)
+    - `multiprocessing` / `concurrent.futures` (with automatic child process attachment and a process inspector)
+
+- supports remote attachment to any debugpy-enabled Python program
+
+- includes a JSON-RPC server mode for programmatic debug control, making it suitable for
+automated, headless debugging workflows and AI-assisted debugging
+
+- can spawn the debuggee in an external terminal for debugging TUI applications
+built with `prompt-toolkit`, `urwid`, `curses`, `textual`, `rich`, and so on
+
+- comes with a post-mortem exception hook that can be installed in Python programs
+to have the debugger pop open automatically on uncaught exceptions
+
+- can be entirely keyboard-driven
+making it suitable for operation in non-graphical environments (mouse support is
+available in graphical environments)
 
 ## Acknowledgments
 
-Will McGugan's `textual` module is a marvel that
-continually delights me with its responsiveness and capabilities.
+Thank you
+
+- Will McGugan for the amazing `textual` module.
 `tdb` would be a pale shadow of itself had I used any other TUI framework.
 Fantastic work, Will.
 
-Microsoft's Debug Adapter Protocol (DAP) its implementation in the `debugpy`
-library make it possible to bring the full power of their Python Debugger
-extension for Visual Studio Code to the terminal.  Thank you, Microsoft, for making `debugpy`
-and the Python Debugger extension itself open source.
+- Microsoft for coming up with the Debug Adapter Protocol (DAP) and releasing
+its implementation in `debugpy` and the Python Debugger extension for Visual Studio Code
+as open source.
 
-The bulk of the code and documentation for `textual-debugger` was generated with Claude Code.
-Thank you, Anthropic, for providing access to Claude Code through the
+- Anthropic, for providing access to Claude Code through the
 [Claude for Open Source](https://claude.com/contact-sales/claude-for-oss) program.
+This project was made almost entirely with Claude Code.
 
 ## Installation
 
@@ -45,7 +56,7 @@ Thank you, Anthropic, for providing access to Claude Code through the
 pip install textual-debugger
 ```
 
-or even better with
+or
 
 ```bash
 uv pip install textual-debugger
@@ -69,7 +80,7 @@ tdb --no-stop-on-entry my_script.py
 
 # Debuggee takes its own options that collide with tdb's — use `--` to
 # mark the end of tdb's options; everything after is passed to the debuggee:
-tdb --python /path/to/venv/bin/python -- my_script.py --min-frame-duration 17
+tdb --python /path/to/venv/bin/python -- my_script.py -f 17 --max 23.3
 ```
 
 > **Note:** When the debuggee has options starting with `-` or `--` that argparse would try to consume for tdb (e.g. `--min-frame-duration`), put `--` between tdb's options and the debuggee's program + args. Without it, tdb will error out trying to parse the debuggee's flags as its own.
@@ -100,9 +111,10 @@ python -m tdb my_script.py
 
 ## Features
 
-### Source Code Navigation
+### Navigation and Keybindings
 
-The Code View shows syntax-highlighted Python source with line numbers. A cursor line (blue) tracks your position; the current execution line is highlighted in gold.
+The Code View shows syntax-highlighted Python source with line numbers.
+A cursor line (blue) tracks your position; the current execution line is highlighted in gold.
 
 **Navigation (vim-style by default):**
 
@@ -148,7 +160,8 @@ Switch between Navigation and Debug modes with `Escape`.
 
 ### Debugging Controls
 
-In Debug mode, single keys control execution:
+Keybindings for stepping, continuing, pausing, and stack navigation match
+those for gdb/pdb, with some aliases and extras thrown in for convenience.
 
 | Key | Action |
 |-----|--------|

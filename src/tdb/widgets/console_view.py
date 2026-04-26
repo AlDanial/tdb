@@ -23,8 +23,8 @@ class ConsoleView(RichLog):
             auto_scroll=True,
             **kwargs,
         )
-        self.border_title = "Console"
-        self.can_focus = False
+        self.border_title = "C[bold orange]o[/]nsole"
+        self.can_focus = True
 
     def write_output(self, text: str, category: str = "stdout") -> None:
         if category == "stderr":
