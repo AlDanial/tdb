@@ -28,7 +28,8 @@
   ]
 
   [project.optional-dependencies]
-  dev = ["pytest", "pytest-asyncio"]
+  dev = ["pytest", "pytest-asyncio",
+         "ipython"]
 
   [project.urls]
   Homepage = "https://github.com/AlDanial/tdb"

@@ -8,6 +8,7 @@ import logging
 import os
 import re
 from pathlib import Path
+from textwrap import dedent
 
 from textual import work
 from textual.app import App, ComposeResult
@@ -42,6 +43,7 @@ from tdb.widgets.async_tasks_modal import AsyncTasksModal, AsyncTaskInfo, TASK_C
 from tdb.widgets.processes_modal import ProcessesModal, ProcessInfo, PROCESS_COLLECT_EXPR, parse_process_json
 from tdb.widgets.threads_modal import ThreadsModal
 from tdb.widgets.variable_view import VariableView
+from tdb import __version__ as tdb_version
 
 log = logging.getLogger(__name__)
 
@@ -1426,7 +1428,13 @@ class TdbApp(App):
         self.push_screen(_DocumentationModal(readme))
 
     def action_about(self) -> None:
-        self.notify("tdb v0.1.0\nA TUI-based Python debugger\nPowered by debugpy + textual", title="About")
+        self.notify(dedent(f"""\
+                    tdb v{tdb_version}
+                    by Al Danial and Claude Code
+                    GitHub: https://github.com/AlDanial/tdb
+                    PyPI  : https://pypi.org/project/textual-debugger/
+                    A TUI-based Python debugger
+                    Powered by debugpy + textual"""), title="About")
 
     # --- Async tasks ---
 
