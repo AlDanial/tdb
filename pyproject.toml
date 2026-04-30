@@ -29,6 +29,7 @@
 
   [project.optional-dependencies]
   dev = ["pytest", "pytest-asyncio",
+         "matplotlib",
          "ipython"]
 
   [project.urls]

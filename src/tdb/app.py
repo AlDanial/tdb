@@ -576,6 +576,10 @@ class TdbApp(App):
         self.controller = DebugController(self._event_handler)
         self._stderr_buffer: list[str] = []
         self._exception_modal_shown = False
+        # True after File > Open loads a new program but before the user
+        # presses `r` or `c` to start it. While pending, debug actions other
+        # than restart/continue are ignored; `c` is rerouted to start.
+        self._session_pending = False
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -691,7 +695,7 @@ class TdbApp(App):
 
     def _update_code_title(self, code_view: CodeView) -> None:
         mode_label = code_view.mode.value
-        styled = f"[lightskyblue]{mode_label}[/]" if mode_label.lower() == "navigation" else mode_label
+        styled = f"[red]{mode_label}[/]" if mode_label.lower() == "navigation" else mode_label
         code_view.border_title = f"[bold orange]C[/]ode \\[{styled}]"
 
     def on_code_view_mode_changed(self, message: CodeView.ModeChanged) -> None:
@@ -741,12 +745,21 @@ class TdbApp(App):
         await self._uvicorn_server.serve()
 
     @work(exclusive=True)
-    async def _restart_session(self, new_program: str | None = None) -> None:
+    async def _restart_session(
+        self,
+        new_program: str | None = None,
+        *,
+        start_immediately: bool = True,
+    ) -> None:
         """Stop the current session and start a new one.
 
         If new_program is given, switch to that program (saving the old
         program's breakpoints under its key, and loading any saved
         breakpoints for the new program). Otherwise reuse self._program.
+
+        If start_immediately is False, prepare the new session (stop old,
+        recreate controller, load file, restore breakpoints) but do NOT
+        launch the debuggee — wait for the user to press `r` or `c`.
         """
         if new_program:
             log.info("Switching debug session to: %s", new_program)
@@ -804,13 +817,19 @@ class TdbApp(App):
 
         status_bar = self.query_one("#status-bar", StatusBar)
         status_bar.set_idle()
-        self.sub_title = "Restarting..."
 
         # Reload the source file in Code View
         code_view = self.query_one("#code-view", CodeView)
         code_view.load_file(self._program)
         code_view.current_line = None
 
+        if not start_immediately:
+            self._session_pending = True
+            self.sub_title = f"Loaded {Path(self._program).name} — press r or c to start"
+            return
+
+        self._session_pending = False
+        self.sub_title = "Restarting..."
         try:
             await self.controller.start(
                 program=self._program,
@@ -1214,6 +1233,10 @@ class TdbApp(App):
             if message.action == "restart":
                 self._restart_session()
                 return
+            if self._session_pending and message.action == "continue_":
+                # File was opened but never started — `c` starts it.
+                self._restart_session()
+                return
             handler = {
                 "continue_": self.controller.continue_,
                 "step_over": self.controller.step_over,
@@ -1439,7 +1462,7 @@ class TdbApp(App):
 
         def on_dismiss(path: str | None) -> None:
             if path:
-                self._restart_session(new_program=path)
+                self._restart_session(new_program=path, start_immediately=False)
 
         self.push_screen(_OpenFileModal(initial), callback=on_dismiss)
 

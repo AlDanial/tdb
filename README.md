@@ -542,3 +542,13 @@ Breakpoints are automatically saved on exit and restored when debugging a progra
 ## License
 
 MIT
+
+
+## Known Limitations
+
+This command
+```
+tdb --terminal gnome-terminal --python /usr/bin/python3 examples/double_pendulum.py
+```
+either ignores breakpoints or crashes after showing the first frame.
+The `--python` argument must point to an installation with `matplotlib`.
