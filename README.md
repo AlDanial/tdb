@@ -9,12 +9,16 @@ and [debugpy](https://github.com/microsoft/debugpy) (the Debug Adapter Protocol 
 VS Code's Python debugger). It provides a rich interactive interface for stepping through code,
 inspecting variables, managing breakpoints, and evaluating expressions in complex Python programs.
 
+`tdb` was created by Al Danial with Claude Code. It can be found at
+- PyPI: https://pypi.org/project/textual-debugger/
+- GitHub: https://github.com/AlDanial/tdb
+
 ## Feature Overview
 
 `tdb`:
 
 - supports debugging of synchronous, asynchronous, multi-threaded, and multi-process Python code.
-It specifically supports
+It specifically supports modules
     - `asyncio` (with a built-in async task inspector)
     - `threading` (with a thread inspector)
     - `multiprocessing` / `concurrent.futures` (with automatic child process attachment and a process inspector)
@@ -24,8 +28,8 @@ It specifically supports
 - includes a JSON-RPC server mode for programmatic debug control, making it suitable for
 automated, headless debugging workflows and AI-assisted debugging
 
-- can spawn the debuggee in an external terminal for debugging TUI applications
-built with `prompt-toolkit`, `urwid`, `curses`, `textual`, `rich`, and so on
+- can spawn the debuggee in an external terminal to enable debugging TUI applications
+built with `textual`, `prompt-toolkit`, `urwid`, `curses`, `rich`, and so on
 
 - comes with a post-mortem exception hook that can be installed in Python programs
 to have the debugger pop open automatically on uncaught exceptions
@@ -36,13 +40,13 @@ available in graphical environments)
 
 ## Acknowledgments
 
-Thank you
+Thank you:
 
 - Will McGugan for the amazing `textual` module.
 `tdb` would be a pale shadow of itself had I used any other TUI framework.
 Fantastic work, Will.
 
-- Microsoft for coming up with the Debug Adapter Protocol (DAP) and releasing
+- Microsoft for the Debug Adapter Protocol (DAP) and releasing
 its implementation in `debugpy` and the Python Debugger extension for Visual Studio Code
 as open source.
 
@@ -75,15 +79,15 @@ tdb my_script.py arg1 arg2
 # Use a specific virtualenv
 tdb --python /path/to/venv/bin/python my_script.py
 
-# Don't stop on entry — run until first breakpoint or exit
+# Don't stop on entry; run until first breakpoint or exit
 tdb --no-stop-on-entry my_script.py
 
-# Debuggee takes its own options that collide with tdb's — use `--` to
-# mark the end of tdb's options; everything after is passed to the debuggee:
+> **Note:** Avoid `argparse` confusion by separating `tdb`'s switches from
+the debuggee's switches by prefixing the debugee with `--`.
+
+# `--` separates tdb's switches from the debuggee's switches
 tdb --python /path/to/venv/bin/python -- my_script.py -f 17 --max 23.3
 ```
-
-> **Note:** When the debuggee has options starting with `-` or `--` that argparse would try to consume for tdb (e.g. `--min-frame-duration`), put `--` between tdb's options and the debuggee's program + args. Without it, tdb will error out trying to parse the debuggee's flags as its own.
 
 Or use the module entry point:
 
@@ -106,7 +110,8 @@ python -m tdb my_script.py
 │                           │                           │
 │  Evaluate Console (REPL)  │  Breakpoint View (table)  │
 │                           │                           │
-├─ Footer (keybindings) ────────────────────────────────┘
+├─ Footer (keybindings) ────────────────────────────────┤
+├───────────────────────────────────────────────────────┘
 ```
 
 ## Features
@@ -156,7 +161,9 @@ Switch between Navigation and Debug modes with `Escape`.
 | `Alt+A` | Async Tasks |
 | `Alt+H` | Help (Documentation, About) |
 
-> **Note:** Many terminals send the byte sequence `ESC+f` for `Alt+F`, which Textual's ANSI parser rewrites to `Ctrl+Right` (the readline "forward-word" convention). tdb binds both so `Alt+F` works as expected regardless.
+> **Note:** Many terminals send the byte sequence `ESC+f` for `Alt+F`, which Textual's
+ANSI parser rewrites to `Ctrl+Right` (the readline "forward-word" convention).
+`tdb` binds both so `Alt+F` works as expected regardless.
 
 ### Debugging Controls
 
@@ -175,7 +182,10 @@ those for gdb/pdb, with some aliases and extras thrown in for convenience.
 | `R` | Restart the debug session |
 | `Ctrl+Q` | Quit |
 
-> **Note:** `f` ("finish") and `r` ("return") are both aliases for step-out. DAP's only "exit-a-function" primitive is `stepOut`, which runs the rest of the current function normally and stops at the return point. A true gdb-style immediate-return (skipping remaining code in the function without executing side effects) is not supported by DAP/debugpy.
+> **Note:** `f` ("finish") and `r` ("return") are both aliases for step-out. DAP's only
+"exit-a-function" primitive is `stepOut`, which runs the rest of the current function
+normally and stops at the return point. A true gdb-style immediate-return (skipping
+remaining code in the function without executing side effects) is not supported by DAP/debugpy.
 
 ### Breakpoints
 
@@ -186,23 +196,26 @@ Click the gutter in the Code View to toggle a breakpoint, or press `b` in Debug 
 - Yellow dot: conditional breakpoint
 - Blue dot: disabled breakpoint
 
-**Conditional breakpoints:** Double-click a breakpoint to open the condition editor. Set a Python expression (e.g., `x > 10`) and/or a hit count (pause on the Nth hit).
+**Conditional breakpoints:** Double-click a breakpoint to open the condition editor.
+Set a Python expression (e.g., `x > 10`) and/or a hit count (pause on the Nth hit).
 
 **Breakpoint View actions:**
-- `D` — Disable / enable all breakpoints
-- `C` — Clear all breakpoints
+- `D` : Disable / enable all breakpoints
+- `C` : Clear all breakpoints
 
 Breakpoints persist across session restarts.
 
 ### Variable Inspection
 
-The Variable View shows a tree of scopes (Locals, Globals) with all variables in the current frame. Expand nodes to drill into complex objects — children are loaded lazily on demand.
+The Variable View shows a tree of scopes (Locals, Globals) with all variables in the current
+frame. Expand nodes to drill into complex objects.  Children are loaded lazily on demand.
 
 Format: `name (type) = value`
 
 ### Call Stack
 
-The Stack View shows the full call stack. Click a frame to navigate to its source location and inspect its variables.
+The Stack View shows the full call stack. Click a frame to navigate to its source
+location and inspect its variables.
 
 ### Evaluate Console
 
@@ -221,16 +234,17 @@ A REPL at the bottom-left evaluates expressions in the current scope:
 
 ```
 >>> os.path.join?
-(a, *p) — Join two or more pathname components...
+(a, *p) : Join two or more pathname components...
 ```
 
 ### Console Output
 
-The Console View captures stdout (normal text) and stderr (red text) from the debuggee in real time.
+The Console View captures stdout (normal text) and stderr (red text) from the debuggee
+in real time.
 
 ### Crash Detection
 
-When the debuggee raises an unhandled exception, tdb:
+When the debuggee raises an unhandled exception, `tdb`:
 1. Shows a modal with the full traceback
 2. Navigates the Code View to the crash line
 3. Populates the Stack View with the exception's call stack
@@ -238,7 +252,8 @@ When the debuggee raises an unhandled exception, tdb:
 
 ### Post-Mortem Exception Hook
 
-You can have tdb pop open automatically when *any* Python program crashes — no need to launch through `tdb` up front. Install the hook once at the top of your program:
+You can have `tdb` pop open automatically when *any* Python program crashes without the
+need to launch through `tdb` up front. Install the hook once at the top of your program:
 
 ```python
 import sys
@@ -247,10 +262,11 @@ import tdb
 sys.excepthook = tdb.exception_hook
 ```
 
-When an uncaught exception reaches the hook, tdb:
+When an uncaught exception reaches the hook, `tdb`:
 
 1. Prints the standard Python traceback to stderr (so your scrollback still has a record)
-2. Snapshots every frame in the traceback — locals, plus one level of recursion into containers (`dict`, `list`, `tuple`, `set`) and objects with `__dict__`
+2. Snapshots every frame in the traceback. This includes locals, plus one level of
+recursion into containers (`dict`, `list`, `tuple`, `set`) and objects with `__dict__`
 3. Launches the TUI in **post-mortem mode**, inheriting the current terminal
 
 In post-mortem mode you can:
@@ -260,15 +276,21 @@ In post-mortem mode you can:
 - Read the full traceback (including chained `cause`/`context` exceptions) in the Console View
 - Jump around the source with the full Code View (syntax highlighting, goto-line, etc.)
 
-Stepping, `continue`, breakpoints, restart, and Evaluate are disabled — the original interpreter is gone, the view is a frozen snapshot. Press `q` to exit.
+Stepping, `continue`, breakpoints, restart, and Evaluate are disabled. The original
+interpreter is gone, the view is a frozen snapshot. Press `q` to exit.
 
-The hook is a no-op when stdin/stdout aren't a tty (e.g. when your program is piped or run from cron), so it's safe to leave installed in production-style code. Snapshots are written to a temp file that is deleted as soon as tdb exits.
+The hook is a no-op when stdin/stdout aren't a tty (e.g. when your program is piped or
+run from cron), so it's safe to leave installed in production-style code. Snapshots are
+written to a temp file that is deleted as soon as `tdb` exits.
 
-Snapshot depth / breadth is capped (5 levels, 50 children per container) to keep the capture cheap even for pathological object graphs; cycles are handled via identity memoization.
+Snapshot depth / breadth is capped (5 levels, 50 children per container) to keep the
+capture cheap even for pathological object graphs; cycles are handled via identity
+memoization.
 
 ### Live Breakpoint Hook
 
-For the `pdb.set_trace()` use case — pausing at a specific line to inspect, then continuing — use `tdb.breakpoint()`:
+For the `pdb.set_trace()` use case--pausing at a specific line to inspect, then
+continuing--use `tdb.breakpoint()`:
 
 ```python
 import tdb
@@ -285,20 +307,28 @@ Or hook it into the builtin `breakpoint()` function for the whole program:
 PYTHONBREAKPOINT=tdb.breakpoint python myscript.py
 ```
 
-When the call is reached, tdb starts an in-process `debugpy` server on a loopback port, spawns `python -m tdb -r <port>` as a subprocess so the TUI takes over the terminal, and pauses the calling thread. When you press `Ctrl+Q` to quit tdb, your program resumes past the breakpoint.
+When the call is reached, `tdb` starts an in-process `debugpy` server on a loopback port,
+spawns `python -m tdb -r <port>` as a subprocess so the TUI takes over the terminal,
+and pauses the calling thread. When you press `Ctrl+Q` to quit `tdb`, your program resumes
+past the breakpoint.
 
 This differs from `tdb.exception_hook` in two ways:
-- **Requires `debugpy`** as a runtime dependency (only imported when the hook actually fires).
-- **Live, not frozen**: because the interpreter is still alive, variable inspection reads real objects — though stepping/`continue`/breakpoint setting from the tdb side are not wired up in this iteration; quitting tdb is how you resume.
+- **Requires `debugpy`** as a runtime dependency for the debugee (only imported when the hook actually fires).
+- **Live, not frozen**: because the interpreter is still alive, variable inspection reads real objects,
+although stepping/`continue`/breakpoint setting from the `tdb` side are not wired up in this iteration;
+quitting `tdb` is how you resume.
 
-As with `exception_hook`, the call is a no-op when stdin/stdout aren't a tty, so it's safe to leave in code paths that sometimes run headless.
+As with `exception_hook`, the call is a no-op when stdin/stdout aren't a tty, so it's
+safe to leave in code paths that sometimes run headless.
 
 ### Async Task Inspector
 
-For programs using `asyncio`, the menu bar shows an **Async Tasks (N)** label with the count of active tasks (updated each time the program stops). Click it to open a full-screen modal:
+For programs using `asyncio`, the menu bar shows an **Async Tasks (N)** label with the count of
+active tasks (updated each time the program stops). Click it to open a full-screen modal:
 
 - **Left pane**: list of all tasks with name, state (pending/done/cancelled), and coroutine
-- **Right pane**: detail view with full stack trace and an expandable variable tree (same as the main Variables View) for the selected task
+- **Right pane**: detail view with full stack trace and an expandable variable tree (same
+as the main Variables View) for the selected task
 - Navigate with arrow keys; press `r` to refresh, `Escape` to close
 
 RPC equivalents:
@@ -339,14 +369,22 @@ curl -s -X POST http://127.0.0.1:8150/rpc \
 
 ### Process Inspector
 
-For programs using `multiprocessing`, the menu bar shows a **Processes (N)** label when there are 2 or more child processes. Click it to open a modal with:
+For programs using `multiprocessing`, the menu bar shows a **Processes (N)** label when there
+are 2 or more child processes. Click it to open a modal with:
 
 - **Left pane**: list of child processes with PID, name, and status (alive/exited)
 - **Right pane**: process details, full stack trace, and expandable variable tree for the selected process
 
-tdb automatically attaches to child processes spawned via `multiprocessing.Process`, `multiprocessing.Pool`, or `concurrent.futures.ProcessPoolExecutor`. Breakpoints set in the parent are propagated to all child processes. When any process hits a breakpoint, all other processes are paused. Pressing `p` pauses all processes; `c` continues all.
+`tdb` automatically attaches to child processes spawned via `multiprocessing.Process`, `multiprocessing.Pool`,
+or `concurrent.futures.ProcessPoolExecutor`. Breakpoints set in the parent are propagated to all
+child processes. When any process hits a breakpoint, all other processes are paused. Pressing `p`
+pauses all processes; `c` continues all.
 
-**Stepping in multi-process programs:** step commands (`n`, `s`, `o`, `f`, `r`) apply only to the process whose stack is currently shown in the Code View (the one that hit the breakpoint). Other processes remain paused throughout the step. To step in a different process, open the Processes tab and select it first — the Code View switches focus to that process, and subsequent step commands operate on it.
+**Stepping in multi-process programs:** step commands (`n`, `s`, `o`, `f`, `r`) apply only to the
+process whose stack is currently shown in the Code View (the one that hit the breakpoint).
+Other processes remain paused throughout the step. To step in a different process, open
+the Processes tab and select it first. The Code View then switches focus to that process,
+and subsequent step commands operate on it.
 
 RPC equivalents:
 
@@ -364,14 +402,27 @@ curl -s -X POST http://127.0.0.1:8150/rpc \
 
 ### Remote Attach
 
-Attach to a Python program that is already running with debugpy:
+Remote attachment is useful in situations where you can't launch the debuggee directly
+with `tdb`, for example, if it is launched from another program or runs in an environment
+where you can't install `tdb`.  Two requirements must still be met though:
+1. the `debugpy` package must be installed in the debuggee's Python environment
+2. you need write access to the debuggee's code to add the following code at the point
+where you want to attach the debugger:
 
 ```python
 # In the target program:
 import debugpy
 debugpy.listen(("0.0.0.0", 5678))
+print("Waiting for tdb to attach on port 5678...")
 debugpy.wait_for_client()  # optional: pause until debugger connects
+print("tdb is attached!")
 ```
+
+When the debuggee runs and hits the `debugpy.wait_for_client()` line, it starts a
+debugpy server listening on port 5678.
+Attach `tdb` to it with the `-r` / `--remote-attach` switch, specifying the host and port.
+If the debuggee is on the same machine, you can omit the host or use `localhost`.
+This example assumes the debuggee runs on 192.168.1.10 and listens on port 5678:
 
 ```bash
 # Attach from tdb:
@@ -382,17 +433,27 @@ tdb -r 192.168.1.10:5678
 tdb -r 5678 -k my_script.py:42
 ```
 
-All debugging features (breakpoints, stepping, variable inspection, threads, processes, async tasks) work in remote attach mode. The Code View automatically navigates to the source file when the program stops.
+All debugging features (breakpoints, stepping, variable inspection, threads, processes,
+async tasks) work in remote attach mode. The Code View automatically navigates to the
+source file when the program stops.
 
 ### External Terminal Support
 
-For debugging TUI programs (curses, textual, rich) that need direct terminal access:
+Some Python programs, notably text user interfaces, make heavy use of terminal control
+codes and require direct access to the terminal to function properly. 
+Such programs can be debugged with `tdb` by having it launch the debugee in
+a separate terminal:
 
 ```bash
-tdb --terminal kitty my_tui_app.py
+tdb --terminal xterm my_tui_app.py
 ```
 
-The debuggee runs in a separate window of the named terminal. Supported choices: `xterm`, `konsole`, `gnome-terminal`, `ghostty`, `kitty`, `iterm2`, `warp`, `wezterm`, `terminator`. The selected terminal must be on `PATH`. Breakpoints, stepping, and variable inspection still work in tdb.
+The debuggee runs in a separate window of the specified terminal. Supported choices:
+`xterm`, `konsole`, `gnome-terminal`, `ghostty`, `kitty`, `iterm2`, `warp`,
+`wezterm`, `terminator`. The selected terminal must be on `PATH`. Debugging
+proceeds as usual in the terminal where `tdb` was invoked.
+
+This feature only works in graphical environments where external terminals are available.
 
 ### Keybinding Schemes
 
@@ -402,11 +463,13 @@ tdb --keybindings emacs my_script.py
 tdb --keybindings default my_script.py
 ```
 
-The keybinding choice is saved to `~/.config/tdb/config.json` and remembered for subsequent runs. View the full keybinding reference from the menu: **Configure > Keybindings**.
+The keybinding choice is saved to `~/.config/tdb/config.json` and remembered for subsequent
+runs. View the full keybinding reference from the menu: **Configure > Keybindings**.
 
 ## JSON-RPC Server Mode
 
-tdb includes a built-in debug server for programmatic control — useful for scripted debugging, CI pipelines, or AI-assisted debugging workflows.
+`tdb` includes a built-in debug server for programmatic control which is useful for scripted
+debugging, CI pipelines, or AI-assisted debugging workflows.
 
 ### Headless Mode (no TUI)
 
@@ -426,7 +489,8 @@ Both the interactive TUI and the JSON-RPC server run simultaneously.
 
 ### RPC Protocol
 
-Send POST requests with `{"action": "...", "params": [...]}`. Responses return `{"timestamp": "...", "success": true/false, "value": "..."}`.
+Send POST requests with `{"action": "...", "params": [...]}`. Responses return
+`{"timestamp": "...", "success": true/false, "value": "..."}`.
 
 ```bash
 # Check status
@@ -493,7 +557,8 @@ Subscribe to real-time debug events:
 curl -N http://127.0.0.1:8150/events
 ```
 
-Events: `initialized`, `stopped`, `continued`, `terminated`, `exited`, `output`. Each is JSON with `event`, `data`, and `timestamp` fields.
+Events: `initialized`, `stopped`, `continued`, `terminated`, `exited`, `output`.
+Each is JSON with `event`, `data`, and `timestamp` fields.
 
 ## CLI Reference
 
@@ -513,9 +578,12 @@ usage: tdb [-h] [-r [HOST:]PORT] [-k FILE:LINE] [--cwd CWD]
 | `--no-stop-on-entry` | Do not pause at the first line (default: stop on entry) |
 | `--cwd DIR` | Working directory for the debuggee |
 | `--python PATH` | Python interpreter for the debuggee |
-| `--no-just-my-code` | Step into stdlib/site-packages code instead of skipping it (default: skipped). On uncaught exceptions, the crash modal always shows the full traceback including library frames, regardless of this flag. |
-| `--no-subprocess` | Disable debugpy's subprocess tracking (use when debugging tdb itself) |
-| `--terminal TERM` | Run debuggee in the named external terminal: `xterm`, `konsole`, `gnome-terminal`, `ghostty`, `kitty`, `iterm2`, `warp`, `wezterm`, or `terminator` |
+| `--no-just-my-code` | Step into stdlib/site-packages code instead of skipping it
+  (default: skipped). On uncaught exceptions, the crash modal always shows the full traceback
+  including library frames, regardless of this flag. |
+| `--no-subprocess` | Disable debugpy's subprocess tracking (use when debugging `tdb` itself) |
+| `--terminal TERM` | Run debuggee in the named external terminal: `xterm`, `konsole`,
+  `gnome-terminal`, `ghostty`, `kitty`, `iterm2`, `warp`, `wezterm`, or `terminator` |
 | `--keybindings SCHEME` | `default`, `vim`, or `emacs` (saved to config) |
 | `--server` | Enable JSON-RPC server alongside TUI |
 | `--headless` | JSON-RPC server only, no TUI |
@@ -523,32 +591,35 @@ usage: tdb [-h] [-r [HOST:]PORT] [-k FILE:LINE] [--cwd CWD]
 
 ## Configuration
 
-tdb stores configuration and state in `~/.config/tdb/`:
+On UNIX-like systems (Linux, macOS, FreeBSD, etc.),
+`tdb` stores configuration and breakpoints in `~/.config/tdb/`.
+On Windows, it uses `%APPDATA%\tdb\`.
 
 | File | Contents |
 |------|----------|
 | `config.json` | User preferences (keybinding scheme) |
 | `last_run.json` | Breakpoints from previous sessions, keyed by project directory |
 
-Breakpoints are automatically saved on exit and restored when debugging a program in the same directory. Each project's breakpoints are independent.
+Breakpoints are saved on exit and restored when debugging a program in the same
+directory. Each project's breakpoints are independent.
 
 ## Tech Stack
 
-- [textual](https://github.com/Textualize/textual) — TUI framework
-- [debugpy](https://github.com/microsoft/debugpy) — Debug Adapter Protocol implementation
-- [pygments](https://pygments.org/) — Syntax highlighting
-- [FastAPI](https://fastapi.tiangolo.com/) + [uvicorn](https://www.uvicorn.org/) — JSON-RPC server
+- [textual](https://github.com/Textualize/textual) : TUI framework
+- [debugpy](https://github.com/microsoft/debugpy) : Debug Adapter Protocol implementation
+- [pygments](https://pygments.org/) : Syntax highlighting
+- [FastAPI](https://fastapi.tiangolo.com/) + [uvicorn](https://www.uvicorn.org/) : JSON-RPC server
 
 ## License
 
 MIT
 
 
-## Known Limitations
+## Known Problems
 
 This command
 ```
-tdb --terminal gnome-terminal --python /usr/bin/python3 examples/double_pendulum.py
+tdb --terminal gnome-terminal --python /path/to/venv/matplotlib/bin/python3 examples/double_pendulum.py
 ```
 either ignores breakpoints or crashes after showing the first frame.
 The `--python` argument must point to an installation with `matplotlib`.
