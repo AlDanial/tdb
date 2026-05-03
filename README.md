@@ -1,8 +1,7 @@
 # `textual-debugger`
 
 `textual-debugger` (the package) provides `tdb` (the command-line tool and module),
-a full-featured
-terminal-based Python debugger.
+a full-featured terminal-based Python debugger.
 
 `tdb` is built with [textual](https://github.com/Textualize/textual)
 and [debugpy](https://github.com/microsoft/debugpy) (the Debug Adapter Protocol engine behind
@@ -12,6 +11,8 @@ inspecting variables, managing breakpoints, and evaluating expressions in comple
 `tdb` was created by Al Danial with Claude Code. It can be found at
 - PyPI: https://pypi.org/project/textual-debugger/
 - GitHub: https://github.com/AlDanial/tdb
+
+MIT License.
 
 ## Feature Overview
 
@@ -83,7 +84,7 @@ tdb --python /path/to/venv/bin/python my_script.py
 tdb --no-stop-on-entry my_script.py
 
 > **Note:** Avoid `argparse` confusion by separating `tdb`'s switches from
-the debuggee's switches by prefixing the debugee with `--`.
+> the debuggee's switches by prefixing the debugee with `--`.
 
 # `--` separates tdb's switches from the debuggee's switches
 tdb --python /path/to/venv/bin/python -- my_script.py -f 17 --max 23.3
@@ -309,14 +310,18 @@ PYTHONBREAKPOINT=tdb.breakpoint python myscript.py
 
 When the call is reached, `tdb` starts an in-process `debugpy` server on a loopback port,
 spawns `python -m tdb -r <port>` as a subprocess so the TUI takes over the terminal,
-and pauses the calling thread. When you press `Ctrl+Q` to quit `tdb`, your program resumes
-past the breakpoint.
+and pauses the calling thread at the line that called `tdb.breakpoint()` (the hook
+auto-steps out of its own helper so you land in your own frame, not inside
+`breakpoint_hook.py`). Stepping (`n`/`s`/`o`), `continue`, and setting/removing breakpoints
+all work normally; quitting `tdb` (`Ctrl+Q`) detaches without killing the program, and
+debugpy auto-resumes any threads still paused.
 
-This differs from `tdb.exception_hook` in two ways:
+This differs from `tdb.exception_hook` in one way:
 - **Requires `debugpy`** as a runtime dependency for the debugee (only imported when the hook actually fires).
-- **Live, not frozen**: because the interpreter is still alive, variable inspection reads real objects,
-although stepping/`continue`/breakpoint setting from the `tdb` side are not wired up in this iteration;
-quitting `tdb` is how you resume.
+
+Unlike the exception hook (which works on a frozen snapshot), the breakpoint hook leaves
+the interpreter live: variable inspection reads real objects, and stepping/`continue`
+drive the user's program forward.
 
 As with `exception_hook`, the call is a no-op when stdin/stdout aren't a tty, so it's
 safe to leave in code paths that sometimes run headless.

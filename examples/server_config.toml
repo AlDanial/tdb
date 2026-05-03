@@ -1,0 +1,15 @@
+# sample input for toml_yaml_converter.py
+
+title = "Server Configuration"
+format = "toml"
+
+[server]
+host = "127.0.0.1"
+port = 8080
+# Optional fields
+proxy = ""
+
+[database]
+user = "admin"
+password = ""
+timeout = 30

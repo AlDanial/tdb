@@ -11,9 +11,11 @@ Mechanics:
     First call starts an in-process debugpy server on an ephemeral loopback
     port. Each call spawns `python -m tdb -r <port>` as a subprocess (so the
     TUI takes over the terminal), waits for it to attach, then pauses the
-    calling thread via `debugpy.breakpoint()`. When the tdb subprocess exits
-    (user quits with `q`), this function returns and the user's program
-    continues.
+    calling thread via `debugpy.breakpoint()`. tdb auto-steps out of this
+    helper on first stop so the user sees their own frame at the call site.
+    Stepping and `continue` from tdb resume the calling thread normally;
+    quitting tdb disconnects without terminating the program (debugpy
+    auto-resumes any paused threads).
 
 No-op if stdin/stdout aren't a tty, mirroring the post-mortem hook.
 """
@@ -32,6 +34,12 @@ log = logging.getLogger(__name__)
 # _server_port is memoized so subsequent calls reuse the same listener.
 _SERVER_HOST = "127.0.0.1"
 _server_port: int | None = None
+# The most recently spawned tdb subprocess. If it's still alive on a
+# repeat tdb.breakpoint() call, we reuse it: that single TUI receives the
+# new stopped event over its existing DAP connection. Spawning a second
+# tdb here would put two full-screen TUIs on the same tty and they would
+# race on rendering and on dismiss/quit keypresses.
+_subprocess: subprocess.Popen[bytes] | None = None
 
 
 def breakpoint(*args: Any, **kwargs: Any) -> None:
@@ -54,7 +62,7 @@ def breakpoint(*args: Any, **kwargs: Any) -> None:
         )
         return
 
-    global _server_port
+    global _server_port, _subprocess
     if _server_port is None:
         try:
             # subProcess=False: otherwise debugpy would try to attach to the
@@ -70,8 +78,15 @@ def breakpoint(*args: Any, **kwargs: Any) -> None:
             log.exception("tdb.breakpoint: debugpy.listen failed")
             return
 
+    if _subprocess is not None and _subprocess.poll() is None:
+        # Existing tdb is still running and attached — let it handle this
+        # stop event. Skip Popen and skip wait_for_client (a client is
+        # already connected, so debugpy.breakpoint() pauses immediately).
+        debugpy.breakpoint()
+        return
+
     try:
-        proc = subprocess.Popen(
+        _subprocess = subprocess.Popen(
             [sys.executable, "-m", "tdb", "-r", f"{_SERVER_HOST}:{_server_port}"],
             stdin=sys.stdin,
             stdout=sys.stdout,
@@ -81,13 +96,5 @@ def breakpoint(*args: Any, **kwargs: Any) -> None:
         log.exception("tdb.breakpoint: failed to launch tdb subprocess")
         return
 
-    try:
-        debugpy.wait_for_client()
-        debugpy.breakpoint()
-    finally:
-        # Block until tdb fully exits so the tty is handed back cleanly
-        # before user code runs the next line.
-        try:
-            proc.wait()
-        except Exception:
-            log.exception("tdb.breakpoint: error waiting for tdb subprocess")
+    debugpy.wait_for_client()
+    debugpy.breakpoint()

@@ -273,10 +273,16 @@ class _TracebackModal(ModalScreen[str | None]):
         Binding("R", "restart", "Restart", show=False),
     ]
 
-    def __init__(self, exception_text: str, frames_text: str) -> None:
+    def __init__(
+        self,
+        exception_text: str,
+        frames_text: str,
+        can_restart: bool = True,
+    ) -> None:
         super().__init__()
         self._exception_text = exception_text
         self._frames_text = frames_text
+        self._can_restart = can_restart
 
     def compose(self):
         # Escape bare '[' so exception messages like "list[int]" or
@@ -289,7 +295,11 @@ class _TracebackModal(ModalScreen[str | None]):
         lines.append("[bold]Traceback (most recent call last):[/bold]")
         lines.append(frames_safe)
         lines.append("")
-        lines.append("[dim]Press ESC, Enter, or q to close · Press R to restart[/dim]")
+        if self._can_restart:
+            footer = "Press ESC, Enter, or q to close · Press R to restart"
+        else:
+            footer = "Press ESC, Enter, or q to close"
+        lines.append(f"[dim]{footer}[/dim]")
 
         with Vertical(id="dialog"):
             yield Static("\n".join(lines), markup=True)
@@ -298,7 +308,8 @@ class _TracebackModal(ModalScreen[str | None]):
         self.dismiss(None)
 
     def action_restart(self) -> None:
-        self.dismiss("restart")
+        if self._can_restart:
+            self.dismiss("restart")
 
 
 class _DocumentationModal(ModalScreen):
@@ -761,6 +772,17 @@ class TdbApp(App):
         recreate controller, load file, restore breakpoints) but do NOT
         launch the debuggee — wait for the user to press `r` or `c`.
         """
+        # Restart in remote-attach mode (incl. tdb.breakpoint() sessions)
+        # has no debuggee to relaunch — _program is empty and the original
+        # debugpy server is gone. Drop the request rather than tearing
+        # down the controller and trying to start nothing.
+        if new_program is None and self.controller._is_remote_attach:
+            self.notify(
+                "Restart is not available in remote-attach / tdb.breakpoint() mode.",
+                severity="warning",
+            )
+            return
+
         if new_program:
             log.info("Switching debug session to: %s", new_program)
             if self._program:
@@ -871,6 +893,11 @@ class TdbApp(App):
             if message.thread_id is not None:
                 state.current_thread_id = message.thread_id
             await self.controller.fetch_stop_info()
+            if self._stopped_inside_breakpoint_hook():
+                # tdb.breakpoint() pauses inside breakpoint_hook.breakpoint;
+                # step out so the user lands in their own caller frame.
+                await self.controller.step_out()
+                return
             await self.controller.cleanup_run_to_cursor()
         except Exception:
             log.exception("Error handling stopped event")
@@ -883,6 +910,25 @@ class TdbApp(App):
         if message.reason == "exception":
             self._exception_modal_shown = True
             self._show_exception_modal(message)
+
+    def _stopped_inside_breakpoint_hook(self) -> bool:
+        """True if the active stop is inside `tdb.breakpoint()`'s helper.
+
+        Only fires in remote-attach mode (the channel `tdb.breakpoint()` uses
+        to spawn a tdb subprocess). The first stop after attach lands inside
+        breakpoint_hook.py; we step out so the caller frame is what the user
+        sees.
+        """
+        if not self.controller._is_remote_attach:
+            return False
+        frames = self.controller.state.stack_frames
+        if not frames:
+            return False
+        top = frames[0]
+        src = top.source.path if top.source else None
+        if not src:
+            return False
+        return os.path.basename(src) == "breakpoint_hook.py"
 
     def _show_exception_modal(self, message: DapStopped) -> None:
         """Show a modal with the full exception traceback."""
@@ -904,7 +950,13 @@ class TdbApp(App):
             if result == "restart":
                 self._restart_session()
 
-        self.push_screen(_TracebackModal(exception_text, frames_text), callback=on_dismiss)
+        self.push_screen(
+            _TracebackModal(
+                exception_text, frames_text,
+                can_restart=not self.controller._is_remote_attach,
+            ),
+            callback=on_dismiss,
+        )
 
     _TB_FILE_RE = re.compile(
         r'^\s*File "(.+)", line (\d+)(?:, in (.+))?', re.MULTILINE,
@@ -987,7 +1039,10 @@ class TdbApp(App):
                 self._restart_session()
 
         self.push_screen(
-            _TracebackModal(exception_text or "Program crashed", frames_text),
+            _TracebackModal(
+                exception_text or "Program crashed", frames_text,
+                can_restart=not self.controller._is_remote_attach,
+            ),
             callback=on_dismiss,
         )
 
@@ -1500,7 +1555,7 @@ class TdbApp(App):
     def action_about(self) -> None:
         body = dedent(f"""\
             [bold]tdb v{tdb_version}[/bold]
-            by Al Danial and Claude Code
+            by Al Danial (with Claude Code)
             Copyright (c) 2026
 
             GitHub: https://github.com/AlDanial/tdb

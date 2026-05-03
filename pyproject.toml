@@ -1,12 +1,12 @@
   [project]
   name = "textual-debugger"
-  version = "0.0.1"
+  version = "0.0.2"
   description = "A TUI Python debugger based on textual and debugpy"
   readme = "README.md"
   requires-python = ">=3.10"
   license = {file = "LICENSE"}
   authors = [{name = "Al Danial", email = "al.danial@gmail.com"}]
-  keywords = ["debugger", "tui", "textual", "debugpy", "debug"]
+  keywords = ["debugger", "tui", "textual", "debugpy", "debug", "DAP"]
   classifiers = [
       "Development Status :: 4 - Beta",
       "Environment :: Console",
@@ -27,9 +27,12 @@
       "uvicorn>=0.30.0",
   ]
 
+  # extras needed to run the examples and tests
   [project.optional-dependencies]
   dev = ["pytest", "pytest-asyncio",
          "matplotlib",
+         "pyyaml",
+         "toml",
          "ipython"]
 
   [project.urls]
