@@ -6,7 +6,7 @@ import yaml
 
 def clean_data(data):
     """Recursively removes keys that have empty string values."""
-    tdb.breakpoint()
+  # tdb.breakpoint()
     for key, value in data.items():
         if isinstance(value, dict):
             clean_data(value)

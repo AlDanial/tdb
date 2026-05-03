@@ -668,10 +668,23 @@ class DebugController:
         self.event_handler.on_continued()
 
     def _on_terminated(self, event: Event) -> None:
+        # Update state synchronously so every downstream consumer (server
+        # RPC guards, controller breakpoint-skip guards, TUI handlers) sees
+        # is_terminated immediately. Previously only the TUI's async handler
+        # set this, so headless mode left state.is_terminated stuck at False
+        # after the program ended naturally.
+        self.state.is_terminated = True
+        self.state.is_running = False
         self.event_handler.on_terminated()
 
     def _on_exited(self, event: Event) -> None:
         exit_code = event.body.get("exitCode", 0)
+        # `exited` and `terminated` usually arrive as a pair, but debugpy can
+        # emit either one independently on edge cases (hard crashes, abrupt
+        # disconnects). Set is_terminated on both so the guards engage no
+        # matter which event we get.
+        self.state.is_terminated = True
+        self.state.is_running = False
         self.event_handler.on_exited(exit_code)
 
     def _on_output(self, event: Event) -> None:

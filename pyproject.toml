@@ -29,7 +29,7 @@
 
   # extras needed to run the examples and tests
   [project.optional-dependencies]
-  dev = ["pytest", "pytest-asyncio",
+  dev = ["pytest", "pytest-asyncio", "httpx",
          "matplotlib",
          "pyyaml",
          "toml",
@@ -49,3 +49,10 @@
 
   [tool.setuptools.packages.find]
   where = ["src"]
+
+  [tool.pytest.ini_options]
+  testpaths = ["tests"]
+  asyncio_mode = "auto"
+  filterwarnings = [
+      "ignore::DeprecationWarning",
+  ]

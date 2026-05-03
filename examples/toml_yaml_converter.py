@@ -44,6 +44,7 @@ Bug 5: Name shadowing a module
 
 import tdb
 import sys
+sys.excepthook = tdb.exception_hook # automatically open tdb on exception
 from pathlib import Path
 from convert_ty_yt import convert_toml_to_yaml, convert_yaml_to_toml
 
