@@ -603,7 +603,7 @@ On Windows, it uses `%APPDATA%\tdb\`.
 | File | Contents |
 |------|----------|
 | `config.json` | User preferences (keybinding scheme) |
-| `last_run.json` | Breakpoints from previous sessions, keyed by project directory |
+| `breakpoints.json` | Breakpoints from previous sessions, keyed by project directory |
 
 Breakpoints are saved on exit and restored when debugging a program in the same
 directory. Each project's breakpoints are independent.

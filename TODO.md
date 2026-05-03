@@ -1,5 +1,0 @@
-- on opening a new file with File/Open, clear out breakpoint markers from the gutter and reload them from ~/.config/tdb/last_run.json
-- rename ~/.config/tdb/last_run.json to ~/.config/tdb/breakpoints.json
-- live breakpoint hook -- allow stepping, continue, and other commands to be issued
-- on hitting tdb.breakpoint(), the code currently stops at src/tdb/breakpoint_hook.py:90, should stop one frame higher, at tdb.breakpoint() call.  Then, allow stepping/continue/next and other commands to be issued from there.
-- on Windows, save configuration and breakpoint JSON files in %APPDATA%\tdb\

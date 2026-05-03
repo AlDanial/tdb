@@ -4,15 +4,35 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import sys
 from pathlib import Path
 
 from tdb.dap.types import SourceBreakpoint
 
 log = logging.getLogger(__name__)
 
-CONFIG_DIR = Path.home() / ".config" / "tdb"
-STATE_FILE = CONFIG_DIR / "last_run.json"
+
+def _default_config_dir() -> Path:
+    """Per-platform config directory.
+
+    Windows: %APPDATA%\\tdb (falls back to ~/AppData/Roaming/tdb if APPDATA
+    is unset, matching what Windows normally points APPDATA at).
+    Everywhere else: ~/.config/tdb (XDG-ish; we don't honor XDG_CONFIG_HOME
+    yet).
+    """
+    if sys.platform == "win32":
+        appdata = os.environ.get("APPDATA")
+        if appdata:
+            return Path(appdata) / "tdb"
+        return Path.home() / "AppData" / "Roaming" / "tdb"
+    return Path.home() / ".config" / "tdb"
+
+
+CONFIG_DIR = _default_config_dir()
+STATE_FILE = CONFIG_DIR / "breakpoints.json"
 CONFIG_FILE = CONFIG_DIR / "config.json"
+_LEGACY_STATE_FILE = CONFIG_DIR / "last_run.json"
 
 
 def _encode_bps(
@@ -50,6 +70,15 @@ def _decode_bps(raw: dict) -> dict[str, list[SourceBreakpoint]]:
 
 
 def _read_state() -> dict:
+    # One-time migration from the old name (renamed 2026-05).
+    if not STATE_FILE.is_file() and _LEGACY_STATE_FILE.is_file():
+        try:
+            _LEGACY_STATE_FILE.rename(STATE_FILE)
+            log.info("Migrated %s -> %s", _LEGACY_STATE_FILE, STATE_FILE)
+        except Exception:
+            log.exception(
+                "Failed to migrate %s to %s", _LEGACY_STATE_FILE, STATE_FILE,
+            )
     if not STATE_FILE.is_file():
         return {}
     try:
