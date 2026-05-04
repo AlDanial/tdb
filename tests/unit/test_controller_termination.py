@@ -13,6 +13,7 @@ from __future__ import annotations
 from tdb.dap.messages import Event
 from tdb.session.controller import DebugController
 from tdb.session.event_bus import DebugEventHandler
+from tdb.session.state import SessionPhase
 
 
 class _RecordingHandler(DebugEventHandler):
@@ -42,7 +43,7 @@ def _exited_event(code: int = 0) -> Event:
 def test_on_terminated_sets_is_terminated_and_clears_running():
     h = _RecordingHandler()
     ctrl = DebugController(h)
-    ctrl.state.is_running = True
+    ctrl.state.transition_to(SessionPhase.RUNNING)
     assert ctrl.state.is_terminated is False
 
     ctrl._on_terminated(_terminated_event())
@@ -57,7 +58,7 @@ def test_on_terminated_sets_is_terminated_and_clears_running():
 def test_on_exited_sets_is_terminated_and_records_exit_code():
     h = _RecordingHandler()
     ctrl = DebugController(h)
-    ctrl.state.is_running = True
+    ctrl.state.transition_to(SessionPhase.RUNNING)
 
     ctrl._on_exited(_exited_event(code=7))
 
@@ -93,7 +94,7 @@ def test_breakpoint_methods_become_no_ops_after_termination():
     ctrl = DebugController(h)
     # Pretend the session was ready before termination so the guards
     # would otherwise try to send (`is_ready and not is_terminated`).
-    ctrl.state.is_ready = True
+    ctrl.state.transition_to(SessionPhase.STOPPED)
     ctrl._on_terminated(_terminated_event())
 
     # These should all return without raising — the guards skip the DAP send.

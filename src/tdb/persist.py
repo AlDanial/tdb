@@ -90,46 +90,31 @@ def _read_state() -> dict:
 
 def save_breakpoints(
     breakpoints: dict[str, list[SourceBreakpoint]],
-    program: str | None = None,
+    program: str,
 ) -> None:
-    """Write breakpoints to the state file, keyed by program path.
-
-    When program is None, writes to the flat legacy format.
-    """
+    """Write breakpoints to the state file, keyed by program path."""
     data = _encode_bps(breakpoints)
     try:
         existing = _read_state()
-        if program:
-            programs = existing.get("programs", {})
-            if data:
-                programs[program] = data
-            else:
-                programs.pop(program, None)
-            existing["programs"] = programs
+        programs = existing.get("programs", {})
+        if data:
+            programs[program] = data
         else:
-            existing["breakpoints"] = data
+            programs.pop(program, None)
+        existing["programs"] = programs
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
         STATE_FILE.write_text(json.dumps(existing, indent=2) + "\n")
-        log.debug("Saved %d breakpoint(s) for %s", sum(len(v) for v in data.values()), program or "(default)")
+        log.debug("Saved %d breakpoint(s) for %s", sum(len(v) for v in data.values()), program)
     except Exception:
         log.exception("Failed to save breakpoints to %s", STATE_FILE)
 
 
-def load_breakpoints(
-    program: str | None = None,
-) -> dict[str, list[SourceBreakpoint]]:
-    """Read breakpoints for a specific program. Returns empty dict on any error.
-
-    When program is given, returns only breakpoints saved for that program.
-    When program is None, returns the legacy flat "breakpoints" dict (used
-    during migration — see migrate_legacy_breakpoints).
-    """
+def load_breakpoints(program: str) -> dict[str, list[SourceBreakpoint]]:
+    """Read breakpoints saved for the given program. Empty dict on error."""
     raw = _read_state()
     try:
-        if program:
-            programs = raw.get("programs", {})
-            return _decode_bps(programs.get(program, {}))
-        return _decode_bps(raw.get("breakpoints", {}))
+        programs = raw.get("programs", {})
+        return _decode_bps(programs.get(program, {}))
     except Exception:
         log.exception("Failed to load breakpoints from %s", STATE_FILE)
         return {}

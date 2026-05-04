@@ -13,7 +13,7 @@ from tdb.dap.client import DAPClient
 from tdb.dap.messages import Event, Request
 from tdb.dap.types import SourceBreakpoint
 from .event_bus import DebugEventHandler
-from .state import DebugState
+from .state import DebugState, SessionPhase
 
 log = logging.getLogger(__name__)
 
@@ -259,8 +259,7 @@ class DebugController:
         if not response.success:
             raise Exception(f"Launch failed: {response.message}")
 
-        self.state.is_ready = True
-        self.state.is_running = True
+        self.state.transition_to(SessionPhase.RUNNING)
 
     async def stop(self) -> None:
         for pid, child in list(self._child_clients.items()):
@@ -272,13 +271,13 @@ class DebugController:
         self._child_clients.clear()
         await self.client.disconnect(terminate=not self._is_remote_attach)
         await self.client.stop()
-        self.state.is_terminated = True
+        self.state.transition_to(SessionPhase.TERMINATED)
 
     # --- Debug actions ---
 
     async def continue_(self) -> None:
         if self.state.current_thread_id is not None:
-            self.state.is_running = True
+            self.state.transition_to(SessionPhase.RUNNING)
             self.state.clear_frame_data()
             # Fire-and-forget continue to every known client. We don't await
             # responses: debugpy does not reply to `continue` when the target
@@ -324,19 +323,19 @@ class DebugController:
 
     async def step_over(self) -> None:
         if self.state.current_thread_id is not None:
-            self.state.is_running = True
+            self.state.transition_to(SessionPhase.RUNNING)
             self.state.clear_frame_data()
             await self._active_client.next(self.state.current_thread_id)
 
     async def step_in(self) -> None:
         if self.state.current_thread_id is not None:
-            self.state.is_running = True
+            self.state.transition_to(SessionPhase.RUNNING)
             self.state.clear_frame_data()
             await self._active_client.step_in(self.state.current_thread_id)
 
     async def step_out(self) -> None:
         if self.state.current_thread_id is not None:
-            self.state.is_running = True
+            self.state.transition_to(SessionPhase.RUNNING)
             self.state.clear_frame_data()
             await self._active_client.step_out(self.state.current_thread_id)
 
@@ -603,9 +602,7 @@ class DebugController:
         """
         from tdb.dap.types import Scope, Source, StackFrame, Variable
 
-        self.state.is_post_mortem = True
-        self.state.is_terminated = True
-        self.state.is_running = False
+        self.state.transition_to(SessionPhase.POST_MORTEM)
         self.state.stop_reason = "exception"
 
         frames_data = snapshot.get("frames", [])
@@ -702,7 +699,7 @@ class DebugController:
         # and the headless RPC server each duplicated these assignments,
         # which is how the `is_terminated` propagation bug crept in for the
         # `_on_terminated` sibling event.
-        self.state.is_running = False
+        self.state.transition_to(SessionPhase.STOPPED)
         self.state.stop_reason = reason
         if thread_id is not None:
             self.state.current_thread_id = thread_id
@@ -715,7 +712,7 @@ class DebugController:
     def _on_continued(self, event: Event) -> None:
         # Mirror of _on_stopped: producer-side state mutation so consumers
         # don't have to remember to do it themselves.
-        self.state.is_running = True
+        self.state.transition_to(SessionPhase.RUNNING)
         self.state.clear_frame_data()
         self.event_handler.on_continued()
 
@@ -725,18 +722,16 @@ class DebugController:
         # is_terminated immediately. Previously only the TUI's async handler
         # set this, so headless mode left state.is_terminated stuck at False
         # after the program ended naturally.
-        self.state.is_terminated = True
-        self.state.is_running = False
+        self.state.transition_to(SessionPhase.TERMINATED)
         self.event_handler.on_terminated()
 
     def _on_exited(self, event: Event) -> None:
         exit_code = event.body.get("exitCode", 0)
         # `exited` and `terminated` usually arrive as a pair, but debugpy can
         # emit either one independently on edge cases (hard crashes, abrupt
-        # disconnects). Set is_terminated on both so the guards engage no
-        # matter which event we get.
-        self.state.is_terminated = True
-        self.state.is_running = False
+        # disconnects). Transition to TERMINATED on both so the guards
+        # engage no matter which event we get.
+        self.state.transition_to(SessionPhase.TERMINATED)
         self.event_handler.on_exited(exit_code)
 
     def _on_output(self, event: Event) -> None:
@@ -786,7 +781,7 @@ class DebugController:
                     # Same state-authority contract as _on_stopped above —
                     # whether the active stop is on parent or child, state
                     # gets updated from one place synchronously.
-                    self.state.is_running = False
+                    self.state.transition_to(SessionPhase.STOPPED)
                     self.state.stop_reason = reason
                     if thread_id is not None:
                         self.state.current_thread_id = thread_id

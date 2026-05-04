@@ -370,11 +370,12 @@ class TdbApp(App):
         """Start the JSON-RPC debug server alongside the TUI."""
         import uvicorn
         from tdb.server.app import create_app
-        from tdb.server.handlers import ControllerRef, RpcHandlers
+        from tdb.server.handlers import ControllerRef, HandlerRef, RpcHandlers
 
         assert self._server_handler is not None
         self._controller_ref = ControllerRef(self.controller)
-        handlers = RpcHandlers(self._controller_ref, self._server_handler)
+        self._handler_ref = HandlerRef(self._server_handler)
+        handlers = RpcHandlers(self._controller_ref, self._handler_ref)
         fastapi_app = create_app(handlers)
         config = uvicorn.Config(
             fastapi_app,
@@ -443,16 +444,15 @@ class TdbApp(App):
         # Create a fresh controller and restore breakpoints
         self._textual_handler = TextualEventHandler(self)
         if self._server_handler is not None:
+            from tdb.server.event_handler import ServerEventHandler
             from tdb.session.event_bus import CompositeEventHandler
-            self._server_handler.initialized_event.clear()
-            self._server_handler.stopped_event.clear()
-            self._server_handler.terminated_event.clear()
-            self._server_handler.exit_code = None
-            self._server_handler.last_stop_thread_id = None
-            self._server_handler.last_stop_reason = None
-            self._server_handler.last_stop_description = None
-            self._server_handler.last_stop_text = None
-            self._server_handler._output_buffer.clear()
+            # Swap in a fresh ServerEventHandler. HandlerRef.set migrates
+            # SSE subscribers from the old instance and broadcasts a
+            # `session_restart` event so connected clients can reset
+            # before they see events from the new session.
+            self._server_handler = ServerEventHandler()
+            if hasattr(self, '_handler_ref'):
+                self._handler_ref.set(self._server_handler)
             self._event_handler = CompositeEventHandler(
                 self._textual_handler, self._server_handler,
             )

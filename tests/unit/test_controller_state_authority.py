@@ -20,6 +20,7 @@ from tdb.dap.messages import Event
 from tdb.dap.types import StackFrame, Source
 from tdb.session.controller import DebugController
 from tdb.session.event_bus import DebugEventHandler
+from tdb.session.state import SessionPhase
 
 
 class _RecordingHandler(DebugEventHandler):
@@ -69,7 +70,7 @@ def _continued_event() -> Event:
 def test_on_stopped_sets_is_running_false():
     h = _RecordingHandler()
     ctrl = DebugController(h)
-    ctrl.state.is_running = True
+    ctrl.state.transition_to(SessionPhase.RUNNING)
     ctrl._on_stopped(_stopped_event())
     assert ctrl.state.is_running is False
 
@@ -150,7 +151,7 @@ def test_on_stopped_state_is_set_before_handler_dispatch():
         def on_external_terminal_started(self): ...
 
     ctrl.event_handler = _Probe()
-    ctrl.state.is_running = True
+    ctrl.state.transition_to(SessionPhase.RUNNING)
     ctrl._on_stopped(_stopped_event(thread_id=5, reason="breakpoint"))
     assert observed == {
         "is_running": False,
@@ -164,7 +165,7 @@ def test_on_stopped_state_is_set_before_handler_dispatch():
 def test_on_continued_sets_is_running_true():
     h = _RecordingHandler()
     ctrl = DebugController(h)
-    ctrl.state.is_running = False
+    ctrl.state.transition_to(SessionPhase.STOPPED)
     ctrl._on_continued(_continued_event())
     assert ctrl.state.is_running is True
 
@@ -210,7 +211,7 @@ async def test_step_then_stopped_event_leaves_state_consistent():
     # Simulate the action_fn side: controller.step_over flips is_running=True.
     # We can't actually call step_over without a connected client, so we
     # mimic its state mutation directly.
-    ctrl.state.is_running = True
+    ctrl.state.transition_to(SessionPhase.RUNNING)
 
     # Now imagine DAP fires `stopped` on the read loop.
     ctrl._on_stopped(_stopped_event(thread_id=1, reason="step"))

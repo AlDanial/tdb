@@ -13,6 +13,7 @@ from tdb.dap.types import SourceBreakpoint, Thread
 from tdb.server.event_handler import ServerEventHandler
 from tdb.server.handlers import ControllerRef, RpcHandlers, _parse_file_line
 from tdb.session.controller import DebugController
+from tdb.session.state import SessionPhase
 
 
 # --- Fakes / helpers ----------------------------------------------------
@@ -45,8 +46,9 @@ def handlers() -> RpcHandlers:
     eh = ServerEventHandler()
     controller = DebugController(eh)
     controller.client = _FakeDAPClient()
-    controller.state.is_ready = True
-    controller.state.is_running = False
+    # Pretend the session is up and currently paused so dispatch-table
+    # routing and validation paths can run without a real DAP session.
+    controller.state.transition_to(SessionPhase.STOPPED)
     return RpcHandlers(ControllerRef(controller), eh)
 
 
@@ -160,13 +162,13 @@ async def test_list_breakpoints_when_empty(handlers):
 # --- Status + termination guards ----------------------------------------
 
 async def test_status_when_running(handlers):
-    handlers.controller.state.is_running = True
+    handlers.controller.state.transition_to(SessionPhase.RUNNING)
     rsp = await handlers.action_status([])
     assert rsp.value == "running"
 
 
 async def test_status_when_terminated(handlers):
-    handlers.controller.state.is_terminated = True
+    handlers.controller.state.transition_to(SessionPhase.TERMINATED)
     rsp = await handlers.action_status([])
     assert rsp.value == "terminated"
 
@@ -178,7 +180,7 @@ async def test_status_when_stopped(handlers):
 
 
 async def test_pause_rejected_when_terminated(handlers):
-    handlers.controller.state.is_terminated = True
+    handlers.controller.state.transition_to(SessionPhase.TERMINATED)
     rsp = await handlers.action_pause([])
     assert rsp.success is False
     assert "terminated" in rsp.value.lower()
@@ -186,7 +188,7 @@ async def test_pause_rejected_when_terminated(handlers):
 
 @pytest.mark.parametrize("action_name", ["next", "step_in", "step_out", "continue"])
 async def test_step_actions_rejected_when_terminated(handlers, action_name):
-    handlers.controller.state.is_terminated = True
+    handlers.controller.state.transition_to(SessionPhase.TERMINATED)
     fn = handlers.dispatch_table()[action_name]
     rsp = await fn([])
     assert rsp.success is False
@@ -195,7 +197,7 @@ async def test_step_actions_rejected_when_terminated(handlers, action_name):
 
 @pytest.mark.parametrize("action_name", ["next", "step_in", "step_out", "continue"])
 async def test_step_actions_rejected_when_running(handlers, action_name):
-    handlers.controller.state.is_running = True
+    handlers.controller.state.transition_to(SessionPhase.RUNNING)
     fn = handlers.dispatch_table()[action_name]
     rsp = await fn([])
     assert rsp.success is False
@@ -208,7 +210,7 @@ async def test_evaluate_rejects_empty_params(handlers):
 
 
 async def test_evaluate_rejected_when_running(handlers):
-    handlers.controller.state.is_running = True
+    handlers.controller.state.transition_to(SessionPhase.RUNNING)
     rsp = await handlers.action_evaluate(["x"])
     assert rsp.success is False
     assert "running" in rsp.value.lower()
@@ -220,7 +222,7 @@ async def test_inspect_rejects_empty_params(handlers):
 
 
 async def test_inspect_rejected_when_running(handlers):
-    handlers.controller.state.is_running = True
+    handlers.controller.state.transition_to(SessionPhase.RUNNING)
     rsp = await handlers.action_inspect(["x"])
     assert rsp.success is False
 
@@ -266,7 +268,7 @@ async def test_stack_down_at_bottom_returns_error(handlers):
 # --- Threads ------------------------------------------------------------
 
 async def test_list_threads_rejected_when_terminated(handlers):
-    handlers.controller.state.is_terminated = True
+    handlers.controller.state.transition_to(SessionPhase.TERMINATED)
     rsp = await handlers.action_list_threads([])
     assert rsp.success is False
 

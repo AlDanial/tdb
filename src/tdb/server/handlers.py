@@ -46,6 +46,32 @@ class ControllerRef:
         self.ctrl = controller
 
 
+class HandlerRef:
+    """Mutable holder so RPC + SSE always see the current ServerEventHandler.
+
+    Symmetric with `ControllerRef`. On restart the TUI calls `set(new)`
+    instead of mutating private fields on the old handler — open SSE
+    subscriber queues are migrated and a `session_restart` event is
+    broadcast so connected clients can reset their UI before events
+    from the new session start arriving.
+    """
+
+    def __init__(self, handler: ServerEventHandler) -> None:
+        self.h = handler
+
+    def set(self, new_handler: ServerEventHandler) -> None:
+        old = self.h
+        if new_handler is old:
+            return
+        # Migrate live SSE subscribers so /events connections opened
+        # before the restart keep flowing.
+        new_handler._sse_subscribers = old._sse_subscribers
+        # Tell connected clients a new session has begun. Broadcast on
+        # the new handler so the migrated subscribers see it.
+        new_handler._broadcast_sse("session_restart", {})
+        self.h = new_handler
+
+
 def _parse_file_line(spec: str) -> tuple[str, int]:
     """Split 'file:line' into (resolved_path, line). Raises ValueError on bad input."""
     if ":" not in spec:
@@ -125,16 +151,26 @@ class RpcHandlers:
     def __init__(
         self,
         controller_ref: ControllerRef,
-        event_handler: ServerEventHandler,
+        event_handler: ServerEventHandler | HandlerRef,
     ) -> None:
         self._controller_ref = controller_ref
-        self.event_handler = event_handler
+        # Accept either a raw handler (tests, headless runner) or a
+        # HandlerRef (TUI dual-mode, where the handler swaps on restart).
+        # Always store as a ref so reads go through the indirection.
+        if isinstance(event_handler, HandlerRef):
+            self._handler_ref = event_handler
+        else:
+            self._handler_ref = HandlerRef(event_handler)
 
     # --- Convenience accessors ------------------------------------------
 
     @property
     def controller(self) -> DebugController:
         return self._controller_ref.ctrl
+
+    @property
+    def event_handler(self) -> ServerEventHandler:
+        return self._handler_ref.h
 
     @property
     def session_lock(self) -> asyncio.Lock:

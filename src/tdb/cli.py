@@ -161,8 +161,15 @@ def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
 
     import logging
+    import os
+    from tdb.persist import CONFIG_DIR
+    # Tests set TDB_LOG_DIR to keep their log noise out of the user's
+    # config dir; production reads from CONFIG_DIR (XDG on Unix,
+    # %APPDATA%/tdb on Windows).
+    log_dir = Path(os.environ.get("TDB_LOG_DIR") or CONFIG_DIR)
+    log_dir.mkdir(parents=True, exist_ok=True)
     logging.basicConfig(
-        filename="/tmp/tdb.log",
+        filename=str(log_dir / "tdb.log"),
         level=logging.DEBUG,
         format="%(asctime)s %(name)s %(levelname)s %(message)s",
     )
