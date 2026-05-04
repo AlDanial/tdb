@@ -57,14 +57,11 @@ async def run_headless(
     await asyncio.wait_for(handler.initialized_event.wait(), timeout=10.0)
     await controller.do_configure()
 
-    # If stop_on_entry, wait for the debuggee to actually stop
+    # If stop_on_entry, wait for the debuggee to actually stop. State
+    # (is_running, stop_reason, current_thread_id) is set synchronously
+    # by controller._on_stopped — no manual sync needed here.
     if stop_on_entry:
         await handler.wait_for_stop(timeout=10.0)
-        state = controller.state
-        state.is_running = False
-        state.stop_reason = handler.last_stop_reason
-        if handler.last_stop_thread_id is not None:
-            state.current_thread_id = handler.last_stop_thread_id
         await controller.fetch_stop_info()
 
     log.info("Debug session ready (headless)")

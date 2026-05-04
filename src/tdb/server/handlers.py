@@ -175,16 +175,15 @@ class RpcHandlers:
 
     # --- Helpers --------------------------------------------------------
 
-    def _sync_state_from_stop(self) -> None:
-        """Push the most recent stop event into controller state."""
-        state = self.controller.state
-        state.is_running = False
-        state.stop_reason = self.event_handler.last_stop_reason
-        if self.event_handler.last_stop_thread_id is not None:
-            state.current_thread_id = self.event_handler.last_stop_thread_id
-
     async def _step_action(self, action_fn: Callable[[], Any]) -> RpcResponse:
-        """Common handler for next / step_in / step_out / continue."""
+        """Common handler for next / step_in / step_out / continue.
+
+        State (is_running, stop_reason, current_thread_id, is_terminated)
+        is updated synchronously by the controller's DAP event handlers
+        (`_on_stopped`, `_on_continued`, `_on_terminated`, `_on_exited`),
+        so by the time `wait_for_stop` returns, controller.state is
+        already current — no sync step needed.
+        """
         ctrl = self.controller
         if ctrl.state.is_terminated:
             return RpcResponse.error("Program has terminated")
@@ -198,7 +197,6 @@ class RpcHandlers:
         stopped = await self.event_handler.wait_for_stop(timeout=600.0)
         if not stopped:
             return RpcResponse.error("Timeout waiting for stop")
-        self._sync_state_from_stop()
         if ctrl.state.is_terminated:
             output = self.event_handler.drain_output()
             return RpcResponse.ok(

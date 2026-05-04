@@ -696,12 +696,27 @@ class DebugController:
         reason = event.body.get("reason", "unknown")
         description = event.body.get("description")
         text = event.body.get("text")
+
+        # Single state authority: every downstream consumer sees consistent
+        # values synchronously from the DAP read loop. Previously the TUI
+        # and the headless RPC server each duplicated these assignments,
+        # which is how the `is_terminated` propagation bug crept in for the
+        # `_on_terminated` sibling event.
+        self.state.is_running = False
+        self.state.stop_reason = reason
+        if thread_id is not None:
+            self.state.current_thread_id = thread_id
+
         self._active_client = self.client
         self.event_handler.on_stopped(thread_id, reason, description, text)
         if self._child_clients and reason not in ("pause",):
             self._spawn_bg(self._pause_children())
 
     def _on_continued(self, event: Event) -> None:
+        # Mirror of _on_stopped: producer-side state mutation so consumers
+        # don't have to remember to do it themselves.
+        self.state.is_running = True
+        self.state.clear_frame_data()
         self.event_handler.on_continued()
 
     def _on_terminated(self, event: Event) -> None:
@@ -763,13 +778,22 @@ class DebugController:
 
                 # Forward stopped events: pause all others on breakpoint/exception
                 def on_child_stopped(event: Event, _child: DAPClient = child) -> None:
+                    thread_id = event.body.get("threadId")
                     reason = event.body.get("reason", "unknown")
+                    description = event.body.get("description")
+                    text = event.body.get("text")
+
+                    # Same state-authority contract as _on_stopped above —
+                    # whether the active stop is on parent or child, state
+                    # gets updated from one place synchronously.
+                    self.state.is_running = False
+                    self.state.stop_reason = reason
+                    if thread_id is not None:
+                        self.state.current_thread_id = thread_id
+
                     self._active_client = _child
                     if reason not in ("pause",):
                         self._spawn_bg(self._pause_parent())
-                    thread_id = event.body.get("threadId")
-                    description = event.body.get("description")
-                    text = event.body.get("text")
                     self.event_handler.on_stopped(thread_id, reason, description, text)
 
                 def on_child_terminated(event: Event) -> None:

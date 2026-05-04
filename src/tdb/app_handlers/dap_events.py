@@ -69,11 +69,9 @@ class DapEventCoordinator:
         )
         ctrl = self.app.controller
         try:
-            state = ctrl.state
-            state.is_running = False
-            state.stop_reason = message.reason
-            if message.thread_id is not None:
-                state.current_thread_id = message.thread_id
+            # state.is_running, state.stop_reason, state.current_thread_id
+            # were already set by controller._on_stopped before this async
+            # handler ran — the controller is now the single state authority.
             await ctrl.fetch_stop_info()
             if self._stopped_inside_breakpoint_hook():
                 # tdb.breakpoint() pauses inside breakpoint_hook.breakpoint;
@@ -138,11 +136,12 @@ class DapEventCoordinator:
 
     def on_continued(self) -> None:
         try:
+            # state.is_running and clear_frame_data() are now set by
+            # controller._on_continued (single state authority). Only
+            # App-level state (stderr buffer, exception-modal flag)
+            # needs to be reset here.
             self.app._stderr_buffer.clear()
             self.app._exception_modal_shown = False
-            state = self.app.controller.state
-            state.is_running = True
-            state.clear_frame_data()
             self.app._update_ui_state()
         except Exception:
             log.exception("Error handling continued event")
@@ -152,9 +151,9 @@ class DapEventCoordinator:
     async def on_terminated(self) -> None:
         log.info("on_dap_terminated called")
         try:
-            state = self.app.controller.state
-            state.is_terminated = True
-            state.is_running = False
+            # state.is_terminated and state.is_running are set by
+            # controller._on_terminated (single state authority). This
+            # handler only does TUI-side cleanup.
             if not self.app._exception_modal_shown:
                 # debugpy may still be delivering OutputEvents for late stderr
                 # (chained tracebacks in particular span many lines). Wait for
