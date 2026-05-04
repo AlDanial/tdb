@@ -160,7 +160,12 @@ class DebugController:
         self._launch_params = {
             "program": program,
             "args": args,
-            "cwd": cwd or str(Path(program).parent),
+            # Default to the directory tdb was launched from, NOT the
+            # program's parent — a debuggee invoked as `tdb examples/x.py`
+            # should inherit the user's current working directory so
+            # relative paths (data files, imports) resolve the way they
+            # did at the shell. `--cwd` overrides.
+            "cwd": cwd or str(Path.cwd()),
             "stop_on_entry": stop_on_entry,
             "just_my_code": just_my_code,
             "python": python,

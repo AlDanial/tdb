@@ -47,7 +47,7 @@ async def run_headless(
     await controller.start(
         program=program,
         args=args,
-        cwd=cwd or str(Path(program).parent),
+        cwd=cwd or str(Path.cwd()),
         stop_on_entry=stop_on_entry,
         just_my_code=just_my_code,
         python=python,
