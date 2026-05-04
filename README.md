@@ -112,7 +112,7 @@ python -m tdb my_script.py
 │  Evaluate Console (REPL)  │  Breakpoint View (table)  │
 │                           │                           │
 ├─ Footer (keybindings) ────────────────────────────────┤
-├───────────────────────────────────────────────────────┘
+└───────────────────────────────────────────────────────┘
 ```
 
 ## Features

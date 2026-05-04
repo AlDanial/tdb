@@ -442,7 +442,15 @@ class RpcHandlers:
             return RpcResponse.error(f"Failed to collect tasks: {e}")
         if not tasks:
             return RpcResponse.ok("No asyncio tasks found")
-        lines = [f"{t.name}  [{t.state}]  {t.coro}" for t in tasks]
+        lines = []
+        for t in tasks:
+            extras = []
+            if t.awaiting:
+                extras.append(f"awaiting={t.awaiting}")
+            if t.cancelling:
+                extras.append(f"cancelling={t.cancelling}")
+            extra_str = f"  ({', '.join(extras)})" if extras else ""
+            lines.append(f"{t.name}  [{t.state}]{extra_str}  {t.coro}")
         return RpcResponse.ok("\n".join(lines))
 
     async def action_inspect_task(self, params: list[Any]) -> RpcResponse:
@@ -465,10 +473,18 @@ class RpcHandlers:
         lines = [
             f"Name:  {task.name}",
             f"State: {task.state}",
+        ]
+        if task.awaiting:
+            lines.append(f"Awaiting: {task.awaiting}")
+        if task.cancelling:
+            lines.append(f"Cancelling: {task.cancelling} pending request(s)")
+        if task.cancel_message:
+            lines.append(f"Cancel msg: {task.cancel_message}")
+        lines.extend([
             f"Coro:  {task.coro}",
             "",
             "Stack:",
-        ]
+        ])
         if task.stack:
             for i, frame in enumerate(task.stack):
                 lines.append(f"  #{i} {frame}")

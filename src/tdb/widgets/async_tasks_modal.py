@@ -116,7 +116,7 @@ class AsyncTasksModal(ModalScreen[None]):
 
     def on_mount(self) -> None:
         table = self.query_one("#task-table", DataTable)
-        table.add_columns("Name", "State", "Coroutine")
+        table.add_columns("Name", "State", "Awaiting", "Coroutine")
         self._populate_table()
         if self._tasks:
             self._show_detail(0)
@@ -126,7 +126,15 @@ class AsyncTasksModal(ModalScreen[None]):
         table.clear()
         for task in self._tasks:
             coro = task.coro if len(task.coro) <= 40 else task.coro[:37] + "..."
-            table.add_row(Text(task.name), Text(task.state), Text(coro))
+            # Decorate state with a cancel marker so a task that's been
+            # asked to cancel but hasn't observed the request yet stands
+            # out — that's exactly the kind of state you open this modal
+            # to find.
+            state = task.state
+            if task.cancelling:
+                state = f"{state} (×{task.cancelling})" if task.cancelling > 1 else f"{state} ⊘"
+            awaiting = task.awaiting or "—"
+            table.add_row(Text(task.name), Text(state), Text(awaiting), Text(coro))
 
     def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
         if event.cursor_row is not None and 0 <= event.cursor_row < len(self._tasks):
@@ -136,11 +144,20 @@ class AsyncTasksModal(ModalScreen[None]):
         task = self._tasks[index]
         # Task info (name, state, coro, stack) in the Static widget
         content = Text()
-        content.append("Name:  ", style="bold")
+        content.append("Name:     ", style="bold")
         content.append(task.name + "\n")
-        content.append("State: ", style="bold")
+        content.append("State:    ", style="bold")
         content.append(task.state + "\n")
-        content.append("Coro:  ", style="bold")
+        if task.awaiting:
+            content.append("Awaiting: ", style="bold")
+            content.append(task.awaiting + "\n")
+        if task.cancelling:
+            content.append("Cancelling: ", style="bold")
+            content.append(f"{task.cancelling} pending request(s)\n")
+        if task.cancel_message:
+            content.append("Cancel msg: ", style="bold")
+            content.append(task.cancel_message + "\n")
+        content.append("Coro:     ", style="bold")
         content.append(task.coro + "\n")
         content.append("\n")
         if task.stack:

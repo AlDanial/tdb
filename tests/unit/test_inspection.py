@@ -62,6 +62,39 @@ def test_async_task_info_default_variables_is_empty_dict():
     assert info.variables == {}
 
 
+def test_async_task_info_default_metadata_fields():
+    """New cancellation/awaiting fields must default to safe values so a
+    debuggee that doesn't report them (older Python, error path) still
+    parses cleanly."""
+    info = AsyncTaskInfo(name="t", state="pending", coro="c", stack=[])
+    assert info.cancelling == 0
+    assert info.cancel_message is None
+    assert info.awaiting is None
+
+
+def test_parse_task_json_reads_metadata_fields():
+    payload = json.dumps([{
+        "name": "T", "state": "pending", "coro": "c", "stack": [],
+        "cancelling": 2, "cancel_message": "shutdown",
+        "awaiting": "Lock.acquire",
+    }])
+    [t] = parse_task_json(_wrap_repr(payload))
+    assert t.cancelling == 2
+    assert t.cancel_message == "shutdown"
+    assert t.awaiting == "Lock.acquire"
+
+
+def test_parse_task_json_tolerates_null_cancelling():
+    """Some debuggees may send a null when cancelling() raised; parser
+    must coerce to 0, not propagate None."""
+    payload = json.dumps([{
+        "name": "T", "state": "pending", "coro": "c", "stack": [],
+        "cancelling": None,
+    }])
+    [t] = parse_task_json(_wrap_repr(payload))
+    assert t.cancelling == 0
+
+
 # --- parse_process_json --------------------------------------------------
 
 def test_parse_process_json_round_trip():
