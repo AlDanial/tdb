@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from textual.app import ComposeResult
@@ -14,87 +13,28 @@ from textual.screen import ModalScreen
 from rich.text import Text
 from textual.widgets import DataTable, Label, Static
 
+from tdb.inspection import (
+    AsyncTaskInfo,
+    TASK_COLLECT_EXPR,
+    TASK_LOCALS_EXPR,
+    parse_task_json,
+)
 from tdb.widgets.variable_view import VariableView
 
 if TYPE_CHECKING:
     from tdb.dap.types import Variable
 
+# Re-export so existing `from tdb.widgets.async_tasks_modal import …` callers
+# continue to work. Definitions live in tdb.inspection (UI-free).
+__all__ = [
+    "AsyncTasksModal",
+    "AsyncTaskInfo",
+    "TASK_COLLECT_EXPR",
+    "TASK_LOCALS_EXPR",
+    "parse_task_json",
+]
+
 log = logging.getLogger(__name__)
-
-
-@dataclass
-class AsyncTaskInfo:
-    """Parsed info about a single asyncio task."""
-    name: str
-    state: str
-    coro: str
-    stack: list[str]
-    variables: dict[str, str] = field(default_factory=dict)
-
-
-# Python snippet evaluated in the debuggee to collect asyncio task info.
-# Uses eval(compile(...)) with a multi-statement body via a namespace dict.
-# Handles None coroutines, missing cr_frame, and repr() failures.
-TASK_COLLECT_EXPR = """\
-(lambda _ns: (exec('''
-import asyncio, json, re
-def _natkey(_s):
-    return [int(_p) if _p.isdigit() else _p for _p in re.split(r"(\\d+)", _s)]
-_result = []
-for _t in sorted(asyncio.all_tasks(), key=lambda t: _natkey(t.get_name())):
-    _coro = _t.get_coro()
-    _result.append({
-        "name": _t.get_name(),
-        "state": "cancelled" if _t.cancelled() else ("done" if _t.done() else "pending"),
-        "coro": repr(_coro) if _coro is not None else "(finished)",
-        "stack": [
-            f"{_f.f_code.co_name} at {_f.f_code.co_filename}:{_f.f_lineno}"
-            for _f in (_t.get_stack() or [])
-        ],
-    })
-''', _ns), _ns.get('json', __import__('json')).dumps(_ns['_result']))[-1])({})
-"""
-
-# Expression template to get a task's cr_frame.f_locals as a DAP-inspectable
-# object.  The placeholder {task_name} is replaced with the task name.
-TASK_LOCALS_EXPR = """\
-[_t for _t in __import__('asyncio').all_tasks() if _t.get_name() == {task_name!r}][0].get_coro().cr_frame.f_locals\
-"""
-
-
-def parse_task_json(raw: str) -> list[AsyncTaskInfo]:
-    """Parse the JSON output from TASK_COLLECT_EXPR into AsyncTaskInfo list."""
-    import ast
-    import json
-    try:
-        text = raw.strip()
-        # DAP evaluate returns Python repr of the string. Try ast.literal_eval
-        # first (handles all quoting styles), fall back to raw JSON parse.
-        try:
-            parsed = ast.literal_eval(text)
-            # literal_eval may return a str (unwrapped repr) or a list (if JSON
-            # happened to be valid Python syntax too)
-            if isinstance(parsed, str):
-                data = json.loads(parsed)
-            elif isinstance(parsed, list):
-                data = parsed
-            else:
-                data = json.loads(text)
-        except (ValueError, SyntaxError):
-            data = json.loads(text)
-        return [
-            AsyncTaskInfo(
-                name=d["name"],
-                state=d["state"],
-                coro=d["coro"],
-                stack=d.get("stack", []),
-                variables=d.get("variables", {}),
-            )
-            for d in data
-        ]
-    except Exception:
-        log.exception("Failed to parse async task info: %s", raw[:200])
-        return []
 
 
 class AsyncTasksModal(ModalScreen[None]):

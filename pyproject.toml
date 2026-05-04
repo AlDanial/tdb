@@ -33,6 +33,7 @@
          "matplotlib",
          "pyyaml",
          "toml",
+         "httpx",
          "ipython"]
 
   [project.urls]

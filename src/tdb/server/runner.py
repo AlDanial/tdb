@@ -9,8 +9,9 @@ from pathlib import Path
 import uvicorn
 
 from tdb.session.controller import DebugController
-from .app import ControllerRef, create_app
+from .app import create_app
 from .event_handler import ServerEventHandler
+from .handlers import ControllerRef, RpcHandlers
 
 log = logging.getLogger(__name__)
 
@@ -69,7 +70,8 @@ async def run_headless(
     log.info("Debug session ready (headless)")
 
     # Create and start the FastAPI server
-    fastapi_app = create_app(ControllerRef(controller), handler)
+    handlers = RpcHandlers(ControllerRef(controller), handler)
+    fastapi_app = create_app(handlers)
     config = uvicorn.Config(
         fastapi_app,
         host=host,

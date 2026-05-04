@@ -39,8 +39,17 @@ from tdb.widgets.menu_bar import MenuBar, _MenuDropdown
 from tdb.widgets.stack_view import StackView
 from tdb.widgets.status_bar import StatusBar
 from tdb.persist import load_breakpoints, load_theme, save_breakpoints, save_config
-from tdb.widgets.async_tasks_modal import AsyncTasksModal, AsyncTaskInfo, TASK_COLLECT_EXPR, TASK_LOCALS_EXPR, parse_task_json
-from tdb.widgets.processes_modal import ProcessesModal, ProcessInfo, PROCESS_COLLECT_EXPR, parse_process_json
+from tdb.inspection import (
+    AsyncTaskInfo,
+    PROCESS_COLLECT_EXPR,
+    ProcessInfo,
+    TASK_COLLECT_EXPR,
+    TASK_LOCALS_EXPR,
+    parse_process_json,
+    parse_task_json,
+)
+from tdb.widgets.async_tasks_modal import AsyncTasksModal
+from tdb.widgets.processes_modal import ProcessesModal
 from tdb.widgets.threads_modal import ThreadsModal
 from tdb.widgets.variable_view import VariableView
 from tdb import __version__ as tdb_version
@@ -740,11 +749,13 @@ class TdbApp(App):
     async def _start_server(self) -> None:
         """Start the JSON-RPC debug server alongside the TUI."""
         import uvicorn
-        from tdb.server.app import ControllerRef, create_app
+        from tdb.server.app import create_app
+        from tdb.server.handlers import ControllerRef, RpcHandlers
 
         assert self._server_handler is not None
         self._controller_ref = ControllerRef(self.controller)
-        fastapi_app = create_app(self._controller_ref, self._server_handler)
+        handlers = RpcHandlers(self._controller_ref, self._server_handler)
+        fastapi_app = create_app(handlers)
         config = uvicorn.Config(
             fastapi_app,
             host="127.0.0.1",
@@ -776,7 +787,7 @@ class TdbApp(App):
         # has no debuggee to relaunch — _program is empty and the original
         # debugpy server is gone. Drop the request rather than tearing
         # down the controller and trying to start nothing.
-        if new_program is None and self.controller._is_remote_attach:
+        if new_program is None and not self.controller.supports_restart:
             self.notify(
                 "Restart is not available in remote-attach / tdb.breakpoint() mode.",
                 severity="warning",
@@ -919,7 +930,7 @@ class TdbApp(App):
         breakpoint_hook.py; we step out so the caller frame is what the user
         sees.
         """
-        if not self.controller._is_remote_attach:
+        if not self.controller.is_remote_attach:
             return False
         frames = self.controller.state.stack_frames
         if not frames:
@@ -953,7 +964,7 @@ class TdbApp(App):
         self.push_screen(
             _TracebackModal(
                 exception_text, frames_text,
-                can_restart=not self.controller._is_remote_attach,
+                can_restart=self.controller.supports_restart,
             ),
             callback=on_dismiss,
         )
@@ -1041,7 +1052,7 @@ class TdbApp(App):
         self.push_screen(
             _TracebackModal(
                 exception_text or "Program crashed", frames_text,
-                can_restart=not self.controller._is_remote_attach,
+                can_restart=self.controller.supports_restart,
             ),
             callback=on_dismiss,
         )
@@ -1411,7 +1422,7 @@ class TdbApp(App):
         if source is not None and source.id == "proc-vars":
             modal = getattr(self, "_processes_modal", None)
             pid = getattr(modal, "_current_pid", None) if modal is not None else None
-            child = self.controller._child_clients.get(pid) if pid is not None else None
+            child = self.controller.get_child_client(pid) if pid is not None else None
             if child is None:
                 source.load_children(message.node, [])
                 return
@@ -1885,10 +1896,10 @@ class TdbApp(App):
         if not hasattr(self, "_processes_modal"):
             return
         pid = message.pid
-        child = self.controller._child_clients.get(pid)
+        child = self.controller.get_child_client(pid)
         if child is None:
             # Try matching by checking all tracked PIDs
-            # (PIDs from /proc might not exactly match _child_clients keys)
+            # (PIDs from /proc might not exactly match the controller's keys)
             self._processes_modal.show_process_detail(pid, [], [], {})
             return
         frames: list = []

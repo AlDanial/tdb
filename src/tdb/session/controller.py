@@ -79,6 +79,43 @@ class DebugController:
         # garbage-collected mid-execution (asyncio holds only weak refs).
         self._bg_tasks: set[asyncio.Task] = set()
 
+    # --- Public capability surface --------------------------------------
+    # These properties are how external code (TUI, server, future entry
+    # modes) asks "what can I do with this session?". Reaching into
+    # `_is_remote_attach` / `_child_clients` from the outside is a layer
+    # leak — go through this surface instead.
+
+    @property
+    def is_remote_attach(self) -> bool:
+        """True when the controller is attached to a debugpy server we
+        don't own (the `tdb -r ...` and `tdb.breakpoint()` cases).
+        """
+        return self._is_remote_attach
+
+    @property
+    def supports_restart(self) -> bool:
+        """True when `_restart_session` can meaningfully relaunch.
+
+        Remote-attach sessions can't — there's no `program` to launch and
+        the debugpy server is owned by the user's process.
+        """
+        return not self._is_remote_attach
+
+    @property
+    def session_lock(self) -> asyncio.Lock:
+        """Serializes RPC actions so concurrent HTTP requests can't
+        interleave a step + an evaluate. The TUI doesn't need this lock
+        because its actions go through textual's single message loop.
+        """
+        return self._lock
+
+    def get_child_client(self, pid: int) -> DAPClient | None:
+        """Return the DAP client for a tracked child process, or None."""
+        return self._child_clients.get(pid)
+
+    def has_child_clients(self) -> bool:
+        return bool(self._child_clients)
+
     @staticmethod
     def _enabled_bps(bps: list[SourceBreakpoint]) -> list[SourceBreakpoint]:
         """Return only the breakpoints that are enabled."""
