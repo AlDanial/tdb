@@ -2,21 +2,18 @@
 
 from __future__ import annotations
 
-import ast
 import asyncio
 import logging
 import os
-import re
 from pathlib import Path
 from textwrap import dedent
 
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.containers import Horizontal, Vertical
 from textual.message import Message
-from textual.screen import ModalScreen
-from textual.widgets import DirectoryTree, Footer, Header, Label, OptionList, RadioButton, RadioSet, Static
+from textual.widgets import Footer, Header, Label, OptionList, Static
 from textual.widgets._tree import TreeNode
 
 from tdb.session.controller import DebugController
@@ -36,18 +33,18 @@ from tdb.widgets.code_view import CodeView, _BreakpointConditionModal
 from tdb.widgets.console_view import ConsoleView
 from tdb.widgets.evaluate_console import EvaluateConsole
 from tdb.widgets.menu_bar import MenuBar, _MenuDropdown
+from tdb.widgets.modals import (
+    _AboutModal,
+    _DocumentationModal,
+    _KeybindingsModal,
+    _OpenFileModal,
+    _QuitConfirmModal,
+    _TracebackModal,
+)
 from tdb.widgets.stack_view import StackView
 from tdb.widgets.status_bar import StatusBar
+from tdb.app_helpers import find_readme, unquote_dap_string
 from tdb.persist import load_breakpoints, load_theme, save_breakpoints, save_config
-from tdb.inspection import (
-    AsyncTaskInfo,
-    PROCESS_COLLECT_EXPR,
-    ProcessInfo,
-    TASK_COLLECT_EXPR,
-    TASK_LOCALS_EXPR,
-    parse_process_json,
-    parse_task_json,
-)
 from tdb.widgets.async_tasks_modal import AsyncTasksModal
 from tdb.widgets.processes_modal import ProcessesModal
 from tdb.widgets.threads_modal import ThreadsModal
@@ -55,392 +52,6 @@ from tdb.widgets.variable_view import VariableView
 from tdb import __version__ as tdb_version
 
 log = logging.getLogger(__name__)
-
-
-class _KeybindingsModal(ModalScreen[None]):
-    """Modal showing the keybinding reference for both modes.
-
-    Includes a scheme selector (vim / emacs / default); choosing a scheme
-    updates the CodeView live and persists the choice to config.
-    """
-
-    DEFAULT_CSS = """
-    _KeybindingsModal {
-        align: center middle;
-    }
-    _KeybindingsModal #dialog {
-        width: 62;
-        height: 80%;
-        max-height: 40;
-        border: solid $primary;
-        background: $surface;
-        padding: 1 2;
-    }
-    _KeybindingsModal #scheme-select {
-        border: none;
-        padding: 0;
-        margin: 0 0 1 0;
-        height: auto;
-    }
-    _KeybindingsModal RadioButton {
-        border: none;
-        padding: 0 1;
-    }
-    _KeybindingsModal #bindings-scroll {
-        height: 1fr;
-        overflow-y: auto;
-        scrollbar-size-vertical: 1;
-    }
-    """
-
-    BINDINGS = [
-        Binding("escape", "dismiss_modal", "Close", show=False),
-        Binding("q", "dismiss_modal", "Close", show=False),
-    ]
-
-    _SCHEMES = ("vim", "emacs", "default")
-
-    def __init__(self, config: KeybindingConfig, on_scheme_change) -> None:
-        super().__init__()
-        self._config = config
-        self._on_scheme_change = on_scheme_change
-
-    def compose(self):
-        with Vertical(id="dialog"):
-            yield Static("[bold]Keybindings[/bold]  (ESC toggles mode)", markup=True)
-            yield Static("Scheme:", markup=True)
-            with RadioSet(id="scheme-select"):
-                for scheme in self._SCHEMES:
-                    yield RadioButton(
-                        scheme.capitalize(),
-                        value=(self._config.scheme == scheme),
-                        id=f"scheme-{scheme}",
-                    )
-            with VerticalScroll(id="bindings-scroll"):
-                yield Static(self._render_bindings(), id="bindings-display", markup=True)
-
-    def _render_bindings(self) -> str:
-        def fmt(key_display: str, description: str) -> str:
-            # Pad before escaping so the visible column width stays at 12;
-            # \[ renders as one character, so visual alignment is preserved.
-            key_padded = f"{key_display:<12}"
-            key_escaped = key_padded.replace("[", r"\[")
-            desc_escaped = description.replace("[", r"\[")
-            return f"  [bold cyan]{key_escaped}[/bold cyan] {desc_escaped}"
-
-        lines = []
-        lines.append("[bold underline]Navigation Mode[/bold underline]")
-        for key_display, description in self._config.format_bindings(Mode.NAVIGATION):
-            lines.append(fmt(key_display, description))
-        lines.append("")
-        lines.append("[bold underline]Debug Mode[/bold underline]")
-        for key_display, description in self._config.format_bindings(Mode.DEBUG):
-            lines.append(fmt(key_display, description))
-        lines.append("")
-        lines.append("[dim]Press ESC or q to close[/dim]")
-        return "\n".join(lines)
-
-    def on_radio_set_changed(self, event: RadioSet.Changed) -> None:
-        if event.radio_set.id != "scheme-select" or event.pressed is None:
-            return
-        pressed_id = event.pressed.id or ""
-        if not pressed_id.startswith("scheme-"):
-            return
-        scheme = pressed_id[len("scheme-"):]
-        if scheme == self._config.scheme:
-            return
-        self._config = KeybindingConfig.from_scheme(scheme)
-        self._on_scheme_change(scheme)
-        self.query_one("#bindings-display", Static).update(self._render_bindings())
-
-    def action_dismiss_modal(self) -> None:
-        self.dismiss(None)
-
-
-class _PyFileTree(DirectoryTree):
-    """DirectoryTree that only shows directories and .py files."""
-
-    def filter_paths(self, paths):
-        return [p for p in paths if p.is_dir() or p.suffix == ".py"]
-
-
-class _OpenFileModal(ModalScreen[str | None]):
-    """Modal file picker for selecting a .py file to debug."""
-
-    DEFAULT_CSS = """
-    _OpenFileModal {
-        align: center middle;
-    }
-    _OpenFileModal #dialog {
-        width: 80%;
-        height: 80%;
-        border: solid $primary;
-        background: $surface;
-        padding: 1 2;
-    }
-    _OpenFileModal DirectoryTree {
-        height: 1fr;
-    }
-    _OpenFileModal DirectoryTree > .directory-tree--extension {
-        text-style: none;
-    }
-    _OpenFileModal #open-header {
-        height: auto;
-    }
-    _OpenFileModal #open-path {
-        height: auto;
-        color: $text-muted;
-        margin-bottom: 1;
-    }
-    _OpenFileModal #up-dir {
-        height: auto;
-        margin-bottom: 1;
-        padding: 0 1;
-        background: $primary-background;
-        color: $text;
-    }
-    _OpenFileModal #up-dir:hover {
-        background: $accent;
-    }
-    _OpenFileModal #open-footer {
-        height: auto;
-        margin-top: 1;
-        color: $text-muted;
-    }
-    """
-
-    BINDINGS = [
-        Binding("escape", "dismiss_modal", "Close", show=False),
-        Binding("q", "dismiss_modal", "Close", show=False),
-        Binding("backspace", "go_up", "Parent", show=False),
-    ]
-
-    def __init__(self, initial_path: str) -> None:
-        super().__init__()
-        self._current_path = Path(initial_path).resolve()
-
-    def compose(self):
-        with Vertical(id="dialog"):
-            yield Static("[bold]Open file to debug[/bold]  (.py files only)", id="open-header", markup=True)
-            yield Static(str(self._current_path), id="open-path")
-            yield Label(" ⬆  .. (parent directory) ", id="up-dir")
-            yield _PyFileTree(str(self._current_path), id="file-tree")
-            yield Static("[dim]Enter: open   Backspace: up a directory   ESC: cancel[/dim]", id="open-footer", markup=True)
-
-    def on_mount(self) -> None:
-        self.query_one("#file-tree", _PyFileTree).focus()
-
-    def on_directory_tree_file_selected(
-        self, event: DirectoryTree.FileSelected,
-    ) -> None:
-        path = Path(event.path)
-        if path.suffix == ".py":
-            self.dismiss(str(path))
-
-    def on_click(self, event) -> None:
-        target = getattr(event, "widget", None)
-        if target is not None and target.id == "up-dir":
-            self.action_go_up()
-            event.stop()
-
-    def action_go_up(self) -> None:
-        parent = self._current_path.parent
-        if parent == self._current_path:
-            return
-        self._current_path = parent
-        tree = self.query_one("#file-tree", _PyFileTree)
-        tree.path = str(parent)
-        tree.reload()
-        tree.focus()
-        self.query_one("#open-path", Static).update(str(parent))
-
-    def action_dismiss_modal(self) -> None:
-        self.dismiss(None)
-
-
-class _TracebackModal(ModalScreen[str | None]):
-    """Scrollable modal showing a full exception traceback."""
-
-    DEFAULT_CSS = """
-    _TracebackModal {
-        align: center middle;
-    }
-    _TracebackModal #dialog {
-        width: 90%;
-        height: 80%;
-        border: solid $error;
-        background: $surface;
-        padding: 1 2;
-        overflow-y: auto;
-    }
-    """
-
-    BINDINGS = [
-        Binding("escape", "dismiss_modal", "Close", show=False),
-        Binding("enter", "dismiss_modal", "Close", show=False),
-        Binding("q", "dismiss_modal", "Close", show=False),
-        Binding("R", "restart", "Restart", show=False),
-    ]
-
-    def __init__(
-        self,
-        exception_text: str,
-        frames_text: str,
-        can_restart: bool = True,
-    ) -> None:
-        super().__init__()
-        self._exception_text = exception_text
-        self._frames_text = frames_text
-        self._can_restart = can_restart
-
-    def compose(self):
-        # Escape bare '[' so exception messages like "list[int]" or
-        # chained-traceback separator text don't get parsed as Rich markup.
-        exc_safe = self._exception_text.replace("[", r"\[")
-        frames_safe = self._frames_text.replace("[", r"\[")
-        lines = []
-        lines.append(f"[bold red]{exc_safe}[/bold red]")
-        lines.append("")
-        lines.append("[bold]Traceback (most recent call last):[/bold]")
-        lines.append(frames_safe)
-        lines.append("")
-        if self._can_restart:
-            footer = "Press ESC, Enter, or q to close · Press R to restart"
-        else:
-            footer = "Press ESC, Enter, or q to close"
-        lines.append(f"[dim]{footer}[/dim]")
-
-        with Vertical(id="dialog"):
-            yield Static("\n".join(lines), markup=True)
-
-    def action_dismiss_modal(self) -> None:
-        self.dismiss(None)
-
-    def action_restart(self) -> None:
-        if self._can_restart:
-            self.dismiss("restart")
-
-
-class _DocumentationModal(ModalScreen):
-    """Full-screen markdown viewer for README.md."""
-
-    DEFAULT_CSS = """
-    _DocumentationModal {
-        align: center middle;
-    }
-    _DocumentationModal #dialog {
-        width: 90%;
-        height: 90%;
-        border: solid $primary;
-        background: $surface;
-        padding: 0;
-    }
-    _DocumentationModal MarkdownViewer {
-        height: 1fr;
-    }
-    _DocumentationModal #doc-footer {
-        height: 1;
-        color: $text-muted;
-        padding: 0 1;
-    }
-    """
-
-    BINDINGS = [
-        Binding("escape", "dismiss_modal", "Close", show=False),
-        Binding("q", "dismiss_modal", "Close", show=False),
-    ]
-
-    def __init__(self, markdown_text: str) -> None:
-        super().__init__()
-        self._markdown_text = markdown_text
-
-    def compose(self) -> ComposeResult:
-        from textual.widgets import MarkdownViewer
-        with Vertical(id="dialog"):
-            yield MarkdownViewer(self._markdown_text, show_table_of_contents=True)
-            yield Static("[dim]ESC or q to close[/dim]", id="doc-footer", markup=True)
-
-    def action_dismiss_modal(self) -> None:
-        self.dismiss(None)
-
-
-class _AboutModal(ModalScreen):
-    """About box: shows version and project info, dismissed with ESC."""
-
-    DEFAULT_CSS = """
-    _AboutModal {
-        align: center middle;
-    }
-    _AboutModal #dialog {
-        width: auto;
-        height: auto;
-        min-width: 56;
-        border: solid $primary;
-        background: $surface;
-        padding: 1 2;
-    }
-    _AboutModal #about-body {
-        width: auto;
-        height: auto;
-    }
-    _AboutModal #about-footer {
-        height: 1;
-        color: $text-muted;
-        content-align: center middle;
-        margin-top: 1;
-    }
-    """
-
-    BINDINGS = [
-        Binding("escape", "dismiss_modal", "Close", show=False),
-        Binding("q", "dismiss_modal", "Close", show=False),
-        Binding("enter", "dismiss_modal", "Close", show=False),
-    ]
-
-    def __init__(self, body: str) -> None:
-        super().__init__()
-        self._body = body
-
-    def compose(self) -> ComposeResult:
-        with Vertical(id="dialog"):
-            yield Static(self._body, id="about-body", markup=True)
-            yield Static("[dim]ESC to close[/dim]", id="about-footer", markup=True)
-
-    def action_dismiss_modal(self) -> None:
-        self.dismiss(None)
-
-
-class _QuitConfirmModal(ModalScreen):
-    """Small modal: `q` confirms quit, escape/other cancels."""
-
-    DEFAULT_CSS = """
-    _QuitConfirmModal {
-        align: center middle;
-    }
-    _QuitConfirmModal #dialog {
-        width: 42;
-        height: 5;
-        border: solid $warning;
-        background: $surface;
-        padding: 1 2;
-        content-align: center middle;
-    }
-    """
-
-    BINDINGS = [
-        Binding("q", "confirm", "Quit", show=False),
-        Binding("escape", "cancel", "Cancel", show=False),
-    ]
-
-    def compose(self) -> ComposeResult:
-        with Vertical(id="dialog"):
-            yield Static("[bold]Hit q again to quit[/bold]     ESC: cancel", markup=True)
-
-    def action_confirm(self) -> None:
-        self.dismiss(True)
-
-    def action_cancel(self) -> None:
-        self.dismiss(False)
 
 
 class TdbApp(App):
@@ -600,6 +211,15 @@ class TdbApp(App):
         # presses `r` or `c` to start it. While pending, debug actions other
         # than restart/continue are ignored; `c` is rerouted to start.
         self._session_pending = False
+
+        # Logic collaborators that the App forwards to. Keeping them on
+        # the instance (rather than importing functions) lets each one
+        # close over `self` for `query_one`, `push_screen`, `notify`,
+        # etc., without per-call boilerplate.
+        from tdb.app_handlers.dap_events import DapEventCoordinator
+        from tdb.app_handlers.inspection import InspectionWorkflows
+        self._inspection = InspectionWorkflows(self)
+        self._dap = DapEventCoordinator(self)
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -881,257 +501,35 @@ class TdbApp(App):
     # --- DAP event message handlers ---
     # These run in textual's message loop, so async is safe.
 
+    # --- DAP event handlers (delegate to DapEventCoordinator) -----------
+    # These stubs exist because Textual auto-dispatches `on_dap_*` based
+    # on method name on the App. Logic is in self._dap.
+
     def on_dap_initialized(self, message: DapInitialized) -> None:
         log.info("on_dap_initialized called")
         self._do_configure_work()
 
     @work(exclusive=True, group="configure")
     async def _do_configure_work(self) -> None:
-        try:
-            await self.controller.do_configure()
-            log.info("do_configure completed")
-            self._update_ui_state()
-        except Exception:
-            log.exception("Failed to launch")
-            self.sub_title = "Launch failed"
+        await self._dap.do_configure()
 
     async def on_dap_stopped(self, message: DapStopped) -> None:
-        log.info("on_dap_stopped called thread=%s reason=%s", message.thread_id, message.reason)
-        try:
-            state = self.controller.state
-            state.is_running = False
-            state.stop_reason = message.reason
-            if message.thread_id is not None:
-                state.current_thread_id = message.thread_id
-            await self.controller.fetch_stop_info()
-            if self._stopped_inside_breakpoint_hook():
-                # tdb.breakpoint() pauses inside breakpoint_hook.breakpoint;
-                # step out so the user lands in their own caller frame.
-                await self.controller.step_out()
-                return
-            await self.controller.cleanup_run_to_cursor()
-        except Exception:
-            log.exception("Error handling stopped event")
-        # Always update UI, even if fetch_stop_info partially failed
-        self._update_ui_state()
-        self._update_thread_count()
-        self._fetch_process_count()
-        self._fetch_async_task_count()
-
-        if message.reason == "exception":
-            self._exception_modal_shown = True
-            self._show_exception_modal(message)
-
-    def _stopped_inside_breakpoint_hook(self) -> bool:
-        """True if the active stop is inside `tdb.breakpoint()`'s helper.
-
-        Only fires in remote-attach mode (the channel `tdb.breakpoint()` uses
-        to spawn a tdb subprocess). The first stop after attach lands inside
-        breakpoint_hook.py; we step out so the caller frame is what the user
-        sees.
-        """
-        if not self.controller.is_remote_attach:
-            return False
-        frames = self.controller.state.stack_frames
-        if not frames:
-            return False
-        top = frames[0]
-        src = top.source.path if top.source else None
-        if not src:
-            return False
-        return os.path.basename(src) == "breakpoint_hook.py"
-
-    def _show_exception_modal(self, message: DapStopped) -> None:
-        """Show a modal with the full exception traceback."""
-        state = self.controller.state
-
-        # Build exception header
-        desc = message.description or "Exception"
-        text = message.text or ""
-        exception_text = f"{desc}: {text}" if text else desc
-
-        # Build traceback from stack frames (bottom-up, like Python tracebacks)
-        lines = []
-        for frame in reversed(state.stack_frames):
-            source = frame.source.path if frame.source and frame.source.path else "<unknown>"
-            lines.append(f"  File \"{source}\", line {frame.line}, in {frame.name}")
-        frames_text = "\n".join(lines) if lines else "  <no frames available>"
-
-        def on_dismiss(result: str | None) -> None:
-            if result == "restart":
-                self._restart_session()
-
-        self.push_screen(
-            _TracebackModal(
-                exception_text, frames_text,
-                can_restart=self.controller.supports_restart,
-            ),
-            callback=on_dismiss,
-        )
-
-    _TB_FILE_RE = re.compile(
-        r'^\s*File "(.+)", line (\d+)(?:, in (.+))?', re.MULTILINE,
-    )
-
-    def _check_stderr_traceback(self) -> None:
-        """If stderr contains a Python traceback, show it in a modal,
-        build synthetic stack frames, and navigate Code View to the
-        deepest frame."""
-        from tdb.dap.types import Source, StackFrame
-
-        stderr = "".join(self._stderr_buffer)
-        tb_header = "Traceback (most recent call last):"
-        if tb_header not in stderr:
-            return
-
-        # Capture from the FIRST traceback header to the end, so chained
-        # exceptions ("The above exception was the direct cause..." /
-        # "During handling of the above exception...") are preserved in full.
-        tb_start = stderr.find(tb_header)
-        tb_text = stderr[tb_start:].rstrip()
-
-        # Split into individual traceback blocks (one per chained exception).
-        # Each block starts with the header line.
-        block_starts = [m.start() for m in re.finditer(re.escape(tb_header), tb_text)]
-        blocks: list[str] = []
-        for i, s in enumerate(block_starts):
-            e = block_starts[i + 1] if i + 1 < len(block_starts) else len(tb_text)
-            blocks.append(tb_text[s:e].rstrip())
-
-        # Synthetic stack frames come from the LAST block — that is the
-        # exception that actually terminated the process (Python prints
-        # cause/context first, final exception last).
-        final_block = blocks[-1] if blocks else tb_text
-        matches = list(self._TB_FILE_RE.finditer(final_block))
-
-        # The exception line is the last non-empty, non-indented line of the
-        # final block (Python prints it after all "File" frames).
-        lines = final_block.split("\n")
-        exception_text = ""
-        for line in reversed(lines):
-            stripped = line.strip()
-            if not stripped:
-                continue
-            if stripped.startswith("File ") or stripped.startswith("Traceback "):
-                break
-            # Skip source-code snippet and caret lines (they are indented).
-            if line.startswith("    ") or line.startswith("\t"):
-                continue
-            exception_text = stripped
-            break
-
-        # Build synthetic stack frames (reversed: deepest = index 0, like DAP)
-        state = self.controller.state
-        synthetic_frames: list[StackFrame] = []
-        for i, m in enumerate(reversed(matches)):
-            path = m.group(1)
-            line = int(m.group(2))
-            func = m.group(3) or "<module>"
-            synthetic_frames.append(StackFrame(
-                id=i,
-                name=func,
-                source=Source(path=path, name=os.path.basename(path)),
-                line=line,
-            ))
-
-        if synthetic_frames:
-            state.stack_frames = synthetic_frames
-            state.current_frame_id = synthetic_frames[0].id
-
-        # Modal body: show every block's body (after its header line), joined
-        # by the chaining separator text that already lives between them in
-        # stderr. Easiest way: reuse tb_text but strip only the very first
-        # header line so the modal's own "Traceback" label isn't duplicated.
-        first_header_end = tb_text.index("\n") + 1 if "\n" in tb_text else len(tb_text)
-        frames_text = tb_text[first_header_end:].rstrip()
-
-        def on_dismiss(result: str | None) -> None:
-            if result == "restart":
-                self._restart_session()
-
-        self.push_screen(
-            _TracebackModal(
-                exception_text or "Program crashed", frames_text,
-                can_restart=self.controller.supports_restart,
-            ),
-            callback=on_dismiss,
-        )
+        await self._dap.on_stopped(message)
 
     def on_dap_continued(self, message: DapContinued) -> None:
-        try:
-            self._stderr_buffer.clear()
-            self._exception_modal_shown = False
-            state = self.controller.state
-            state.is_running = True
-            state.clear_frame_data()
-            self._update_ui_state()
-        except Exception:
-            log.exception("Error handling continued event")
+        self._dap.on_continued()
 
     async def on_dap_terminated(self, message: DapTerminated) -> None:
-        log.info("on_dap_terminated called")
-        try:
-            state = self.controller.state
-            state.is_terminated = True
-            state.is_running = False
-            if not self._exception_modal_shown:
-                # debugpy may still be delivering OutputEvents for late stderr
-                # (chained tracebacks in particular span many lines). Wait for
-                # the buffer to stabilize before parsing, otherwise the modal
-                # shows a partial traceback.
-                await self._wait_for_stderr_quiescent()
-                self._check_stderr_traceback()
-            self._update_ui_state()
-        except Exception:
-            log.exception("Error handling terminated event")
-
-    async def _wait_for_stderr_quiescent(
-        self, quiet_for: float = 0.15, max_wait: float = 1.5,
-    ) -> None:
-        """Sleep in short ticks until stderr stops growing (or max_wait elapses)."""
-        deadline = asyncio.get_event_loop().time() + max_wait
-        last_len = len(self._stderr_buffer)
-        last_change = asyncio.get_event_loop().time()
-        while True:
-            await asyncio.sleep(0.05)
-            now = asyncio.get_event_loop().time()
-            cur_len = len(self._stderr_buffer)
-            if cur_len != last_len:
-                last_len = cur_len
-                last_change = now
-            if now - last_change >= quiet_for:
-                return
-            if now >= deadline:
-                return
+        await self._dap.on_terminated()
 
     def on_dap_exited(self, message: DapExited) -> None:
-        try:
-            console = self.query_one("#console-view", ConsoleView)
-            console.write_output(
-                f"\nProcess exited with code {message.exit_code}\n", "console"
-            )
-        except Exception:
-            log.exception("Error handling exited event")
+        self._dap.on_exited(message.exit_code)
 
     def on_dap_external_terminal_started(self, message: DapExternalTerminalStarted) -> None:
-        try:
-            console = self.query_one("#console-view", ConsoleView)
-            console.write_output(
-                "Debuggee running in external terminal window.\n"
-                "Program output will appear there, not here.\n",
-                "console",
-            )
-        except Exception:
-            log.exception("Error handling external terminal started")
+        self._dap.on_external_terminal_started()
 
     def on_dap_output(self, message: DapOutput) -> None:
-        try:
-            if message.category == "stderr":
-                self._stderr_buffer.append(message.text)
-            console = self.query_one("#console-view", ConsoleView)
-            console.write_output(message.text, message.category)
-        except Exception:
-            log.exception("Error handling output event")
+        self._dap.on_output(message)
 
     # --- UI update helper ---
 
@@ -1464,7 +862,7 @@ class TdbApp(App):
         sig_result = await self.controller.evaluate(
             f"str(__import__('inspect').signature({obj}))"
         )
-        sig_result = _unquote_dap_string(sig_result)
+        sig_result = unquote_dap_string(sig_result)
         # signature() returns "(param, ...)" on success; errors contain "Error"
         if sig_result.startswith("("):
             parts.append(f"{obj}{sig_result}")
@@ -1473,7 +871,7 @@ class TdbApp(App):
         doc_result = await self.controller.evaluate(
             f"getattr({obj}, '__doc__', None) or ''"
         )
-        doc_result = _unquote_dap_string(doc_result)
+        doc_result = unquote_dap_string(doc_result)
         if doc_result:
             parts.append(doc_result)
 
@@ -1554,7 +952,7 @@ class TdbApp(App):
         self.push_screen(_KeybindingsModal(code_view.keybindings, on_scheme_change))
 
     def action_documentation(self) -> None:
-        readme = _find_readme()
+        readme = find_readme()
         if readme is None:
             self.notify(
                 "README.md not found in the installation.",
@@ -1619,306 +1017,64 @@ class TdbApp(App):
         self.query_one("#menu-bar", MenuBar).open_menu("Help")
 
     @work(exclusive=True, group="async-tasks")
+    # --- Inspection workflows (delegate to InspectionWorkflows) ---------
+    # The `@work` decorator must wrap a method on this class because
+    # Textual's worker manager is owned by the App. Every body below is
+    # a thin forward to `self._inspection`, which holds the real logic.
+
     async def _fetch_async_task_count(self) -> None:
-        """Evaluate asyncio.all_tasks() count and update the menu bar label."""
-        if self.controller.state.is_terminated or self.controller.state.is_running:
-            return
-        try:
-            result = await self.controller.evaluate_on_parent(
-                "len(__import__('asyncio').all_tasks())"
-            )
-            # Result is a string like "5"
-            count = int(result)
-            menu_bar = self.query_one("#menu-bar", MenuBar)
-            menu_bar.update_action_label("async-tasks-label", f"Async Tasks ({count})")
-        except Exception:
-            log.debug("Could not fetch async task count (program may not use asyncio)")
+        await self._inspection.fetch_async_task_count()
 
     @work(exclusive=True, group="async-tasks-open")
     async def _open_async_tasks(self) -> None:
-        """Fetch full task info and open the modal."""
-        if self.controller.state.is_terminated:
-            self.notify("Program has terminated", title="Async Tasks")
-            return
-        if self.controller.state.is_running:
-            self.notify("Program is running — pause first", title="Async Tasks")
-            return
-        try:
-            raw = await self.controller.evaluate(TASK_COLLECT_EXPR)
-            tasks = parse_task_json(raw)
-        except Exception:
-            log.exception("Error fetching async tasks")
-            tasks = []
-
-        if not tasks:
-            # Show the raw evaluate result so failures aren't silent
-            log.warning("Async task collection returned no tasks. Raw: %s", raw[:300] if raw else "(empty)")
-            self.notify("No asyncio tasks found (program may not use asyncio)", title="Async Tasks")
-            return
-
-        self._async_tasks_modal = AsyncTasksModal(tasks)
-        self.push_screen(self._async_tasks_modal)
+        await self._inspection.open_async_tasks()
 
     async def on_tdb_app_refresh_async_tasks(self, message: RefreshAsyncTasks) -> None:
-        """Handle refresh request from the async tasks modal."""
-        if self.controller.state.is_terminated or self.controller.state.is_running:
-            return
-        try:
-            raw = await self.controller.evaluate(TASK_COLLECT_EXPR)
-            tasks = parse_task_json(raw)
-        except Exception:
-            log.exception("Error refreshing async tasks")
-            return
-        if hasattr(self, "_async_tasks_modal"):
-            self._async_tasks_modal.update_tasks(tasks)
+        await self._inspection.refresh_async_tasks()
 
     async def on_async_tasks_modal_load_task_variables(
         self, message: AsyncTasksModal.LoadTaskVariables
     ) -> None:
-        """Fetch a task's local variables via DAP and populate the tree."""
-        if self.controller.state.is_terminated or self.controller.state.is_running:
-            return
-        if not hasattr(self, "_async_tasks_modal"):
-            return
-        try:
-            expr = TASK_LOCALS_EXPR.format(task_name=message.task_name)
-            _result, var_ref = await self.controller.active_client.evaluate(
-                expr,
-                frame_id=self.controller.state.current_frame_id,
-                context="repl",
-            )
-            if var_ref > 0:
-                variables = await self.controller.active_client.variables(var_ref)
-            else:
-                variables = []
-        except Exception:
-            log.debug("Failed to load variables for task %s", message.task_name)
-            variables = []
-        self._async_tasks_modal.show_task_variables(variables)
-
-    # --- Threads ---
+        await self._inspection.load_task_variables(message.task_name)
 
     def _update_thread_count(self) -> None:
-        """Update the Threads label with the current thread count."""
-        threads = self.controller.state.threads
-        menu_bar = self.query_one("#menu-bar", MenuBar)
-        if len(threads) >= 2:
-            menu_bar.update_action_label(
-                "threads-label", f"Threads ({len(threads)})",
-            )
-        else:
-            menu_bar.update_action_label("threads-label", "Threads")
+        self._inspection.update_thread_count()
 
     @work(exclusive=True, group="threads-open")
     async def _open_threads(self) -> None:
-        """Fetch threads and open the modal."""
-        if self.controller.state.is_terminated:
-            self.notify("Program has terminated", title="Threads")
-            return
-        if self.controller.state.is_running:
-            self.notify("Program is running — pause first", title="Threads")
-            return
-        try:
-            threads = await self.controller.client.threads()
-        except Exception:
-            log.exception("Error fetching threads")
-            self.notify("Failed to fetch threads", title="Threads")
-            return
-        if not threads:
-            self.notify("No threads found", title="Threads")
-            return
-        self._threads_modal = ThreadsModal(
-            threads, self.controller.state.current_thread_id,
-        )
-        self.push_screen(self._threads_modal)
+        await self._inspection.open_threads()
 
     async def on_threads_modal_load_thread_detail(
         self, message: ThreadsModal.LoadThreadDetail,
     ) -> None:
-        """Fetch stack trace and variables for a thread."""
-        if self.controller.state.is_terminated or self.controller.state.is_running:
-            return
-        if not hasattr(self, "_threads_modal"):
-            return
-        thread_id = message.thread_id
-        try:
-            frames = await self.controller.client.stack_trace(thread_id)
-        except Exception:
-            log.debug("Failed to fetch stack trace for thread %d", thread_id)
-            frames = []
-        scopes: list = []
-        variables: dict = {}
-        if frames:
-            top_frame = frames[0]
-            try:
-                scopes = await self.controller.client.scopes(top_frame.id)
-                for scope in scopes:
-                    variables[scope.variables_reference] = (
-                        await self.controller.client.variables(
-                            scope.variables_reference,
-                        )
-                    )
-            except Exception:
-                log.debug(
-                    "Failed to fetch variables for thread %d", thread_id,
-                )
-        self._threads_modal.show_thread_detail(
-            thread_id, frames, scopes, variables,
-        )
+        await self._inspection.load_thread_detail(message.thread_id)
 
     async def on_threads_modal_refresh_threads(
         self, message: ThreadsModal.RefreshThreads,
     ) -> None:
-        """Handle refresh request from the threads modal."""
-        if self.controller.state.is_terminated or self.controller.state.is_running:
-            return
-        try:
-            threads = await self.controller.client.threads()
-        except Exception:
-            log.exception("Error refreshing threads")
-            return
-        if hasattr(self, "_threads_modal"):
-            self._threads_modal.update_threads(
-                threads, self.controller.state.current_thread_id,
-            )
-
-    # --- Processes ---
-
-    def _get_processes_from_pids(self) -> list[ProcessInfo]:
-        """Build ProcessInfo list from tracked child PIDs via /proc."""
-        result = []
-        for pid in self.controller.get_child_pids():
-            try:
-                cmdline_path = Path(f"/proc/{pid}/cmdline")
-                if not cmdline_path.exists():
-                    continue
-                cmdline = cmdline_path.read_bytes().replace(b"\x00", b" ").decode().strip()
-                # Read process status for the name
-                status_path = Path(f"/proc/{pid}/status")
-                name = f"Process-{pid}"
-                if status_path.exists():
-                    for line in status_path.read_text().splitlines():
-                        if line.startswith("Name:"):
-                            name = line.split(":", 1)[1].strip()
-                            break
-                result.append(ProcessInfo(
-                    name=name,
-                    pid=pid,
-                    alive=True,
-                    exitcode=None,
-                    daemon=False,
-                    target=cmdline[:200] if cmdline else "unknown",
-                    args="()",
-                    kwargs="{}",
-                    start_method="",
-                ))
-            except Exception:
-                pass
-        return result
-
-    async def _get_processes(self) -> list[ProcessInfo]:
-        """Get child process info, trying eval on parent first, then /proc."""
-        try:
-            raw = await self.controller.evaluate_on_parent(PROCESS_COLLECT_EXPR)
-            processes = parse_process_json(raw)
-            if processes:
-                return processes
-        except Exception:
-            pass
-        return self._get_processes_from_pids()
+        await self._inspection.refresh_threads()
 
     @work(exclusive=True, group="process-count")
     async def _fetch_process_count(self) -> None:
-        """Update the Processes label with child process count."""
-        if self.controller.state.is_terminated or self.controller.state.is_running:
-            return
-        # Use tracked PIDs as primary source — always available
-        count = len(self.controller.get_child_pids())
-        if count == 0:
-            # Try eval as fallback (works when parent is the active process)
-            try:
-                result = await self.controller.evaluate_on_parent(
-                    "len(__import__('multiprocessing').active_children())"
-                )
-                count = int(result)
-            except Exception:
-                pass
-        menu_bar = self.query_one("#menu-bar", MenuBar)
-        if count >= 2:
-            menu_bar.update_action_label(
-                "processes-label", f"Processes ({count})",
-            )
-        else:
-            menu_bar.update_action_label("processes-label", "Processes")
+        await self._inspection.fetch_process_count()
 
     def _open_processes(self) -> None:
-        """Open the Processes modal immediately (showing Loading...) and
-        fetch process info in the background. If no processes are found,
-        dismiss the modal and show a toast instead."""
-        if self.controller.state.is_terminated:
-            self.notify("Program has terminated", title="Processes")
-            return
-        if self.controller.state.is_running:
-            self.notify("Program is running — pause first", title="Processes")
-            return
-        self._processes_modal = ProcessesModal([])
-        self.push_screen(self._processes_modal)
-        self._open_processes_worker()
+        if self._inspection.open_processes_modal():
+            self._open_processes_worker()
 
     @work(exclusive=True, group="processes-open")
     async def _open_processes_worker(self) -> None:
-        """Background: fetch processes and populate the already-open modal,
-        or dismiss it and toast when there are none."""
-        processes = await self._get_processes()
-        modal = getattr(self, "_processes_modal", None)
-        if modal is None:
-            return
-        if not processes:
-            modal.dismiss(None)
-            self.notify("No extra processes", title="Processes")
-            return
-        modal.update_processes(processes)
+        await self._inspection.open_processes_worker()
 
     async def on_processes_modal_refresh_processes(
         self, message: ProcessesModal.RefreshProcesses,
     ) -> None:
-        """Handle refresh request from the processes modal."""
-        if self.controller.state.is_terminated or self.controller.state.is_running:
-            return
-        processes = await self._get_processes()
-        if hasattr(self, "_processes_modal"):
-            self._processes_modal.update_processes(processes)
+        await self._inspection.refresh_processes()
 
     async def on_processes_modal_load_process_detail(
         self, message: ProcessesModal.LoadProcessDetail,
     ) -> None:
-        """Fetch stack trace and variables for a child process via its DAPClient."""
-        if not hasattr(self, "_processes_modal"):
-            return
-        pid = message.pid
-        child = self.controller.get_child_client(pid)
-        if child is None:
-            # Try matching by checking all tracked PIDs
-            # (PIDs from /proc might not exactly match the controller's keys)
-            self._processes_modal.show_process_detail(pid, [], [], {})
-            return
-        frames: list = []
-        scopes: list = []
-        variables: dict = {}
-        try:
-            threads = await child.threads()
-            if threads:
-                frames = await child.stack_trace(threads[0].id)
-                if frames:
-                    top_frame = frames[0]
-                    scopes = await child.scopes(top_frame.id)
-                    for scope in scopes:
-                        variables[scope.variables_reference] = (
-                            await child.variables(scope.variables_reference)
-                        )
-        except Exception:
-            log.debug("Failed to fetch detail for child process %d", pid)
-        self._processes_modal.show_process_detail(pid, frames, scopes, variables)
+        await self._inspection.load_process_detail(message.pid)
 
     # --- Actions ---
 
@@ -1968,55 +1124,3 @@ class TdbApp(App):
         self.push_screen(_QuitConfirmModal(), callback=on_dismiss)
 
 
-def _find_readme() -> str | None:
-    """Locate README.md across install layouts.
-
-    Order: walk up from the tdb package dir (catches source checkouts and
-    editable installs); try importlib.resources for a bundled README
-    (catches pip installs that package it alongside the code); finally try
-    the distribution's metadata directory.
-    """
-    import tdb as _tdb_pkg
-
-    pkg_dir = Path(_tdb_pkg.__file__).resolve().parent
-    for parent in [pkg_dir, *pkg_dir.parents]:
-        candidate = parent / "README.md"
-        if candidate.is_file():
-            try:
-                return candidate.read_text(encoding="utf-8")
-            except OSError:
-                pass
-
-    try:
-        import importlib.resources as ires
-        with ires.files("tdb").joinpath("README.md").open("r", encoding="utf-8") as f:
-            return f.read()
-    except (FileNotFoundError, ModuleNotFoundError, AttributeError, OSError):
-        pass
-
-    try:
-        import importlib.metadata as md
-        text = md.distribution("textual-debugger").read_text("README.md")
-        if text:
-            return text
-    except Exception:
-        pass
-
-    return None
-
-
-def _unquote_dap_string(s: str) -> str:
-    """Strip repr quoting from a DAP evaluate result that is a Python string.
-
-    debugpy returns string results as their repr (e.g. "'hello\\nworld'").
-    This converts that back to the actual string content.
-    """
-    if not s:
-        return s
-    try:
-        value = ast.literal_eval(s)
-        if isinstance(value, str):
-            return value
-    except (ValueError, SyntaxError):
-        pass
-    return s
