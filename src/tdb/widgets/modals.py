@@ -388,6 +388,71 @@ class _AboutModal(ModalScreen):
         self.dismiss(None)
 
 
+class _PauseFailedModal(ModalScreen):
+    """Shown when controller.pause() times out — explains why and what
+    to do. Modal (not a toast) because the message is multi-line and
+    the user is likely confused by an unresponsive `p` keypress.
+    """
+
+    DEFAULT_CSS = """
+    _PauseFailedModal {
+        align: center middle;
+    }
+    _PauseFailedModal #dialog {
+        width: auto;
+        height: auto;
+        max-width: 80;
+        min-width: 56;
+        border: solid $warning;
+        background: $surface;
+        padding: 1 2;
+    }
+    _PauseFailedModal #pause-title {
+        height: 1;
+        color: $warning;
+        text-style: bold;
+        margin-bottom: 1;
+    }
+    _PauseFailedModal #pause-body {
+        height: auto;
+        width: auto;
+    }
+    _PauseFailedModal #pause-footer {
+        height: 1;
+        color: $text-muted;
+        content-align: center middle;
+        margin-top: 1;
+    }
+    """
+
+    BINDINGS = [
+        Binding("escape", "dismiss_modal", "Close", show=False),
+        Binding("q", "dismiss_modal", "Close", show=False),
+        Binding("enter", "dismiss_modal", "Close", show=False),
+    ]
+
+    BODY = (
+        "[bold]The pause request didn't land.[/bold]\n\n"
+        "The debuggee has no Python frames running, so debugpy has\n"
+        "nowhere to deliver the pause. The most common cause is a\n"
+        "fully-deadlocked asyncio loop blocked in epoll_wait.\n\n"
+        "[bold]Workarounds:[/bold]\n"
+        "  • For asyncio: add a periodic [italic]await asyncio.sleep(...)[/italic]\n"
+        "    task that keeps the event loop ticking.\n"
+        "  • Set a breakpoint at a known reachable line (executed by\n"
+        "    some task before the deadlock)."
+    )
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="dialog"):
+            yield Static("Pause failed", id="pause-title", markup=True)
+            yield Static(self.BODY, id="pause-body", markup=True)
+            yield Static("[dim]ESC to close[/dim]", id="pause-footer", markup=True)
+
+    def action_dismiss_modal(self) -> None:
+        self.dismiss(None)
+
+
 class _QuitConfirmModal(ModalScreen):
     """Small modal: `q` confirms quit, escape/other cancels."""
 

@@ -38,6 +38,7 @@ from tdb.widgets.modals import (
     _DocumentationModal,
     _KeybindingsModal,
     _OpenFileModal,
+    _PauseFailedModal,
     _QuitConfirmModal,
     _TracebackModal,
 )
@@ -701,12 +702,22 @@ class TdbApp(App):
                 # File was opened but never started — `c` starts it.
                 self._restart_session()
                 return
+            if message.action == "pause":
+                # pause() returns False when the request didn't land
+                # within the timeout — typical for a fully-deadlocked
+                # asyncio program (no Python frames running, debugpy
+                # has nowhere to deliver the pause). Surface that in
+                # a modal so the keypress isn't silently ignored.
+                paused = await self.controller.pause()
+                if not paused and not self.controller.state.is_terminated:
+                    self.push_screen(_PauseFailedModal())
+                self._update_ui_state()
+                return
             handler = {
                 "continue_": self.controller.continue_,
                 "step_over": self.controller.step_over,
                 "step_in": self.controller.step_in,
                 "step_out": self.controller.step_out,
-                "pause": self.controller.pause,
             }.get(message.action)
             if handler:
                 await handler()

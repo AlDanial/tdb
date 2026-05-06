@@ -58,9 +58,9 @@ async def worker_b(first: asyncio.Lock, second: asyncio.Lock,
             print("Worker-B: never reaches here")
 
 
-async def monitor() -> None:
-    while True:
-        await asyncio.sleep(0.5)
+#async def monitor() -> None:
+#    while True:
+#        await asyncio.sleep(0.5)
 
 
 async def main() -> None:
@@ -77,14 +77,15 @@ async def main() -> None:
     b = asyncio.create_task(
         worker_b(lock_y, lock_x, b_ready, a_ready), name="Worker-B",
     )
-    mon = asyncio.create_task(monitor(), name="Monitor")
+#   mon = asyncio.create_task(monitor(), name="Monitor")
 
     print("Both workers started — they will deadlock momentarily.")
     print("In tdb: press `p` to pause, then Alt+A for Async Tasks, then `g` for the wait graph.")
     try:
         await asyncio.gather(a, b)  # never returns
     finally:
-        mon.cancel()
+        pass
+#       mon.cancel()
 
 
 if __name__ == "__main__":

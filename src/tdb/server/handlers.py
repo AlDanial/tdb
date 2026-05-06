@@ -310,7 +310,13 @@ class RpcHandlers:
     async def action_pause(self, params: list[Any]) -> RpcResponse:
         if self.controller.state.is_terminated:
             return RpcResponse.error("Program has terminated")
-        await self.controller.pause()
+        paused = await self.controller.pause()
+        if not paused:
+            return RpcResponse.error(
+                "Pause didn't land within timeout — debuggee may have no "
+                "Python frames running (e.g. fully-deadlocked asyncio loop). "
+                "Try setting a breakpoint at a known reachable line."
+            )
         return RpcResponse.ok()
 
     async def action_inspect(self, params: list[Any]) -> RpcResponse:

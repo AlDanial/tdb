@@ -78,6 +78,13 @@ class DebugController:
         # Strong references to fire-and-forget tasks so they aren't
         # garbage-collected mid-execution (asyncio holds only weak refs).
         self._bg_tasks: set[asyncio.Task] = set()
+        # Set whenever the debuggee enters a stopped/terminated state,
+        # cleared on continue. `pause()` awaits this with a timeout so
+        # the caller can detect when a pause request never lands (the
+        # classic failure mode is a fully-deadlocked asyncio program
+        # whose main thread is blocked in epoll_wait — debugpy can't
+        # deliver pause without a Python frame to trace).
+        self._stopped_event = asyncio.Event()
 
     # --- Public capability surface --------------------------------------
     # These properties are how external code (TUI, server, future entry
@@ -394,20 +401,42 @@ class DebugController:
                 except Exception:
                     pass
 
-    async def pause(self) -> None:
-        """Pause all processes (parent + children)."""
-        if self.state.current_thread_id is not None:
-            try:
-                await self.client.pause(self.state.current_thread_id)
-            except Exception:
-                pass
+    async def pause(self, timeout: float = 2.0) -> bool:
+        """Pause all processes (parent + children).
+
+        Returns True if a stop event arrived within `timeout`, False
+        otherwise. The False case is most often a fully-deadlocked
+        asyncio program: debugpy queues the pause but cannot deliver
+        it without a Python frame to trace, so the user gets no
+        visible response. Callers should surface a notification on
+        False so the keypress isn't silently swallowed.
+        """
+        if self.state.is_terminated:
+            return False
+        if self.state.phase == SessionPhase.STOPPED:
+            return True  # already stopped — nothing to wait for
+        if self.state.current_thread_id is None:
+            return False
+        # Clear before sending so a stale set() from a previous stop
+        # doesn't make us return True instantly.
+        self._stopped_event.clear()
+        try:
+            await self.client.pause(self.state.current_thread_id)
+        except Exception:
+            log.exception("DAP pause request failed for parent")
+            return False
         for pid, child in list(self._child_clients.items()):
             try:
                 threads = await child.threads()
                 if threads:
                     await child.pause(threads[0].id)
             except Exception:
-                pass
+                log.exception("DAP pause request failed for child pid=%s", pid)
+        try:
+            await asyncio.wait_for(self._stopped_event.wait(), timeout=timeout)
+            return True
+        except asyncio.TimeoutError:
+            return False
 
     async def toggle_breakpoint(self, source_path: str, line: int) -> None:
         bps = self.state.breakpoints.get(source_path, [])
@@ -710,6 +739,7 @@ class DebugController:
             self.state.current_thread_id = thread_id
 
         self._active_client = self.client
+        self._stopped_event.set()
         self.event_handler.on_stopped(thread_id, reason, description, text)
         if self._child_clients and reason not in ("pause",):
             self._spawn_bg(self._pause_children())
@@ -719,6 +749,7 @@ class DebugController:
         # don't have to remember to do it themselves.
         self.state.transition_to(SessionPhase.RUNNING)
         self.state.clear_frame_data()
+        self._stopped_event.clear()
         self.event_handler.on_continued()
 
     def _on_terminated(self, event: Event) -> None:
@@ -728,6 +759,9 @@ class DebugController:
         # set this, so headless mode left state.is_terminated stuck at False
         # after the program ended naturally.
         self.state.transition_to(SessionPhase.TERMINATED)
+        # Wake any pause()-style waiters so they unblock on termination
+        # rather than running out the clock — they'll see is_terminated.
+        self._stopped_event.set()
         self.event_handler.on_terminated()
 
     def _on_exited(self, event: Event) -> None:
@@ -737,6 +771,7 @@ class DebugController:
         # disconnects). Transition to TERMINATED on both so the guards
         # engage no matter which event we get.
         self.state.transition_to(SessionPhase.TERMINATED)
+        self._stopped_event.set()
         self.event_handler.on_exited(exit_code)
 
     def _on_output(self, event: Event) -> None:

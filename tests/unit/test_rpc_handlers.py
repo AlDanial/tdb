@@ -186,6 +186,29 @@ async def test_pause_rejected_when_terminated(handlers):
     assert "terminated" in rsp.value.lower()
 
 
+async def test_pause_returns_error_on_timeout(handlers):
+    """When the controller's pause() returns False (no stopped event
+    arrived in time), the RPC must surface a meaningful error rather
+    than a misleading ok."""
+    handlers.controller.state.transition_to(SessionPhase.RUNNING)
+    handlers.controller.state.current_thread_id = 1
+
+    async def _stub_pause(thread_id):
+        return  # accept the request but no event will fire
+    handlers.controller.client.pause = _stub_pause
+
+    # Force a fast timeout via the controller default by overriding it.
+    async def _quick_pause():
+        return await type(handlers.controller).pause(
+            handlers.controller, timeout=0.05,
+        )
+    handlers.controller.pause = _quick_pause
+
+    rsp = await handlers.action_pause([])
+    assert rsp.success is False
+    assert "didn't land" in rsp.value.lower() or "timeout" in rsp.value.lower()
+
+
 @pytest.mark.parametrize("action_name", ["next", "step_in", "step_out", "continue"])
 async def test_step_actions_rejected_when_terminated(handlers, action_name):
     handlers.controller.state.transition_to(SessionPhase.TERMINATED)
