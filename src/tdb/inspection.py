@@ -262,7 +262,10 @@ def find_cycles(graph: dict[str, list[str]]) -> list[list[str]]:
     SCCs without self-edges are normal (non-cyclic) and not returned.
 
     Recursive — fine for wait graphs of <~500 tasks given Python's
-    default recursion limit. Swap to iterative if that ever gets hit.
+    default recursion limit. On a wait chain deeper than the recursion
+    limit the inner DFS raises RecursionError; we log and return [],
+    so callers see "no cycles" rather than a crashed handler. Swap to
+    iterative if this ever becomes load-bearing.
     """
     index: dict[str, int] = {}
     low: dict[str, int] = {}
@@ -296,9 +299,17 @@ def find_cycles(graph: dict[str, list[str]]) -> list[list[str]]:
     nodes: set[str] = set(graph.keys())
     for holders in graph.values():
         nodes.update(holders)
-    for v in sorted(nodes):
-        if v not in index:
-            strongconnect(v)
+    try:
+        for v in sorted(nodes):
+            if v not in index:
+                strongconnect(v)
+    except RecursionError:
+        log.warning(
+            "find_cycles: recursion limit hit on graph with %d nodes; "
+            "returning [] (no deadlock detection for this snapshot)",
+            len(nodes),
+        )
+        return []
 
     cycles: list[list[str]] = []
     for comp in sccs:
@@ -373,8 +384,28 @@ def build_wait_tree(tasks: list[AsyncTaskInfo]) -> list[WaitTreeNode]:
             label=f"Blocked tasks ({len(blocked)})",
             kind="section_blocked",
         )
-        for t in blocked:
-            blocked_section.children.append(_build_task_subtree(t, by_name, ()))
+        try:
+            for t in blocked:
+                blocked_section.children.append(
+                    _build_task_subtree(t, by_name, ())
+                )
+        except RecursionError:
+            # _build_task_subtree recurses through the holder chain.
+            # If the chain is deeper than the recursion limit, give up
+            # on the detail tree but still show the section header so
+            # the user knows tasks were blocked.
+            log.warning(
+                "build_wait_tree: recursion limit hit while expanding "
+                "blocked-task subtree; rendering flat list instead",
+            )
+            blocked_section.children = [
+                WaitTreeNode(
+                    label=f"{t.name} (subtree truncated — chain too deep)",
+                    kind="task",
+                    data=t.name,
+                )
+                for t in blocked
+            ]
         sections.append(blocked_section)
 
     if unblocked:

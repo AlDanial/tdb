@@ -172,6 +172,59 @@ def test_pipeline_two_task_deadlock():
     assert cycles == [["A", "B"]]
 
 
+# --- RecursionError safety nets ----------------------------------------
+
+def test_find_cycles_returns_empty_on_recursion_limit(monkeypatch):
+    """A wait chain deeper than the Python recursion limit must
+    degrade to '[]' (no cycle detection) rather than crashing the
+    handler. We force the limit very low to trigger the fallback
+    without building a 1000-deep graph."""
+    import sys
+    # Build a long linear chain so Tarjan's DFS must descend N times.
+    chain = {f"T{i}": [f"T{i + 1}"] for i in range(200)}
+    chain["T200"] = []
+
+    monkeypatch.setattr(sys, "setrecursionlimit", sys.setrecursionlimit)
+    old = sys.getrecursionlimit()
+    sys.setrecursionlimit(50)
+    try:
+        result = find_cycles(chain)
+    finally:
+        sys.setrecursionlimit(old)
+    assert result == []
+
+
+def test_build_wait_tree_truncates_subtree_on_recursion_limit(monkeypatch):
+    """A 200-deep holder chain forces _build_task_subtree to recurse
+    past a low recursion limit. The function must catch and emit a
+    truncated-section instead of propagating the error."""
+    import sys
+
+    # Linear chain: T0 waits on T1, T1 waits on T2, ..., T199 waits on T200.
+    # T200 has no holders.
+    tasks = [
+        _info(f"T{i}", awaiting="Lock.acquire", holders=[f"T{i + 1}"])
+        for i in range(200)
+    ]
+    tasks.append(_info("T200"))
+
+    old = sys.getrecursionlimit()
+    sys.setrecursionlimit(50)
+    try:
+        sections = build_wait_tree(tasks)
+    finally:
+        sys.setrecursionlimit(old)
+
+    # The Blocked section still rendered, just with truncated children.
+    blocked = next(s for s in sections if s.kind == "section_blocked")
+    assert blocked.children, "blocked section must keep its rows"
+    # Every blocked-section child should be a flat task node with the
+    # truncation marker (no further recursion).
+    assert all(c.kind == "task" for c in blocked.children)
+    assert all("truncated" in c.label for c in blocked.children)
+    assert all(c.children == [] for c in blocked.children)
+
+
 # --- build_wait_tree ----------------------------------------------------
 
 def _kinds(nodes: list[WaitTreeNode]) -> list[str]:
