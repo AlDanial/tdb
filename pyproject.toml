@@ -33,6 +33,7 @@
          "matplotlib",
          "pyyaml",
          "toml",
+         "ruff",
          "ipython"]
 
   [project.urls]

@@ -99,6 +99,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         help=argparse.SUPPRESS,  # invoked by tdb.exception_hook, not the user
     )
+    parser.add_argument(
+        "-d", "--doc",
+        action="store_true",
+        help="Display README.md in a markdown viewer and exit (no program needed)",
+    )
 
     args = parser.parse_args(argv)
     args.stop_on_entry = not args.no_stop_on_entry
@@ -107,8 +112,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     if args.headless:
         args.server = True
 
-    # --post-mortem short-circuits everything else: no program needed.
-    if args.post_mortem:
+    # --doc and --post-mortem short-circuit everything else: no program needed.
+    if args.doc or args.post_mortem:
         return args
 
     # Parse --remote-attach into (host, port)
@@ -174,12 +179,41 @@ def main(argv: list[str] | None = None) -> None:
         format="%(asctime)s %(name)s %(levelname)s %(message)s",
     )
 
-    if args.post_mortem:
+    if args.doc:
+        _run_doc()
+    elif args.post_mortem:
         _run_post_mortem(args)
     elif args.headless:
         _run_headless(args)
     else:
         _run_tui(args)
+
+
+def _run_doc() -> None:
+    """Display the bundled README.md in a Textual MarkdownViewer."""
+    from tdb.app_helpers import find_readme
+
+    readme = find_readme()
+    if readme is None:
+        print("README.md not found in the installation.", file=sys.stderr)
+        sys.exit(1)
+
+    from textual.app import App, ComposeResult
+    from textual.binding import Binding
+    from textual.widgets import Footer, MarkdownViewer
+
+    class _DocApp(App):
+        TITLE = "tdb documentation"
+        BINDINGS = [
+            Binding("escape", "quit", "Quit", show=False),
+            Binding("q", "quit", "Quit"),
+        ]
+
+        def compose(self) -> ComposeResult:
+            yield MarkdownViewer(readme, show_table_of_contents=True)
+            yield Footer()
+
+    _DocApp().run()
 
 
 def _run_post_mortem(args: argparse.Namespace) -> None:

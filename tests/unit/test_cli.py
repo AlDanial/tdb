@@ -99,3 +99,22 @@ def test_post_mortem_short_circuits_program_check():
     args = parse_args(["--post-mortem", "/nonexistent/snapshot.json"])
     assert args.post_mortem == "/nonexistent/snapshot.json"
     assert args.program is None
+
+
+def test_doc_flag_short_circuits_program_check():
+    """--doc viewer mode needs no program and no remote-attach."""
+    args = parse_args(["--doc"])
+    assert args.doc is True
+    assert args.program is None
+
+
+def test_doc_flag_short_form():
+    args = parse_args(["-d"])
+    assert args.doc is True
+
+
+def test_doc_flag_default_false(tmp_path):
+    prog = tmp_path / "x.py"
+    prog.write_text("\n")
+    args = parse_args([str(prog)])
+    assert args.doc is False

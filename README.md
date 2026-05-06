@@ -8,11 +8,10 @@ and [debugpy](https://github.com/microsoft/debugpy) (the Debug Adapter Protocol 
 VS Code's Python debugger). It provides a rich interactive interface for stepping through code,
 inspecting variables, managing breakpoints, and evaluating expressions in complex Python programs.
 
-`tdb` was created by Al Danial with Claude Code. It can be found at
 - PyPI: https://pypi.org/project/textual-debugger/
 - GitHub: https://github.com/AlDanial/tdb
 
-MIT License.
+MIT License.  Copyright 2026 by Al Danial.
 
 ## Feature Overview
 
@@ -33,7 +32,7 @@ automated, headless debugging workflows and AI-assisted debugging
 built with `textual`, `prompt-toolkit`, `urwid`, `curses`, `rich`, and so on
 
 - comes with a post-mortem exception hook that can be installed in Python programs
-to have the debugger pop open automatically on uncaught exceptions
+to have the debugger pop open automatically at the first uncaught exception
 
 - can be entirely keyboard-driven
 making it suitable for operation in non-graphical environments (mouse support is
@@ -53,7 +52,7 @@ as open source.
 
 - Anthropic, for providing access to Claude Code through the
 [Claude for Open Source](https://claude.com/contact-sales/claude-for-oss) program.
-This project was made almost entirely with Claude Code.
+`tdb` was made almost entirely with Claude Code.
 
 ## Installation
 
@@ -61,7 +60,7 @@ This project was made almost entirely with Claude Code.
 pip install textual-debugger
 ```
 
-or
+or (better):
 
 ```bash
 uv pip install textual-debugger
@@ -83,7 +82,7 @@ tdb --python /path/to/venv/bin/python my_script.py
 # Don't stop on entry; run until first breakpoint or exit
 tdb --no-stop-on-entry my_script.py
 
-> **Note:** Avoid `argparse` confusion by separating `tdb`'s switches from
+> **Note:** Avoid `argparse` confusion by separating `tdb` switches from
 > the debuggee's switches by prefixing the debugee with `--`.
 
 # `--` separates tdb's switches from the debuggee's switches
