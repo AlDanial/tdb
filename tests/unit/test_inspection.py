@@ -70,6 +70,8 @@ def test_async_task_info_default_metadata_fields():
     assert info.cancelling == 0
     assert info.cancel_message is None
     assert info.awaiting is None
+    assert info.awaiting_obj_id is None
+    assert info.holders == []
 
 
 def test_parse_task_json_reads_metadata_fields():
@@ -77,11 +79,50 @@ def test_parse_task_json_reads_metadata_fields():
         "name": "T", "state": "pending", "coro": "c", "stack": [],
         "cancelling": 2, "cancel_message": "shutdown",
         "awaiting": "Lock.acquire",
+        "awaiting_obj_id": 140123456789,
     }])
     [t] = parse_task_json(_wrap_repr(payload))
     assert t.cancelling == 2
     assert t.cancel_message == "shutdown"
     assert t.awaiting == "Lock.acquire"
+    assert t.awaiting_obj_id == 140123456789
+
+
+def test_parse_task_json_awaiting_obj_id_absent_defaults_to_none():
+    """Older debuggee snippets won't emit the field — parser must accept that."""
+    payload = json.dumps([{
+        "name": "T", "state": "pending", "coro": "c", "stack": [],
+        "awaiting": "Lock.acquire",
+    }])
+    [t] = parse_task_json(_wrap_repr(payload))
+    assert t.awaiting_obj_id is None
+
+
+def test_parse_task_json_reads_holders():
+    payload = json.dumps([{
+        "name": "Blocked", "state": "pending", "coro": "c", "stack": [],
+        "awaiting": "Lock.acquire", "awaiting_obj_id": 42,
+        "holders": ["A", "B"],
+    }])
+    [t] = parse_task_json(_wrap_repr(payload))
+    assert t.holders == ["A", "B"]
+
+
+def test_parse_task_json_holders_absent_defaults_to_empty_list():
+    payload = json.dumps([{
+        "name": "T", "state": "pending", "coro": "c", "stack": [],
+    }])
+    [t] = parse_task_json(_wrap_repr(payload))
+    assert t.holders == []
+
+
+def test_parse_task_json_holders_null_coerces_to_empty_list():
+    payload = json.dumps([{
+        "name": "T", "state": "pending", "coro": "c", "stack": [],
+        "holders": None,
+    }])
+    [t] = parse_task_json(_wrap_repr(payload))
+    assert t.holders == []
 
 
 def test_parse_task_json_tolerates_null_cancelling():

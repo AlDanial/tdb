@@ -294,3 +294,130 @@ async def test_get_output_drains_buffer(handlers):
     # And buffer is now empty.
     rsp2 = await handlers.action_get_output([])
     assert rsp2.value == ""
+
+
+# --- wait_graph ---------------------------------------------------------
+
+import json as _json
+
+
+def _stub_evaluate(handlers, payload):
+    """Replace controller.evaluate with a coroutine returning `payload`
+    serialized as JSON. The handler's parse_task_json accepts bare JSON."""
+    async def _fake_evaluate(_expr: str) -> str:
+        return _json.dumps(payload)
+    handlers.controller.evaluate = _fake_evaluate
+
+
+async def test_wait_graph_rejected_when_running(handlers):
+    handlers.controller.state.transition_to(SessionPhase.RUNNING)
+    rsp = await handlers.action_wait_graph([])
+    assert rsp.success is False
+    assert "running" in rsp.value.lower()
+
+
+async def test_wait_graph_rejected_when_terminated(handlers):
+    handlers.controller.state.transition_to(SessionPhase.TERMINATED)
+    rsp = await handlers.action_wait_graph([])
+    assert rsp.success is False
+    assert "terminated" in rsp.value.lower()
+
+
+async def test_wait_graph_no_tasks(handlers):
+    _stub_evaluate(handlers, [])
+    rsp = await handlers.action_wait_graph([])
+    assert rsp.success
+    assert "No asyncio tasks" in rsp.value
+
+
+async def test_wait_graph_no_blocked_tasks(handlers):
+    _stub_evaluate(handlers, [
+        {"name": "A", "state": "pending", "coro": "c", "stack": []},
+        {"name": "B", "state": "pending", "coro": "c", "stack": []},
+    ])
+    rsp = await handlers.action_wait_graph([])
+    assert rsp.success
+    assert "2 task(s)" in rsp.value
+    assert "0 blocked" in rsp.value
+    assert "No blocked tasks" in rsp.value
+    assert "Deadlock" not in rsp.value
+
+
+async def test_wait_graph_renders_blocked_tasks_with_holders(handlers):
+    _stub_evaluate(handlers, [
+        {
+            "name": "Holder", "state": "pending", "coro": "c", "stack": [],
+        },
+        {
+            "name": "Waiter", "state": "pending", "coro": "c", "stack": [],
+            "awaiting": "Lock.acquire", "awaiting_obj_id": 42,
+            "holders": ["Holder"],
+        },
+    ])
+    rsp = await handlers.action_wait_graph([])
+    assert rsp.success
+    assert "Blocked tasks:" in rsp.value
+    assert "Waiter" in rsp.value
+    assert "Lock.acquire" in rsp.value
+    assert "holders: Holder" in rsp.value
+    # No deadlock — Holder doesn't wait on anything.
+    assert "Deadlock" not in rsp.value
+
+
+async def test_wait_graph_blocked_with_no_identified_holder(handlers):
+    """A blocked task with empty holders list (e.g., Event.wait, or
+    a Lock whose holder couldn't be identified) renders explicitly."""
+    _stub_evaluate(handlers, [
+        {
+            "name": "T", "state": "pending", "coro": "c", "stack": [],
+            "awaiting": "Event.wait", "awaiting_obj_id": 99,
+            "holders": [],
+        },
+    ])
+    rsp = await handlers.action_wait_graph([])
+    assert rsp.success
+    assert "(no holder identified)" in rsp.value
+
+
+async def test_wait_graph_reports_deadlock(handlers):
+    """A→B and B→A is a 2-task deadlock."""
+    _stub_evaluate(handlers, [
+        {
+            "name": "A", "state": "pending", "coro": "c", "stack": [],
+            "awaiting": "Lock.acquire", "awaiting_obj_id": 1,
+            "holders": ["B"],
+        },
+        {
+            "name": "B", "state": "pending", "coro": "c", "stack": [],
+            "awaiting": "Lock.acquire", "awaiting_obj_id": 2,
+            "holders": ["A"],
+        },
+    ])
+    rsp = await handlers.action_wait_graph([])
+    assert rsp.success
+    assert "1 deadlock cycle(s)" in rsp.value
+    assert "Deadlock cycles:" in rsp.value
+    assert "A <-> B" in rsp.value
+
+
+async def test_wait_graph_self_cycle_rendering(handlers):
+    """Pathological self-cycle (task waits on a primitive it itself
+    holds) — rendered with a (self-cycle) tag."""
+    _stub_evaluate(handlers, [
+        {
+            "name": "Solo", "state": "pending", "coro": "c", "stack": [],
+            "awaiting": "Lock.acquire", "awaiting_obj_id": 1,
+            "holders": ["Solo"],
+        },
+    ])
+    rsp = await handlers.action_wait_graph([])
+    assert rsp.success
+    assert "Solo (self-cycle)" in rsp.value
+
+
+async def test_wait_graph_in_dispatch_table(handlers):
+    """Verify the action is wired into the dispatch table — guards
+    against a future refactor accidentally dropping it."""
+    assert "wait_graph" in handlers.dispatch_table()
+    assert "wait_graph" in RpcHandlers.ACTIONS
+    assert "wait_graph" in RpcHandlers.ACTION_HELP

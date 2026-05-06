@@ -330,9 +330,15 @@ safe to leave in code paths that sometimes run headless.
 For programs using `asyncio`, the menu bar shows an **Async Tasks (N)** label with the count of
 active tasks (updated each time the program stops). Click it to open a full-screen modal:
 
-- **Left pane**: list of all tasks with name, state (pending/done/cancelled), and coroutine
+- **Left pane**: list of all tasks with name, state (pending/done/cancelled), awaiting
+  primitive (`Lock.acquire`, `Queue.get`, `asyncio.sleep`, …), and coroutine
 - **Right pane**: detail view with full stack trace and an expandable variable tree (same
 as the main Variables View) for the selected task
+- Press `g` to switch the right pane to the **wait graph** — a tree showing each blocked
+  task, the asyncio primitive it's parked on, and the task(s) holding that primitive.
+  Cycles (deadlocks) are highlighted in red both in the task table and as a "Deadlock
+  cycles" section at the top of the graph. Selecting a node in the tree highlights the
+  corresponding task in the table.
 - Navigate with arrow keys; press `r` to refresh, `Escape` to close
 
 RPC equivalents:
@@ -347,6 +353,11 @@ curl -s -X POST http://127.0.0.1:8150/rpc \
 curl -s -X POST http://127.0.0.1:8150/rpc \
   -H 'Content-Type: application/json' \
   -d '{"action":"inspect_task","params":["Task-1"]}'
+
+# Show wait graph and any deadlock cycles
+curl -s -X POST http://127.0.0.1:8150/rpc \
+  -H 'Content-Type: application/json' \
+  -d '{"action":"wait_graph","params":[]}'
 ```
 
 ### Thread Inspector
@@ -550,6 +561,7 @@ curl -s -X POST http://127.0.0.1:8150/rpc \
 | `inspect_process` | `["name_or_pid"]` | Inspect a specific child process |
 | `list_tasks` | `[]` | List all asyncio tasks |
 | `inspect_task` | `["task_name"]` | Inspect a specific asyncio task |
+| `wait_graph` | `[]` | Show wait graph + any deadlock cycles |
 | `restart` | `[]` | Restart session (preserves breakpoints) |
 | `quit` | `[]` | Shut down |
 

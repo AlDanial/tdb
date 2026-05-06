@@ -22,6 +22,8 @@ from tdb.inspection import (
     PROCESS_COLLECT_EXPR,
     TASK_COLLECT_EXPR,
     TASK_LOCALS_EXPR,
+    build_wait_graph,
+    find_cycles,
     parse_process_json,
     parse_task_json,
 )
@@ -114,6 +116,7 @@ class RpcHandlers:
         "inspect_process",
         "list_tasks",
         "inspect_task",
+        "wait_graph",
         "restart",
         "status",
         "quit",
@@ -142,6 +145,7 @@ class RpcHandlers:
         "inspect_process": 'params: ["name_or_pid"]  -- inspect a specific child process',
         "list_tasks": "params: []  -- list all asyncio tasks",
         "inspect_task": 'params: ["task_name"]  -- inspect a specific asyncio task',
+        "wait_graph": "params: []  -- show task wait-graph and any deadlock cycles",
         "restart": "params: []",
         "status": "params: []",
         "quit": "params: []",
@@ -204,6 +208,7 @@ class RpcHandlers:
             "inspect_process": self.action_inspect_process,
             "list_tasks": self.action_list_tasks,
             "inspect_task": self.action_inspect_task,
+            "wait_graph": self.action_wait_graph,
             "restart": self.action_restart,
             "status": self.action_status,
             "quit": self.action_quit,
@@ -509,6 +514,48 @@ class RpcHandlers:
         except Exception:
             lines.append("  (no variables — frame not available)")
         return RpcResponse.ok("\n".join(lines))
+
+    async def action_wait_graph(self, params: list[Any]) -> RpcResponse:
+        if self.controller.state.is_running:
+            return RpcResponse.error("Cannot compute wait graph while program is running")
+        if self.controller.state.is_terminated:
+            return RpcResponse.error("Program has terminated")
+        try:
+            raw = await self.controller.evaluate(TASK_COLLECT_EXPR)
+            tasks = parse_task_json(raw)
+        except Exception as e:
+            return RpcResponse.error(f"Failed to collect tasks: {e}")
+        if not tasks:
+            return RpcResponse.ok("No asyncio tasks found")
+
+        graph = build_wait_graph(tasks)
+        cycles = find_cycles(graph)
+        blocked = [t for t in tasks if t.awaiting is not None]
+
+        header = f"Wait graph: {len(tasks)} task(s), {len(blocked)} blocked"
+        if cycles:
+            header += f", {len(cycles)} deadlock cycle(s)"
+        lines: list[str] = [header, ""]
+
+        if blocked:
+            lines.append("Blocked tasks:")
+            for t in blocked:
+                holders_str = ", ".join(t.holders) if t.holders else "(no holder identified)"
+                lines.append(f"  {t.name}  ->  {t.awaiting}  (holders: {holders_str})")
+            lines.append("")
+        else:
+            lines.append("No blocked tasks")
+            lines.append("")
+
+        if cycles:
+            lines.append("Deadlock cycles:")
+            for cycle in cycles:
+                if len(cycle) == 1:
+                    lines.append(f"  - {cycle[0]} (self-cycle)")
+                else:
+                    lines.append(f"  - {' <-> '.join(cycle)}")
+
+        return RpcResponse.ok("\n".join(lines).rstrip())
 
     async def action_list_threads(self, params: list[Any]) -> RpcResponse:
         if self.controller.state.is_running:
