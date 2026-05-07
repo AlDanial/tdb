@@ -240,11 +240,34 @@ class _CodeContent(Static):
 class CodeView(ScrollableContainer, can_focus=True):
     """Source code viewer with breakpoint gutter and current-line highlighting."""
 
-    # Only keep non-printable key bindings; everything else goes through on_key
+    # Only keep non-printable key bindings; everything else goes through on_key.
+    # The c/n/s/p/t/b bindings below exist purely to surface their hints in
+    # the Footer when CodeView has focus and is in DEBUG mode — `_on_key`
+    # handles the actual dispatch (via KeybindingConfig) and stops the event
+    # before Textual's binding system would fire the no-op action methods.
+    # `check_action` hides them in NAVIGATION mode.
     BINDINGS = [
         Binding("pageup", "page_up", "Page Up", show=False),
         Binding("pagedown", "page_down", "Page Down", show=False),
+        # Each footer_hint_* targets a distinct action so Textual's Footer
+        # doesn't deduplicate them down to one.
+        Binding("c", "footer_hint_continue", "continue"),
+        Binding("n", "footer_hint_step_over", "step over"),
+        Binding("s", "footer_hint_step_in", "step in"),
+        Binding("p", "footer_hint_pause", "pause"),
+        Binding("t", "footer_hint_run_to", "run to"),
+        Binding("b", "footer_hint_breakpoint", "breakpoint"),
     ]
+
+    # Listed once so check_action and the no-op action methods stay in sync.
+    _FOOTER_HINT_ACTIONS = (
+        "footer_hint_continue",
+        "footer_hint_step_over",
+        "footer_hint_step_in",
+        "footer_hint_pause",
+        "footer_hint_run_to",
+        "footer_hint_breakpoint",
+    )
 
     DEFAULT_CSS = """
     CodeView {
@@ -329,6 +352,10 @@ class CodeView(ScrollableContainer, can_focus=True):
             else:
                 self.mode = Mode.DEBUG
             self.post_message(self.ModeChanged(self.mode))
+            # Footer caches per-focused-widget bindings; without this nudge
+            # the c/n/s/p/t/b hints stay visible after switching to NAVIGATION
+            # (or stay hidden after switching back to DEBUG).
+            self.app.refresh_bindings()
             event.stop()
             event.prevent_default()
             return
@@ -415,6 +442,26 @@ class CodeView(ScrollableContainer, can_focus=True):
             self.post_message(self.DebugAction("restart"))
         elif action == "quit":
             self.post_message(self.DebugAction("quit"))
+
+    # ---- Footer hint plumbing ----
+    # The action_footer_hint_* methods are no-op targets for the c/n/s/p/t/b
+    # BINDINGS. Real dispatch happens in `_on_key` via KeybindingConfig,
+    # which calls `event.stop()` so these never fire. The bindings exist
+    # only so the Footer can render their descriptions when CodeView has
+    # focus and is in DEBUG mode.
+
+    def action_footer_hint_continue(self) -> None: ...
+    def action_footer_hint_step_over(self) -> None: ...
+    def action_footer_hint_step_in(self) -> None: ...
+    def action_footer_hint_pause(self) -> None: ...
+    def action_footer_hint_run_to(self) -> None: ...
+    def action_footer_hint_breakpoint(self) -> None: ...
+
+    def check_action(self, action: str, parameters: tuple) -> bool | None:
+        """Hide the debug-key hints when CodeView is in NAVIGATION mode."""
+        if action in self._FOOTER_HINT_ACTIONS and self.mode != Mode.DEBUG:
+            return None
+        return True
 
     # ---- Paragraph movement ----
 

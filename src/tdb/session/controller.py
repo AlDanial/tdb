@@ -271,7 +271,12 @@ class DebugController:
         if not response.success:
             raise Exception(f"Launch failed: {response.message}")
 
-        self.state.transition_to(SessionPhase.RUNNING)
+        # Don't clobber STOPPED: in remote-attach (tdb.breakpoint()) the
+        # debuggee may already be paused at the hook by the time configuration
+        # finishes, and `_on_stopped` will have set phase=STOPPED before this
+        # line runs.
+        if self.state.phase == SessionPhase.NOT_STARTED:
+            self.state.transition_to(SessionPhase.RUNNING)
 
     async def stop(self) -> None:
         for pid, child in list(self._child_clients.items()):

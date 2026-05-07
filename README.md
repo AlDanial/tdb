@@ -83,7 +83,7 @@ tdb --python /path/to/venv/bin/python my_script.py
 tdb --no-stop-on-entry my_script.py
 
 > **Note:** Avoid `argparse` confusion by separating `tdb` switches from
-> the debuggee's switches by prefixing the debugee with `--`.
+> the debuggee's switches by prefixing the debuggee with `--`.
 
 # `--` separates tdb's switches from the debuggee's switches
 tdb --python /path/to/venv/bin/python -- my_script.py -f 17 --max 23.3
@@ -316,7 +316,7 @@ all work normally; quitting `tdb` (`Ctrl+Q`) detaches without killing the progra
 debugpy auto-resumes any threads still paused.
 
 This differs from `tdb.exception_hook` in one way:
-- **Requires `debugpy`** as a runtime dependency for the debugee (only imported when the hook actually fires).
+- **Requires `debugpy`** as a runtime dependency for the debuggee (only imported when the hook actually fires).
 
 Unlike the exception hook (which works on a frozen snapshot), the breakpoint hook leaves
 the interpreter live: variable inspection reads real objects, and stepping/`continue`
@@ -456,7 +456,7 @@ source file when the program stops.
 
 Some Python programs, notably text user interfaces, make heavy use of terminal control
 codes and require direct access to the terminal to function properly. 
-Such programs can be debugged with `tdb` by having it launch the debugee in
+Such programs can be debugged with `tdb` by having it launch the debuggee in
 a separate terminal:
 
 ```bash

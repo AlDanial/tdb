@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
+from tdb import breakpoint
 
 """
-A program full of bugs to useful to test various tdb features.
+A program full of bugs.  Useful for exercising various tdb features.
 
 Bug 1: Dictionary size changed during iteration
     Location: convert_ty_yt.py, line  'del data[key]'
@@ -61,6 +62,7 @@ def main():
         sys.exit(1)
 
     print(f"Step 1: Converting {input_file} to YAML...")
+    breakpoint()
     yaml_file = convert_toml_to_yaml(input_file)
     print(f"Success! Created {yaml_file}")
 

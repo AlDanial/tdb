@@ -1,0 +1,1 @@
+- running a program with `tdb.breakpoint()` does not exit cleanly after hiting the breakpoint and exiting with q q, have to hit ctrl-c and afterwards the terminal is messed up
