@@ -62,6 +62,29 @@ def exception_hook(
         log.exception("tdb.exception_hook: snapshot failed")
         return
 
+    # If the program also used tdb.breakpoint() and the user just quit that
+    # session, the live tdb subprocess may still be tearing down its TUI
+    # (alt-screen exit, cursor restore, etc.) when this hook fires. Spawning
+    # the post-mortem TUI now would have two full-screen tdb processes
+    # rendering to the same tty — they race on output and on the user's
+    # keystrokes, leaving the terminal corrupted. Wait for the live tdb to
+    # finish exiting first. The wait is bounded so a still-attached tdb
+    # (user pressed `c` past the exception instead of quitting) doesn't
+    # block the post-mortem indefinitely.
+    try:
+        from tdb.breakpoint_hook import _subprocess as _bp_proc
+        if _bp_proc is not None and _bp_proc.poll() is None:
+            try:
+                _bp_proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                log.warning(
+                    "tdb.exception_hook: live tdb.breakpoint() subprocess "
+                    "still running after 10s — proceeding with post-mortem "
+                    "anyway; the terminal display may be corrupted."
+                )
+    except Exception:
+        log.exception("tdb.exception_hook: error checking breakpoint subprocess")
+
     fd, path = tempfile.mkstemp(prefix="tdb-postmortem-", suffix=".json")
     try:
         with os.fdopen(fd, "w") as f:
