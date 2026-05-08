@@ -118,3 +118,29 @@ def test_doc_flag_default_false(tmp_path):
     prog.write_text("\n")
     args = parse_args([str(prog)])
     assert args.doc is False
+
+
+def test_doc_text_flag_short_circuits_program_check():
+    """--doc-text prints the README to stdout; no program needed."""
+    args = parse_args(["--doc-text"])
+    assert args.doc_text is True
+    assert args.program is None
+
+
+def test_doc_text_flag_default_false(tmp_path):
+    prog = tmp_path / "x.py"
+    prog.write_text("\n")
+    args = parse_args([str(prog)])
+    assert args.doc_text is False
+
+
+def test_doc_text_renders_to_stdout(capsys):
+    """End-to-end: _run_doc_text writes the rendered README to stdout."""
+    from tdb.cli import _run_doc_text
+    _run_doc_text()
+    out = capsys.readouterr().out
+    # README starts with the project title — should be visible after Rich
+    # renders the markdown (centred or otherwise, but the text is there).
+    assert "textual-debugger" in out
+    # And tables in the README produce box-drawing characters.
+    assert "─" in out or "━" in out

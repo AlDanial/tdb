@@ -104,6 +104,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Display README.md in a markdown viewer and exit (no program needed)",
     )
+    parser.add_argument(
+        "--doc-text",
+        action="store_true",
+        help="Print README.md to stdout as wrapped plain text and exit "
+             "(useful for `tdb --doc-text | less`, piping to a file, etc.)",
+    )
 
     args = parser.parse_args(argv)
     args.stop_on_entry = not args.no_stop_on_entry
@@ -112,8 +118,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     if args.headless:
         args.server = True
 
-    # --doc and --post-mortem short-circuit everything else: no program needed.
-    if args.doc or args.post_mortem:
+    # --doc, --doc-text, and --post-mortem short-circuit everything else:
+    # no program needed.
+    if args.doc or args.doc_text or args.post_mortem:
         return args
 
     # Parse --remote-attach into (host, port)
@@ -181,6 +188,8 @@ def main(argv: list[str] | None = None) -> None:
 
     if args.doc:
         _run_doc()
+    elif args.doc_text:
+        _run_doc_text()
     elif args.post_mortem:
         _run_post_mortem(args)
     elif args.headless:
@@ -214,6 +223,37 @@ def _run_doc() -> None:
             yield Footer()
 
     _DocApp().run()
+
+
+def _run_doc_text() -> None:
+    """Render the bundled README.md to stdout as wrapped plain text.
+
+    Uses Rich's Markdown renderer so headings, lists, code blocks, and
+    tables come out nicely formatted (boxed tables, indented code, etc.)
+    and word-wrapped to the terminal width — pipe-friendly for `less`
+    or redirection to a file.
+    """
+    import shutil
+    from tdb.app_helpers import find_readme
+
+    readme = find_readme()
+    if readme is None:
+        print("README.md not found in the installation.", file=sys.stderr)
+        sys.exit(1)
+
+    from rich.console import Console
+    from rich.markdown import Markdown
+
+    # When stdout is a tty, wrap to its width (capped so very wide
+    # terminals don't end up with ragged-looking long paragraphs); when
+    # piped to a file or pager, use a fixed reasonable width.
+    if sys.stdout.isatty():
+        cols = shutil.get_terminal_size((100, 24)).columns
+        width = min(cols, 100)
+    else:
+        width = 100
+
+    Console(width=width).print(Markdown(readme))
 
 
 def _run_post_mortem(args: argparse.Namespace) -> None:
