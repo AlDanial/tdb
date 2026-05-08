@@ -1124,6 +1124,79 @@ class TdbApp(App):
             self._uvicorn_server.should_exit = True
         self.exit()
 
+    # Threshold for what counts as a "render frame" vs a "control sequence"
+    # in the writer thread's queue. Restoration sequences from
+    # `stop_application_mode` (alt-screen exit, cursor restore, etc.) are
+    # all short (≤ 8 bytes); render frames are typically thousands of bytes.
+    _DRAIN_BYTES_KEEP_BELOW = 64
+
+    def _drain_writer_queue_fast(self) -> int:
+        """Discard queued render frames from the writer thread.
+
+        Returns the number of frames dropped (for tests).
+
+        Why: at quit time Textual's writer thread can have ~25 queued render
+        frames waiting to be flushed to the pty, with the alt-screen-exit
+        sequence at the *end* of that backlog. The writer drains FIFO, so
+        the user's terminal stays in alt-screen mode while every queued
+        frame is written through — on a busy or slow pty that's many
+        seconds. Tdb appears to "close" (no longer rendering) but its
+        process keeps running, the terminal stays unresponsive, and the
+        user has to Ctrl+C to recover.
+
+        Those queued frames would all be over-painted by the
+        alt-screen-exit anyway, so dropping them is purely cosmetic and
+        lets the writer thread join in milliseconds instead.
+        """
+        driver = self._driver
+        if driver is None:
+            return 0
+        wt = getattr(driver, "_writer_thread", None)
+        if wt is None:
+            return 0
+        q = wt._queue
+        items: list = []
+        try:
+            while True:
+                items.append(q.get_nowait())
+        except Exception:
+            pass  # queue empty
+        kept: list = []
+        dropped = 0
+        for item in items:
+            if item is None or len(item) <= self._DRAIN_BYTES_KEEP_BELOW:
+                kept.append(item)
+            else:
+                dropped += 1
+        for item in kept:
+            try:
+                q.put_nowait(item)
+            except Exception:
+                break
+        return dropped
+
+    async def _shutdown(self) -> None:
+        # Replicate Textual's App._shutdown but slip
+        # `_drain_writer_queue_fast` in just before `driver.close()` so the
+        # writer thread doesn't have to flush a backlog of render frames
+        # through a slow pty before joining. See _drain_writer_queue_fast.
+        from textual import events as _evts
+        self._begin_batch()
+        driver = self._driver
+        self._running = False
+        if driver is not None:
+            driver.disable_input()
+        await self._close_all()
+        await self._close_messages()
+        await self._dispatch_message(_evts.Unmount())
+        self._drain_writer_queue_fast()
+        if self._driver is not None:
+            self._driver.close()
+        self._nodes._clear()
+        if self.devtools is not None and self.devtools.is_connected:
+            await self._disconnect_devtools()
+        self._print_error_renderables()
+
     def action_confirm_quit(self) -> None:
         if isinstance(self.screen, _QuitConfirmModal):
             return
