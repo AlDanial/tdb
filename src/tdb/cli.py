@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import shutil
 import sys
 from pathlib import Path
 
@@ -137,6 +138,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     # no program needed.
     if args.doc or args.doc_text or args.post_mortem:
         return args
+
+    # The terminal-choice names match their executable names — see
+    # _TERMINAL_SPECS in tdb/session/controller.py.
+    if args.terminal and not shutil.which(args.terminal):
+        parser.error(
+            f"--terminal {args.terminal!r}: executable not found on PATH. "
+            f"Install {args.terminal} or pick a different --terminal."
+        )
 
     # Parse --remote-attach into (host, port)
     args.attach_host = None

@@ -108,6 +108,22 @@ def test_breakpoint_invalid_format(tmp_path):
         parse_args([str(prog), "-k", "nocolon"])
 
 
+def test_terminal_missing_executable_errors(tmp_path, monkeypatch):
+    prog = tmp_path / "x.py"
+    prog.write_text("\n")
+    monkeypatch.setattr("shutil.which", lambda _name: None)
+    with pytest.raises(SystemExit):
+        parse_args([str(prog), "--terminal", "xterm"])
+
+
+def test_terminal_present_passes(tmp_path, monkeypatch):
+    prog = tmp_path / "x.py"
+    prog.write_text("\n")
+    monkeypatch.setattr("shutil.which", lambda name: f"/usr/bin/{name}")
+    args = parse_args([str(prog), "--terminal", "xterm"])
+    assert args.terminal == "xterm"
+
+
 def test_headless_implies_server(tmp_path):
     prog = tmp_path / "x.py"
     prog.write_text("\n")
