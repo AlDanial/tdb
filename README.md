@@ -19,7 +19,7 @@ MIT License.  Copyright 2026 by Al Danial.
 
 - supports debugging of synchronous, asynchronous, multi-threaded, and multi-process Python code.
 It specifically supports modules
-    - `asyncio` (with a built-in async task inspector)
+    - `asyncio` (with a built-in async task inspector and task wait graph)
     - `threading` (with a thread inspector)
     - `multiprocessing` / `concurrent.futures` (with automatic child process attachment and a process inspector)
 
@@ -70,23 +70,36 @@ uv pip install textual-debugger
 ## Quick Start
 
 ```bash
-# Debug a script (stops at first line by default)
+# show comprehensive documentation in a terminal-based Markdown viewer
+tdb --doc
+
+# debug a script (stops at first line by default)
 tdb my_script.py
 
-# Debug with arguments
+# debug with arguments
 tdb my_script.py arg1 arg2
 
-# Use a specific virtualenv
+# add breakpoints at lines 20 and 35 of `my_script.py` and line 14 of `module.py`
+tdb -k 20 -k 35 -k module.py:14 my_script.py arg1 arg2
+
+# use a specific virtualenv
 tdb --python /path/to/venv/bin/python my_script.py
 
-# Don't stop on entry; run until first breakpoint or exit
+# step into, or stop at tracebacks in library code
+tdb --no-just-my-code /path/to/venv/bin/python my_script.py
+
+# run until first breakpoint or exit
 tdb --no-stop-on-entry my_script.py
 
-> **Note:** Avoid `argparse` confusion by separating `tdb` switches from
-> the debuggee's switches by prefixing the debuggee with `--`.
+# run the debuggee in an external terminal
+tdb --terminal xterm my_script.py
 
-# `--` separates tdb's switches from the debuggee's switches
-tdb --python /path/to/venv/bin/python -- my_script.py -f 17 --max 23.3
+# attach to a remote Python program that has a debugpy server on port 5678
+tdb -r remotehost:5678 my_script.py
+
+> prevent `argparse` confusion by separating `tdb` switches from
+> the debuggee switches by prefixing the debuggee with `--`.
+tdb --python /path/to/venv/bin/python -- my_script.py -k 17 --max 23.3
 ```
 
 Or use the module entry point:

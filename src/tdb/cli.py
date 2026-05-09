@@ -7,10 +7,24 @@ import sys
 from pathlib import Path
 
 
+def _get_version() -> str:
+    try:
+        from importlib.metadata import version
+        return version("textual-debugger")
+    except Exception:
+        from tdb import __version__
+        return __version__
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="tdb",
         description="TUI Python Debugger",
+    )
+    parser.add_argument(
+        "-v", "--version",
+        action="version",
+        version=f"tdb {_get_version()}",
     )
     parser.add_argument(
         "-r", "--remote-attach",
@@ -84,8 +98,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "-k", "--breakpoint",
         action="append",
         default=[],
-        metavar="FILE:LINE",
-        help="Set a breakpoint at FILE:LINE (may be repeated)",
+        metavar="FILE:LINE|LINE",
+        help="Set a breakpoint at FILE:LINE, or just LINE for the program "
+             "being debugged (may be repeated)",
     )
     parser.add_argument(
         "--server-port",
@@ -150,20 +165,34 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             parser.error(f"File not found: {args.program}")
         args.program = str(program_path)
 
-    # Parse -k / --breakpoint specs into (resolved_path, line) tuples
+    # Parse -k / --breakpoint specs into (resolved_path, line) tuples.
+    # Two accepted forms: "FILE:LINE", or bare "LINE" — the latter targets
+    # the program being debugged.
     parsed_bps: list[tuple[str, int]] = []
     for spec in args.breakpoint:
-        if ":" not in spec:
-            parser.error(f"Invalid breakpoint format (expected FILE:LINE): {spec}")
-        file_part, line_part = spec.rsplit(":", 1)
-        try:
-            line = int(line_part)
-        except ValueError:
-            parser.error(f"Invalid line number in breakpoint: {spec}")
-        bp_path = Path(file_part).resolve()
-        if not bp_path.is_file():
-            parser.error(f"Breakpoint file not found: {file_part}")
-        parsed_bps.append((str(bp_path), line))
+        if ":" in spec:
+            file_part, line_part = spec.rsplit(":", 1)
+            try:
+                line = int(line_part)
+            except ValueError:
+                parser.error(f"Invalid line number in breakpoint: {spec}")
+            bp_path = Path(file_part).resolve()
+            if not bp_path.is_file():
+                parser.error(f"Breakpoint file not found: {file_part}")
+            parsed_bps.append((str(bp_path), line))
+        else:
+            try:
+                line = int(spec)
+            except ValueError:
+                parser.error(
+                    f"Invalid breakpoint (expected FILE:LINE or LINE): {spec}"
+                )
+            if not args.program:
+                parser.error(
+                    f"Bare-line breakpoint -k {spec} requires a program "
+                    "(not allowed with --remote-attach)"
+                )
+            parsed_bps.append((args.program, line))
     args.breakpoint = parsed_bps
 
     return args

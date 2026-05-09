@@ -66,6 +66,34 @@ def test_breakpoints_parsed(tmp_path):
     ]
 
 
+def test_breakpoint_bare_line_targets_program(tmp_path):
+    prog = tmp_path / "x.py"
+    prog.write_text("print('hi')\n")
+    args = parse_args([str(prog), "-k", "5", "-k", "12"])
+    assert args.breakpoint == [
+        (str(prog.resolve()), 5),
+        (str(prog.resolve()), 12),
+    ]
+
+
+def test_breakpoint_bare_and_file_line_mix(tmp_path):
+    prog = tmp_path / "x.py"
+    prog.write_text("print('hi')\n")
+    other = tmp_path / "y.py"
+    other.write_text("print('y')\n")
+    args = parse_args([str(prog), "-k", "7", "-k", f"{other}:3"])
+    assert args.breakpoint == [
+        (str(prog.resolve()), 7),
+        (str(other.resolve()), 3),
+    ]
+
+
+def test_breakpoint_bare_line_requires_program():
+    # Remote-attach has no program — bare-line breakpoint must error.
+    with pytest.raises(SystemExit):
+        parse_args(["--remote-attach", "5678", "-k", "10"])
+
+
 def test_breakpoint_missing_file(tmp_path):
     prog = tmp_path / "x.py"
     prog.write_text("\n")
@@ -132,6 +160,22 @@ def test_doc_text_flag_default_false(tmp_path):
     prog.write_text("\n")
     args = parse_args([str(prog)])
     assert args.doc_text is False
+
+
+def test_version_flag_prints_and_exits(capsys):
+    with pytest.raises(SystemExit) as exc:
+        parse_args(["--version"])
+    assert exc.value.code == 0
+    out = capsys.readouterr().out
+    assert out.startswith("tdb ")
+
+
+def test_version_short_form(capsys):
+    with pytest.raises(SystemExit) as exc:
+        parse_args(["-v"])
+    assert exc.value.code == 0
+    out = capsys.readouterr().out
+    assert out.startswith("tdb ")
 
 
 def test_doc_text_renders_to_stdout(capsys):

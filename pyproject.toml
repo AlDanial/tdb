@@ -1,6 +1,6 @@
   [project]
   name = "textual-debugger"
-  version = "0.0.3"
+  dynamic = ["version"]
   description = "A TUI Python debugger based on textual and debugpy"
   readme = "README.md"
   requires-python = ">=3.10"
@@ -47,6 +47,9 @@
   [build-system]
   requires = ["setuptools>=68.0"]
   build-backend = "setuptools.build_meta"
+
+  [tool.setuptools.dynamic]
+  version = {attr = "tdb.__version__"}
 
   [tool.setuptools.packages.find]
   where = ["src"]

@@ -2,3 +2,6 @@ __pycache__
 uv.lock
 htmlcov/
 .coverage
+build/
+docs/
+src/textual_debugger.egg-info/
