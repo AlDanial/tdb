@@ -1,6 +1,6 @@
   [project]
   name = "textual-debugger"
-  version = "0.0.2"
+  version = "0.0.3"
   description = "A TUI Python debugger based on textual and debugpy"
   readme = "README.md"
   requires-python = ">=3.10"
@@ -50,6 +50,9 @@
 
   [tool.setuptools.packages.find]
   where = ["src"]
+
+  [tool.setuptools.package-data]
+  tdb = ["README.md"]
 
   [tool.pytest.ini_options]
   testpaths = ["tests"]
