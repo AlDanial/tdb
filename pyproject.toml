@@ -29,7 +29,7 @@
 
   # extras needed to run the examples and tests
   [project.optional-dependencies]
-  dev = ["pytest", "pytest-asyncio", "httpx",
+  dev = ["pytest", "pytest-cov", "pytest-asyncio", "httpx",
          "matplotlib",
          "pyyaml",
          "toml",
@@ -57,6 +57,25 @@
   [tool.pytest.ini_options]
   testpaths = ["tests"]
   asyncio_mode = "auto"
+  addopts = "--cov=tdb --cov-report=term-missing"
   filterwarnings = [
       "ignore::DeprecationWarning",
   ]
+
+  [tool.coverage.run]
+  source = ["src/tdb"]
+  branch = true
+  omit = [
+      "*/tests/*",
+      "src/tdb/__main__.py",
+  ]
+
+  [tool.coverage.report]
+  exclude_lines = [
+      "pragma: no cover",
+      "raise NotImplementedError",
+      "if TYPE_CHECKING:",
+      "if __name__ == .__main__.:",
+  ]
+  show_missing = true
+  skip_covered = false
