@@ -20,7 +20,7 @@ def _get_version() -> str:
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="tdb",
-        description="TUI Python Debugger",
+        description="A Python debugger built with textual and debugpy.",
     )
     parser.add_argument(
         "-v", "--version",

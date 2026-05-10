@@ -41,7 +41,7 @@ def main():
         child.send("\r")
         try:
             # README content-specific string
-            child.expect("TUI Python Debugger", timeout=10)
+            child.expect("A Python debugger built with textual and debugpy.", timeout=10)
             print("  OK: Documentation modal opened with rendered README.")
         except pexpect.exceptions.TIMEOUT:
             print("  FAIL: Documentation modal did not open")

@@ -1,4 +1,4 @@
-# `textual-debugger`
+# `textual-debugger` version 0.0.4 2026-05-10
 
 `textual-debugger` (the package) provides `tdb` (the command-line tool and module),
 a full-featured terminal-based Python debugger.
@@ -64,6 +64,12 @@ or (better):
 
 ```bash
 uv pip install textual-debugger
+```
+
+or run it without installing:
+
+```
+uvx --from textual-debugger tdb
 ```
 
 
@@ -454,7 +460,7 @@ This example assumes the debuggee runs on 192.168.1.10 and listens on port 5678:
 
 ```bash
 # Attach from tdb:
-tdb -r 5678
+tdb -r 5678   # to localhost
 tdb -r 192.168.1.10:5678
 
 # With breakpoints:
@@ -592,18 +598,19 @@ Each is JSON with `event`, `data`, and `timestamp` fields.
 ## CLI Reference
 
 ```
-usage: tdb [-h] [-r [HOST:]PORT] [-k FILE:LINE] [--cwd CWD]
-           [--no-stop-on-entry] [--no-just-my-code] [--no-subprocess]
-           [--python PYTHON] [--keybindings {default,vim,emacs}]
+usage: tdb [-h] [-v/--version] [-r [HOST:]PORT] [--cwd CWD] [--no-stop-on-entry]
+           [--no-just-my-code] [--no-subprocess] [--python PYTHON]
+           [-d/--doc] [--doc-text] [--keybindings {default,vim,emacs}]
            [--terminal {xterm,konsole,gnome-terminal,ghostty,kitty,iterm2,warp,wezterm,terminator}]
-           [--server] [--headless] [--server-port PORT]
+           [--server] [--headless] [-k FILE:LINE|LINE] [--server-port SERVER_PORT]
            [program] [args ...]
+
 ```
 
 | Flag | Description |
 |------|-------------|
 | `-r`, `--remote-attach HOST:PORT` | Attach to a remote debugpy server |
-| `-k`, `--breakpoint FILE:LINE` | Set a breakpoint (may be repeated) |
+| `-k`, `--breakpoint FILE:LINE|LINE` | Set a breakpoint (may be repeated) |
 | `--no-stop-on-entry` | Do not pause at the first line (default: stop on entry) |
 | `--cwd DIR` | Working directory for the debuggee |
 | `--python PATH` | Python interpreter for the debuggee |
