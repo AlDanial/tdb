@@ -59,6 +59,7 @@ as open source.
   <img src="https://github.com/AlDanial/tdb/blob/main/gallery/async_breakpoint.png" alt="at breakpoint" width="300">
   <img src="https://github.com/AlDanial/tdb/blob/main/gallery/async_task_graph.png" alt="task graph" width="300">
   <img src="https://github.com/AlDanial/tdb/blob/main/gallery/multiprocessing_process_3.png" alt="multiple processes" width="300">
+  <img src="https://github.com/AlDanial/tdb/blob/main/gallery/threading_list.png" alt="thread list" width="300">
 </p>
 
 ## Installation
