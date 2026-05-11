@@ -32,7 +32,7 @@ automated, headless debugging workflows and AI-assisted debugging
 built with `textual`, `prompt-toolkit`, `urwid`, `curses`, `rich`, and so on
 
 - comes with a post-mortem exception hook that can be installed in Python programs
-to have the debugger pop open automatically at the first uncaught exception
+to have `tdb` pop open automatically at the first uncaught exception
 
 - can be entirely keyboard-driven
 making it suitable for operation in non-graphical environments (mouse support is
@@ -54,6 +54,13 @@ as open source.
 [Claude for Open Source](https://claude.com/contact-sales/claude-for-oss) program.
 `tdb` was made almost entirely with Claude Code.
 
+## Gallery
+<p align="center">
+  <img src="https://github.com/AlDanial/tdb/blob/main/gallery/async_breakpoint.png" alt="at breakpoint" width="300">
+  <img src="https://github.com/AlDanial/tdb/blob/main/gallery/async_task_graph.png" alt="task graph" width="300">
+  <img src="https://github.com/AlDanial/tdb/blob/main/gallery/multiprocessing_process_3.png" alt="multiple processes" width="300">
+</p>
+
 ## Installation
 
 ```bash
@@ -69,7 +76,7 @@ uv pip install textual-debugger
 or run it without installing:
 
 ```
-uvx --from textual-debugger tdb
+uvx --from textual-debugger tdb  my_program.py
 ```
 
 
@@ -80,38 +87,38 @@ uvx --from textual-debugger tdb
 tdb --doc
 
 # debug a script (stops at first line by default)
-tdb my_script.py
+tdb my_program.py
 
 # debug with arguments
-tdb my_script.py arg1 arg2
+tdb my_program.py arg1 arg2
 
-# add breakpoints at lines 20 and 35 of `my_script.py` and line 14 of `module.py`
-tdb -k 20 -k 35 -k module.py:14 my_script.py arg1 arg2
+# add breakpoints at lines 20 and 35 of `my_program.py` and line 14 of `module.py`
+tdb -k 20 -k 35 -k module.py:14 my_program.py arg1 arg2
 
 # use a specific virtualenv
-tdb --python /path/to/venv/bin/python my_script.py
+tdb --python /path/to/venv/bin/python my_program.py
 
 # step into, or stop at tracebacks in library code
-tdb --no-just-my-code /path/to/venv/bin/python my_script.py
+tdb --no-just-my-code /path/to/venv/bin/python my_program.py
 
 # run until first breakpoint or exit
-tdb --no-stop-on-entry my_script.py
+tdb --no-stop-on-entry my_program.py
 
 # run the debuggee in an external terminal
-tdb --terminal xterm my_script.py
+tdb --terminal xterm my_program.py
 
 # attach to a remote Python program that has a debugpy server on port 5678
-tdb -r remotehost:5678 my_script.py
+tdb -r remotehost:5678 my_program.py
 
-> prevent `argparse` confusion by separating `tdb` switches from
-> the debuggee switches by prefixing the debuggee with `--`.
-tdb --python /path/to/venv/bin/python -- my_script.py -k 17 --max 23.3
+# prevent `argparse` confusion by separating `tdb` switches from
+# the debuggee switches by prefixing the debuggee with `--`
+tdb --python /path/to/venv/bin/python -- my_program.py -k 17 --max 23.3
 ```
 
-Or use the module entry point:
+Alternatively, use the module entry point:
 
 ```bash
-python -m tdb my_script.py
+python -m tdb my_program.py
 ```
 
 ## Layout
@@ -464,7 +471,7 @@ tdb -r 5678   # to localhost
 tdb -r 192.168.1.10:5678
 
 # With breakpoints:
-tdb -r 5678 -k my_script.py:42
+tdb -r 5678 -k my_program.py:42
 ```
 
 All debugging features (breakpoints, stepping, variable inspection, threads, processes,
@@ -492,9 +499,9 @@ This feature only works in graphical environments where external terminals are a
 ### Keybinding Schemes
 
 ```bash
-tdb --keybindings vim my_script.py    # default
-tdb --keybindings emacs my_script.py
-tdb --keybindings default my_script.py
+tdb --keybindings vim my_program.py    # default
+tdb --keybindings emacs my_program.py
+tdb --keybindings default my_program.py
 ```
 
 The keybinding choice is saved to `~/.config/tdb/config.json` and remembered for subsequent
@@ -508,7 +515,7 @@ debugging, CI pipelines, or AI-assisted debugging workflows.
 ### Headless Mode (no TUI)
 
 ```bash
-python -m tdb --headless my_script.py &
+python -m tdb --headless my_program.py &
 ```
 
 The server listens on `http://127.0.0.1:8150/rpc` (change with `--server-port`).
@@ -516,7 +523,7 @@ The server listens on `http://127.0.0.1:8150/rpc` (change with `--server-port`).
 ### Dual Mode (TUI + server)
 
 ```bash
-tdb --server my_script.py
+tdb --server my_program.py
 ```
 
 Both the interactive TUI and the JSON-RPC server run simultaneously.
