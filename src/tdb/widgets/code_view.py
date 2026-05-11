@@ -374,27 +374,33 @@ class CodeView(ScrollableContainer, can_focus=True):
             self._count_buf = ""
             return  # let event propagate normally
 
+        had_count = bool(self._count_buf)
         count = int(self._count_buf) if self._count_buf else 1
         self._count_buf = ""
 
-        self._dispatch_action(action, count)
+        self._dispatch_action(action, count, had_count)
         event.stop()
         event.prevent_default()
 
-    def _dispatch_action(self, action: str, count: int) -> None:
-        """Execute an action with the given repeat count."""
+    def _dispatch_action(self, action: str, count: int, had_count: bool = False) -> None:
+        """Execute an action with the given repeat count.
+
+        `had_count` distinguishes "no prefix typed" from "1 typed" — only
+        `goto_end` (vim `G`) needs this: bare `G` goes to EOF, `NG` jumps
+        to line N.
+        """
         if action == "cursor_up":
             self.cursor_line = max(1, self.cursor_line - count)
         elif action == "cursor_down":
             self.cursor_line = min(len(self._lines) or 1, self.cursor_line + count)
-        elif action == "goto_line":
-            if self._lines:
-                self.cursor_line = max(1, min(count, len(self._lines)))
         elif action == "goto_line_prompt":
             self._open_goto_line()
         elif action == "goto_end":
             if self._lines:
-                self.cursor_line = len(self._lines)
+                if had_count:
+                    self.cursor_line = max(1, min(count, len(self._lines)))
+                else:
+                    self.cursor_line = len(self._lines)
         elif action == "goto_home":
             self.cursor_line = 1
         elif action == "page_up":

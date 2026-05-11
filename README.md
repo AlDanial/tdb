@@ -1,4 +1,4 @@
-# `textual-debugger` version 0.0.4 2026-05-10
+# `textual-debugger`
 
 `textual-debugger` (the package) provides `tdb` (the command-line tool and module),
 a full-featured terminal-based Python debugger.
@@ -140,6 +140,10 @@ python -m tdb my_program.py
 ├─ Footer (keybindings) ────────────────────────────────┤
 └───────────────────────────────────────────────────────┘
 ```
+
+The status bar shows the current execution state (running, paused,
+breakpoint hit) and location.
+The footer shows the most relevant keybindings for the current mode.
 
 ## Features
 

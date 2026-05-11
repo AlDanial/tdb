@@ -62,6 +62,32 @@ def test_format_bindings_returns_pairs():
     cfg = KeybindingConfig.from_scheme("vim")
     nav_pairs = cfg.format_bindings(Mode.NAVIGATION)
     assert all(isinstance(p, tuple) and len(p) == 2 for p in nav_pairs)
-    # The vim "Ng" hint should show up via the goto_line action.
+    # The vim "NG" hint should show up via the goto_end action.
     displays = {d for d, _ in nav_pairs}
-    assert "[N]g" in displays
+    assert "[N]G" in displays
+
+
+def test_lowercase_g_unbound_in_vim_nav():
+    """Lowercase `g` was removed (only `G` / `NG` are bound) — confirm."""
+    cfg = KeybindingConfig.from_scheme("vim")
+    assert cfg.lookup(Mode.NAVIGATION, "g") is None
+
+
+def test_vim_ctrl_f_b_page_motions():
+    """Vim's classic Ctrl-F / Ctrl-B page motions are bound in nav mode."""
+    cfg = KeybindingConfig.from_scheme("vim")
+    assert cfg.lookup(Mode.NAVIGATION, "ctrl+f") == "page_down"
+    assert cfg.lookup(Mode.NAVIGATION, "ctrl+b") == "page_up"
+    # DEBUG mode does not bind them — ctrl+b falls through to the app
+    # binding (focus_breakpoints). ctrl+f is unbound app-wide so it's
+    # silently dropped.
+    assert cfg.lookup(Mode.DEBUG, "ctrl+f") is None
+    assert cfg.lookup(Mode.DEBUG, "ctrl+b") is None
+
+
+def test_emacs_ctrl_f_b_page_motions():
+    """Emacs scheme: ctrl+b really maps to page_up (was previously
+    misnamed `ctrl+b_emacs` and never matched real keypresses)."""
+    cfg = KeybindingConfig.from_scheme("emacs")
+    assert cfg.lookup(Mode.NAVIGATION, "ctrl+f") == "page_down"
+    assert cfg.lookup(Mode.NAVIGATION, "ctrl+b") == "page_up"

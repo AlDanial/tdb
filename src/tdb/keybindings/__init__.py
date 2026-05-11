@@ -1,7 +1,7 @@
 """Keybinding configuration for tdb.
 
 Two modes:
-  - NAVIGATION: vim-style movement with optional count prefix (e.g. 5j, 12g, G)
+  - NAVIGATION: vim-style movement with optional count prefix (e.g. 5j, 12G)
   - DEBUG: single-key debug commands (n, s, o, c, b, p, t)
 
 ESC toggles between modes (when CodeView has focus).
@@ -19,10 +19,11 @@ class Mode(Enum):
 
 
 _VIM_NAV = {
-    "g": "goto_line",           # Ng = jump to line N
-    "G": "goto_end",            # G = jump to end of file
+    "G": "goto_end",            # G = jump to end of file, NG = jump to line N
     "k": "cursor_up",           # k / Nk = move cursor up
     "j": "cursor_down",         # j / Nj = move cursor down
+    "ctrl+f": "page_down",      # Ctrl+F = page forward (vim convention)
+    "ctrl+b": "page_up",        # Ctrl+B = page back    (vim convention)
     "right_square_bracket": "paragraph_down",  # ]
     "left_square_bracket": "paragraph_up",     # [
     "slash": "search",                # /
@@ -37,7 +38,7 @@ _EMACS_NAV = {
     "ctrl+n": "cursor_down",
     "ctrl+p": "cursor_up",
     "ctrl+f": "page_down",
-    "ctrl+b_emacs": "page_up",
+    "ctrl+b": "page_up",
     "ctrl+a": "goto_home",
     "ctrl+end": "goto_end",
     "ctrl+s_search": "search",
@@ -125,9 +126,8 @@ class KeybindingConfig:
     def format_bindings(self, mode: Mode) -> list[tuple[str, str]]:
         """Return (key_display, description) pairs for display."""
         ACTION_LABELS = {
-            "goto_line": "Go to line N",
             "goto_line_prompt": "Go to line (prompt)",
-            "goto_end": "Go to end of file",
+            "goto_end": "Go to end of file (NG = line N)",
             "goto_home": "Go to start of file",
             "cursor_up": "Move cursor up",
             "cursor_down": "Move cursor down",
@@ -165,7 +165,7 @@ class KeybindingConfig:
             "ctrl+n": "Ctrl+N",
             "ctrl+p": "Ctrl+P",
             "ctrl+f": "Ctrl+F",
-            "ctrl+b_emacs": "Ctrl+B",
+            "ctrl+b": "Ctrl+B",
             "ctrl+a": "Ctrl+A",
             "ctrl+end": "Ctrl+End",
             "ctrl+s_search": "Ctrl+S",
@@ -177,7 +177,7 @@ class KeybindingConfig:
         for key, action in bindings.items():
             display = KEY_DISPLAY.get(key, key)
             label = ACTION_LABELS.get(action, action)
-            if action in ("goto_line", "cursor_up", "cursor_down") and self.scheme == "vim":
+            if action in ("goto_end", "cursor_up", "cursor_down") and self.scheme == "vim":
                 display = f"[N]{display}"
             result.append((display, label))
 
