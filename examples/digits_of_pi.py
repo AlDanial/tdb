@@ -1,13 +1,9 @@
 #!/usr/bin/env python3
 """
-Gemini 3.1 Pro Preview
-
-using prompt
-
-Write a Python program that reads the file it is stored in then computes the
-frequency of letters and displays them in a sorted table.  Each time it
-encounters the letter i it resumes computation on a function that returns
-digits if pi.  After one new digit is found, it returns control to the letter
+A program that reads the file it is stored in then computes the frequency of
+letters and displays them in a sorted table.  Each time it encounters the
+letter 'i', it resumes computation on a generator function that returns
+digits if pi.  After a new digit is found, it returns control to the letter
 frequency counter.
 """
 import sys
