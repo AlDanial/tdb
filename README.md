@@ -61,6 +61,8 @@ as open source.
   <img src="https://github.com/AlDanial/tdb/blob/main/gallery/multiprocessing_process_3.png" alt="multiple processes" width="300">
   <img src="https://github.com/AlDanial/tdb/blob/main/gallery/threading_list.png" alt="thread list" width="300">
 </p>
+Videos:
+- [tdb basics](https://youtu.be/2_qf2WZDHuA) views, keybindings, breakpoints, stepping, variable modification, call stack
 
 ## Installation
 
@@ -149,24 +151,9 @@ The footer shows the most relevant keybindings for the current mode.
 
 ### Navigation and Keybindings
 
+
 The Code View shows syntax-highlighted Python source with line numbers.
 A cursor line (blue) tracks your position; the current execution line is highlighted in gold.
-
-**Navigation (vim-style by default):**
-
-| Key | Action |
-|-----|--------|
-| `j` / `k` | Move cursor down / up |
-| `5j`, `10k` | Move N lines with count prefix |
-| `g` | Go to line (with count: `42g` jumps to line 42) |
-| `G` | Go to end of file |
-| `[` / `]` | Jump to previous / next paragraph boundary |
-| `/` | Search forward |
-| `?` | Search backward |
-| `n` / `N` | Next / previous search result |
-| `PageUp` / `PageDown` | Scroll by page |
-
-Switch between Navigation and Debug modes with `Escape`.
 
 **View focus shortcuts (global):**
 
@@ -191,6 +178,24 @@ Switch between Navigation and Debug modes with `Escape`.
 | `Alt+P` | Processes |
 | `Alt+A` | Async Tasks |
 | `Alt+H` | Help (Documentation, About) |
+
+**Navigation (vim-style by default):**
+
+By default the Code View is in Debug mode.  Hit `Escape` to switch to Navigate mode
+In Navigate mode, you can move around the file with the following keys:
+
+| Key | Action |
+|-----|--------|
+| `j` / `k` | Move cursor down / up |
+| `5j`, `10k` | Move N lines down / up with count prefix |
+| `G` | Go to end of file (with count: `42G` jumps to line 42)|
+| `[` / `]` | Jump to previous / next paragraph boundary |
+| `/` | Search forward |
+| `?` | Search backward |
+| `n` / `N` | Next / previous search result |
+| `PageUp` / `PageDown` | Scroll by page |
+
+Switch from Navigate back to Debug mode with `Escape`.
 
 > **Note:** Many terminals send the byte sequence `ESC+f` for `Alt+F`, which Textual's
 ANSI parser rewrites to `Ctrl+Right` (the readline "forward-word" convention).
@@ -240,8 +245,7 @@ Breakpoints persist across session restarts.
 
 The Variable View shows a tree of scopes (Locals, Globals) with all variables in the current
 frame. Expand nodes to drill into complex objects.  Children are loaded lazily on demand.
-
-Format: `name (type) = value`
+Variable values can be changed in the Evaluate Console.
 
 ### Call Stack
 
@@ -268,10 +272,16 @@ A REPL at the bottom-left evaluates expressions in the current scope:
 (a, *p) : Join two or more pathname components...
 ```
 
+Variable values set here are reflected in the running code.
+
 ### Console Output
 
 The Console View captures stdout (normal text) and stderr (red text) from the debuggee
 in real time.
+
+If your program prints a lot, or prompts for input, or uses colors or
+terminal control codes, consider running it in an external terminal
+with `--terminal` for the best experience.
 
 ### Crash Detection
 
@@ -320,7 +330,9 @@ memoization.
 
 ### Live Breakpoint Hook
 
-For the `pdb.set_trace()` use case--pausing at a specific line to inspect, then
+`tdb` has an improved implemenation of the standard `breakpoint()` function (or equivalently,
+`pdb.set_trace()`) used to pause at a specific line to inspect, then
+here=
 continuing--use `tdb.breakpoint()`:
 
 ```python
@@ -466,7 +478,7 @@ print("tdb is attached!")
 
 When the debuggee runs and hits the `debugpy.wait_for_client()` line, it starts a
 debugpy server listening on port 5678.
-Attach `tdb` to it with the `-r` / `--remote-attach` switch, specifying the host and port.
+Attach `tdb` to it with the `-r` switch, specifying the host and port.
 If the debuggee is on the same machine, you can omit the host or use `localhost`.
 This example assumes the debuggee runs on 192.168.1.10 and listens on port 5678:
 
@@ -485,7 +497,7 @@ source file when the program stops.
 
 ### External Terminal Support
 
-Some Python programs, notably text user interfaces, make heavy use of terminal control
+Some Python programs, notably text user interfaces, use terminal control
 codes and require direct access to the terminal to function properly. 
 Such programs can be debugged with `tdb` by having it launch the debuggee in
 a separate terminal:
@@ -621,7 +633,7 @@ usage: tdb [-h] [-v/--version] [-r [HOST:]PORT] [--cwd CWD] [--no-stop-on-entry]
 
 | Flag | Description |
 |------|-------------|
-| `-r`, `--remote-attach HOST:PORT` | Attach to a remote debugpy server |
+| `-r HOST:PORT` | Attach to a remote debugpy server |
 | `-k`, `--breakpoint FILE:LINE|LINE` | Set a breakpoint (may be repeated) |
 | `--no-stop-on-entry` | Do not pause at the first line (default: stop on entry) |
 | `--cwd DIR` | Working directory for the debuggee |
