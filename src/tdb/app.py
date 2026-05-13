@@ -212,6 +212,11 @@ class TdbApp(App):
         # presses `r` or `c` to start it. While pending, debug actions other
         # than restart/continue are ignored; `c` is rerouted to start.
         self._session_pending = False
+        # Set true once a quit has been confirmed/initiated. Guards both
+        # the confirm-modal path (`q`) and the direct path (`Ctrl+Q`) so
+        # repeat keypresses while `controller.stop()` is in flight don't
+        # pile up modals or kick off concurrent shutdowns.
+        self._is_quitting = False
 
         # Logic collaborators that the App forwards to. Keeping them on
         # the instance (rather than importing functions) lets each one
@@ -1114,6 +1119,13 @@ class TdbApp(App):
         self.query_one("#breakpoint-view", BreakpointView).focus()
 
     async def action_quit_debugger(self) -> None:
+        # Idempotent: Ctrl+Q and the q-confirm path both land here, and
+        # `controller.stop()` can take a moment when many child DAP
+        # sessions need to be torn down — without this guard, a second
+        # keypress would spawn another concurrent shutdown.
+        if self._is_quitting:
+            return
+        self._is_quitting = True
         # Save this program's breakpoints under its own key, preserving
         # breakpoints saved for other programs.
         if self._program:
@@ -1198,7 +1210,9 @@ class TdbApp(App):
         self._print_error_renderables()
 
     def action_confirm_quit(self) -> None:
-        if isinstance(self.screen, _QuitConfirmModal):
+        # Don't reopen the modal once a quit is already in flight; also
+        # don't double-push it if it's currently the active screen.
+        if self._is_quitting or isinstance(self.screen, _QuitConfirmModal):
             return
 
         def on_dismiss(confirmed: bool | None) -> None:

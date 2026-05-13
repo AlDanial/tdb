@@ -279,14 +279,37 @@ class DebugController:
             self.state.transition_to(SessionPhase.RUNNING)
 
     async def stop(self) -> None:
-        for pid, child in list(self._child_clients.items()):
+        # Child disconnects run in parallel with a short timeout: when the
+        # parent's `disconnect(terminate=True)` lands, debugpy cascades the
+        # termination to all subprocesses, so per-child DAP disconnect is
+        # cleanup, not load-bearing. Serial 30s timeouts (the `_send`
+        # default) per child made multiprocess-debug quit take ~50s with
+        # 8 attached children.
+        async def _close_child(child: DAPClient) -> None:
             try:
-                await child.disconnect(terminate=False)
+                await asyncio.wait_for(
+                    child.disconnect(terminate=False), timeout=1.0,
+                )
+            except (asyncio.TimeoutError, Exception):
+                pass
+            try:
                 await child.stop()
             except Exception:
                 pass
+
+        if self._child_clients:
+            await asyncio.gather(
+                *(_close_child(c) for c in self._child_clients.values()),
+                return_exceptions=True,
+            )
         self._child_clients.clear()
-        await self.client.disconnect(terminate=not self._is_remote_attach)
+        try:
+            await asyncio.wait_for(
+                self.client.disconnect(terminate=not self._is_remote_attach),
+                timeout=2.0,
+            )
+        except (asyncio.TimeoutError, Exception):
+            pass
         await self.client.stop()
         self.state.transition_to(SessionPhase.TERMINATED)
 
@@ -806,85 +829,109 @@ class DebugController:
         self._spawn_bg(self._attach_child(host, port, pid))
 
     async def _attach_child(self, host: str, port: int, pid: int | None = None) -> None:
-        """Connect to the adapter for a child process and configure breakpoints."""
-        async with self._child_attach_lock:
-            child = DAPClient()
+        """Connect to the adapter for a child process and configure breakpoints.
+
+        Each child gets its own DAPClient/TCP connection and its own
+        per-connection DAP sequence numbers, so attaches can run fully
+        in parallel — the only shared state is `_child_clients` (dict
+        assignment is atomic in CPython) and read-only `_launch_params`
+        / `state.breakpoints`. Previously serialized via
+        `_child_attach_lock`; dropping that took 8-child attach from
+        ~2.1s to ~0.3s. The lock object is kept so callers in the wider
+        codebase still see the attribute.
+        """
+        if pid is not None and pid in self._child_clients:
+            return  # already attached (duplicate debugpyAttach event)
+        child = DAPClient()
+        try:
+            await child.connect(host, port)
+
+            # Wait for 'initialized' event before configuring
+            initialized = asyncio.Event()
+            child.on_event("initialized", lambda e: initialized.set())
+
+            # Forward stopped events: pause all others on breakpoint/exception
+            def on_child_stopped(event: Event, _child: DAPClient = child) -> None:
+                thread_id = event.body.get("threadId")
+                reason = event.body.get("reason", "unknown")
+                description = event.body.get("description")
+                text = event.body.get("text")
+
+                # Same state-authority contract as _on_stopped above —
+                # whether the active stop is on parent or child, state
+                # gets updated from one place synchronously.
+                self.state.transition_to(SessionPhase.STOPPED)
+                self.state.stop_reason = reason
+                if thread_id is not None:
+                    self.state.current_thread_id = thread_id
+
+                self._active_client = _child
+                if reason not in ("pause",):
+                    self._spawn_bg(self._pause_parent())
+                self.event_handler.on_stopped(thread_id, reason, description, text)
+
+            def on_child_terminated(event: Event) -> None:
+                # Find and remove this client
+                for pid, c in list(self._child_clients.items()):
+                    if c is child:
+                        self._child_clients.pop(pid, None)
+                        break
+
+            child.on_event("stopped", on_child_stopped)
+            child.on_event("terminated", on_child_terminated)
+            child.on_event("exited", on_child_terminated)
+            child.on_event("output", self._on_output)
+            # Cascade subprocess detection: when this child spawns its
+            # own children (e.g. multiprocessing forkserver workers in
+            # Python 3.14+, where Pool() workers are forked from the
+            # forkserver child rather than the parent), their attach
+            # events arrive on this child's DAP session, not the parent's.
+            child.on_event("debugpyAttach", self._on_child_attach)
+
+            await child.initialize()
+
+            # Send attach with subProcessId (not processId) to route
+            # to the right child without triggering ptrace injection.
+            # Inherit parent's just_my_code setting.
+            jmc = self._launch_params.get("just_my_code", True)
+            attach_future = await child.attach(
+                host=host, port=port, sub_process_id=pid,
+                just_my_code=jmc,
+            )
+
+            await asyncio.wait_for(initialized.wait(), timeout=10.0)
+
+            # Configure breakpoints — send per-source setBreakpoints
+            # concurrently. Each call is an independent DAP round-trip
+            # against the child's own session; running them sequentially
+            # was the inner loop's contribution to the attach latency.
+            await child.set_exception_breakpoints(["userUnhandled"])
+            if not self.state.breakpoints_disabled and self.state.breakpoints:
+                async def _set_bps(source_path: str, bps: list) -> None:
+                    try:
+                        await child.set_breakpoints(
+                            source_path, self._enabled_bps(bps),
+                        )
+                    except Exception:
+                        pass
+                await asyncio.gather(*(
+                    _set_bps(sp, bps)
+                    for sp, bps in self.state.breakpoints.items()
+                ))
+
+            await child.configuration_done()
+            await asyncio.wait_for(attach_future, timeout=30.0)
+
+            key = pid or port
+            self._child_clients[key] = child
+            log.info("Attached to child process pid=%s (port %d)", pid, port)
+
+        except Exception:
+            log.exception("Failed to attach to child (port %d)", port)
             try:
-                await child.connect(host, port)
-
-                # Wait for 'initialized' event before configuring
-                initialized = asyncio.Event()
-                child.on_event("initialized", lambda e: initialized.set())
-
-                # Forward stopped events: pause all others on breakpoint/exception
-                def on_child_stopped(event: Event, _child: DAPClient = child) -> None:
-                    thread_id = event.body.get("threadId")
-                    reason = event.body.get("reason", "unknown")
-                    description = event.body.get("description")
-                    text = event.body.get("text")
-
-                    # Same state-authority contract as _on_stopped above —
-                    # whether the active stop is on parent or child, state
-                    # gets updated from one place synchronously.
-                    self.state.transition_to(SessionPhase.STOPPED)
-                    self.state.stop_reason = reason
-                    if thread_id is not None:
-                        self.state.current_thread_id = thread_id
-
-                    self._active_client = _child
-                    if reason not in ("pause",):
-                        self._spawn_bg(self._pause_parent())
-                    self.event_handler.on_stopped(thread_id, reason, description, text)
-
-                def on_child_terminated(event: Event) -> None:
-                    # Find and remove this client
-                    for pid, c in list(self._child_clients.items()):
-                        if c is child:
-                            self._child_clients.pop(pid, None)
-                            break
-
-                child.on_event("stopped", on_child_stopped)
-                child.on_event("terminated", on_child_terminated)
-                child.on_event("exited", on_child_terminated)
-                child.on_event("output", self._on_output)
-
-                await child.initialize()
-
-                # Send attach with subProcessId (not processId) to route
-                # to the right child without triggering ptrace injection.
-                # Inherit parent's just_my_code setting.
-                jmc = self._launch_params.get("just_my_code", True)
-                attach_future = await child.attach(
-                    host=host, port=port, sub_process_id=pid,
-                    just_my_code=jmc,
-                )
-
-                await asyncio.wait_for(initialized.wait(), timeout=10.0)
-
-                # Configure breakpoints
-                await child.set_exception_breakpoints(["userUnhandled"])
-                if not self.state.breakpoints_disabled:
-                    for source_path, bps in self.state.breakpoints.items():
-                        try:
-                            await child.set_breakpoints(
-                                source_path, self._enabled_bps(bps),
-                            )
-                        except Exception:
-                            pass
-
-                await child.configuration_done()
-                await asyncio.wait_for(attach_future, timeout=30.0)
-
-                key = pid or port
-                self._child_clients[key] = child
-                log.info("Attached to child process pid=%s (port %d)", pid, port)
-
+                await child.stop()
             except Exception:
-                log.exception("Failed to attach to child (port %d)", port)
-                try:
-                    await child.stop()
-                except Exception:
-                    pass
+                pass
 
     async def _pause_parent(self) -> None:
         """Pause the parent process and wait for it to stop."""

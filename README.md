@@ -61,8 +61,10 @@ as open source.
   <img src="https://github.com/AlDanial/tdb/blob/main/gallery/multiprocessing_process_3.png" alt="multiple processes" width="300">
   <img src="https://github.com/AlDanial/tdb/blob/main/gallery/threading_list.png" alt="thread list" width="300">
 </p>
+
 Videos:
 - [tdb basics](https://youtu.be/2_qf2WZDHuA) views, keybindings, breakpoints, stepping, variable modification, call stack
+- [asyncio tasks](https://youtu.be/vM4tODuqMGg) inspect asyncio tasks and their wait graph; code mod to allow pause
 
 ## Installation
 
