@@ -65,6 +65,8 @@ as open source.
 Videos:
 - [tdb basics](https://youtu.be/2_qf2WZDHuA) views, keybindings, breakpoints, stepping, variable modification, call stack
 - [asyncio tasks](https://youtu.be/vM4tODuqMGg) inspect asyncio tasks and their wait graph; code mod to allow pause
+- [threads and processes](https://youtu.be/J8LOARLs2oQ) inspect variables and call stacks in multiple threads and processes
+- [external terminal](https://youtu.be/121aihjAQ8g) run the debuggee in a separate terminal--ideal for debugging TUI applications
 
 ## Installation
 
