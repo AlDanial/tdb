@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import ast
 import logging
+from pathlib import Path
 
 log = logging.getLogger(__name__)
 
@@ -55,6 +56,53 @@ def find_step_unit(
     if not matches:
         return None
     return min(matches, key=lambda u: (u[1] - u[0], u[0]))
+
+
+def snap_to_statement_start(
+    line: int, units: list[tuple[int, int]],
+) -> int | None:
+    """Snap `line` to a step-unit start line.
+
+    - If `line` is inside a statement, returns that statement's start.
+    - If `line` is between statements (e.g., a blank or comment-only
+      line), returns the start of the most recent statement before it.
+    - Returns None when `line` is before the first statement, so the
+      caller can drop the breakpoint with a warning.
+    """
+    containing = find_step_unit(line, units)
+    if containing is not None:
+        return containing[0]
+    earlier = [u for u in units if u[0] < line]
+    if not earlier:
+        return None
+    return max(earlier, key=lambda u: u[0])[0]
+
+
+def snap_breakpoint(source_path: str, line: int) -> int | None:
+    """Snap `line` to the start of a logical statement in `source_path`.
+
+    Returns the (possibly unchanged) snapped line. Caller can compare
+    against `line` to decide whether to warn.
+
+    Edge cases — designed so the caller can stay unaware:
+    - File unreadable: returns `line` unchanged (let debugpy validate).
+    - Source has a SyntaxError: returns `line` unchanged (same reason).
+    - `line` is past the last line of the file: returns `line` unchanged
+      (snapping a typo'd line number back to the last real statement
+      would be more confusing than letting debugpy reject it).
+    - `line` is before the first statement: returns None (drop the bp).
+    """
+    try:
+        source = Path(source_path).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return line
+    units = compute_step_units(source, filename=source_path)
+    if not units:
+        return line
+    line_count = source.count("\n") + (0 if source.endswith("\n") else 1)
+    if line > line_count:
+        return line
+    return snap_to_statement_start(line, units)
 
 
 def _walk(node: ast.AST, out: list[tuple[int, int]]) -> None:

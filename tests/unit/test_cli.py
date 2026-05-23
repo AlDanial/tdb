@@ -119,6 +119,43 @@ def test_breakpoint_invalid_format(tmp_path):
         parse_args([str(prog), "-k", "nocolon"])
 
 
+def test_breakpoint_snaps_to_statement_start_with_warning(tmp_path, capsys):
+    # A multi-line statement spans lines 2-5; line 4 is a sub-line.
+    prog = tmp_path / "x.py"
+    prog.write_text(
+        "a = 1\n"
+        "results = func(\n"   # line 2 (statement start)
+        "    1,\n"             # line 3
+        "    2,\n"             # line 4 — sub-line
+        ")\n"                  # line 5
+        "b = 2\n"              # line 6
+    )
+    args = parse_args([str(prog), "-k", "4"])
+    assert args.breakpoint == [(str(prog.resolve()), 2)]
+    err = capsys.readouterr().err
+    assert "not the start of a logical statement" in err
+    assert "moved to line 2" in err
+
+
+def test_breakpoint_at_statement_start_does_not_warn(tmp_path, capsys):
+    prog = tmp_path / "x.py"
+    prog.write_text("a = 1\nb = 2\n")  # both statement starts
+    args = parse_args([str(prog), "-k", "2"])
+    assert args.breakpoint == [(str(prog.resolve()), 2)]
+    assert capsys.readouterr().err == ""
+
+
+def test_breakpoint_before_first_statement_dropped(tmp_path, capsys):
+    prog = tmp_path / "x.py"
+    prog.write_text("# just a comment\n# another\n\nx = 1\n")
+    args = parse_args([str(prog), "-k", "2"])
+    # No statement before/at line 2 → dropped with a warning.
+    assert args.breakpoint == []
+    err = capsys.readouterr().err
+    assert "no logical statement" in err
+    assert "dropping breakpoint" in err
+
+
 def test_terminal_missing_executable_errors(tmp_path, monkeypatch):
     prog = tmp_path / "x.py"
     prog.write_text("\n")

@@ -374,8 +374,14 @@ class CodeView(ScrollableContainer, can_focus=True):
         self._search_term: str | None = None
         self._search_backward: bool = False
 
-        # Valid breakpoint locations (empty = allow all if compile failed)
+        # Set of statement-start lines (the only valid breakpoint
+        # locations). Empty when parsing the source failed → all click
+        # sites fall through to passing the clicked line as-is.
         self._valid_bp_lines: set[int] = set()
+        # Step units for the loaded source (used to snap a clicked /
+        # cursor line to the start of its containing or preceding
+        # statement). Populated by load_file.
+        self._step_units: list[tuple[int, int]] = []
 
         # When True, suppress the next click (it was a focus-gaining click)
         self._suppress_next_click: bool = False
@@ -483,8 +489,12 @@ class CodeView(ScrollableContainer, can_focus=True):
         elif action == "pause":
             self.post_message(self.DebugAction("pause"))
         elif action == "toggle_breakpoint":
-            if self.source_path and self._is_valid_bp_line(self.cursor_line):
-                self.post_message(self.BreakpointToggled(self.source_path, self.cursor_line))
+            if self.source_path:
+                snapped = self._snap_breakpoint_line(self.cursor_line)
+                if snapped is not None:
+                    self.post_message(
+                        self.BreakpointToggled(self.source_path, snapped),
+                    )
         elif action == "run_to_cursor":
             if self.source_path:
                 self.post_message(self.RunToCursor(self.source_path, self.cursor_line))
@@ -623,35 +633,21 @@ class CodeView(ScrollableContainer, can_focus=True):
     # ---- File loading & rendering ----
 
     def load_file(self, path: str) -> None:
+        from tdb.source_analysis import compute_step_units
+
         self.source_path = path
         try:
             text = Path(path).read_text(encoding="utf-8", errors="replace")
         except OSError:
             text = f"<Could not read {path}>"
         self._lines = text.splitlines()
-        self._valid_bp_lines = self._compute_executable_lines(text, path)
+        # Step units underpin the "breakpoints land on logical statement
+        # starts" rule (see _snap_breakpoint_line). Empty list on parse
+        # failure → all click sites pass lines through unchanged.
+        self._step_units = compute_step_units(text, filename=path)
+        self._valid_bp_lines = {u[0] for u in self._step_units}
         self._highlighted = self._highlight_source(text)
         self._render_code()
-
-    @staticmethod
-    def _compute_executable_lines(source: str, filename: str) -> set[int]:
-        """Return the set of lines that contain executable bytecode."""
-        try:
-            code = compile(source, filename, "exec")
-        except SyntaxError:
-            return set()  # fallback: allow all lines
-
-        def _collect(co: object) -> set[int]:
-            lines: set[int] = set()
-            for _start, _end, lineno in co.co_lines():  # type: ignore[attr-defined]
-                if lineno is not None and lineno > 0:
-                    lines.add(lineno)
-            for const in co.co_consts:  # type: ignore[attr-defined]
-                if hasattr(const, "co_lines"):
-                    lines.update(_collect(const))
-            return lines
-
-        return _collect(code)
 
     def set_breakpoints(self, breakpoints: list[SourceBreakpoint]) -> None:
         self._breakpoint_lines = {bp.line for bp in breakpoints}
@@ -669,10 +665,27 @@ class CodeView(ScrollableContainer, can_focus=True):
         self._render_code()
 
     def _is_valid_bp_line(self, line: int) -> bool:
-        """Check if a line is a valid breakpoint location."""
+        """Check if a line is the start of a logical statement."""
         if not self._valid_bp_lines:
-            return True  # Compilation failed — allow all as fallback
+            return True  # Parse failed — allow all as fallback
         return line in self._valid_bp_lines
+
+    def _snap_breakpoint_line(self, line: int) -> int | None:
+        """Snap `line` to the start of the containing/preceding logical
+        statement, so callers can post a BreakpointToggled at a place
+        that actually makes sense.
+
+        Returns None when there's no statement at or before `line` (the
+        click should be silently ignored), or when `line` is out of
+        range. When parsing failed (no step units), returns `line`
+        unchanged so the user isn't blocked.
+        """
+        if line < 1 or line > len(self._lines):
+            return None
+        if not self._step_units:
+            return line
+        from tdb.source_analysis import snap_to_statement_start
+        return snap_to_statement_start(line, self._step_units)
 
     def goto_line(self, line: int) -> None:
         if line < 1 or not self._lines:
@@ -782,27 +795,32 @@ class CodeView(ScrollableContainer, can_focus=True):
             return
         # event.y on CodeView is NOT scroll-adjusted and includes border row
         line = int(self.scroll_offset.y) + event.y
-        if 1 <= line <= len(self._lines) and self._is_valid_bp_line(line):
-            self.post_message(self.BreakpointToggled(self.source_path, line))
+        snapped = self._snap_breakpoint_line(line)
+        if snapped is not None:
+            self.post_message(self.BreakpointToggled(self.source_path, snapped))
 
     def on__code_content_line_double_clicked(self, event: _CodeContent.LineDoubleClicked) -> None:
         if self.source_path is None or self.mode != Mode.DEBUG:
             return
         line = event.y + 1
-        if 1 <= line <= len(self._lines):
-            # The first click of the double-click toggled the breakpoint.
-            # If that removed it, re-add it so the modal has a breakpoint to edit.
-            if line not in self._breakpoint_lines:
-                self.post_message(self.BreakpointToggled(self.source_path, line))
-            self.post_message(self.BreakpointConditionRequested(self.source_path, line))
+        snapped = self._snap_breakpoint_line(line)
+        if snapped is None:
+            return
+        # The first click of the double-click toggled the breakpoint at
+        # the snapped line. If that removed it, re-add it so the modal
+        # has a breakpoint to edit.
+        if snapped not in self._breakpoint_lines:
+            self.post_message(self.BreakpointToggled(self.source_path, snapped))
+        self.post_message(self.BreakpointConditionRequested(self.source_path, snapped))
 
     def _toggle_breakpoint_at_content_y(self, y: int) -> None:
         """Toggle breakpoint from _CodeContent click (y is scroll-adjusted)."""
         if self.source_path is None or self.mode != Mode.DEBUG:
             return
         line = y + 1
-        if 1 <= line <= len(self._lines) and self._is_valid_bp_line(line):
-            self.post_message(self.BreakpointToggled(self.source_path, line))
+        snapped = self._snap_breakpoint_line(line)
+        if snapped is not None:
+            self.post_message(self.BreakpointToggled(self.source_path, snapped))
 
     def watch_current_line(self, value: int | None) -> None:
         if value is not None:

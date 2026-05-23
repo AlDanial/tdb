@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from textwrap import dedent
 
-from tdb.source_analysis import compute_step_units, find_step_unit
+from tdb.source_analysis import (
+    compute_step_units,
+    find_step_unit,
+    snap_breakpoint,
+    snap_to_statement_start,
+)
 
 
 def _units(src: str):
@@ -130,3 +135,91 @@ def test_nested_compound_picks_innermost():
     # Line 2 should map to the for-header (2,2), not the def-header (1,1).
     assert find_step_unit(2, units) == (2, 2)
     assert find_step_unit(3, units) == (3, 3)
+
+
+# --- snap_to_statement_start --------------------------------------------------
+
+
+def test_snap_inside_statement_returns_start():
+    units = [(2, 6), (7, 7)]
+    assert snap_to_statement_start(4, units) == 2
+    assert snap_to_statement_start(6, units) == 2
+    assert snap_to_statement_start(7, units) == 7
+
+
+def test_snap_between_statements_goes_to_previous():
+    # Blank line at 4 between unit (1,3) and unit (6,6).
+    units = [(1, 3), (6, 6)]
+    assert snap_to_statement_start(4, units) == 1
+    assert snap_to_statement_start(5, units) == 1
+
+
+def test_snap_before_first_statement_returns_none():
+    units = [(5, 7), (10, 12)]
+    assert snap_to_statement_start(1, units) is None
+    assert snap_to_statement_start(4, units) is None
+
+
+def test_snap_at_start_is_identity():
+    units = [(2, 6)]
+    assert snap_to_statement_start(2, units) == 2
+
+
+# --- snap_breakpoint (uses real file) -----------------------------------------
+
+
+def test_snap_breakpoint_on_multi_line_call(tmp_path):
+    src = tmp_path / "x.py"
+    src.write_text(dedent("""\
+        a = 1
+        results = func(
+            1,
+            2,
+        )
+        b = 2
+        """))
+    # Sub-lines 3 and 4 belong to the assign on line 2 — snap to 2.
+    assert snap_breakpoint(str(src), 3) == 2
+    assert snap_breakpoint(str(src), 4) == 2
+    # Line 2 is already a start.
+    assert snap_breakpoint(str(src), 2) == 2
+    # Line 6 is its own statement.
+    assert snap_breakpoint(str(src), 6) == 6
+
+
+def test_snap_breakpoint_unreadable_file_passes_through(tmp_path):
+    # Pointing at a missing file: caller may want debugpy to validate
+    # later, so we don't drop or snap.
+    missing = tmp_path / "nope.py"
+    assert snap_breakpoint(str(missing), 5) == 5
+
+
+def test_snap_breakpoint_syntax_error_passes_through(tmp_path):
+    src = tmp_path / "broken.py"
+    src.write_text("def broken(:\n    pass\n")
+    assert snap_breakpoint(str(src), 1) == 1
+    assert snap_breakpoint(str(src), 2) == 2
+
+
+def test_snap_breakpoint_past_end_of_file_passes_through(tmp_path):
+    # Pre-existing CLI tests set BPs at lines > file length to exercise
+    # the parser without caring about validity. We must not silently
+    # snap those to line 1 — they're typos, debugpy should reject.
+    src = tmp_path / "x.py"
+    src.write_text("print('hi')\n")  # 1 line of code
+    assert snap_breakpoint(str(src), 5) == 5
+    assert snap_breakpoint(str(src), 99) == 99
+
+
+def test_snap_breakpoint_before_first_statement_returns_none(tmp_path):
+    src = tmp_path / "x.py"
+    # Lines 1-3 are blank/comment-only; first statement at line 4.
+    src.write_text(dedent("""\
+        # header comment
+        # more comment
+
+        x = 1
+        """))
+    assert snap_breakpoint(str(src), 1) is None
+    assert snap_breakpoint(str(src), 3) is None
+    assert snap_breakpoint(str(src), 4) == 4

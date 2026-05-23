@@ -209,7 +209,30 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                     "(not allowed with --remote-attach)"
                 )
             parsed_bps.append((args.program, line))
-    args.breakpoint = parsed_bps
+    # Breakpoints land at the start of a logical statement. If the user
+    # passed a sub-line of a multi-line statement (or a blank/comment),
+    # snap to the start of the containing/preceding statement and warn.
+    # Snap failures (line is before any statement) drop the bp with a
+    # warning rather than silently keeping an unhittable target.
+    from tdb.source_analysis import snap_breakpoint
+    snapped_bps: list[tuple[str, int]] = []
+    for bp_path, line in parsed_bps:
+        snapped = snap_breakpoint(bp_path, line)
+        if snapped is None:
+            print(
+                f"warning: -k {bp_path}:{line} has no logical statement "
+                f"at or before that line; dropping breakpoint",
+                file=sys.stderr,
+            )
+            continue
+        if snapped != line:
+            print(
+                f"warning: -k {bp_path}:{line} is not the start of a "
+                f"logical statement; moved to line {snapped}",
+                file=sys.stderr,
+            )
+        snapped_bps.append((bp_path, snapped))
+    args.breakpoint = snapped_bps
 
     return args
 

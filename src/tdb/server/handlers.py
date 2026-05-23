@@ -275,7 +275,24 @@ class RpcHandlers:
             return RpcResponse.error("params[0] must be 'file:line'")
         condition = str(params[1]) if len(params) > 1 and params[1] else None
         hit_condition = str(params[2]) if len(params) > 2 and params[2] else None
+        # Breakpoints land on logical statement starts. Snap if needed
+        # and surface the move in the response so scripted callers know.
+        from tdb.source_analysis import snap_breakpoint
+        snapped = snap_breakpoint(source_path, line)
+        if snapped is None:
+            return RpcResponse.error(
+                f"{source_path}:{line} has no logical statement at or "
+                f"before that line; breakpoint not set",
+            )
+        original_line = line
+        line = snapped
         await self.controller.add_breakpoint(source_path, line, condition, hit_condition)
+        if line != original_line:
+            return RpcResponse.ok(
+                f"breakpoint set at {source_path}:{line} "
+                f"(moved from line {original_line} — not a logical "
+                f"statement start)",
+            )
         return RpcResponse.ok()
 
     async def action_remove_breakpoint(self, params: list[Any]) -> RpcResponse:
