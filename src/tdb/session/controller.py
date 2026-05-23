@@ -333,6 +333,14 @@ class DebugController:
             pass
         await self.client.stop()
         self.state.transition_to(SessionPhase.TERMINATED)
+        # Remove any lingering Processes-modal snapshot file from this
+        # tdb session so it doesn't get picked up by a future tdb that
+        # happens to inherit the same PID.
+        try:
+            from tdb import processes_cache
+            processes_cache.clear()
+        except Exception:
+            log.exception("processes_cache.clear failed in stop")
 
     # --- Debug actions ---
 
@@ -734,11 +742,32 @@ class DebugController:
         """The client (parent or child) that is currently being inspected."""
         return self._active_client
 
+    async def resolve_evaluate_frame_id(self, client: DAPClient) -> int | None:
+        """Return a real DAP frame_id usable for evaluate.
+
+        Falls back to the active thread's top frame when
+        `state.current_frame_id` is synthetic (negative — installed by
+        async-task navigation). debugpy rejects unknown frame ids, so
+        any subsequent evaluate would otherwise fail.
+        """
+        frame_id = self.state.current_frame_id
+        if frame_id is None or frame_id >= 0:
+            return frame_id
+        tid = self.state.current_thread_id
+        if tid is None:
+            return None
+        try:
+            frames = await client.stack_trace(tid)
+        except Exception:
+            return None
+        return frames[0].id if frames else None
+
     async def evaluate(self, expression: str) -> str:
         try:
+            frame_id = await self.resolve_evaluate_frame_id(self._active_client)
             result, _ = await self._active_client.evaluate(
                 expression,
-                frame_id=self.state.current_frame_id,
+                frame_id=frame_id,
                 context="repl",
             )
             return result
@@ -760,9 +789,9 @@ class DebugController:
         for attempt in range(3):
             try:
                 # Get a frame_id from the parent process
-                frame_id = None
+                frame_id: int | None = None
                 if self._active_client is self.client:
-                    frame_id = self.state.current_frame_id
+                    frame_id = await self.resolve_evaluate_frame_id(self.client)
                 else:
                     threads = await self.client.threads()
                     if threads:
@@ -789,7 +818,59 @@ class DebugController:
             # All data is pre-populated; just swap in the selected frame's scopes.
             self.state.scopes = self.state.frame_scopes.get(frame_id, [])
             return
+        # Synthetic frames from the async-task navigator carry negative
+        # ids — they aren't real DAP frames, so don't try to fetch scopes
+        # for them. Variables stay whatever the navigator left in place
+        # (typically empty, with a "(no variables — task suspended)" hint).
+        if frame_id < 0:
+            return
         await self.fetch_scopes_and_variables(frame_id)
+
+    async def switch_active_thread(self, thread_id: int) -> None:
+        """Re-point the main views at the given thread on the parent client.
+
+        Subsequent step / continue use `state.current_thread_id`, so this
+        re-targets stepping as well as the views. Best-effort: on DAP
+        failure, logs and leaves state unchanged.
+        """
+        try:
+            self._active_client = self.client
+            self.state.current_thread_id = thread_id
+            self.state.stack_frames = await self.client.stack_trace(thread_id)
+            if self.state.stack_frames:
+                top = self.state.stack_frames[0]
+                self.state.current_frame_id = top.id
+                await self.fetch_scopes_and_variables(top.id)
+        except Exception:
+            log.exception("switch_active_thread(%s) failed", thread_id)
+
+    async def switch_active_process(self, pid: int) -> None:
+        """Re-point `_active_client` at the child process for `pid`, then
+        behave like `switch_active_thread` on that child's first thread.
+
+        Matches the README's documented behavior for the Processes tab:
+        Code View switches focus to that process, and subsequent step
+        commands operate on it.
+        """
+        child = self.get_child_client(pid)
+        if child is None:
+            return
+        try:
+            self._active_client = child
+            threads = await child.threads()
+            if not threads:
+                return
+            # debugpy reports threads in creation order; index 0 is the
+            # child's MainThread, which is what the user expects to land on.
+            main_tid = threads[0].id
+            self.state.current_thread_id = main_tid
+            self.state.stack_frames = await child.stack_trace(main_tid)
+            if self.state.stack_frames:
+                top = self.state.stack_frames[0]
+                self.state.current_frame_id = top.id
+                await self.fetch_scopes_and_variables(top.id)
+        except Exception:
+            log.exception("switch_active_process(pid=%s) failed", pid)
 
     def load_post_mortem(self, snapshot: dict) -> None:
         """Populate state from a snapshot produced by tdb.exception_hook.
@@ -914,6 +995,14 @@ class DebugController:
         self.state.transition_to(SessionPhase.RUNNING)
         self.state.clear_frame_data()
         self._stopped_event.clear()
+        # The Processes-modal snapshot is keyed to one stopped episode;
+        # any continue/step makes its frame ids and variables references
+        # stale. Drop the file so the next modal open re-fetches.
+        try:
+            from tdb import processes_cache
+            processes_cache.clear()
+        except Exception:
+            log.exception("processes_cache.clear failed in _on_continued")
         self.event_handler.on_continued()
 
     def _on_terminated(self, event: Event) -> None:

@@ -92,14 +92,26 @@ class ProcessesModal(ModalScreen[None]):
         Binding("r", "refresh_processes", "Refresh", show=False),
     ]
 
-    def __init__(self, processes: list[ProcessInfo]) -> None:
+    def __init__(
+        self,
+        processes: list[ProcessInfo],
+        detail_cache: dict[int, dict] | None = None,
+        current_pid: int | None = None,
+    ) -> None:
         super().__init__()
         self._processes = processes
         self._mounted = False
         # PID of the process whose detail pane is currently displayed.
         # Used by the app to route variable lazy-loads to the correct
         # child DAPClient (variablesReference is scoped per-session).
-        self._current_pid: int | None = None
+        # When restored from a cached snapshot the previously-viewed pid
+        # is passed in so on_mount lands the cursor there.
+        self._current_pid: int | None = current_pid
+        # pid → {"frames": [...], "scopes": [...], "variables": {ref: [...]}}.
+        # Populated by show_process_detail; consulted by _show_detail so
+        # cursor-moves over already-loaded rows don't re-hit DAP. Also
+        # serialized on dismiss for the next open within this stop.
+        self._detail_cache: dict[int, dict] = dict(detail_cache or {})
 
     def compose(self) -> ComposeResult:
         with Vertical(id="dialog"):
@@ -114,7 +126,10 @@ class ProcessesModal(ModalScreen[None]):
                 with Vertical(id="proc-detail-pane"):
                     yield Static("", id="proc-info")
                     yield VariableView(id="proc-vars")
-            yield Label("ESC close  |  r refresh", id="procs-footer")
+            yield Label(
+                "ESC close  |  r refresh  |  Enter/double-click jump to process",
+                id="procs-footer",
+            )
 
     def on_mount(self) -> None:
         table = self.query_one("#proc-table", DataTable)
@@ -122,7 +137,15 @@ class ProcessesModal(ModalScreen[None]):
         self._mounted = True
         if self._processes:
             self._populate_table()
-            self._show_detail(0)
+            # Restore previously-selected row when reopening from cache.
+            idx = 0
+            if self._current_pid is not None:
+                for i, p in enumerate(self._processes):
+                    if p.pid == self._current_pid:
+                        idx = i
+                        break
+            table.move_cursor(row=idx)
+            self._show_detail(idx)
         else:
             info = self.query_one("#proc-info", Static)
             info.update(Text("Loading...", style="dim italic"))
@@ -151,6 +174,20 @@ class ProcessesModal(ModalScreen[None]):
             and 0 <= event.cursor_row < len(self._processes)
         ):
             self._show_detail(event.cursor_row)
+
+    def on_data_table_row_selected(
+        self, event: DataTable.RowSelected,
+    ) -> None:
+        # Fires on Enter or double-click. Re-targets the main views to
+        # this child process; ignored for not-yet-started or exited rows
+        # since there's no live DAP session to attach to.
+        row = event.cursor_row
+        if row is None or not (0 <= row < len(self._processes)):
+            return
+        proc = self._processes[row]
+        if proc.pid is None or not proc.alive:
+            return
+        self.post_message(self.SelectProcess(proc.pid))
 
     def _show_detail(self, index: int) -> None:
         proc = self._processes[index]
@@ -185,12 +222,32 @@ class ProcessesModal(ModalScreen[None]):
         var_view = self.query_one("#proc-vars", VariableView)
         var_view.clear()
 
-        # Request stack + variables from the app
+        # Request stack + variables from the app — but only if we don't
+        # already have them cached. Reopening the modal within the same
+        # stopped episode (or moving the cursor back to a previously-
+        # viewed row) replays from cache without a DAP round-trip.
         if proc.pid is not None and proc.alive:
-            self.post_message(self.LoadProcessDetail(proc.pid))
+            cached = self._detail_cache.get(proc.pid)
+            if cached is not None:
+                self.show_process_detail(
+                    proc.pid,
+                    cached["frames"],
+                    cached["scopes"],
+                    cached["variables"],
+                )
+            else:
+                self.post_message(self.LoadProcessDetail(proc.pid))
 
     class LoadProcessDetail(Message):
         """Request to fetch stack trace and variables for a child process."""
+        def __init__(self, pid: int) -> None:
+            self.pid = pid
+            super().__init__()
+
+    class SelectProcess(Message):
+        """User double-clicked / Enter'd a row: close the modal and
+        switch the main Code/Stack/Variable views to this process.
+        Subsequent step / continue commands target this process too."""
         def __init__(self, pid: int) -> None:
             self.pid = pid
             super().__init__()
@@ -210,6 +267,13 @@ class ProcessesModal(ModalScreen[None]):
         if proc is None:
             return
         self._current_pid = pid
+        # Remember what we got so close+reopen (or a cursor revisit)
+        # can short-circuit the DAP round-trip.
+        self._detail_cache[pid] = {
+            "frames": frames,
+            "scopes": scopes,
+            "variables": variables,
+        }
 
         content = Text()
         content.append("Name:    ", style="bold")
@@ -257,6 +321,11 @@ class ProcessesModal(ModalScreen[None]):
     def update_processes(self, processes: list[ProcessInfo]) -> None:
         """Replace process list and refresh the display."""
         self._processes = processes
+        # Any previously-cached per-pid detail is stale relative to the
+        # new process list (this is called from refresh and from the
+        # initial worker fill-in). Drop the cache so the next row-
+        # highlight fetches fresh.
+        self._detail_cache.clear()
         # If not mounted yet, on_mount will pick up _processes
         if not self._mounted:
             return
@@ -270,6 +339,16 @@ class ProcessesModal(ModalScreen[None]):
             info.update(Text("No child processes found", style="dim"))
             var_view = self.query_one("#proc-vars", VariableView)
             var_view.clear()
+
+    def cache_snapshot(
+        self,
+    ) -> tuple[list[ProcessInfo], dict[int, dict], int | None]:
+        """Return (processes, detail_cache, current_pid) for serialization.
+
+        Called by the inspection workflow on modal dismiss so the next
+        open within the same stopped episode can skip all DAP fetches.
+        """
+        return (self._processes, self._detail_cache, self._current_pid)
 
     def action_dismiss_modal(self) -> None:
         self.dismiss(None)

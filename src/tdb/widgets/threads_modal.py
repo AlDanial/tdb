@@ -104,7 +104,10 @@ class ThreadsModal(ModalScreen[None]):
                 with Vertical(id="thread-detail-pane"):
                     yield Static("", id="thread-info")
                     yield VariableView(id="thread-vars")
-            yield Label("ESC close  |  r refresh", id="threads-footer")
+            yield Label(
+                "ESC close  |  r refresh  |  Enter/double-click jump to thread",
+                id="threads-footer",
+            )
 
     def on_mount(self) -> None:
         table = self.query_one("#thread-table", DataTable)
@@ -141,6 +144,15 @@ class ThreadsModal(ModalScreen[None]):
         ):
             self._show_detail(event.cursor_row)
 
+    def on_data_table_row_selected(
+        self, event: DataTable.RowSelected,
+    ) -> None:
+        # Fires on Enter or double-click.
+        row = event.cursor_row
+        if row is None or not (0 <= row < len(self._threads)):
+            return
+        self.post_message(self.SelectThread(self._threads[row].id))
+
     def _show_detail(self, index: int) -> None:
         thread = self._threads[index]
         # Show basic info immediately; stack + vars arrive via message
@@ -165,6 +177,14 @@ class ThreadsModal(ModalScreen[None]):
 
     class LoadThreadDetail(Message):
         """Request to fetch stack trace and variables for a thread."""
+        def __init__(self, thread_id: int) -> None:
+            self.thread_id = thread_id
+            super().__init__()
+
+    class SelectThread(Message):
+        """User double-clicked / Enter'd a row: close modal and switch
+        the main Code/Stack/Variable views to this thread. Subsequent
+        step / continue commands will also target this thread."""
         def __init__(self, thread_id: int) -> None:
             self.thread_id = thread_id
             super().__init__()

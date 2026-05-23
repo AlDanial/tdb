@@ -765,6 +765,26 @@ class TdbApp(App):
             code_view.current_line = message.line
         self._update_ui_state()
 
+    def _sync_views_to_top_frame(self) -> None:
+        """Drive Code View and dependent panels from state.stack_frames[0].
+
+        Called after a modal selection has already mutated
+        controller.state (new active thread/process/task). Same shape as
+        on_stack_view_frame_selected's body, factored out so all three
+        modal-select handlers share it.
+        """
+        state = self.controller.state
+        if not state.stack_frames:
+            return
+        top = state.stack_frames[0]
+        src = top.source.path if top.source else None
+        if src:
+            code_view = self.query_one("#code-view", CodeView)
+            if src != code_view.source_path:
+                code_view.load_file(src)
+            code_view.current_line = top.line
+        self._update_ui_state()
+
     async def on_breakpoint_view_breakpoint_selected(
         self, message: BreakpointView.BreakpointSelected
     ) -> None:
@@ -1077,6 +1097,15 @@ class TdbApp(App):
     ) -> None:
         await self._inspection.load_task_variables(message.task_name)
 
+    async def on_async_tasks_modal_select_task(
+        self, message: AsyncTasksModal.SelectTask,
+    ) -> None:
+        if isinstance(self.screen, AsyncTasksModal):
+            self.screen.dismiss(None)
+        if self._inspection.navigate_to_task(message.task_name):
+            self._sync_views_to_top_frame()
+            self.query_one("#code-view", CodeView).focus()
+
     def _update_thread_count(self) -> None:
         self._inspection.update_thread_count()
 
@@ -1093,6 +1122,15 @@ class TdbApp(App):
         self, message: ThreadsModal.RefreshThreads,
     ) -> None:
         await self._inspection.refresh_threads()
+
+    async def on_threads_modal_select_thread(
+        self, message: ThreadsModal.SelectThread,
+    ) -> None:
+        if isinstance(self.screen, ThreadsModal):
+            self.screen.dismiss(None)
+        await self.controller.switch_active_thread(message.thread_id)
+        self._sync_views_to_top_frame()
+        self.query_one("#code-view", CodeView).focus()
 
     @work(exclusive=True, group="process-count")
     async def _fetch_process_count(self) -> None:
@@ -1115,6 +1153,15 @@ class TdbApp(App):
         self, message: ProcessesModal.LoadProcessDetail,
     ) -> None:
         await self._inspection.load_process_detail(message.pid)
+
+    async def on_processes_modal_select_process(
+        self, message: ProcessesModal.SelectProcess,
+    ) -> None:
+        if isinstance(self.screen, ProcessesModal):
+            self.screen.dismiss(None)
+        await self.controller.switch_active_process(message.pid)
+        self._sync_views_to_top_frame()
+        self.query_one("#code-view", CodeView).focus()
 
     # --- Actions ---
 

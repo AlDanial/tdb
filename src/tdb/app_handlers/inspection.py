@@ -18,9 +18,12 @@ Textual's worker manager is owned by the App. The stubs are 1-2 lines.
 from __future__ import annotations
 
 import logging
+import os
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from tdb.dap.types import Source, StackFrame
 from tdb.inspection import (
     PROCESS_COLLECT_EXPR,
     ProcessInfo,
@@ -33,6 +36,10 @@ from tdb.widgets.async_tasks_modal import AsyncTasksModal
 from tdb.widgets.menu_bar import MenuBar
 from tdb.widgets.processes_modal import ProcessesModal
 from tdb.widgets.threads_modal import ThreadsModal
+
+# Format of each AsyncTaskInfo.stack entry (see tdb/inspection.py
+# TASK_COLLECT_EXPR): "<funcname> at <filepath>:<lineno>".
+_TASK_FRAME_RE = re.compile(r"^(.+) at (.+):(\d+)$")
 
 if TYPE_CHECKING:
     from tdb.app import TdbApp
@@ -119,9 +126,14 @@ class InspectionWorkflows:
         variables: list = []
         try:
             expr = TASK_LOCALS_EXPR.format(task_name=task_name)
+            # Route around synthetic frame ids — see
+            # controller.resolve_evaluate_frame_id. Without this, after
+            # the user has navigated to a task once, state.current_frame_id
+            # is negative and debugpy rejects the evaluate request.
+            frame_id = await ctrl.resolve_evaluate_frame_id(ctrl.active_client)
             _result, var_ref = await ctrl.active_client.evaluate(
                 expr,
-                frame_id=ctrl.state.current_frame_id,
+                frame_id=frame_id,
                 context="repl",
             )
             if var_ref > 0:
@@ -129,6 +141,45 @@ class InspectionWorkflows:
         except Exception:
             log.debug("Failed to load variables for task %s", task_name)
         self.app._async_tasks_modal.show_task_variables(variables)
+
+    def navigate_to_task(self, task_name: str) -> bool:
+        """Populate `state.stack_frames` with synthetic frames built from
+        the chosen task's captured coroutine stack.
+
+        Synthetic because the task isn't a live DAP frame; the frames
+        carry negative ids so `controller.select_frame` knows to skip
+        the DAP scopes fetch. Returns True if frames were installed.
+        """
+        modal = getattr(self.app, "_async_tasks_modal", None)
+        if modal is None:
+            return False
+        task = next(
+            (t for t in modal._tasks if t.name == task_name), None,
+        )
+        if task is None or not task.stack:
+            return False
+        synthetic: list[StackFrame] = []
+        for i, line_str in enumerate(task.stack):
+            m = _TASK_FRAME_RE.match(line_str)
+            if not m:
+                continue
+            func, path, lineno = m.group(1), m.group(2), int(m.group(3))
+            synthetic.append(StackFrame(
+                id=-1 - i,
+                name=func,
+                source=Source(path=path, name=os.path.basename(path)),
+                line=lineno,
+            ))
+        if not synthetic:
+            return False
+        state = self.app.controller.state
+        state.stack_frames = synthetic
+        state.current_frame_id = synthetic[0].id
+        # No live scopes / variables for a suspended task — clear so the
+        # Variable view shows empty rather than the previous frame's data.
+        state.scopes = []
+        state.variables = {}
+        return True
 
     # --- Threads --------------------------------------------------------
 
@@ -283,6 +334,12 @@ class InspectionWorkflows:
     def open_processes_modal(self) -> None:
         """Open the Processes modal immediately (showing Loading...) and let
         the worker fill it in. Returns whether the worker should be spawned.
+
+        Honors the on-disk cache written by `_save_processes_cache` on
+        the previous dismiss. The cache is invalidated by
+        controller._on_continued, so a hit means we're still in the same
+        stopped episode and can restore the full snapshot (process list +
+        per-pid stacks/vars) without any DAP round-trips.
         """
         ctrl = self.app.controller
         if ctrl.state.is_terminated:
@@ -291,9 +348,49 @@ class InspectionWorkflows:
         if ctrl.state.is_running:
             self.app.notify("Program is running — pause first", title="Processes")
             return False
+
+        from tdb import processes_cache
+        cached = processes_cache.load()
+        if cached is not None and cached["processes"]:
+            self.app._processes_modal = ProcessesModal(
+                cached["processes"],
+                detail_cache=cached["details"],
+                current_pid=cached["current_pid"],
+            )
+            self.app.push_screen(
+                self.app._processes_modal,
+                callback=lambda _result: self._save_processes_cache(),
+            )
+            # Worker is unnecessary — the modal already has everything.
+            return False
+
         self.app._processes_modal = ProcessesModal([])
-        self.app.push_screen(self.app._processes_modal)
+        self.app.push_screen(
+            self.app._processes_modal,
+            callback=lambda _result: self._save_processes_cache(),
+        )
         return True
+
+    def _save_processes_cache(self) -> None:
+        """Push-screen callback: serialize whatever the modal accumulated.
+
+        Skipped when the modal was dismissed before populate (no
+        processes) or when the program has since stepped/continued —
+        the controller already cleared the file in that case, but
+        writing again here would resurrect a stale snapshot, so we also
+        gate on `state.can_send_dap` standing in for "still paused".
+        """
+        from tdb import processes_cache
+        modal = getattr(self.app, "_processes_modal", None)
+        if modal is None or not modal._processes:
+            return
+        # If we're not paused anymore, _on_continued already cleared the
+        # cache; don't write a fresh snapshot that would survive into
+        # the next stop with stale frame ids.
+        if not self.app.controller.state.can_step:
+            return
+        processes, details, current_pid = modal.cache_snapshot()
+        processes_cache.save(processes, details, current_pid)
 
     async def open_processes_worker(self) -> None:
         """Background: fetch processes and populate the already-open modal,

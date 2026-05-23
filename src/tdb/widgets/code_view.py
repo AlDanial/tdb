@@ -194,6 +194,15 @@ class _CodeContent(Static):
     This keeps 1 source line = 1 display row for reliable scroll positioning.
     """
 
+    # Textual's base Widget._on_click triggers `text_select_all` on
+    # chain==2 (double-click), which paints every line with the
+    # screen--selection background ($primary, i.e. blue). That collides
+    # with our own double-click semantics (open the breakpoint-condition
+    # modal) AND with the case where dismissing a modal on double-click
+    # lets the second click of the chain land on this widget. We don't
+    # want text selection here — clicks toggle breakpoints, not select.
+    ALLOW_SELECT = False
+
     DEFAULT_CSS = """
     _CodeContent {
         width: auto;
@@ -239,6 +248,12 @@ class _CodeContent(Static):
 
 class CodeView(ScrollableContainer, can_focus=True):
     """Source code viewer with breakpoint gutter and current-line highlighting."""
+
+    # See _CodeContent.ALLOW_SELECT — text selection on the source pane
+    # is not a feature here; clicks have semantic meaning (breakpoints,
+    # navigation). Disabling on the container too covers triple-click,
+    # which would otherwise select the whole container.
+    ALLOW_SELECT = False
 
     # Only keep non-printable key bindings; everything else goes through on_key.
     # The footer_hint_* bindings below exist purely to surface their hints in

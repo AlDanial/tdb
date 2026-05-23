@@ -134,7 +134,10 @@ class AsyncTasksModal(ModalScreen[None]):
                     tree.show_root = False
                     tree.guide_depth = 3
                     yield tree
-            yield Label("ESC close  |  r refresh  |  g graph", id="tasks-footer")
+            yield Label(
+                "ESC close  |  r refresh  |  g graph  |  Enter/double-click jump to task",
+                id="tasks-footer",
+            )
 
     def on_mount(self) -> None:
         table = self.query_one("#task-table", DataTable)
@@ -190,6 +193,17 @@ class AsyncTasksModal(ModalScreen[None]):
         if event.cursor_row is not None and 0 <= event.cursor_row < len(self._tasks):
             self._show_detail(event.cursor_row)
 
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        # Fires on Enter or double-click. The main views get synthetic
+        # frames built from this task's captured coroutine stack so the
+        # user lands on the line the task is suspended at. Stepping
+        # commands still operate on the live paused thread — a task is
+        # not its own DAP stepping target.
+        row = event.cursor_row
+        if row is None or not (0 <= row < len(self._tasks)):
+            return
+        self.post_message(self.SelectTask(self._tasks[row].name))
+
     def _show_detail(self, index: int) -> None:
         task = self._tasks[index]
         # Task info (name, state, coro, stack) in the Static widget
@@ -224,6 +238,14 @@ class AsyncTasksModal(ModalScreen[None]):
 
     class LoadTaskVariables(Message):
         """Request to load variables for a task via DAP evaluate."""
+        def __init__(self, task_name: str) -> None:
+            self.task_name = task_name
+            super().__init__()
+
+    class SelectTask(Message):
+        """User double-clicked / Enter'd a row: close the modal and
+        populate the main Code/Stack views with this task's coroutine
+        stack. Stepping commands still target the live paused thread."""
         def __init__(self, task_name: str) -> None:
             self.task_name = task_name
             super().__init__()

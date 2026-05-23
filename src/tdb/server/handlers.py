@@ -513,9 +513,14 @@ class RpcHandlers:
         lines.append("Variables:")
         try:
             expr = TASK_LOCALS_EXPR.format(task_name=target_name)
+            # Skip synthetic (negative) frame ids installed by the TUI
+            # task-navigation feature — they aren't valid for DAP evaluate.
+            frame_id = await self.controller.resolve_evaluate_frame_id(
+                self.controller.client,
+            )
             _result, var_ref = await self.controller.client.evaluate(
                 expr,
-                frame_id=self.controller.state.current_frame_id,
+                frame_id=frame_id,
                 context="repl",
             )
             if var_ref > 0:
