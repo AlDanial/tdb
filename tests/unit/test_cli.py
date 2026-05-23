@@ -66,6 +66,17 @@ def test_breakpoints_parsed(tmp_path):
     ]
 
 
+def test_breakpoint_implies_no_stop_on_entry(tmp_path):
+    prog = tmp_path / "x.py"
+    prog.write_text("print('hi')\n")
+    # Default (no -k) → stop on entry True.
+    args = parse_args([str(prog)])
+    assert args.stop_on_entry is True
+    # With -k → stop on entry is suppressed so the program runs to the breakpoint.
+    args = parse_args([str(prog), "-k", "5"])
+    assert args.stop_on_entry is False
+
+
 def test_breakpoint_bare_line_targets_program(tmp_path):
     prog = tmp_path / "x.py"
     prog.write_text("print('hi')\n")

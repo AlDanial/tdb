@@ -101,7 +101,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=[],
         metavar="FILE:LINE|LINE",
         help="Set a breakpoint at FILE:LINE, or just LINE for the program "
-             "being debugged (may be repeated)",
+             "being debugged (may be repeated). Implies --no-stop-on-entry "
+             "so the program runs to the first breakpoint instead of pausing "
+             "at line 1.",
     )
     parser.add_argument(
         "--server-port",
@@ -129,6 +131,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
     args = parser.parse_args(argv)
     args.stop_on_entry = not args.no_stop_on_entry
+    # Command-line breakpoints imply the user wants execution to proceed
+    # to the first breakpoint rather than pausing at line 1, so suppress
+    # the default stop-on-entry whenever `-k` was given.
+    if args.breakpoint:
+        args.stop_on_entry = False
 
     # --headless implies --server
     if args.headless:

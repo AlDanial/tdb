@@ -100,6 +100,7 @@ tdb my_program.py
 tdb my_program.py arg1 arg2
 
 # add breakpoints at lines 20 and 35 of `my_program.py` and line 14 of `module.py`
+# (when -k is given, --no-stop-on-entry is implied: the program runs to the first breakpoint)
 tdb -k 20 -k 35 -k module.py:14 my_program.py arg1 arg2
 
 # use a specific virtualenv
@@ -640,8 +641,8 @@ usage: tdb [-h] [-v/--version] [-r [HOST:]PORT] [--cwd CWD] [--no-stop-on-entry]
 | Flag | Description |
 |------|-------------|
 | `-r HOST:PORT` | Attach to a remote debugpy server |
-| `-k`, `--breakpoint FILE:LINE|LINE` | Set a breakpoint (may be repeated) |
-| `--no-stop-on-entry` | Do not pause at the first line (default: stop on entry) |
+| `-k`, `--breakpoint FILE:LINE|LINE` | Set a breakpoint (may be repeated). Passing `-k` implies `--no-stop-on-entry` so the program runs straight to the first breakpoint. |
+| `--no-stop-on-entry` | Do not pause at the first line (default: stop on entry; automatic when `-k` is given) |
 | `--cwd DIR` | Working directory for the debuggee |
 | `--python PATH` | Python interpreter for the debuggee |
 | `--no-just-my-code` | Step into stdlib/site-packages code instead of skipping it
