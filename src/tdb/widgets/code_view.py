@@ -241,32 +241,65 @@ class CodeView(ScrollableContainer, can_focus=True):
     """Source code viewer with breakpoint gutter and current-line highlighting."""
 
     # Only keep non-printable key bindings; everything else goes through on_key.
-    # The c/n/s/p/t/b bindings below exist purely to surface their hints in
-    # the Footer when CodeView has focus and is in DEBUG mode — `_on_key`
-    # handles the actual dispatch (via KeybindingConfig) and stops the event
-    # before Textual's binding system would fire the no-op action methods.
-    # `check_action` hides them in NAVIGATION mode.
+    # The footer_hint_* bindings below exist purely to surface their hints in
+    # the Footer when CodeView has focus — `_on_key` handles the actual
+    # dispatch (via KeybindingConfig) and stops the event before Textual's
+    # binding system would fire the no-op action methods. `check_action`
+    # gates visibility on mode and (for nav hints) the active scheme.
     BINDINGS = [
         Binding("pageup", "page_up", "Page Up", show=False),
         Binding("pagedown", "page_down", "Page Down", show=False),
-        # Each footer_hint_* targets a distinct action so Textual's Footer
-        # doesn't deduplicate them down to one.
+        # Debug-mode hints. Each footer_hint_* targets a distinct action so
+        # Textual's Footer doesn't deduplicate them down to one.
         Binding("c", "footer_hint_continue", "continue"),
         Binding("n", "footer_hint_step_over", "step over"),
         Binding("s", "footer_hint_step_in", "step in"),
         Binding("p", "footer_hint_pause", "pause"),
         Binding("t", "footer_hint_run_to", "run to"),
         Binding("b", "footer_hint_breakpoint", "breakpoint"),
+        # Navigation hints — vim scheme.
+        Binding("j", "footer_hint_nav_vim_down", "down"),
+        Binding("k", "footer_hint_nav_vim_up", "up"),
+        Binding("G", "footer_hint_nav_vim_end", "last line"),
+        Binding("slash", "footer_hint_nav_vim_search", "search", key_display="/"),
+        Binding("question_mark", "footer_hint_nav_vim_back", "back", key_display="?"),
+        Binding(
+            "right_square_bracket", "footer_hint_nav_vim_paragraph",
+            "paragraph", key_display="]",
+        ),
+        # Navigation hints — emacs scheme.
+        Binding("ctrl+n", "footer_hint_nav_emacs_down", "down"),
+        Binding("ctrl+p", "footer_hint_nav_emacs_up", "up"),
+        Binding("ctrl+f", "footer_hint_nav_emacs_pgdn", "page down"),
+        Binding("ctrl+b", "footer_hint_nav_emacs_pgup", "page up"),
+        Binding("ctrl+a", "footer_hint_nav_emacs_top", "top"),
+        Binding("ctrl+end", "footer_hint_nav_emacs_end", "end"),
     ]
 
     # Listed once so check_action and the no-op action methods stay in sync.
-    _FOOTER_HINT_ACTIONS = (
+    _DEBUG_FOOTER_HINT_ACTIONS = (
         "footer_hint_continue",
         "footer_hint_step_over",
         "footer_hint_step_in",
         "footer_hint_pause",
         "footer_hint_run_to",
         "footer_hint_breakpoint",
+    )
+    _VIM_NAV_FOOTER_HINT_ACTIONS = (
+        "footer_hint_nav_vim_down",
+        "footer_hint_nav_vim_up",
+        "footer_hint_nav_vim_end",
+        "footer_hint_nav_vim_search",
+        "footer_hint_nav_vim_back",
+        "footer_hint_nav_vim_paragraph",
+    )
+    _EMACS_NAV_FOOTER_HINT_ACTIONS = (
+        "footer_hint_nav_emacs_down",
+        "footer_hint_nav_emacs_up",
+        "footer_hint_nav_emacs_pgdn",
+        "footer_hint_nav_emacs_pgup",
+        "footer_hint_nav_emacs_top",
+        "footer_hint_nav_emacs_end",
     )
 
     DEFAULT_CSS = """
@@ -462,11 +495,41 @@ class CodeView(ScrollableContainer, can_focus=True):
     def action_footer_hint_pause(self) -> None: ...
     def action_footer_hint_run_to(self) -> None: ...
     def action_footer_hint_breakpoint(self) -> None: ...
+    def action_footer_hint_nav_vim_down(self) -> None: ...
+    def action_footer_hint_nav_vim_up(self) -> None: ...
+    def action_footer_hint_nav_vim_end(self) -> None: ...
+    def action_footer_hint_nav_vim_search(self) -> None: ...
+    def action_footer_hint_nav_vim_back(self) -> None: ...
+    def action_footer_hint_nav_vim_paragraph(self) -> None: ...
+    def action_footer_hint_nav_emacs_down(self) -> None: ...
+    def action_footer_hint_nav_emacs_up(self) -> None: ...
+    def action_footer_hint_nav_emacs_pgdn(self) -> None: ...
+    def action_footer_hint_nav_emacs_pgup(self) -> None: ...
+    def action_footer_hint_nav_emacs_top(self) -> None: ...
+    def action_footer_hint_nav_emacs_end(self) -> None: ...
 
     def check_action(self, action: str, parameters: tuple) -> bool | None:
-        """Hide the debug-key hints when CodeView is in NAVIGATION mode."""
-        if action in self._FOOTER_HINT_ACTIONS and self.mode != Mode.DEBUG:
-            return None
+        """Gate footer hints on the active mode + keybinding scheme.
+
+        Returns False (not None) to hide a binding: in Textual 8.x,
+        `screen.active_bindings` skips bindings whose check_action returns
+        False but keeps (and renders dimmed) the ones that return None.
+        We want the inactive-mode hints fully gone, freeing footer width.
+        """
+        if action in self._DEBUG_FOOTER_HINT_ACTIONS:
+            return True if self.mode == Mode.DEBUG else False
+        if action in self._VIM_NAV_FOOTER_HINT_ACTIONS:
+            in_vim_nav = (
+                self.mode == Mode.NAVIGATION
+                and self.keybindings.scheme == "vim"
+            )
+            return True if in_vim_nav else False
+        if action in self._EMACS_NAV_FOOTER_HINT_ACTIONS:
+            in_emacs_nav = (
+                self.mode == Mode.NAVIGATION
+                and self.keybindings.scheme == "emacs"
+            )
+            return True if in_emacs_nav else False
         return True
 
     # ---- Paragraph movement ----

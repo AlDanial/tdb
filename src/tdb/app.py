@@ -977,6 +977,9 @@ class TdbApp(App):
             code_view.keybindings = KeybindingConfig.from_scheme(scheme)
             self._keybindings = scheme
             save_config(keybindings=scheme)
+            # Nav-mode footer hints differ per scheme; nudge Textual so the
+            # Footer re-renders against the new keybindings.scheme value.
+            self.refresh_bindings()
 
         self.push_screen(_KeybindingsModal(code_view.keybindings, on_scheme_change))
 
