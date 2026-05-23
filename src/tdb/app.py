@@ -40,12 +40,19 @@ from tdb.widgets.modals import (
     _OpenFileModal,
     _PauseFailedModal,
     _QuitConfirmModal,
+    _StepModeModal,
     _TracebackModal,
 )
 from tdb.widgets.stack_view import StackView
 from tdb.widgets.status_bar import StatusBar
 from tdb.app_helpers import find_readme, unquote_dap_string
-from tdb.persist import load_breakpoints, load_theme, save_breakpoints, save_config
+from tdb.persist import (
+    load_breakpoints,
+    load_step_mode,
+    load_theme,
+    save_breakpoints,
+    save_config,
+)
 from tdb.widgets.async_tasks_modal import AsyncTasksModal
 from tdb.widgets.processes_modal import ProcessesModal
 from tdb.widgets.threads_modal import ThreadsModal
@@ -170,6 +177,7 @@ class TdbApp(App):
         python: str | None = None,
         terminal: str | None = None,
         keybindings: str = "vim",
+        step_mode: str = "statement",
         cli_breakpoints: list[tuple[str, int]] | None = None,
         attach_host: str | None = None,
         attach_port: int | None = None,
@@ -186,6 +194,7 @@ class TdbApp(App):
         self._python = python
         self._terminal = terminal
         self._keybindings = keybindings
+        self._step_mode = step_mode
         self._cli_breakpoints = cli_breakpoints or []
         self._attach_host = attach_host
         self._attach_port = attach_port
@@ -206,6 +215,7 @@ class TdbApp(App):
             self._event_handler = self._textual_handler
 
         self.controller = DebugController(self._event_handler)
+        self.controller.step_mode = self._step_mode
         self._stderr_buffer: list[str] = []
         self._exception_modal_shown = False
         # True after File > Open loads a new program but before the user
@@ -231,7 +241,7 @@ class TdbApp(App):
         yield Header()
         yield MenuBar(
             {
-                "Configure": ["Color Theme", "Keybindings"],
+                "Configure": ["Color Theme", "Keybindings", "Step Mode"],
                 "Help": ["Documentation", "About"],
             },
             leading_action_labels={
@@ -465,6 +475,7 @@ class TdbApp(App):
         else:
             self._event_handler = self._textual_handler
         self.controller = DebugController(self._event_handler)
+        self.controller.step_mode = self._step_mode
         self.controller.state.breakpoints = saved_breakpoints
 
         # Update the server's controller reference so RPC sees the new one
@@ -929,6 +940,8 @@ class TdbApp(App):
             self.action_color_theme()
         elif menu == "Configure" and item == "Keybindings":
             self.action_keybindings()
+        elif menu == "Configure" and item == "Step Mode":
+            self.action_step_mode()
         elif menu == "Help" and item == "Documentation":
             self.action_documentation()
         elif menu == "Help" and item == "About":
@@ -966,6 +979,14 @@ class TdbApp(App):
             save_config(keybindings=scheme)
 
         self.push_screen(_KeybindingsModal(code_view.keybindings, on_scheme_change))
+
+    def action_step_mode(self) -> None:
+        def on_mode_change(mode: str) -> None:
+            self._step_mode = mode
+            self.controller.set_step_mode(mode)
+            save_config(step_mode=mode)
+
+        self.push_screen(_StepModeModal(self.controller.step_mode, on_mode_change))
 
     def action_documentation(self) -> None:
         readme = find_readme()

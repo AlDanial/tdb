@@ -78,6 +78,12 @@ class DapEventCoordinator:
                 # step out so the user lands in their own caller frame.
                 await ctrl.step_out()
                 return
+            # Statement-granularity step: if the cursor is still inside the
+            # multi-line statement that began this step, fire another DAP
+            # step and skip the UI refresh — a follow-up `stopped` event
+            # will re-enter this handler with the new position.
+            if await ctrl.maybe_continue_statement_step():
+                return
             await ctrl.cleanup_run_to_cursor()
         except Exception:
             log.exception("Error handling stopped event")

@@ -340,7 +340,7 @@ def _run_headless(args: argparse.Namespace) -> None:
 def _run_tui(args: argparse.Namespace) -> None:
     """Run with the TUI (optionally with the server alongside)."""
     from tdb.app import TdbApp
-    from tdb.persist import load_keybinding_scheme, save_config
+    from tdb.persist import load_keybinding_scheme, load_step_mode, save_config
 
     # CLI flag overrides saved config; if neither, default to "vim"
     keybindings = args.keybindings
@@ -358,6 +358,7 @@ def _run_tui(args: argparse.Namespace) -> None:
         python=args.python,
         terminal=args.terminal,
         keybindings=keybindings,
+        step_mode=load_step_mode(),
         cli_breakpoints=args.breakpoint,
         attach_host=args.attach_host,
         attach_port=args.attach_port,

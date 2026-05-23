@@ -135,6 +135,96 @@ class _KeybindingsModal(ModalScreen[None]):
         self.dismiss(None)
 
 
+class _StepModeModal(ModalScreen[None]):
+    """Choose how `n` (step-over) and `s` (step-in) traverse multi-line code.
+
+    "Statement" loops the step until execution leaves the current source
+    statement (so stepping over a multi-line call lands on the next
+    statement, not the next sub-line). "Line" is debugpy's native per-line
+    behavior. The selection is persisted via the caller's callback.
+    """
+
+    DEFAULT_CSS = """
+    _StepModeModal {
+        align: center middle;
+    }
+    _StepModeModal #dialog {
+        width: 60;
+        height: auto;
+        max-height: 18;
+        border: solid $primary;
+        background: $surface;
+        padding: 1 2;
+    }
+    _StepModeModal #mode-select {
+        border: none;
+        padding: 0;
+        margin: 0 0 1 0;
+        height: auto;
+    }
+    _StepModeModal RadioButton {
+        border: none;
+        padding: 0 1;
+    }
+    _StepModeModal #explainer {
+        color: $text-muted;
+    }
+    """
+
+    BINDINGS = [
+        Binding("escape", "dismiss_modal", "Close", show=False),
+        Binding("q", "dismiss_modal", "Close", show=False),
+    ]
+
+    _MODES = ("statement", "line")
+
+    def __init__(
+        self,
+        current_mode: str,
+        on_mode_change: Callable[[str], None],
+    ) -> None:
+        super().__init__()
+        self._current_mode = current_mode if current_mode in self._MODES else "statement"
+        self._on_mode_change = on_mode_change
+
+    def compose(self):
+        with Vertical(id="dialog"):
+            yield Static("[bold]Step Mode[/bold]", markup=True)
+            yield Static("", markup=True)
+            with RadioSet(id="mode-select"):
+                for mode in self._MODES:
+                    yield RadioButton(
+                        mode.capitalize(),
+                        value=(self._current_mode == mode),
+                        id=f"mode-{mode}",
+                    )
+            yield Static(
+                "[dim]Statement: `n` / `s` execute the entire multi-line\n"
+                "statement under the cursor as one step.\n"
+                "Line: stop on each physical line, including sub-lines of a\n"
+                "multi-line expression (debugpy default).[/dim]",
+                id="explainer",
+                markup=True,
+            )
+            yield Static("", markup=True)
+            yield Static("[dim]Press ESC or q to close[/dim]", markup=True)
+
+    def on_radio_set_changed(self, event: RadioSet.Changed) -> None:
+        if event.radio_set.id != "mode-select" or event.pressed is None:
+            return
+        pressed_id = event.pressed.id or ""
+        if not pressed_id.startswith("mode-"):
+            return
+        mode = pressed_id[len("mode-"):]
+        if mode == self._current_mode:
+            return
+        self._current_mode = mode
+        self._on_mode_change(mode)
+
+    def action_dismiss_modal(self) -> None:
+        self.dismiss(None)
+
+
 class _PyFileTree(DirectoryTree):
     """DirectoryTree that only shows directories and .py files."""
 

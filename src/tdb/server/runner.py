@@ -33,6 +33,8 @@ async def run_headless(
     """
     handler = ServerEventHandler()
     controller = DebugController(handler)
+    from tdb.persist import load_step_mode
+    controller.step_mode = load_step_mode()
 
     # Apply CLI breakpoints
     if cli_breakpoints:

@@ -235,15 +235,23 @@ class RpcHandlers:
         # Long timeout: after releasing all breakpoint hits in a multi-process
         # program, the remainder of the script can run for a while before the
         # `terminated` event wakes us. 30s was too short to span that tail.
-        stopped = await self.event_handler.wait_for_stop(timeout=600.0)
-        if not stopped:
-            return RpcResponse.error("Timeout waiting for stop")
-        if ctrl.state.is_terminated:
-            output = self.event_handler.drain_output()
-            return RpcResponse.ok(
-                output or f"Program terminated (exit code {self.event_handler.exit_code})"
-            )
-        await ctrl.fetch_stop_info()
+        while True:
+            stopped = await self.event_handler.wait_for_stop(timeout=600.0)
+            if not stopped:
+                return RpcResponse.error("Timeout waiting for stop")
+            if ctrl.state.is_terminated:
+                output = self.event_handler.drain_output()
+                return RpcResponse.ok(
+                    output or f"Program terminated (exit code {self.event_handler.exit_code})"
+                )
+            await ctrl.fetch_stop_info()
+            # Statement-granularity step may keep stepping until we leave
+            # the originating statement. The controller's safety cap bounds
+            # the loop. Each iteration is a fresh DAP next/stepIn round-trip.
+            if await ctrl.maybe_continue_statement_step():
+                self.event_handler.reset_for_continue()
+                continue
+            break
         await ctrl.cleanup_run_to_cursor()
         loc, line = ctrl.state.get_stop_location()
         output = self.event_handler.drain_output()

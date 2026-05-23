@@ -85,6 +85,27 @@ class DebugController:
         # whose main thread is blocked in epoll_wait — debugpy can't
         # deliver pause without a Python frame to trace).
         self._stopped_event = asyncio.Event()
+        # Step granularity: "statement" loops the step until execution leaves
+        # the source-level statement that started it (so `n` over a multi-
+        # line expression doesn't stop on each interior sub-line); "line"
+        # delegates to DAP's per-line trace events. See source_analysis.py.
+        self.step_mode: str = "statement"
+        # Tracks an in-flight statement-granularity step:
+        #   {"kind": "next"|"stepIn", "source_path": str, "range": (s, e),
+        #    "frame_count": int, "iterations": int}
+        # Cleared once execution leaves the range, hits a breakpoint, or
+        # the safety cap is exceeded.
+        self._pending_step: dict | None = None
+        # Cache of (source_path → step-unit list). Populated lazily; keyed
+        # by absolute path. AST parsing is cheap but per-step is wasteful.
+        self._step_unit_cache: dict[str, list[tuple[int, int]]] = {}
+
+    def set_step_mode(self, mode: str) -> None:
+        """Switch step granularity. Clears any pending statement-step."""
+        if mode not in ("statement", "line"):
+            raise ValueError(f"step_mode must be 'statement' or 'line', got {mode!r}")
+        self.step_mode = mode
+        self._pending_step = None
 
     # --- Public capability surface --------------------------------------
     # These properties are how external code (TUI, server, future entry
@@ -363,21 +384,136 @@ class DebugController:
 
     async def step_over(self) -> None:
         if self.state.current_thread_id is not None:
+            await self._begin_statement_step("next")
             self.state.transition_to(SessionPhase.RUNNING)
             self.state.clear_frame_data()
             await self._active_client.next(self.state.current_thread_id)
 
     async def step_in(self) -> None:
         if self.state.current_thread_id is not None:
+            await self._begin_statement_step("stepIn")
             self.state.transition_to(SessionPhase.RUNNING)
             self.state.clear_frame_data()
             await self._active_client.step_in(self.state.current_thread_id)
 
     async def step_out(self) -> None:
         if self.state.current_thread_id is not None:
+            # Step-out crosses frames by definition, so statement-granularity
+            # tracking doesn't apply.
+            self._pending_step = None
             self.state.transition_to(SessionPhase.RUNNING)
             self.state.clear_frame_data()
             await self._active_client.step_out(self.state.current_thread_id)
+
+    # --- Statement-granularity stepping --------------------------------
+
+    _STATEMENT_STEP_MAX_ITERATIONS = 40
+
+    async def _begin_statement_step(self, kind: str) -> None:
+        """Record the source statement currently under the cursor so that
+        the next stop can decide whether to keep stepping.
+
+        No-op when `step_mode` is "line" or we can't pin down the current
+        source/line (e.g., library code without a source path).
+
+        If stack frames haven't been fetched yet (the headless RPC server
+        skips fetch_stop_info between stops), fetch them now so we can
+        read the current source path/line.
+        """
+        self._pending_step = None
+        if self.step_mode != "statement":
+            return
+        if not self.state.stack_frames and self.state.current_thread_id is not None:
+            try:
+                await self.fetch_stop_info()
+            except Exception:
+                log.exception("fetch_stop_info failed in _begin_statement_step")
+                return
+        source_path = self.state.get_current_source_path()
+        line = self.state.get_current_line()
+        if source_path is None or line is None:
+            return
+        units = self._get_step_units(source_path)
+        from tdb.source_analysis import find_step_unit
+        rng = find_step_unit(line, units)
+        if rng is None:
+            return
+        self._pending_step = {
+            "kind": kind,
+            "source_path": source_path,
+            "range": rng,
+            "frame_count": len(self.state.stack_frames),
+            "iterations": 0,
+        }
+
+    async def maybe_continue_statement_step(self) -> bool:
+        """If a statement-step is pending and we're still inside its range,
+        fire another step. Returns True if a step was issued (caller
+        should suppress UI refresh until the next stop), False otherwise.
+
+        Called from the TUI's `on_stopped` handler after stack frames have
+        been fetched — that's when `state` reflects the new position.
+        """
+        pending = self._pending_step
+        if pending is None:
+            return False
+        # Breakpoint / exception / pause: hand control to the user.
+        if self.state.stop_reason not in ("step", None):
+            self._pending_step = None
+            return False
+        pending["iterations"] += 1
+        if pending["iterations"] > self._STATEMENT_STEP_MAX_ITERATIONS:
+            log.warning(
+                "Statement-step hit %d-iteration safety cap; stopping.",
+                self._STATEMENT_STEP_MAX_ITERATIONS,
+            )
+            self._pending_step = None
+            return False
+        cur_source = self.state.get_current_source_path()
+        cur_line = self.state.get_current_line()
+        if cur_source is None or cur_line is None:
+            self._pending_step = None
+            return False
+        # Stepped out (or into) a different file ⇒ different statement.
+        if cur_source != pending["source_path"]:
+            self._pending_step = None
+            return False
+        # For step-in, a deeper call stack means we entered a function. Stop
+        # there so the user sees the new frame, even if its first line happens
+        # to fall in the caller's statement range (unlikely but possible).
+        if pending["kind"] == "stepIn" and len(self.state.stack_frames) > pending["frame_count"]:
+            self._pending_step = None
+            return False
+        s, e = pending["range"]
+        if not (s <= cur_line <= e):
+            self._pending_step = None
+            return False
+        # Still inside the original statement → issue another step.
+        if self.state.current_thread_id is None:
+            self._pending_step = None
+            return False
+        self.state.transition_to(SessionPhase.RUNNING)
+        self.state.clear_frame_data()
+        if pending["kind"] == "next":
+            await self._active_client.next(self.state.current_thread_id)
+        else:
+            await self._active_client.step_in(self.state.current_thread_id)
+        return True
+
+    def _get_step_units(self, source_path: str) -> list[tuple[int, int]]:
+        """Read + parse the source file, caching the unit list per path."""
+        cached = self._step_unit_cache.get(source_path)
+        if cached is not None:
+            return cached
+        try:
+            text = Path(source_path).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            self._step_unit_cache[source_path] = []
+            return []
+        from tdb.source_analysis import compute_step_units
+        units = compute_step_units(text, filename=source_path)
+        self._step_unit_cache[source_path] = units
+        return units
 
     async def run_to_cursor(self, source_path: str, line: int) -> None:
         """Set a temporary breakpoint at line, continue, then remove it.

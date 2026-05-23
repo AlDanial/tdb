@@ -99,15 +99,16 @@ tdb my_program.py
 # debug with arguments
 tdb my_program.py arg1 arg2
 
-# add breakpoints at lines 20 and 35 of `my_program.py` and line 14 of `module.py`
-# (when -k is given, --no-stop-on-entry is implied: the program runs to the first breakpoint)
+# add breakpoints at lines 20 and 35 of `my_program.py` and line 14
+# of `module.py` (when -k is given, --no-stop-on-entry is set and the
+# program runs to the first breakpoint)
 tdb -k 20 -k 35 -k module.py:14 my_program.py arg1 arg2
 
 # use a specific virtualenv
 tdb --python /path/to/venv/bin/python my_program.py
 
 # step into, or stop at tracebacks in library code
-tdb --no-just-my-code /path/to/venv/bin/python my_program.py
+tdb --no-just-my-code --python /path/to/venv/bin/python my_program.py
 
 # run until first breakpoint or exit
 tdb --no-stop-on-entry my_program.py
@@ -178,7 +179,7 @@ A cursor line (blue) tracks your position; the current execution line is highlig
 | Key | Menu |
 |-----|------|
 | `Alt+F` | File (open a different script to debug) |
-| `Alt+C` | Configure (Color Theme, Keybindings) |
+| `Alt+C` | Configure (Color Theme, Keybindings, Step Mode) |
 | `Alt+T` | Threads |
 | `Alt+P` | Processes |
 | `Alt+A` | Async Tasks |
@@ -213,7 +214,7 @@ those for gdb/pdb, with some aliases and extras thrown in for convenience.
 
 | Key | Action |
 |-----|--------|
-| `n` | Step over (next line) |
+| `n` | Step over (next statement) |
 | `s` | Step into function call |
 | `o` / `f` / `r` | Step out of current function (also aliased as "finish" and "return") |
 | `c` | Continue execution |
@@ -229,6 +230,23 @@ those for gdb/pdb, with some aliases and extras thrown in for convenience.
 "exit-a-function" primitive is `stepOut`, which runs the rest of the current function
 normally and stops at the return point. A true gdb-style immediate-return (skipping
 remaining code in the function without executing side effects) is not supported by DAP/debugpy.
+
+**Step granularity (statement vs. line):** by default, `n` (step over) and `s` (step into)
+treat a multi-line source statement as a single step. For example, stepping over
+
+```python
+results = await asyncio.gather(
+    fetch(1, 2),
+    fetch(2, 1),
+    fetch(3, 3),
+)
+print(results)   # next stop lands here, not on each sub-line above
+```
+
+lands on `print(results)`, not on each interior sub-line of the `gather` call. Switch to
+**Line** mode (Configure > Step Mode) to get debugpy's native per-line behavior, which
+stops on each physical line — useful for inspecting how a complex expression is built up.
+The choice is saved to `~/.config/tdb/config.json`.
 
 ### Breakpoints
 
@@ -664,11 +682,24 @@ On Windows, it uses `%APPDATA%\tdb\`.
 
 | File | Contents |
 |------|----------|
-| `config.json` | User preferences (keybinding scheme) |
+| `config.json` | User preferences (keybinding scheme, color theme, step mode) |
 | `breakpoints.json` | Breakpoints from previous sessions, keyed by project directory |
 
 Breakpoints are saved on exit and restored when debugging a program in the same
 directory. Each project's breakpoints are independent.
+
+**Step mode** (`step_mode` in `config.json`) controls how `n` (step over) and `s` (step
+into) handle multi-line source statements:
+
+| Value | Behavior |
+|-------|----------|
+| `"statement"` (default) | A multi-line statement (e.g. a `gather(...)` call spanning five lines) is one step. The debugger keeps issuing DAP steps until execution leaves the statement, then stops on the next logical line. |
+| `"line"` | debugpy's native per-line behavior — stops on every physical line, including each interior sub-line of a multi-line expression. |
+
+Change it from the menu (**Configure > Step Mode**); the choice is saved immediately and
+applies to all future sessions. Breakpoint hits, exceptions, and pauses always interrupt
+a statement step, so a breakpoint set on a sub-line of a multi-line expression still
+fires as expected.
 
 ## Tech Stack
 

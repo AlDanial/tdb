@@ -123,6 +123,7 @@ def load_breakpoints(program: str) -> dict[str, list[SourceBreakpoint]]:
 def save_config(
     keybindings: str | None = None,
     theme: str | None = None,
+    step_mode: str | None = None,
 ) -> None:
     """Write user preferences to the config file.
 
@@ -134,6 +135,8 @@ def save_config(
             existing["keybindings"] = keybindings
         if theme is not None:
             existing["theme"] = theme
+        if step_mode is not None:
+            existing["step_mode"] = step_mode
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
         CONFIG_FILE.write_text(json.dumps(existing, indent=2) + "\n")
         log.debug("Saved config to %s", CONFIG_FILE)
@@ -160,3 +163,15 @@ def load_keybinding_scheme() -> str | None:
 def load_theme() -> str | None:
     """Return the saved textual theme name, or None if not set."""
     return load_config_raw().get("theme")
+
+
+def load_step_mode() -> str:
+    """Return the saved step granularity (`"statement"` or `"line"`).
+
+    Defaults to `"statement"` so `n` skips through multi-line expressions
+    as a single logical step.
+    """
+    value = load_config_raw().get("step_mode")
+    if value in ("statement", "line"):
+        return value
+    return "statement"
