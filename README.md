@@ -219,6 +219,8 @@ those for gdb/pdb, with some aliases and extras thrown in for convenience.
 | `p` | Pause a running program |
 | `t` | Run to cursor position |
 | `u` / `d` | Navigate stack up (caller) / down (callee) |
+| `j` / `k` | Move cursor down / up (with count: `5j`, `10k`) |
+| `G` | Go to last line (with count: `42G` jumps to line 42) |
 | `R` | Restart the debug session |
 | `Ctrl+Q` | Quit |
 

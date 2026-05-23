@@ -76,6 +76,12 @@ _DEBUG = {
     "d": "stack_down",
     "L": "goto_line_prompt",
     "R": "restart",
+    # vim-style cursor movement also usable in debug mode (k/j/G with
+    # count prefix). Convenient for stepping the cursor without leaving
+    # debug mode just to scroll a few lines.
+    "k": "cursor_up",
+    "j": "cursor_down",
+    "G": "goto_end",
 }
 
 _SHARED = {
