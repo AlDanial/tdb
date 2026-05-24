@@ -72,7 +72,10 @@ class DAPClient:
         ``ModuleNotFoundError`` and tdb would hang waiting on stdout.
         """
         self._process = await asyncio.create_subprocess_exec(
-            sys.executable, "-Xfrozen_modules=off", "-m", "debugpy.adapter",
+            sys.executable,
+            "-Xfrozen_modules=off",
+            "-m",
+            "debugpy.adapter",
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -173,7 +176,9 @@ class DAPClient:
         handler = self._reverse_request_handlers.get(request.command)
         if handler is None:
             log.warning("No handler for reverse request: %s", request.command)
-            await self._send_reverse_response(request, success=False, message="Not supported")
+            await self._send_reverse_response(
+                request, success=False, message="Not supported"
+            )
             return
         try:
             body = await handler(request)
@@ -217,7 +222,9 @@ class DAPClient:
         writer.write(encode_message(response_data))
         await writer.drain()
 
-    async def _send_raw(self, command: str, arguments: dict[str, Any] | None = None) -> asyncio.Future[Response]:
+    async def _send_raw(
+        self, command: str, arguments: dict[str, Any] | None = None
+    ) -> asyncio.Future[Response]:
         """Send a DAP request. Returns the Future for the response (not awaited)."""
         writer = self._get_write_stream()
         seq = self._next_seq()
@@ -229,9 +236,12 @@ class DAPClient:
         await writer.drain()
         return future
 
-    async def _send(self, command: str, arguments: dict[str, Any] | None = None) -> Response:
+    async def _send(
+        self, command: str, arguments: dict[str, Any] | None = None
+    ) -> Response:
         """Send a DAP request and wait for its response."""
         from tdb._timeouts import DAP_REQUEST
+
         future = await self._send_raw(command, arguments)
         response = await asyncio.wait_for(future, timeout=DAP_REQUEST)
         if not response.success:
@@ -241,15 +251,18 @@ class DAPClient:
     # --- High-level DAP commands ---
 
     async def initialize(self, support_run_in_terminal: bool = False) -> Capabilities:
-        resp = await self._send("initialize", {
-            "clientID": "tdb",
-            "clientName": "tdb",
-            "adapterID": "debugpy",
-            "pathFormat": "path",
-            "linesStartAt1": True,
-            "columnsStartAt1": True,
-            "supportsRunInTerminalRequest": support_run_in_terminal,
-        })
+        resp = await self._send(
+            "initialize",
+            {
+                "clientID": "tdb",
+                "clientName": "tdb",
+                "adapterID": "debugpy",
+                "pathFormat": "path",
+                "linesStartAt1": True,
+                "columnsStartAt1": True,
+                "supportsRunInTerminalRequest": support_run_in_terminal,
+            },
+        )
         self.capabilities = Capabilities.from_dict(resp.body)
         return self.capabilities
 
@@ -324,10 +337,13 @@ class DAPClient:
         source_path: str,
         breakpoints: list[SourceBreakpoint],
     ) -> list[Breakpoint]:
-        resp = await self._send("setBreakpoints", {
-            "source": {"path": source_path},
-            "breakpoints": [bp.to_dict() for bp in breakpoints],
-        })
+        resp = await self._send(
+            "setBreakpoints",
+            {
+                "source": {"path": source_path},
+                "breakpoints": [bp.to_dict() for bp in breakpoints],
+            },
+        )
         return [Breakpoint.from_dict(bp) for bp in resp.body.get("breakpoints", [])]
 
     async def breakpoint_locations(
@@ -362,11 +378,14 @@ class DAPClient:
         start_frame: int = 0,
         levels: int = 20,
     ) -> list[StackFrame]:
-        resp = await self._send("stackTrace", {
-            "threadId": thread_id,
-            "startFrame": start_frame,
-            "levels": levels,
-        })
+        resp = await self._send(
+            "stackTrace",
+            {
+                "threadId": thread_id,
+                "startFrame": start_frame,
+                "levels": levels,
+            },
+        )
         return [StackFrame.from_dict(f) for f in resp.body.get("stackFrames", [])]
 
     async def scopes(self, frame_id: int) -> list[Scope]:

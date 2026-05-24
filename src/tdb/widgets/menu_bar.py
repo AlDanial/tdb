@@ -28,7 +28,7 @@ def _highlight_first(text: str, color: str, char: str | None = None) -> str:
             return text
     if not text:
         return text
-    return f"{text[:idx]}[bold {color}]{text[idx]}[/]{text[idx + 1:]}"
+    return f"{text[:idx]}[bold {color}]{text[idx]}[/]{text[idx + 1 :]}"
 
 
 class _MenuDropdown(OptionList):
@@ -107,6 +107,7 @@ class MenuBar(Widget):
 
     class MenuItemSelected(Message):
         """Posted when a menu item is selected."""
+
         def __init__(self, menu: str, item: str) -> None:
             self.menu = menu
             self.item = item
@@ -114,6 +115,7 @@ class MenuBar(Widget):
 
     class ActionLabelClicked(Message):
         """Posted when a direct-action label is clicked."""
+
         def __init__(self, label_id: str) -> None:
             self.label_id = label_id
             super().__init__()
@@ -208,10 +210,17 @@ class MenuBar(Widget):
                 # Right-align the dropdown's right edge to the label's right
                 # edge so longer entries (e.g. "Documentation" in Help) stay
                 # on-screen instead of spilling past the terminal edge.
-                dropdown_width = max(
-                    (len(opt.prompt.plain) if hasattr(opt.prompt, "plain") else len(str(opt.prompt)))
-                    for opt in dropdown._options
-                ) + 2  # +2 for the border
+                dropdown_width = (
+                    max(
+                        (
+                            len(opt.prompt.plain)
+                            if hasattr(opt.prompt, "plain")
+                            else len(str(opt.prompt))
+                        )
+                        for opt in dropdown._options
+                    )
+                    + 2
+                )  # +2 for the border
                 screen_width = self.screen.region.width
                 x = min(
                     label.region.right - dropdown_width,

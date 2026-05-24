@@ -74,7 +74,9 @@ class EvaluateConsole(Vertical):
         self._history_idx = 0
 
     def compose(self):
-        log = RichLog(id="eval-output", highlight=True, markup=False, wrap=True, auto_scroll=True)
+        log = RichLog(
+            id="eval-output", highlight=True, markup=False, wrap=True, auto_scroll=True
+        )
         log.can_focus = False
         yield log
         yield _EvalInput(id="eval-input", placeholder=">>> Enter expression...")
@@ -108,7 +110,9 @@ class EvaluateConsole(Vertical):
         else:
             self.post_message(self.EvaluateRequested(expression))
 
-    def apply_completion(self, text: str, completions: list[tuple[str, str | None]]) -> None:
+    def apply_completion(
+        self, text: str, completions: list[tuple[str, str | None]]
+    ) -> None:
         """Apply completions returned by DAP.
 
         Args:

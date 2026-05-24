@@ -140,7 +140,7 @@ class RpcHandlers:
         "get_output": "params: []  -- drain buffered stdout/stderr",
         "get_source": 'params: ["file_path"]  -- read source file contents',
         "list_threads": "params: []  -- list all threads",
-        "inspect_thread": 'params: [thread_id]  -- inspect a specific thread',
+        "inspect_thread": "params: [thread_id]  -- inspect a specific thread",
         "list_processes": "params: []  -- list child processes (multiprocessing)",
         "inspect_process": 'params: ["name_or_pid"]  -- inspect a specific child process',
         "list_tasks": "params: []  -- list all asyncio tasks",
@@ -236,6 +236,7 @@ class RpcHandlers:
         # program, the remainder of the script can run for a while before the
         # `terminated` event wakes us. 30s was too short to span that tail.
         from tdb._timeouts import RPC_STEP_WAIT
+
         while True:
             stopped = await self.event_handler.wait_for_stop(timeout=RPC_STEP_WAIT)
             if not stopped:
@@ -243,7 +244,8 @@ class RpcHandlers:
             if ctrl.state.is_terminated:
                 output = self.event_handler.drain_output()
                 return RpcResponse.ok(
-                    output or f"Program terminated (exit code {self.event_handler.exit_code})"
+                    output
+                    or f"Program terminated (exit code {self.event_handler.exit_code})"
                 )
             await ctrl.fetch_stop_info()
             # Statement-granularity step may keep stepping until we leave
@@ -279,6 +281,7 @@ class RpcHandlers:
         # Breakpoints land on logical statement starts. Snap if needed
         # and surface the move in the response so scripted callers know.
         from tdb.source_analysis import snap_breakpoint
+
         snapped = snap_breakpoint(source_path, line)
         if snapped is None:
             return RpcResponse.error(
@@ -287,7 +290,9 @@ class RpcHandlers:
             )
         original_line = line
         line = snapped
-        await self.controller.add_breakpoint(source_path, line, condition, hit_condition)
+        await self.controller.add_breakpoint(
+            source_path, line, condition, hit_condition
+        )
         if line != original_line:
             return RpcResponse.ok(
                 f"breakpoint set at {source_path}:{line} "
@@ -389,7 +394,9 @@ class RpcHandlers:
             return RpcResponse.error("No stack trace available")
         lines = []
         for i, frame in enumerate(frames):
-            src = frame.source.path if frame.source and frame.source.path else "<unknown>"
+            src = (
+                frame.source.path if frame.source and frame.source.path else "<unknown>"
+            )
             marker = " *" if frame.id == ctrl.state.current_frame_id else ""
             lines.append(f"#{i} {frame.name} at {src}:{frame.line}{marker}")
         return RpcResponse.ok("\n".join(lines))
@@ -432,6 +439,7 @@ class RpcHandlers:
 
         # Wait for initialized then configure
         from tdb._timeouts import DAP_INITIALIZED
+
         await asyncio.wait_for(eh.initialized_event.wait(), timeout=DAP_INITIALIZED)
         await ctrl.do_configure()
         return RpcResponse.ok("Session restarted")
@@ -507,7 +515,9 @@ class RpcHandlers:
         task = next((t for t in tasks if t.name == target_name), None)
         if task is None:
             names = [t.name for t in tasks]
-            return RpcResponse.error(f"Task '{target_name}' not found. Active tasks: {names}")
+            return RpcResponse.error(
+                f"Task '{target_name}' not found. Active tasks: {names}"
+            )
         lines = [
             f"Name:  {task.name}",
             f"State: {task.state}",
@@ -518,11 +528,13 @@ class RpcHandlers:
             lines.append(f"Cancelling: {task.cancelling} pending request(s)")
         if task.cancel_message:
             lines.append(f"Cancel msg: {task.cancel_message}")
-        lines.extend([
-            f"Coro:  {task.coro}",
-            "",
-            "Stack:",
-        ])
+        lines.extend(
+            [
+                f"Coro:  {task.coro}",
+                "",
+                "Stack:",
+            ]
+        )
         if task.stack:
             for i, frame in enumerate(task.stack):
                 lines.append(f"  #{i} {frame}")
@@ -555,7 +567,9 @@ class RpcHandlers:
 
     async def action_wait_graph(self, params: list[Any]) -> RpcResponse:
         if self.controller.state.is_running:
-            return RpcResponse.error("Cannot compute wait graph while program is running")
+            return RpcResponse.error(
+                "Cannot compute wait graph while program is running"
+            )
         if self.controller.state.is_terminated:
             return RpcResponse.error("Program has terminated")
         try:
@@ -578,7 +592,9 @@ class RpcHandlers:
         if blocked:
             lines.append("Blocked tasks:")
             for t in blocked:
-                holders_str = ", ".join(t.holders) if t.holders else "(no holder identified)"
+                holders_str = (
+                    ", ".join(t.holders) if t.holders else "(no holder identified)"
+                )
                 lines.append(f"  {t.name}  ->  {t.awaiting}  (holders: {holders_str})")
             lines.append("")
         else:
@@ -631,7 +647,9 @@ class RpcHandlers:
         thread = next((t for t in threads if t.id == thread_id), None)
         if thread is None:
             ids = [t.id for t in threads]
-            return RpcResponse.error(f"Thread {thread_id} not found. Active threads: {ids}")
+            return RpcResponse.error(
+                f"Thread {thread_id} not found. Active threads: {ids}"
+            )
         lines = [
             f"Thread ID: {thread.id}",
             f"Name:      {thread.name}",
@@ -642,14 +660,20 @@ class RpcHandlers:
             frames = await self.controller.client.stack_trace(thread_id)
             if frames:
                 for i, frame in enumerate(frames):
-                    src = frame.source.path if frame.source and frame.source.path else "<unknown>"
+                    src = (
+                        frame.source.path
+                        if frame.source and frame.source.path
+                        else "<unknown>"
+                    )
                     lines.append(f"  #{i} {frame.name} at {src}:{frame.line}")
                 top = frames[0]
                 scopes = await self.controller.client.scopes(top.id)
                 lines.append("")
                 lines.append("Variables:")
                 for scope in scopes:
-                    variables = await self.controller.client.variables(scope.variables_reference)
+                    variables = await self.controller.client.variables(
+                        scope.variables_reference
+                    )
                     for v in variables:
                         type_str = f" ({v.type})" if v.type else ""
                         lines.append(f"  {v.name}{type_str} = {v.value}")
@@ -682,7 +706,9 @@ class RpcHandlers:
         if not params:
             return RpcResponse.error("params[0] must be a process name or PID")
         if self.controller.state.is_running:
-            return RpcResponse.error("Cannot inspect processes while program is running")
+            return RpcResponse.error(
+                "Cannot inspect processes while program is running"
+            )
         if self.controller.state.is_terminated:
             return RpcResponse.error("Program has terminated")
         target = str(params[0])

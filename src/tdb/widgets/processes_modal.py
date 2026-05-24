@@ -162,6 +162,7 @@ class ProcessesModal(_InspectableListModal[ProcessInfo]):
 
     class LoadProcessDetail(Message):
         """Request to fetch stack trace and variables for a child process."""
+
         def __init__(self, pid: int) -> None:
             self.pid = pid
             super().__init__()
@@ -170,6 +171,7 @@ class ProcessesModal(_InspectableListModal[ProcessInfo]):
         """User double-clicked / Enter'd a row: close the modal and
         switch the main Code/Stack/Variable views to this process.
         Subsequent step / continue commands target this process too."""
+
         def __init__(self, pid: int) -> None:
             self.pid = pid
             super().__init__()

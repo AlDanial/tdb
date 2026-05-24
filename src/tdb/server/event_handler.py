@@ -67,12 +67,15 @@ class ServerEventHandler:
         self.last_stop_description = description
         self.last_stop_text = text
         self.stopped_event.set()
-        self._broadcast_sse("stopped", {
-            "thread_id": thread_id,
-            "reason": reason,
-            "description": description,
-            "text": text,
-        })
+        self._broadcast_sse(
+            "stopped",
+            {
+                "thread_id": thread_id,
+                "reason": reason,
+                "description": description,
+                "text": text,
+            },
+        )
 
     def on_continued(self) -> None:
         log.info("Server: continued")

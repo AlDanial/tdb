@@ -44,9 +44,7 @@ class VariableView(Tree[int]):
             self._add_variables(scope_node, scope_vars)
             scope_node.expand()
 
-    def _add_variables(
-        self, parent: TreeNode[int], variables: list[Variable]
-    ) -> None:
+    def _add_variables(self, parent: TreeNode[int], variables: list[Variable]) -> None:
         for var in variables:
             label = self._format_variable(var)
             if var.variables_reference > 0:
@@ -67,6 +65,7 @@ class VariableView(Tree[int]):
 
     class VariableExpand:
         """Request to fetch child variables. Posted as a message."""
+
         def __init__(self, variables_reference: int, node: TreeNode[int]):
             self.variables_reference = variables_reference
             self.node = node
@@ -83,9 +82,7 @@ class VariableView(Tree[int]):
                     self.app.LazyLoadVariables(node.data, node, self)  # type: ignore[attr-defined]
                 )
 
-    def load_children(
-        self, node: TreeNode[int], variables: list[Variable]
-    ) -> None:
+    def load_children(self, node: TreeNode[int], variables: list[Variable]) -> None:
         """Replace placeholder children with actual variable data."""
         if node.data:
             self._pending_expand.discard(node.data)

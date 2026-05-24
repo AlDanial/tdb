@@ -16,6 +16,7 @@ from tdb.session.state import DebugState, SessionPhase
 
 # --- Initial state -----------------------------------------------------
 
+
 def test_initial_phase_is_not_started():
     s = DebugState()
     assert s.phase is SessionPhase.NOT_STARTED
@@ -38,6 +39,7 @@ def test_initial_derived_booleans():
 # This is intentionally permissive — the controller knows which transitions
 # are actually meaningful; the state machine itself does not gatekeep.
 
+
 @pytest.mark.parametrize("src", list(SessionPhase))
 @pytest.mark.parametrize("dst", list(SessionPhase))
 def test_transition_to_any_phase(src, dst):
@@ -50,18 +52,23 @@ def test_transition_to_any_phase(src, dst):
 
 # --- Derived-boolean mapping per phase ---------------------------------
 
+
 @pytest.mark.parametrize(
     "phase, is_ready, is_running, is_terminated, is_post_mortem",
     [
         (SessionPhase.NOT_STARTED, False, False, False, False),
-        (SessionPhase.RUNNING,     True,  True,  False, False),
-        (SessionPhase.STOPPED,     True,  False, False, False),
-        (SessionPhase.TERMINATED,  True,  False, True,  False),
-        (SessionPhase.POST_MORTEM, True,  False, True,  True),
+        (SessionPhase.RUNNING, True, True, False, False),
+        (SessionPhase.STOPPED, True, False, False, False),
+        (SessionPhase.TERMINATED, True, False, True, False),
+        (SessionPhase.POST_MORTEM, True, False, True, True),
     ],
 )
 def test_derived_booleans_per_phase(
-    phase, is_ready, is_running, is_terminated, is_post_mortem,
+    phase,
+    is_ready,
+    is_running,
+    is_terminated,
+    is_post_mortem,
 ):
     s = DebugState()
     s.transition_to(phase)
@@ -82,13 +89,14 @@ def test_is_terminated_includes_post_mortem():
 
 # --- Capability properties ---------------------------------------------
 
+
 @pytest.mark.parametrize(
     "phase, can_send_dap, can_step, can_evaluate",
     [
         (SessionPhase.NOT_STARTED, False, False, False),
-        (SessionPhase.RUNNING,     True,  False, False),
-        (SessionPhase.STOPPED,     True,  True,  True),
-        (SessionPhase.TERMINATED,  False, False, False),
+        (SessionPhase.RUNNING, True, False, False),
+        (SessionPhase.STOPPED, True, True, True),
+        (SessionPhase.TERMINATED, False, False, False),
         (SessionPhase.POST_MORTEM, False, False, False),
     ],
 )
@@ -104,10 +112,18 @@ def test_capabilities_per_phase(phase, can_send_dap, can_step, can_evaluate):
 # Direct assignment to the legacy booleans must raise AttributeError —
 # this is the protection that forces every mutation through transition_to.
 
+
 @pytest.mark.parametrize(
     "attr",
-    ["is_ready", "is_running", "is_terminated", "is_post_mortem",
-     "can_send_dap", "can_step", "can_evaluate"],
+    [
+        "is_ready",
+        "is_running",
+        "is_terminated",
+        "is_post_mortem",
+        "can_send_dap",
+        "can_step",
+        "can_evaluate",
+    ],
 )
 def test_legacy_boolean_setters_are_blocked(attr):
     s = DebugState()
@@ -116,6 +132,7 @@ def test_legacy_boolean_setters_are_blocked(attr):
 
 
 # --- transition_to is idempotent --------------------------------------
+
 
 def test_transition_to_same_phase_is_a_noop():
     s = DebugState()

@@ -44,6 +44,7 @@ class AsyncTaskInfo:
     cancellation requests. `cancel_message` is the message passed to
     `cancel()`, when set.
     """
+
     name: str
     state: str
     coro: str
@@ -332,6 +333,7 @@ class WaitTreeNode:
     Lives in inspection.py (not the modal) so it stays UI-free and
     testable without pulling in Textual.
     """
+
     label: str
     kind: str
     data: str | None = None
@@ -366,17 +368,21 @@ def build_wait_tree(tasks: list[AsyncTaskInfo]) -> list[WaitTreeNode]:
         )
         for cycle in cycles:
             if len(cycle) == 1:
-                cycle_section.children.append(WaitTreeNode(
-                    label=f"{cycle[0]} (self-cycle)",
-                    kind="cycle",
-                    data=cycle[0],
-                ))
+                cycle_section.children.append(
+                    WaitTreeNode(
+                        label=f"{cycle[0]} (self-cycle)",
+                        kind="cycle",
+                        data=cycle[0],
+                    )
+                )
             else:
-                cycle_section.children.append(WaitTreeNode(
-                    label=" <-> ".join(cycle),
-                    kind="cycle",
-                    data=cycle[0],
-                ))
+                cycle_section.children.append(
+                    WaitTreeNode(
+                        label=" <-> ".join(cycle),
+                        kind="cycle",
+                        data=cycle[0],
+                    )
+                )
         sections.append(cycle_section)
 
     if blocked:
@@ -386,9 +392,7 @@ def build_wait_tree(tasks: list[AsyncTaskInfo]) -> list[WaitTreeNode]:
         )
         try:
             for t in blocked:
-                blocked_section.children.append(
-                    _build_task_subtree(t, by_name, ())
-                )
+                blocked_section.children.append(_build_task_subtree(t, by_name, ()))
         except RecursionError:
             # _build_task_subtree recurses through the holder chain.
             # If the chain is deeper than the recursion limit, give up
@@ -414,11 +418,13 @@ def build_wait_tree(tasks: list[AsyncTaskInfo]) -> list[WaitTreeNode]:
             kind="section_running",
         )
         for t in unblocked:
-            running_section.children.append(WaitTreeNode(
-                label=t.name,
-                kind="task_unblocked",
-                data=t.name,
-            ))
+            running_section.children.append(
+                WaitTreeNode(
+                    label=t.name,
+                    kind="task_unblocked",
+                    data=t.name,
+                )
+            )
         sections.append(running_section)
 
     return sections
@@ -447,25 +453,27 @@ def _build_task_subtree(
     node.children.append(primitive)
 
     if not task.holders:
-        primitive.children.append(WaitTreeNode(
-            label="(no holder identified)",
-            kind="no_holder",
-        ))
+        primitive.children.append(
+            WaitTreeNode(
+                label="(no holder identified)",
+                kind="no_holder",
+            )
+        )
         return node
 
     new_path = path + (task.name,)
     for holder_name in task.holders:
         holder = by_name.get(holder_name)
         if holder is None:
-            primitive.children.append(WaitTreeNode(
-                label=f"{holder_name} (not in snapshot)",
-                kind="orphan",
-                data=holder_name,
-            ))
-        else:
             primitive.children.append(
-                _build_task_subtree(holder, by_name, new_path)
+                WaitTreeNode(
+                    label=f"{holder_name} (not in snapshot)",
+                    kind="orphan",
+                    data=holder_name,
+                )
             )
+        else:
+            primitive.children.append(_build_task_subtree(holder, by_name, new_path))
     return node
 
 
@@ -499,6 +507,7 @@ def parse_task_json(raw: str) -> list[AsyncTaskInfo]:
 @dataclass
 class ProcessInfo:
     """Parsed info about a single child process."""
+
     name: str
     pid: int | None
     alive: bool

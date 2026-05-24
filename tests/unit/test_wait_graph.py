@@ -22,13 +22,17 @@ def _info(
     awaiting: str | None = None,
 ) -> AsyncTaskInfo:
     return AsyncTaskInfo(
-        name=name, state="pending", coro="c", stack=[],
+        name=name,
+        state="pending",
+        coro="c",
+        stack=[],
         holders=list(holders or []),
         awaiting=awaiting,
     )
 
 
 # --- build_wait_graph ---------------------------------------------------
+
 
 def test_build_wait_graph_empty():
     assert build_wait_graph([]) == {}
@@ -40,10 +44,12 @@ def test_build_wait_graph_single_unblocked_task():
 
 
 def test_build_wait_graph_with_holders():
-    g = build_wait_graph([
-        _info("A", holders=["B"]),
-        _info("B"),
-    ])
+    g = build_wait_graph(
+        [
+            _info("A", holders=["B"]),
+            _info("B"),
+        ]
+    )
     assert g == {"A": ["B"], "B": []}
 
 
@@ -64,6 +70,7 @@ def test_build_wait_graph_preserves_holder_order():
 
 
 # --- find_cycles --------------------------------------------------------
+
 
 def test_find_cycles_empty_graph():
     assert find_cycles({}) == []
@@ -101,10 +108,14 @@ def test_find_cycles_singleton_without_self_edge_is_not_a_cycle():
 
 
 def test_find_cycles_two_disjoint_cycles():
-    cycles = find_cycles({
-        "A": ["B"], "B": ["A"],
-        "C": ["D"], "D": ["C"],
-    })
+    cycles = find_cycles(
+        {
+            "A": ["B"],
+            "B": ["A"],
+            "C": ["D"],
+            "D": ["C"],
+        }
+    )
     assert cycles == [["A", "B"], ["C", "D"]]
 
 
@@ -131,25 +142,32 @@ def test_find_cycles_handles_unknown_holder_names():
 def test_find_cycles_returns_sorted_for_determinism():
     """Both within-cycle (node names) and across-cycles (cycle order)
     sorting matter for stable output."""
-    cycles = find_cycles({
-        "Z": ["Y"], "Y": ["Z"],
-        "B": ["A"], "A": ["B"],
-    })
+    cycles = find_cycles(
+        {
+            "Z": ["Y"],
+            "Y": ["Z"],
+            "B": ["A"],
+            "A": ["B"],
+        }
+    )
     assert cycles == [["A", "B"], ["Y", "Z"]]
 
 
 def test_find_cycles_complex_scc_collapses_to_one_entry():
     """SCC of size 3 with multiple internal edges — Tarjan returns
     one component; we report it once as a sorted list of names."""
-    cycles = find_cycles({
-        "A": ["B", "C"],
-        "B": ["C"],
-        "C": ["A"],
-    })
+    cycles = find_cycles(
+        {
+            "A": ["B", "C"],
+            "B": ["C"],
+            "C": ["A"],
+        }
+    )
     assert cycles == [["A", "B", "C"]]
 
 
 # --- end-to-end: AsyncTaskInfo → graph → cycles -------------------------
+
 
 def test_pipeline_lock_holder_no_deadlock():
     tasks = [
@@ -174,12 +192,14 @@ def test_pipeline_two_task_deadlock():
 
 # --- RecursionError safety nets ----------------------------------------
 
+
 def test_find_cycles_returns_empty_on_recursion_limit(monkeypatch):
     """A wait chain deeper than the Python recursion limit must
     degrade to '[]' (no cycle detection) rather than crashing the
     handler. We force the limit very low to trigger the fallback
     without building a 1000-deep graph."""
     import sys
+
     # Build a long linear chain so Tarjan's DFS must descend N times.
     chain = {f"T{i}": [f"T{i + 1}"] for i in range(200)}
     chain["T200"] = []
@@ -227,6 +247,7 @@ def test_build_wait_tree_truncates_subtree_on_recursion_limit(monkeypatch):
 
 # --- build_wait_tree ----------------------------------------------------
 
+
 def _kinds(nodes: list[WaitTreeNode]) -> list[str]:
     return [n.kind for n in nodes]
 
@@ -247,8 +268,8 @@ def test_build_wait_tree_only_running_tasks():
 
 def test_build_wait_tree_blocked_with_holder():
     """Waiter blocked on Lock held by Holder. Tree:
-       Blocked → Waiter → primitive → Holder
-       Running → Holder
+    Blocked → Waiter → primitive → Holder
+    Running → Holder
     """
     tasks = [
         _info("Holder"),

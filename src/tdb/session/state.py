@@ -139,8 +139,7 @@ class DebugState:
         self.displayed_frames_are_synthetic = synthetic
         if frames:
             self.current_frame_id = (
-                current_frame_id if current_frame_id is not None
-                else frames[0].id
+                current_frame_id if current_frame_id is not None else frames[0].id
             )
         else:
             self.current_frame_id = None

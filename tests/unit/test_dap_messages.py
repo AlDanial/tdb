@@ -27,41 +27,57 @@ def test_request_to_dict_with_args():
 
 
 def test_response_from_dict_success():
-    r = Response.from_dict({
-        "seq": 5,
-        "request_seq": 4,
-        "command": "launch",
-        "success": True,
-        "body": {"x": 1},
-    })
+    r = Response.from_dict(
+        {
+            "seq": 5,
+            "request_seq": 4,
+            "command": "launch",
+            "success": True,
+            "body": {"x": 1},
+        }
+    )
     assert r.success is True
     assert r.body == {"x": 1}
     assert r.message is None
 
 
 def test_response_from_dict_failure():
-    r = Response.from_dict({
-        "seq": 5, "request_seq": 4, "command": "launch",
-        "success": False, "message": "boom",
-    })
+    r = Response.from_dict(
+        {
+            "seq": 5,
+            "request_seq": 4,
+            "command": "launch",
+            "success": False,
+            "message": "boom",
+        }
+    )
     assert r.success is False
     assert r.message == "boom"
     assert r.body == {}
 
 
 def test_event_from_dict():
-    e = Event.from_dict({
-        "seq": 7, "event": "stopped", "body": {"reason": "breakpoint"},
-    })
+    e = Event.from_dict(
+        {
+            "seq": 7,
+            "event": "stopped",
+            "body": {"reason": "breakpoint"},
+        }
+    )
     assert e.event == "stopped"
     assert e.body["reason"] == "breakpoint"
 
 
 def test_parse_message_dispatches_response():
-    m = parse_message({
-        "type": "response", "seq": 1, "request_seq": 1,
-        "command": "x", "success": True,
-    })
+    m = parse_message(
+        {
+            "type": "response",
+            "seq": 1,
+            "request_seq": 1,
+            "command": "x",
+            "success": True,
+        }
+    )
     assert isinstance(m, Response)
 
 

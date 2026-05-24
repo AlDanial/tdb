@@ -12,8 +12,11 @@ VENV_PY = os.path.join(os.path.dirname(HERE), ".venv", "bin", "python")
 def main():
     env = {**os.environ, "PYTHONPATH": os.path.join(os.path.dirname(HERE), "src")}
     child = pexpect.spawn(
-        VENV_PY, [DEMO],
-        env=env, encoding="utf-8", timeout=30,
+        VENV_PY,
+        [DEMO],
+        env=env,
+        encoding="utf-8",
+        timeout=30,
         dimensions=(40, 120),
     )
     log = open("/tmp/quit_cancel_test.log", "w")
@@ -32,8 +35,11 @@ def main():
         # Give the modal a moment to dismiss, then confirm tdb is still alive
         # by sending Ctrl+Q (immediate quit) and checking the program resumes.
         import time
+
         time.sleep(0.5)
-        print("Sending Ctrl+Q to cleanly quit tdb (should work since cancel didn't quit)...")
+        print(
+            "Sending Ctrl+Q to cleanly quit tdb (should work since cancel didn't quit)..."
+        )
         child.sendcontrol("q")
 
         child.expect("result = 45", timeout=15)

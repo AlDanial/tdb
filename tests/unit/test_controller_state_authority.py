@@ -31,9 +31,13 @@ class _RecordingHandler(DebugEventHandler):
         self.events.append(("initialized", (), {}))
 
     def on_stopped(self, thread_id, reason, description=None, text=None):
-        self.events.append((
-            "stopped", (thread_id, reason, description, text), {},
-        ))
+        self.events.append(
+            (
+                "stopped",
+                (thread_id, reason, description, text),
+                {},
+            )
+        )
 
     def on_continued(self):
         self.events.append(("continued", (), {}))
@@ -51,8 +55,9 @@ class _RecordingHandler(DebugEventHandler):
         self.events.append(("ext_term", (), {}))
 
 
-def _stopped_event(*, thread_id=1, reason="breakpoint",
-                   description=None, text=None) -> Event:
+def _stopped_event(
+    *, thread_id=1, reason="breakpoint", description=None, text=None
+) -> Event:
     body = {"reason": reason, "threadId": thread_id}
     if description is not None:
         body["description"] = description
@@ -66,6 +71,7 @@ def _continued_event() -> Event:
 
 
 # --- _on_stopped ---------------------------------------------------------
+
 
 def test_on_stopped_sets_is_running_false():
     h = _RecordingHandler()
@@ -95,8 +101,7 @@ def test_on_stopped_preserves_thread_id_when_event_omits_it():
     h = _RecordingHandler()
     ctrl = DebugController(h)
     ctrl.state.current_thread_id = 99
-    ctrl._on_stopped(Event(seq=1, event="stopped",
-                           body={"reason": "pause"}))
+    ctrl._on_stopped(Event(seq=1, event="stopped", body={"reason": "pause"}))
     assert ctrl.state.current_thread_id == 99
 
 
@@ -121,13 +126,21 @@ def test_on_stopped_resets_active_client_to_parent():
 def test_on_stopped_propagates_to_event_handler():
     h = _RecordingHandler()
     ctrl = DebugController(h)
-    ctrl._on_stopped(_stopped_event(
-        thread_id=3, reason="exception",
-        description="ValueError", text="bad input",
-    ))
-    assert h.events == [(
-        "stopped", (3, "exception", "ValueError", "bad input"), {},
-    )]
+    ctrl._on_stopped(
+        _stopped_event(
+            thread_id=3,
+            reason="exception",
+            description="ValueError",
+            text="bad input",
+        )
+    )
+    assert h.events == [
+        (
+            "stopped",
+            (3, "exception", "ValueError", "bad input"),
+            {},
+        )
+    ]
 
 
 def test_on_stopped_state_is_set_before_handler_dispatch():
@@ -144,6 +157,7 @@ def test_on_stopped_state_is_set_before_handler_dispatch():
             observed["is_running"] = ctrl.state.is_running
             observed["stop_reason"] = ctrl.state.stop_reason
             observed["thread_id"] = ctrl.state.current_thread_id
+
         def on_continued(self): ...
         def on_terminated(self): ...
         def on_exited(self, *a, **k): ...
@@ -161,6 +175,7 @@ def test_on_stopped_state_is_set_before_handler_dispatch():
 
 
 # --- _on_continued -------------------------------------------------------
+
 
 def test_on_continued_sets_is_running_true():
     h = _RecordingHandler()
@@ -199,6 +214,7 @@ def test_on_continued_propagates_to_event_handler():
 
 # --- Step actions don't need a manual sync from the consumer ----------
 
+
 async def test_step_then_stopped_event_leaves_state_consistent():
     """Reproduces the headless RPC flow that used to require
     `_sync_state_from_stop`: after wait_for_stop returns, state must
@@ -227,4 +243,5 @@ def test_no_sync_helper_remains_on_RpcHandlers():
     """_sync_state_from_stop was deleted as part of #4. Asserting on its
     absence keeps anyone from re-introducing the duplicate path."""
     from tdb.server.handlers import RpcHandlers
+
     assert not hasattr(RpcHandlers, "_sync_state_from_stop")

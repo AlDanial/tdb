@@ -37,12 +37,17 @@ def _coord() -> tuple[DapEventCoordinator, _StubApp]:
 
 # --- _stopped_inside_breakpoint_hook -----------------------------------
 
+
 def test_breakpoint_hook_check_false_when_not_remote_attach():
     co, app = _coord()
     app.controller._is_remote_attach = False
     app.controller.state.stack_frames = [
-        StackFrame(id=1, name="breakpoint",
-                   source=Source(path="/x/tdb/breakpoint_hook.py"), line=87),
+        StackFrame(
+            id=1,
+            name="breakpoint",
+            source=Source(path="/x/tdb/breakpoint_hook.py"),
+            line=87,
+        ),
     ]
     assert co._stopped_inside_breakpoint_hook() is False
 
@@ -67,9 +72,12 @@ def test_breakpoint_hook_check_true_for_basename_match():
     co, app = _coord()
     app.controller._is_remote_attach = True
     app.controller.state.stack_frames = [
-        StackFrame(id=1, name="breakpoint",
-                   source=Source(path="/site-packages/tdb/breakpoint_hook.py"),
-                   line=87),
+        StackFrame(
+            id=1,
+            name="breakpoint",
+            source=Source(path="/site-packages/tdb/breakpoint_hook.py"),
+            line=87,
+        ),
     ]
     assert co._stopped_inside_breakpoint_hook() is True
 
@@ -78,13 +86,15 @@ def test_breakpoint_hook_check_false_for_other_files():
     co, app = _coord()
     app.controller._is_remote_attach = True
     app.controller.state.stack_frames = [
-        StackFrame(id=1, name="user_func",
-                   source=Source(path="/home/me/script.py"), line=5),
+        StackFrame(
+            id=1, name="user_func", source=Source(path="/home/me/script.py"), line=5
+        ),
     ]
     assert co._stopped_inside_breakpoint_hook() is False
 
 
 # --- _check_stderr_traceback parsing -----------------------------------
+
 
 def test_check_stderr_traceback_no_traceback_does_nothing():
     co, app = _coord()

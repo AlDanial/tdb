@@ -31,6 +31,7 @@ def find_readme() -> str | None:
 
     try:
         import importlib.resources as ires
+
         with ires.files("tdb").joinpath("README.md").open("r", encoding="utf-8") as f:
             return f.read()
     except (FileNotFoundError, ModuleNotFoundError, AttributeError, OSError):
@@ -38,6 +39,7 @@ def find_readme() -> str | None:
 
     try:
         import importlib.metadata as md
+
         text = md.distribution("textual-debugger").read_text("README.md")
         if text:
             return text

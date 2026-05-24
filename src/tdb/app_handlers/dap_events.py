@@ -28,7 +28,8 @@ log = logging.getLogger(__name__)
 # Pre-compiled at module level so repeated traceback parses don't
 # re-build the regex each time.
 _TB_FILE_RE = re.compile(
-    r'^\s*File "(.+)", line (\d+)(?:, in (.+))?', re.MULTILINE,
+    r'^\s*File "(.+)", line (\d+)(?:, in (.+))?',
+    re.MULTILINE,
 )
 
 
@@ -65,7 +66,8 @@ class DapEventCoordinator:
     async def on_stopped(self, message: DapStopped) -> None:
         log.info(
             "on_dap_stopped called thread=%s reason=%s",
-            message.thread_id, message.reason,
+            message.thread_id,
+            message.reason,
         )
         ctrl = self.app.controller
         try:
@@ -122,8 +124,10 @@ class DapEventCoordinator:
         # Build traceback from stack frames (bottom-up, like Python tracebacks)
         lines = []
         for frame in reversed(state.stack_frames):
-            source = frame.source.path if frame.source and frame.source.path else "<unknown>"
-            lines.append(f"  File \"{source}\", line {frame.line}, in {frame.name}")
+            source = (
+                frame.source.path if frame.source and frame.source.path else "<unknown>"
+            )
+            lines.append(f'  File "{source}", line {frame.line}, in {frame.name}')
         frames_text = "\n".join(lines) if lines else "  <no frames available>"
 
         def on_dismiss(result: str | None) -> None:
@@ -132,7 +136,8 @@ class DapEventCoordinator:
 
         self.app.push_screen(
             _TracebackModal(
-                exception_text, frames_text,
+                exception_text,
+                frames_text,
                 can_restart=self.app.controller.supports_restart,
             ),
             callback=on_dismiss,
@@ -172,7 +177,9 @@ class DapEventCoordinator:
             log.exception("Error handling terminated event")
 
     async def _wait_for_stderr_quiescent(
-        self, quiet_for: float = 0.15, max_wait: float = 1.5,
+        self,
+        quiet_for: float = 0.15,
+        max_wait: float = 1.5,
     ) -> None:
         """Sleep in short ticks until stderr stops growing (or max_wait elapses)."""
         deadline = asyncio.get_event_loop().time() + max_wait
@@ -242,12 +249,14 @@ class DapEventCoordinator:
             path = m.group(1)
             line = int(m.group(2))
             func = m.group(3) or "<module>"
-            synthetic_frames.append(StackFrame(
-                id=i,
-                name=func,
-                source=Source(path=path, name=os.path.basename(path)),
-                line=line,
-            ))
+            synthetic_frames.append(
+                StackFrame(
+                    id=i,
+                    name=func,
+                    source=Source(path=path, name=os.path.basename(path)),
+                    line=line,
+                )
+            )
 
         if synthetic_frames:
             # Synthetic: the debuggee is already gone (this runs after a
@@ -267,7 +276,8 @@ class DapEventCoordinator:
 
         self.app.push_screen(
             _TracebackModal(
-                exception_text or "Program crashed", frames_text,
+                exception_text or "Program crashed",
+                frames_text,
                 can_restart=self.app.controller.supports_restart,
             ),
             callback=on_dismiss,
@@ -278,9 +288,7 @@ class DapEventCoordinator:
     def on_exited(self, exit_code: int) -> None:
         try:
             console = self.app.query_one("#console-view", ConsoleView)
-            console.write_output(
-                f"\nProcess exited with code {exit_code}\n", "console"
-            )
+            console.write_output(f"\nProcess exited with code {exit_code}\n", "console")
         except Exception:
             log.exception("Error handling exited event")
 

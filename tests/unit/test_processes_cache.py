@@ -23,13 +23,25 @@ def _isolated_cache_path(tmp_path, monkeypatch):
 def _sample_payload():
     procs = [
         ProcessInfo(
-            name="ForkPoolWorker-1", pid=1001, alive=True, exitcode=None,
-            daemon=True, target="<f>", args="()", kwargs="{}",
+            name="ForkPoolWorker-1",
+            pid=1001,
+            alive=True,
+            exitcode=None,
+            daemon=True,
+            target="<f>",
+            args="()",
+            kwargs="{}",
             start_method="fork",
         ),
         ProcessInfo(
-            name="ForkPoolWorker-2", pid=1002, alive=False, exitcode=0,
-            daemon=True, target="<f>", args="()", kwargs="{}",
+            name="ForkPoolWorker-2",
+            pid=1002,
+            alive=False,
+            exitcode=0,
+            daemon=True,
+            target="<f>",
+            args="()",
+            kwargs="{}",
             start_method="fork",
         ),
     ]
@@ -37,7 +49,10 @@ def _sample_payload():
         1001: {
             "frames": [
                 StackFrame(
-                    id=10, name="main", line=42, column=4,
+                    id=10,
+                    name="main",
+                    line=42,
+                    column=4,
                     source=Source(path="/tmp/a.py", name="a.py"),
                 ),
                 StackFrame(id=11, name="inner", line=99, source=None),
@@ -47,7 +62,9 @@ def _sample_payload():
                 5: [
                     Variable(name="x", value="1", type="int"),
                     Variable(
-                        name="lst", value="[1,2]", type="list",
+                        name="lst",
+                        value="[1,2]",
+                        type="list",
                         variables_reference=7,
                     ),
                 ],
@@ -105,10 +122,19 @@ def test_clear_is_noop_when_missing(_isolated_cache_path):
 
 
 def test_round_trip_with_empty_details(_isolated_cache_path):
-    procs = [ProcessInfo(
-        name="x", pid=1, alive=True, exitcode=None, daemon=False,
-        target="", args="", kwargs="", start_method="spawn",
-    )]
+    procs = [
+        ProcessInfo(
+            name="x",
+            pid=1,
+            alive=True,
+            exitcode=None,
+            daemon=False,
+            target="",
+            args="",
+            kwargs="",
+            start_method="spawn",
+        )
+    ]
     processes_cache.save(procs, {}, None)
     loaded = processes_cache.load()
     assert loaded is not None

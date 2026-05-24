@@ -31,6 +31,7 @@ log = logging.getLogger(__name__)
 # Modal dialogs
 # ---------------------------------------------------------------------------
 
+
 class _GoToLineModal(ModalScreen[int | None]):
     """Modal dialog prompting for a line number."""
 
@@ -187,6 +188,7 @@ class _BreakpointConditionModal(ModalScreen[tuple[str | None, str | None] | None
 # Code content widget
 # ---------------------------------------------------------------------------
 
+
 class _CodeContent(Static):
     """Inner static widget that renders the actual source code.
 
@@ -246,6 +248,7 @@ class _CodeContent(Static):
 # Main CodeView
 # ---------------------------------------------------------------------------
 
+
 class CodeView(ScrollableContainer, can_focus=True):
     """Source code viewer with breakpoint gutter and current-line highlighting."""
 
@@ -279,8 +282,10 @@ class CodeView(ScrollableContainer, can_focus=True):
         Binding("slash", "footer_hint_nav_vim_search", "search", key_display="/"),
         Binding("question_mark", "footer_hint_nav_vim_back", "back", key_display="?"),
         Binding(
-            "right_square_bracket", "footer_hint_nav_vim_paragraph",
-            "paragraph", key_display="]",
+            "right_square_bracket",
+            "footer_hint_nav_vim_paragraph",
+            "paragraph",
+            key_display="]",
         ),
         # Navigation hints — emacs scheme.
         Binding("ctrl+n", "footer_hint_nav_emacs_down", "down"),
@@ -436,7 +441,9 @@ class CodeView(ScrollableContainer, can_focus=True):
         event.stop()
         event.prevent_default()
 
-    def _dispatch_action(self, action: str, count: int, had_count: bool = False) -> None:
+    def _dispatch_action(
+        self, action: str, count: int, had_count: bool = False
+    ) -> None:
         """Execute an action with the given repeat count.
 
         `had_count` distinguishes "no prefix typed" from "1 typed" — only
@@ -462,7 +469,9 @@ class CodeView(ScrollableContainer, can_focus=True):
             self.cursor_line = max(1, self.cursor_line - page * count)
         elif action == "page_down":
             page = max(1, self.size.height - 2)
-            self.cursor_line = min(len(self._lines) or 1, self.cursor_line + page * count)
+            self.cursor_line = min(
+                len(self._lines) or 1, self.cursor_line + page * count
+            )
         elif action == "paragraph_down":
             self._move_paragraph(down=True, count=count)
         elif action == "paragraph_up":
@@ -545,14 +554,12 @@ class CodeView(ScrollableContainer, can_focus=True):
             return True if self.mode == Mode.DEBUG else False
         if action in self._VIM_NAV_FOOTER_HINT_ACTIONS:
             in_vim_nav = (
-                self.mode == Mode.NAVIGATION
-                and self.keybindings.scheme == "vim"
+                self.mode == Mode.NAVIGATION and self.keybindings.scheme == "vim"
             )
             return True if in_vim_nav else False
         if action in self._EMACS_NAV_FOOTER_HINT_ACTIONS:
             in_emacs_nav = (
-                self.mode == Mode.NAVIGATION
-                and self.keybindings.scheme == "emacs"
+                self.mode == Mode.NAVIGATION and self.keybindings.scheme == "emacs"
             )
             return True if in_emacs_nav else False
         return True
@@ -599,14 +606,17 @@ class CodeView(ScrollableContainer, can_focus=True):
         def on_dismiss(value: int | None) -> None:
             if value is not None and self._lines:
                 self.cursor_line = max(1, min(value, len(self._lines)))
+
         self.app.push_screen(_GoToLineModal(), callback=on_dismiss)
 
     def _open_search(self, backward: bool = False) -> None:
         self._search_backward = backward
+
         def on_dismiss(term: str | None) -> None:
             if term is not None:
                 self._search_term = term
                 self._do_search(from_line=self.cursor_line, backward=backward)
+
         self.app.push_screen(_SearchModal(), callback=on_dismiss)
 
     def _do_search(self, from_line: int, backward: bool) -> None:
@@ -652,12 +662,9 @@ class CodeView(ScrollableContainer, can_focus=True):
     def set_breakpoints(self, breakpoints: list[SourceBreakpoint]) -> None:
         self._breakpoint_lines = {bp.line for bp in breakpoints}
         self._conditional_bp_lines = {
-            bp.line for bp in breakpoints
-            if bp.condition or bp.hit_condition
+            bp.line for bp in breakpoints if bp.condition or bp.hit_condition
         }
-        self._disabled_bp_lines = {
-            bp.line for bp in breakpoints if not bp.enabled
-        }
+        self._disabled_bp_lines = {bp.line for bp in breakpoints if not bp.enabled}
         self._render_code()
 
     def set_breakpoints_disabled(self, disabled: bool) -> None:
@@ -685,6 +692,7 @@ class CodeView(ScrollableContainer, can_focus=True):
         if not self._step_units:
             return line
         from tdb.source_analysis import snap_to_statement_start
+
         return snap_to_statement_start(line, self._step_units)
 
     def goto_line(self, line: int) -> None:
@@ -752,7 +760,9 @@ class CodeView(ScrollableContainer, can_focus=True):
 
             # Line number
             if is_current:
-                output.append(f"{line_num:>4} ", style="bright_white on rgb(120,100,30)")
+                output.append(
+                    f"{line_num:>4} ", style="bright_white on rgb(120,100,30)"
+                )
             elif is_cursor:
                 output.append(f"{line_num:>4} ", style="bright_white on rgb(60,60,80)")
             else:
@@ -799,7 +809,9 @@ class CodeView(ScrollableContainer, can_focus=True):
         if snapped is not None:
             self.post_message(self.BreakpointToggled(self.source_path, snapped))
 
-    def on__code_content_line_double_clicked(self, event: _CodeContent.LineDoubleClicked) -> None:
+    def on__code_content_line_double_clicked(
+        self, event: _CodeContent.LineDoubleClicked
+    ) -> None:
         if self.source_path is None or self.mode != Mode.DEBUG:
             return
         line = event.y + 1

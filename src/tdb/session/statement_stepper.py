@@ -185,7 +185,8 @@ class StatementStepper:
             return cached
         try:
             text = Path(source_path).read_text(
-                encoding="utf-8", errors="replace",
+                encoding="utf-8",
+                errors="replace",
             )
         except OSError:
             self._unit_cache[source_path] = []

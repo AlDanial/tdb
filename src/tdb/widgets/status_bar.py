@@ -25,7 +25,9 @@ class StatusBar(Static):
     def set_running(self) -> None:
         self.update(Text(" \u25b6 Running", style="bold green"))
 
-    def set_paused(self, source_path: str | None, line: int | None, reason: str | None = None) -> None:
+    def set_paused(
+        self, source_path: str | None, line: int | None, reason: str | None = None
+    ) -> None:
         if reason == "exception":
             parts = Text(" \u2716 Exception", style="bold red")
         else:

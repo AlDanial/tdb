@@ -5,19 +5,22 @@ Thread Communication (Events and Queues)
 Demonstrates how threads talk to each other safely using
 queue.Queue and threading.Event.
 """
+
 import threading
 import queue
 import time
 
+
 def producer(q, stop_event):
     for i in range(5):
-        time.sleep(0.5) # Simulate work
+        time.sleep(0.5)  # Simulate work
         item = f"Item-{i}"
         q.put(item)
         print(f"[Producer] Created {item}")
-    
+
     print("[Producer] Finished making items. Signaling stop.")
-    stop_event.set() # Signal the consumer to stop
+    stop_event.set()  # Signal the consumer to stop
+
 
 def consumer(q, stop_event):
     # Loop until the stop event is set AND the queue is empty
@@ -31,6 +34,7 @@ def consumer(q, stop_event):
             continue
     print("[Consumer] Shutting down.")
 
+
 def main():
     work_queue = queue.Queue()
     stop_event = threading.Event()
@@ -43,6 +47,7 @@ def main():
 
     prod_thread.join()
     cons_thread.join()
+
 
 if __name__ == "__main__":
     main()

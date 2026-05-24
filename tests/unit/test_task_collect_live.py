@@ -35,6 +35,7 @@ def _find(tasks, name):
 
 # --- Awaiting classifier ------------------------------------------------
 
+
 async def test_classifies_lock_acquire():
     lock = asyncio.Lock()
     await lock.acquire()  # held by the test's own task
@@ -103,6 +104,7 @@ async def test_classifies_asyncio_sleep():
 
 # --- awaiting_obj_id (wait-graph foundation) ---------------------------
 
+
 async def test_awaiting_obj_id_matches_lock_identity():
     """For a task blocked on Lock.acquire, awaiting_obj_id must equal id(lock).
     This is what the wait-graph builder will use to match a blocked task
@@ -169,6 +171,7 @@ async def test_awaiting_obj_id_is_none_for_running_test_task():
 
 
 # --- Holder detection (wait-graph foundation) --------------------------
+
 
 async def test_lock_holder_detected():
     """Task holding a Lock must be reported as the holder for a task
@@ -267,6 +270,7 @@ async def test_holders_empty_for_unblocked_task():
 
 # --- Deadlock detection end-to-end -------------------------------------
 
+
 async def test_deadlock_cycle_detected_end_to_end():
     """Two-task deadlock: A holds X waits on Y, B holds Y waits on X.
     Verifies the full pipeline: live tasks → TASK_COLLECT_EXPR →
@@ -308,9 +312,12 @@ async def test_deadlock_cycle_detected_end_to_end():
                 b_info = _find(tasks, "DeadlockB")
             except AssertionError:
                 continue
-            if (a_info.awaiting == "Lock.acquire"
-                    and b_info.awaiting == "Lock.acquire"
-                    and a_info.holders and b_info.holders):
+            if (
+                a_info.awaiting == "Lock.acquire"
+                and b_info.awaiting == "Lock.acquire"
+                and a_info.holders
+                and b_info.holders
+            ):
                 break
         else:
             pytest.fail("tasks did not reach deadlock state in time")
@@ -330,6 +337,7 @@ async def test_deadlock_cycle_detected_end_to_end():
 
 
 # --- Cancellation surfacing --------------------------------------------
+
 
 async def test_cancelling_count_is_reported():
     """task.cancelling() returns the number of pending cancellations
@@ -359,6 +367,7 @@ async def test_cancel_message_is_captured():
 
 
 # --- Defensive: no false positives -------------------------------------
+
 
 async def test_normal_running_task_has_no_awaiting():
     """A task currently *executing* (not parked on a primitive) should

@@ -41,7 +41,9 @@ class StackView(DataTable):
     def on_mount(self) -> None:
         self.add_columns("#", "Function", "Location")
 
-    def update_frames(self, frames: list[StackFrame], current_frame_id: int | None = None) -> None:
+    def update_frames(
+        self, frames: list[StackFrame], current_frame_id: int | None = None
+    ) -> None:
         self._current_frame_id = current_frame_id
         self._updating = True
         try:

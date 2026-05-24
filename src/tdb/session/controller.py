@@ -20,6 +20,7 @@ log = logging.getLogger(__name__)
 # Terminal emulator launching lives in tdb.session.terminal — see
 # TerminalLauncher there.
 
+
 class DebugController:
     """Orchestrates the debug session between DAP client and event consumers."""
 
@@ -32,6 +33,7 @@ class DebugController:
         # Child process debug sessions (pid → DAPClient) — owned by
         # ChildProcessManager in session/child_processes.py.
         from tdb.session.child_processes import ChildProcessManager
+
         self._children = ChildProcessManager(self)
         # Back-compat shims so external code that grabbed the raw dict /
         # lock keeps working (the attribute names match what the previous
@@ -58,6 +60,7 @@ class DebugController:
         # Statement-granularity stepping (`n` skips through multi-line
         # statements as one step). See session/statement_stepper.py.
         from tdb.session.statement_stepper import StatementStepper
+
         self._stepper = StatementStepper(
             self.state,
             issue_step=self._issue_statement_step,
@@ -167,12 +170,14 @@ class DebugController:
 
         if terminal is not None:
             from tdb.session.terminal import TerminalLauncher
+
             self._terminal_launcher = TerminalLauncher(
                 terminal,
                 on_started=self.event_handler.on_external_terminal_started,
             )
             self.client.on_reverse_request(
-                "runInTerminal", self._terminal_launcher.handle_run_in_terminal,
+                "runInTerminal",
+                self._terminal_launcher.handle_run_in_terminal,
             )
 
         self._launch_params = {
@@ -240,7 +245,8 @@ class DebugController:
         if not self.state.breakpoints_disabled:
             for source_path, bps in self.state.breakpoints.items():
                 await self.client.set_breakpoints(
-                    source_path, self._enabled_bps(bps),
+                    source_path,
+                    self._enabled_bps(bps),
                 )
 
         # Signal configuration complete — this unblocks the launch response
@@ -283,6 +289,7 @@ class DebugController:
         # happens to inherit the same PID.
         try:
             from tdb import processes_cache
+
             processes_cache.clear()
         except Exception:
             log.exception("processes_cache.clear failed in stop")
@@ -401,11 +408,16 @@ class DebugController:
 
     async def cleanup_run_to_cursor(self) -> None:
         """Remove the temporary breakpoint after stopping."""
-        if not hasattr(self, "_run_to_cursor_cleanup") or self._run_to_cursor_cleanup is None:
+        if (
+            not hasattr(self, "_run_to_cursor_cleanup")
+            or self._run_to_cursor_cleanup is None
+        ):
             return
         source_path, line = self._run_to_cursor_cleanup
         self._run_to_cursor_cleanup = None
-        bps = [bp for bp in self.state.breakpoints.get(source_path, []) if bp.line != line]
+        bps = [
+            bp for bp in self.state.breakpoints.get(source_path, []) if bp.line != line
+        ]
         self.state.breakpoints[source_path] = bps
         if self.state.is_ready and not self.state.is_terminated:
             sent = self._enabled_bps(bps)
@@ -498,9 +510,13 @@ class DebugController:
             existing.condition = condition
             existing.hit_condition = hit_condition
         else:
-            bps.append(SourceBreakpoint(
-                line=line, condition=condition, hit_condition=hit_condition,
-            ))
+            bps.append(
+                SourceBreakpoint(
+                    line=line,
+                    condition=condition,
+                    hit_condition=hit_condition,
+                )
+            )
             self.state.breakpoints[source_path] = bps
 
         if self.state.is_ready and not self.state.is_terminated:
@@ -535,7 +551,6 @@ class DebugController:
                 break
         if self.state.is_ready and not self.state.is_terminated:
             await self.client.set_breakpoints(source_path, self._enabled_bps(bps))
-
 
     async def disable_all_breakpoints(self) -> None:
         """Tell debugpy to remove all breakpoints without clearing them from state."""
@@ -644,7 +659,9 @@ class DebugController:
                         if frames:
                             frame_id = frames[0].id
                 result, _ = await self.client.evaluate(
-                    expression, frame_id=frame_id, context="repl",
+                    expression,
+                    frame_id=frame_id,
+                    context="repl",
                 )
                 return result
             except DAPError as e:
@@ -723,6 +740,7 @@ class DebugController:
         (cli.py post-mortem entry, tests) don't have to change.
         """
         from tdb.session.post_mortem_loader import load_post_mortem_into
+
         load_post_mortem_into(self.state, snapshot)
 
     async def fetch_stop_info(self) -> None:
@@ -795,6 +813,7 @@ class DebugController:
         # stale. Drop the file so the next modal open re-fetches.
         try:
             from tdb import processes_cache
+
             processes_cache.clear()
         except Exception:
             log.exception("processes_cache.clear failed in _on_continued")
@@ -857,5 +876,3 @@ class DebugController:
         """Delegate to ChildProcessManager (kept on controller for the
         couple of _spawn_bg callers that still reach for it)."""
         await self._children.pause_all()
-
-

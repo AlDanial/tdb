@@ -55,14 +55,14 @@ def test_drain_keeps_short_control_sequences():
     short — they MUST survive the drain so the alt-screen actually
     exits and the cursor is restored when the writer thread joins."""
     restoration = [
-        "\x1b[?2004l",   # disable bracketed paste
-        "\x1b[?7h",      # enable line wrap
-        "\x1b[?1000l",   # disable mouse 1000
-        "\x1b[?1003l",   # disable mouse 1003
-        "\x1b[<u",       # disable kitty kbd
-        "\x1b[?1049l",   # alt-screen off  ← critical
-        "\x1b[?25h",     # show cursor
-        "\x1b[?1004l",   # disable focus events
+        "\x1b[?2004l",  # disable bracketed paste
+        "\x1b[?7h",  # enable line wrap
+        "\x1b[?1000l",  # disable mouse 1000
+        "\x1b[?1003l",  # disable mouse 1003
+        "\x1b[<u",  # disable kitty kbd
+        "\x1b[?1049l",  # alt-screen off  ← critical
+        "\x1b[?25h",  # show cursor
+        "\x1b[?1004l",  # disable focus events
     ]
     app = _fake_app_with_queue(restoration)
     dropped = app._drain_writer_queue_fast()
@@ -81,12 +81,12 @@ def test_drain_mixed_keeps_only_short_items():
     drop the renders and keep the restoration so the alt-screen-exit
     fires immediately when the writer thread next reads."""
     items = [
-        "X" * 30_000,        # render frame
-        "X" * 30_000,        # render frame
-        "\x1b[?2004l",       # disable bracketed paste — keep
-        "X" * 924,           # render fragment — drop (>64 B)
-        "\x1b[?1049l",       # alt screen off — keep
-        "\x1b[?25h",         # show cursor — keep
+        "X" * 30_000,  # render frame
+        "X" * 30_000,  # render frame
+        "\x1b[?2004l",  # disable bracketed paste — keep
+        "X" * 924,  # render fragment — drop (>64 B)
+        "\x1b[?1049l",  # alt screen off — keep
+        "\x1b[?25h",  # show cursor — keep
     ]
     app = _fake_app_with_queue(items)
     dropped = app._drain_writer_queue_fast()

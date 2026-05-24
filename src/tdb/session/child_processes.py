@@ -127,7 +127,10 @@ class ChildProcessManager:
         self._ctl._spawn_bg(self._attach(host, port, pid))
 
     async def _attach(
-        self, host: str, port: int, pid: int | None = None,
+        self,
+        host: str,
+        port: int,
+        pid: int | None = None,
     ) -> None:
         """Connect to the adapter for a child process and configure breakpoints.
 
@@ -154,7 +157,8 @@ class ChildProcessManager:
             # the parent to pause too so the user sees a coherent
             # "everything is paused" snapshot.
             def on_child_stopped(
-                event: Event, _child: DAPClient = child,
+                event: Event,
+                _child: DAPClient = child,
             ) -> None:
                 thread_id = event.body.get("threadId")
                 reason = event.body.get("reason", "unknown")
@@ -168,7 +172,10 @@ class ChildProcessManager:
                 if reason not in ("pause",):
                     self._ctl._spawn_bg(self._ctl._pause_parent())
                 self._ctl.event_handler.on_stopped(
-                    thread_id, reason, description, text,
+                    thread_id,
+                    reason,
+                    description,
+                    text,
                 )
 
             def on_child_terminated(event: Event) -> None:
@@ -196,7 +203,9 @@ class ChildProcessManager:
             # Inherit parent's just_my_code setting.
             jmc = self._ctl._launch_params.get("just_my_code", True)
             attach_future = await child.attach(
-                host=host, port=port, sub_process_id=pid,
+                host=host,
+                port=port,
+                sub_process_id=pid,
                 just_my_code=jmc,
             )
 
@@ -214,14 +223,15 @@ class ChildProcessManager:
                 async def _set_bps(source_path: str, bps: list) -> None:
                     try:
                         await child.set_breakpoints(
-                            source_path, enabled_bps(bps),
+                            source_path,
+                            enabled_bps(bps),
                         )
                     except Exception:
                         pass
-                await asyncio.gather(*(
-                    _set_bps(sp, bps)
-                    for sp, bps in state.breakpoints.items()
-                ))
+
+                await asyncio.gather(
+                    *(_set_bps(sp, bps) for sp, bps in state.breakpoints.items())
+                )
 
             await child.configuration_done()
             await asyncio.wait_for(attach_future, timeout=DAP_CHILD_ATTACH)

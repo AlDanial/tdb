@@ -38,15 +38,15 @@ log = logging.getLogger(__name__)
 # Maps the CLI --terminal choice to (executable name, flags before the command).
 # The flags accept the remaining args as the command + arguments.
 _TERMINAL_SPECS: dict[str, tuple[str, list[str]]] = {
-    "xterm":          ("xterm",          ["-e"]),
-    "konsole":        ("konsole",        ["-e"]),
+    "xterm": ("xterm", ["-e"]),
+    "konsole": ("konsole", ["-e"]),
     "gnome-terminal": ("gnome-terminal", ["--wait", "--"]),
-    "ghostty":        ("ghostty",        ["-e"]),
-    "kitty":          ("kitty",          []),
-    "iterm2":         ("iterm2",         ["-e"]),
-    "warp":           ("warp",           ["-e"]),
-    "wezterm":        ("wezterm",        ["start", "--"]),
-    "terminator":     ("terminator",     ["-x"]),
+    "ghostty": ("ghostty", ["-e"]),
+    "kitty": ("kitty", []),
+    "iterm2": ("iterm2", ["-e"]),
+    "warp": ("warp", ["-e"]),
+    "wezterm": ("wezterm", ["start", "--"]),
+    "terminator": ("terminator", ["-x"]),
 }
 
 

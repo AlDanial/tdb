@@ -18,6 +18,7 @@ from tdb.inspection import (
 
 # --- parse_task_json -----------------------------------------------------
 
+
 def _wrap_repr(s: str) -> str:
     """DAP wraps an evaluate result as the Python repr of the string."""
     return repr(s)
@@ -25,12 +26,16 @@ def _wrap_repr(s: str) -> str:
 
 def test_parse_task_json_from_repr_wrapped():
     """The common DAP path: result is repr(json_string)."""
-    payload = json.dumps([{
-        "name": "Task-1",
-        "state": "pending",
-        "coro": "<coroutine main()>",
-        "stack": ["frame at /x.py:1"],
-    }])
+    payload = json.dumps(
+        [
+            {
+                "name": "Task-1",
+                "state": "pending",
+                "coro": "<coroutine main()>",
+                "stack": ["frame at /x.py:1"],
+            }
+        ]
+    )
     raw = _wrap_repr(payload)
     tasks = parse_task_json(raw)
     assert len(tasks) == 1
@@ -42,9 +47,16 @@ def test_parse_task_json_from_repr_wrapped():
 
 def test_parse_task_json_handles_bare_json():
     """Some adapters return the JSON directly without repr-wrapping."""
-    raw = json.dumps([{
-        "name": "X", "state": "done", "coro": "()", "stack": [],
-    }])
+    raw = json.dumps(
+        [
+            {
+                "name": "X",
+                "state": "done",
+                "coro": "()",
+                "stack": [],
+            }
+        ]
+    )
     tasks = parse_task_json(raw)
     assert tasks[0].name == "X"
 
@@ -75,12 +87,20 @@ def test_async_task_info_default_metadata_fields():
 
 
 def test_parse_task_json_reads_metadata_fields():
-    payload = json.dumps([{
-        "name": "T", "state": "pending", "coro": "c", "stack": [],
-        "cancelling": 2, "cancel_message": "shutdown",
-        "awaiting": "Lock.acquire",
-        "awaiting_obj_id": 140123456789,
-    }])
+    payload = json.dumps(
+        [
+            {
+                "name": "T",
+                "state": "pending",
+                "coro": "c",
+                "stack": [],
+                "cancelling": 2,
+                "cancel_message": "shutdown",
+                "awaiting": "Lock.acquire",
+                "awaiting_obj_id": 140123456789,
+            }
+        ]
+    )
     [t] = parse_task_json(_wrap_repr(payload))
     assert t.cancelling == 2
     assert t.cancel_message == "shutdown"
@@ -90,37 +110,66 @@ def test_parse_task_json_reads_metadata_fields():
 
 def test_parse_task_json_awaiting_obj_id_absent_defaults_to_none():
     """Older debuggee snippets won't emit the field — parser must accept that."""
-    payload = json.dumps([{
-        "name": "T", "state": "pending", "coro": "c", "stack": [],
-        "awaiting": "Lock.acquire",
-    }])
+    payload = json.dumps(
+        [
+            {
+                "name": "T",
+                "state": "pending",
+                "coro": "c",
+                "stack": [],
+                "awaiting": "Lock.acquire",
+            }
+        ]
+    )
     [t] = parse_task_json(_wrap_repr(payload))
     assert t.awaiting_obj_id is None
 
 
 def test_parse_task_json_reads_holders():
-    payload = json.dumps([{
-        "name": "Blocked", "state": "pending", "coro": "c", "stack": [],
-        "awaiting": "Lock.acquire", "awaiting_obj_id": 42,
-        "holders": ["A", "B"],
-    }])
+    payload = json.dumps(
+        [
+            {
+                "name": "Blocked",
+                "state": "pending",
+                "coro": "c",
+                "stack": [],
+                "awaiting": "Lock.acquire",
+                "awaiting_obj_id": 42,
+                "holders": ["A", "B"],
+            }
+        ]
+    )
     [t] = parse_task_json(_wrap_repr(payload))
     assert t.holders == ["A", "B"]
 
 
 def test_parse_task_json_holders_absent_defaults_to_empty_list():
-    payload = json.dumps([{
-        "name": "T", "state": "pending", "coro": "c", "stack": [],
-    }])
+    payload = json.dumps(
+        [
+            {
+                "name": "T",
+                "state": "pending",
+                "coro": "c",
+                "stack": [],
+            }
+        ]
+    )
     [t] = parse_task_json(_wrap_repr(payload))
     assert t.holders == []
 
 
 def test_parse_task_json_holders_null_coerces_to_empty_list():
-    payload = json.dumps([{
-        "name": "T", "state": "pending", "coro": "c", "stack": [],
-        "holders": None,
-    }])
+    payload = json.dumps(
+        [
+            {
+                "name": "T",
+                "state": "pending",
+                "coro": "c",
+                "stack": [],
+                "holders": None,
+            }
+        ]
+    )
     [t] = parse_task_json(_wrap_repr(payload))
     assert t.holders == []
 
@@ -128,28 +177,40 @@ def test_parse_task_json_holders_null_coerces_to_empty_list():
 def test_parse_task_json_tolerates_null_cancelling():
     """Some debuggees may send a null when cancelling() raised; parser
     must coerce to 0, not propagate None."""
-    payload = json.dumps([{
-        "name": "T", "state": "pending", "coro": "c", "stack": [],
-        "cancelling": None,
-    }])
+    payload = json.dumps(
+        [
+            {
+                "name": "T",
+                "state": "pending",
+                "coro": "c",
+                "stack": [],
+                "cancelling": None,
+            }
+        ]
+    )
     [t] = parse_task_json(_wrap_repr(payload))
     assert t.cancelling == 0
 
 
 # --- parse_process_json --------------------------------------------------
 
+
 def test_parse_process_json_round_trip():
-    payload = json.dumps([{
-        "name": "ForkPoolWorker-1",
-        "pid": 12345,
-        "alive": True,
-        "exitcode": None,
-        "daemon": True,
-        "target": "<function worker>",
-        "args": "()",
-        "kwargs": "{}",
-        "start_method": "fork",
-    }])
+    payload = json.dumps(
+        [
+            {
+                "name": "ForkPoolWorker-1",
+                "pid": 12345,
+                "alive": True,
+                "exitcode": None,
+                "daemon": True,
+                "target": "<function worker>",
+                "args": "()",
+                "kwargs": "{}",
+                "start_method": "fork",
+            }
+        ]
+    )
     procs = parse_process_json(_wrap_repr(payload))
     assert len(procs) == 1
     p = procs[0]
@@ -176,6 +237,7 @@ def test_parse_process_json_returns_empty_on_failure():
 
 # --- expression sanity checks --------------------------------------------
 
+
 def test_task_collect_expr_is_a_python_expression():
     """Compile but don't execute — proves syntax is valid before debugpy
     has a chance to swallow a SyntaxError silently."""
@@ -194,6 +256,7 @@ def test_task_locals_expr_template_renders():
 
 # --- import hygiene ------------------------------------------------------
 
+
 def test_inspection_module_has_no_textual_dependency():
     """Importing tdb.inspection must NOT pull textual or rich.
 
@@ -209,10 +272,9 @@ def test_inspection_module_has_no_textual_dependency():
     pre_textual = "textual" in sys.modules
     pre_rich = "rich" in sys.modules
     import tdb.inspection  # noqa: F401
+
     if not pre_textual:
-        assert "textual" not in sys.modules, (
-            "tdb.inspection must not import textual"
-        )
+        assert "textual" not in sys.modules, "tdb.inspection must not import textual"
     if not pre_rich:
         assert "rich" not in sys.modules, "tdb.inspection must not import rich"
 
@@ -225,6 +287,7 @@ def test_server_app_has_no_textual_dependency_in_a_fresh_interpreter():
     pytest run doesn't taint the check.
     """
     import subprocess
+
     code = (
         "import sys; "
         "import tdb.server.app; "

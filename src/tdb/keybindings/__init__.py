@@ -19,17 +19,17 @@ class Mode(Enum):
 
 
 _VIM_NAV = {
-    "G": "goto_end",            # G = jump to end of file, NG = jump to line N
-    "k": "cursor_up",           # k / Nk = move cursor up
-    "j": "cursor_down",         # j / Nj = move cursor down
-    "ctrl+f": "page_down",      # Ctrl+F = page forward (vim convention)
-    "ctrl+b": "page_up",        # Ctrl+B = page back    (vim convention)
+    "G": "goto_end",  # G = jump to end of file, NG = jump to line N
+    "k": "cursor_up",  # k / Nk = move cursor up
+    "j": "cursor_down",  # j / Nj = move cursor down
+    "ctrl+f": "page_down",  # Ctrl+F = page forward (vim convention)
+    "ctrl+b": "page_up",  # Ctrl+B = page back    (vim convention)
     "right_square_bracket": "paragraph_down",  # ]
-    "left_square_bracket": "paragraph_up",     # [
-    "slash": "search",                # /
-    "question_mark": "search_back",   # ?
-    "n": "search_next",              # n = next search result
-    "N": "search_prev",              # N = previous search result
+    "left_square_bracket": "paragraph_up",  # [
+    "slash": "search",  # /
+    "question_mark": "search_back",  # ?
+    "n": "search_next",  # n = next search result
+    "N": "search_prev",  # N = previous search result
     "pageup": "page_up",
     "pagedown": "page_down",
 }
@@ -183,7 +183,10 @@ class KeybindingConfig:
         for key, action in bindings.items():
             display = KEY_DISPLAY.get(key, key)
             label = ACTION_LABELS.get(action, action)
-            if action in ("goto_end", "cursor_up", "cursor_down") and self.scheme == "vim":
+            if (
+                action in ("goto_end", "cursor_up", "cursor_down")
+                and self.scheme == "vim"
+            ):
                 display = f"[N]{display}"
             result.append((display, label))
 

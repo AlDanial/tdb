@@ -55,11 +55,15 @@ def test_remote_attach_invalid_port():
 def test_breakpoints_parsed(tmp_path):
     prog = tmp_path / "x.py"
     prog.write_text("print('hi')\n")
-    args = parse_args([
-        str(prog),
-        "-k", f"{prog}:5",
-        "-k", f"{prog}:9",
-    ])
+    args = parse_args(
+        [
+            str(prog),
+            "-k",
+            f"{prog}:5",
+            "-k",
+            f"{prog}:9",
+        ]
+    )
     assert args.breakpoint == [
         (str(prog.resolve()), 5),
         (str(prog.resolve()), 9),
@@ -124,11 +128,11 @@ def test_breakpoint_snaps_to_statement_start_with_warning(tmp_path, capsys):
     prog = tmp_path / "x.py"
     prog.write_text(
         "a = 1\n"
-        "results = func(\n"   # line 2 (statement start)
-        "    1,\n"             # line 3
-        "    2,\n"             # line 4 — sub-line
-        ")\n"                  # line 5
-        "b = 2\n"              # line 6
+        "results = func(\n"  # line 2 (statement start)
+        "    1,\n"  # line 3
+        "    2,\n"  # line 4 — sub-line
+        ")\n"  # line 5
+        "b = 2\n"  # line 6
     )
     args = parse_args([str(prog), "-k", "4"])
     assert args.breakpoint == [(str(prog.resolve()), 2)]
@@ -245,6 +249,7 @@ def test_version_short_form(capsys):
 def test_doc_text_renders_to_stdout(capsys):
     """End-to-end: _run_doc_text writes the rendered README to stdout."""
     from tdb.cli import _run_doc_text
+
     _run_doc_text()
     out = capsys.readouterr().out
     # README starts with the project title — should be visible after Rich

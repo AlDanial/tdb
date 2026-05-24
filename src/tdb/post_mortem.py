@@ -73,6 +73,7 @@ def exception_hook(
     # block the post-mortem indefinitely.
     try:
         from tdb.breakpoint_hook import _subprocess as _bp_proc
+
         if _bp_proc is not None and _bp_proc.poll() is None:
             try:
                 _bp_proc.wait(timeout=10)
@@ -91,7 +92,9 @@ def exception_hook(
             json.dump(snapshot, f)
         subprocess.run(
             [sys.executable, "-m", "tdb", "--post-mortem", path],
-            stdin=sys.stdin, stdout=sys.stdout, stderr=sys.stderr,
+            stdin=sys.stdin,
+            stdout=sys.stdout,
+            stderr=sys.stderr,
         )
     except Exception:
         log.exception("tdb.exception_hook: failed to launch tdb")
@@ -164,19 +167,23 @@ def _make_snapshot(
         entries: list[dict[str, Any]] = []
         for child_name, child_val in children[:_MAX_CHILDREN]:
             cv, ct, cref = snapshot_value(child_val, depth + 1)
-            entries.append({
-                "name": child_name,
-                "value": cv,
-                "type": ct,
-                "variablesReference": cref,
-            })
+            entries.append(
+                {
+                    "name": child_name,
+                    "value": cv,
+                    "type": ct,
+                    "variablesReference": cref,
+                }
+            )
         if len(children) > _MAX_CHILDREN:
-            entries.append({
-                "name": f"... {len(children) - _MAX_CHILDREN} more",
-                "value": "",
-                "type": "",
-                "variablesReference": 0,
-            })
+            entries.append(
+                {
+                    "name": f"... {len(children) - _MAX_CHILDREN} more",
+                    "value": "",
+                    "type": "",
+                    "variablesReference": 0,
+                }
+            )
         variables[str(ref)] = entries
         return value_repr, type_name, ref
 
@@ -193,23 +200,27 @@ def _make_snapshot(
         # Preserve insertion order from the frame's locals dict.
         for name, val in pyframe.f_locals.items():
             cv, ct, cref = snapshot_value(val, depth=1)
-            entries.append({
-                "name": name,
-                "value": cv,
-                "type": ct,
-                "variablesReference": cref,
-            })
+            entries.append(
+                {
+                    "name": name,
+                    "value": cv,
+                    "type": ct,
+                    "variablesReference": cref,
+                }
+            )
         variables[str(locals_ref)] = entries
 
-        frames_out.append({
-            "id": 1 + i,
-            "filename": filename,
-            "lineno": lineno,
-            "funcname": funcname,
-            "scopes": [
-                {"name": "Locals", "variablesReference": locals_ref},
-            ],
-        })
+        frames_out.append(
+            {
+                "id": 1 + i,
+                "filename": filename,
+                "lineno": lineno,
+                "funcname": funcname,
+                "scopes": [
+                    {"name": "Locals", "variablesReference": locals_ref},
+                ],
+            }
+        )
 
     tb_text = "".join(_tb_mod.format_exception(exc_type, exc_value, tb))
 

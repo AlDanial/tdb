@@ -58,6 +58,7 @@ def _wf() -> tuple[InspectionWorkflows, _StubApp]:
 
 # --- State guards ------------------------------------------------------
 
+
 async def test_open_async_tasks_rejects_terminated():
     wf, app = _wf()
     app.controller.state.transition_to(SessionPhase.TERMINATED)
@@ -97,6 +98,7 @@ async def test_fetch_process_count_is_a_no_op_when_running():
 
 # --- Thread-count label thresholding (no DAP needed) -------------------
 
+
 def test_update_thread_count_below_threshold():
     """1 thread → menu shows just 'Threads' without a count."""
     wf, app = _wf()
@@ -118,6 +120,7 @@ def test_update_thread_count_at_or_above_threshold():
 
 
 # --- Process-modal open guard -----------------------------------------
+
 
 def test_open_processes_modal_rejected_when_terminated_returns_false():
     wf, app = _wf()

@@ -6,13 +6,15 @@ letter 'i', it resumes computation on a generator function that returns
 digits if pi.  After a new digit is found, it returns control to the letter
 frequency counter.
 """
+
 import sys
 from collections import Counter
+
 
 def generate_pi_digits():
     """
     An unbounded generator that calculates digits of pi using the Gibbons spigot algorithm.
-    Every time this function yields, it halts computation and hands control 
+    Every time this function yields, it halts computation and hands control
     back to the caller until the next digit is requested.
     """
     q, r, t, k, n, l = 1, 0, 1, 1, 3, 3
@@ -20,27 +22,29 @@ def generate_pi_digits():
         if 4 * q + r - t < n * t:
             yield n
             nr = 10 * (r - n * t)
-            n  = ((10 * (3 * q + r)) // t) - 10 * n
-            q  *= 10
-            r  = nr
+            n = ((10 * (3 * q + r)) // t) - 10 * n
+            q *= 10
+            r = nr
         else:
             nr = (2 * q + r) * l
             nn = (q * (7 * k + 2) + r * l) // (t * l)
-            q  *= k
-            t  *= l
-            l  += 2
-            k  += 1
-            n  = nn
-            r  = nr
+            q *= k
+            t *= l
+            l += 2
+            k += 1
+            n = nn
+            r = nr
+
 
 def read_source_file(file_path):
     """Step 3: Reads the file this code is stored in."""
     try:
-        with open(file_path, 'r', encoding='utf-8') as file:
+        with open(file_path, "r", encoding="utf-8") as file:
             return file.read()
     except FileNotFoundError:
         print(f"Error: The file {file_path} was not found.")
         sys.exit(1)
+
 
 def process_characters(source_code, pi_gen):
     """
@@ -53,12 +57,15 @@ def process_characters(source_code, pi_gen):
     for char in source_code:
         if char.isalpha():
             letter_freq[char.lower()] += 1
-        
-        if char.lower() == 'i':
-            digit = next(pi_gen) # resume pi computation until exactly one new digit is returned
+
+        if char.lower() == "i":
+            digit = next(
+                pi_gen
+            )  # resume pi computation until exactly one new digit is returned
             computed_pi_digits.append(str(digit))
-            
+
     return letter_freq, computed_pi_digits
+
 
 def display_pi_results(computed_pi_digits):
     """Step 5: Displays the Pi digits calculated incrementally."""
@@ -71,20 +78,24 @@ def display_pi_results(computed_pi_digits):
     else:
         print("No 'i's were found in the file, so pi was not calculated.\n")
 
+
 def display_frequency_table(letter_freq):
     """Step 6: Displays the sorted letter frequency table."""
     print("=== Letter Frequency Table ===")
     print(f"{'Letter':<8} | {'Frequency':<9}")
     print("-" * 20)
-    
+
     # Sort by frequency (highest first), then alphabetically for ties
-    sorted_frequencies = sorted(letter_freq.items(), key=lambda item: (-item[1], item[0]))
-    
+    sorted_frequencies = sorted(
+        letter_freq.items(), key=lambda item: (-item[1], item[0])
+    )
+
     for letter, count in sorted_frequencies:
         print(f"   {letter:<5} | {count:<9}")
 
+
 def main():
-    pi_gen = generate_pi_digits() # initialize the pi generator
+    pi_gen = generate_pi_digits()  # initialize the pi generator
 
     try:
         current_file_path = __file__
@@ -96,6 +107,7 @@ def main():
     letter_freq, computed_pi_digits = process_characters(source_code, pi_gen)
     display_pi_results(computed_pi_digits)
     display_frequency_table(letter_freq)
+
 
 if __name__ == "__main__":
     main()

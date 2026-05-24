@@ -34,11 +34,13 @@ async def run_headless(
     handler = ServerEventHandler()
     controller = DebugController(handler)
     from tdb.persist import load_config
+
     controller.step_mode = load_config().step_mode
 
     # Apply CLI breakpoints
     if cli_breakpoints:
         from tdb.dap.types import SourceBreakpoint
+
         for bp_path, bp_line in cli_breakpoints:
             bps = controller.state.breakpoints.get(bp_path, [])
             if not any(bp.line == bp_line for bp in bps):
@@ -57,6 +59,7 @@ async def run_headless(
 
     # Wait for initialized event, then configure
     from tdb._timeouts import DAP_INITIALIZED, DAP_STOP_ON_ENTRY
+
     await asyncio.wait_for(handler.initialized_event.wait(), timeout=DAP_INITIALIZED)
     await controller.do_configure()
 

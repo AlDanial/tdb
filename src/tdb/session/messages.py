@@ -12,13 +12,20 @@ from textual.message import Message
 
 class DapInitialized(Message):
     """debugpy sent the 'initialized' event."""
+
     pass
 
 
 class DapStopped(Message):
     """debugpy sent a 'stopped' event."""
-    def __init__(self, thread_id: int | None, reason: str,
-                 description: str | None = None, text: str | None = None) -> None:
+
+    def __init__(
+        self,
+        thread_id: int | None,
+        reason: str,
+        description: str | None = None,
+        text: str | None = None,
+    ) -> None:
         self.thread_id = thread_id
         self.reason = reason
         self.description = description

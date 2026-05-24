@@ -24,10 +24,18 @@ class _RecordingHandler(DebugEventHandler):
         self.stopped = 0
 
     def on_initialized(self): ...
-    def on_stopped(self, *a, **k): self.stopped += 1
-    def on_continued(self): self.continued += 1
-    def on_terminated(self): self.terminated += 1
-    def on_exited(self, exit_code: int): self.exit_code = exit_code
+    def on_stopped(self, *a, **k):
+        self.stopped += 1
+
+    def on_continued(self):
+        self.continued += 1
+
+    def on_terminated(self):
+        self.terminated += 1
+
+    def on_exited(self, exit_code: int):
+        self.exit_code = exit_code
+
     def on_output(self, *a, **k): ...
     def on_external_terminal_started(self): ...
 

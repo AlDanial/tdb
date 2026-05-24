@@ -30,8 +30,11 @@ def check(label, expected, child):
 def main():
     env = {**os.environ, "PYTHONPATH": os.path.join(os.path.dirname(HERE), "src")}
     child = pexpect.spawn(
-        VENV_PY, [DEMO],
-        env=env, encoding="utf-8", timeout=30,
+        VENV_PY,
+        [DEMO],
+        env=env,
+        encoding="utf-8",
+        timeout=30,
         dimensions=(50, 160),
     )
     log = open("/tmp/menu_shortcuts_test.log", "w")

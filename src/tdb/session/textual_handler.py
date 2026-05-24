@@ -38,8 +38,12 @@ class TextualEventHandler:
         description: str | None = None,
         text: str | None = None,
     ) -> None:
-        log.info("TextualEventHandler.on_stopped reason=%s desc=%s text=%s",
-                 reason, description, text)
+        log.info(
+            "TextualEventHandler.on_stopped reason=%s desc=%s text=%s",
+            reason,
+            description,
+            text,
+        )
         self._app.post_message(DapStopped(thread_id, reason, description, text))
 
     def on_continued(self) -> None:

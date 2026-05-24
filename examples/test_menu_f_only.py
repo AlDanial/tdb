@@ -13,8 +13,11 @@ VENV_PY = os.path.join(os.path.dirname(HERE), ".venv", "bin", "python")
 def main():
     env = {**os.environ, "PYTHONPATH": os.path.join(os.path.dirname(HERE), "src")}
     child = pexpect.spawn(
-        VENV_PY, [DEMO],
-        env=env, encoding="utf-8", timeout=30,
+        VENV_PY,
+        [DEMO],
+        env=env,
+        encoding="utf-8",
+        timeout=30,
         dimensions=(50, 160),
     )
     log = open("/tmp/menu_f_only_test.log", "w")

@@ -26,6 +26,7 @@ def isolated_persist(tmp_path, monkeypatch):
     monkeypatch.setenv("APPDATA", str(tmp_path / "AppData" / "Roaming"))
 
     import tdb.persist as persist_module
+
     persist_module = importlib.reload(persist_module)
     return persist_module
 
@@ -34,6 +35,7 @@ def test_default_config_dir_unix(monkeypatch, tmp_path):
     monkeypatch.setattr(sys, "platform", "linux")
     monkeypatch.setenv("HOME", str(tmp_path))
     import tdb.persist as persist_module
+
     persist_module = importlib.reload(persist_module)
     assert persist_module.CONFIG_DIR == tmp_path / ".config" / "tdb"
 
@@ -43,6 +45,7 @@ def test_default_config_dir_windows_with_appdata(monkeypatch, tmp_path):
     appdata = tmp_path / "AppData" / "Roaming"
     monkeypatch.setenv("APPDATA", str(appdata))
     import tdb.persist as persist_module
+
     persist_module = importlib.reload(persist_module)
     assert persist_module.CONFIG_DIR == appdata / "tdb"
 
@@ -53,6 +56,7 @@ def test_default_config_dir_windows_no_appdata(monkeypatch, tmp_path):
     monkeypatch.setenv("USERPROFILE", str(tmp_path))
     monkeypatch.setenv("HOME", str(tmp_path))
     import tdb.persist as persist_module
+
     persist_module = importlib.reload(persist_module)
     expected = tmp_path / "AppData" / "Roaming" / "tdb"
     assert persist_module.CONFIG_DIR == expected
@@ -72,20 +76,28 @@ def test_save_and_load_breakpoints_per_program(isolated_persist):
 
 def test_save_breakpoints_preserves_other_program_keys(isolated_persist):
     isolated_persist.save_breakpoints(
-        {"/abs/a.py": [SourceBreakpoint(line=1)]}, program="/abs/a.py",
+        {"/abs/a.py": [SourceBreakpoint(line=1)]},
+        program="/abs/a.py",
     )
     isolated_persist.save_breakpoints(
-        {"/abs/b.py": [SourceBreakpoint(line=2)]}, program="/abs/b.py",
+        {"/abs/b.py": [SourceBreakpoint(line=2)]},
+        program="/abs/b.py",
     )
-    assert isolated_persist.load_breakpoints(program="/abs/a.py")["/abs/a.py"][0].line == 1
-    assert isolated_persist.load_breakpoints(program="/abs/b.py")["/abs/b.py"][0].line == 2
+    assert (
+        isolated_persist.load_breakpoints(program="/abs/a.py")["/abs/a.py"][0].line == 1
+    )
+    assert (
+        isolated_persist.load_breakpoints(program="/abs/b.py")["/abs/b.py"][0].line == 2
+    )
 
 
 def test_breakpoint_round_trip_preserves_condition_and_disabled(isolated_persist):
-    bps = {"/abs/x.py": [
-        SourceBreakpoint(line=5, condition="i > 3", hit_condition="2"),
-        SourceBreakpoint(line=8, enabled=False),
-    ]}
+    bps = {
+        "/abs/x.py": [
+            SourceBreakpoint(line=5, condition="i > 3", hit_condition="2"),
+            SourceBreakpoint(line=8, enabled=False),
+        ]
+    }
     isolated_persist.save_breakpoints(bps, program="/abs/x.py")
     loaded = isolated_persist.load_breakpoints(program="/abs/x.py")
     by_line = {b.line: b for b in loaded["/abs/x.py"]}
@@ -99,9 +111,9 @@ def test_legacy_last_run_json_is_migrated(isolated_persist):
     legacy = isolated_persist._LEGACY_STATE_FILE
     state = isolated_persist.STATE_FILE
     legacy.parent.mkdir(parents=True, exist_ok=True)
-    legacy.write_text(json.dumps({
-        "programs": {"/abs/x.py": {"/abs/x.py": [{"line": 11}]}}
-    }))
+    legacy.write_text(
+        json.dumps({"programs": {"/abs/x.py": {"/abs/x.py": [{"line": 11}]}}})
+    )
     assert not state.exists()
 
     loaded = isolated_persist.load_breakpoints(program="/abs/x.py")
@@ -134,10 +146,12 @@ def test_load_config_missing_file_returns_defaults(isolated_persist):
 
 
 def test_config_from_dict_drops_unknown_keys(isolated_persist):
-    cfg = isolated_persist.TdbConfig.from_dict({
-        "keybindings": "emacs",
-        "unknown_future_key": "ignored",
-    })
+    cfg = isolated_persist.TdbConfig.from_dict(
+        {
+            "keybindings": "emacs",
+            "unknown_future_key": "ignored",
+        }
+    )
     assert cfg.keybindings == "emacs"
     assert cfg.theme is None
 

@@ -68,7 +68,9 @@ class BreakpointView(DataTable):
     def on_mount(self) -> None:
         self.add_columns("", "File", "Line", "Condition", "Hits")
 
-    def update_breakpoints(self, breakpoints: dict[str, list[SourceBreakpoint]]) -> None:
+    def update_breakpoints(
+        self, breakpoints: dict[str, list[SourceBreakpoint]]
+    ) -> None:
         self.clear()
         self._entries.clear()
 
@@ -90,7 +92,8 @@ class BreakpointView(DataTable):
     def set_disabled_state(self, disabled: bool) -> None:
         """Update the binding label to reflect current disabled state."""
         self._bindings.bind(
-            "D", "toggle_disable_all",
+            "D",
+            "toggle_disable_all",
             "Enable All" if disabled else "Disable All",
         )
 

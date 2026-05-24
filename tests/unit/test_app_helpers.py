@@ -7,6 +7,7 @@ from tdb.app_helpers import find_readme, unquote_dap_string
 
 # --- unquote_dap_string -------------------------------------------------
 
+
 def test_unquote_simple_string():
     assert unquote_dap_string("'hello'") == "hello"
 
@@ -36,6 +37,7 @@ def test_unquote_empty_string_returns_empty():
 
 
 # --- find_readme --------------------------------------------------------
+
 
 def test_find_readme_returns_string_or_none():
     """In a working install README is locatable; we accept either result

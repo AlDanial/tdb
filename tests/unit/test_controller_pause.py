@@ -34,6 +34,7 @@ class _NoopHandler(DebugEventHandler):
 
 class _StubDAPClient:
     """Captures pause() calls so we can drive the test by hand."""
+
     def __init__(self) -> None:
         self.pause_calls: list[int] = []
 
@@ -59,6 +60,7 @@ def _stopped_event() -> Event:
 
 # --- Already in a terminal state -------------------------------------
 
+
 async def test_pause_returns_false_when_terminated():
     ctrl = _make_controller()
     ctrl.state.transition_to(SessionPhase.TERMINATED)
@@ -83,6 +85,7 @@ async def test_pause_returns_false_when_no_thread_id():
 
 
 # --- Successful and failed timeouts -----------------------------------
+
 
 async def test_pause_returns_true_when_stopped_event_arrives():
     """The successful path: send pause, simulate the stopped event,
@@ -126,6 +129,7 @@ async def test_pause_returns_true_when_terminated_event_arrives():
 
 # --- Stale event guard -------------------------------------------------
 
+
 async def test_pause_clears_event_before_waiting():
     """A stale set() from a previous stop must not make pause() return
     True instantly without ever hitting the wire. We force-set the
@@ -143,6 +147,7 @@ async def test_pause_clears_event_before_waiting():
 
 
 # --- Continue clears the event ----------------------------------------
+
 
 async def test_continued_event_clears_stopped_event():
     """After a continue, _stopped_event must be cleared so the next

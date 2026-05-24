@@ -61,8 +61,7 @@ class AsyncTasksModal(_InspectableListModal[AsyncTaskInfo]):
     KIND_LABEL = "Async Tasks"
     TABLE_COLUMNS = ("Name", "State", "Awaiting", "Coroutine")
     FOOTER_HINT = (
-        "ESC close  |  r refresh  |  g graph  |  "
-        "Enter/double-click jump to task"
+        "ESC close  |  r refresh  |  g graph  |  Enter/double-click jump to task"
     )
 
     DEFAULT_CSS = """
@@ -111,9 +110,7 @@ class AsyncTasksModal(_InspectableListModal[AsyncTaskInfo]):
         # Name in red when this task participates in a deadlock —
         # surfaces the cycle without forcing the user to open the
         # graph view first.
-        name_text = (
-            Text(task.name, style="bold red") if in_cycle else Text(task.name)
-        )
+        name_text = Text(task.name, style="bold red") if in_cycle else Text(task.name)
         # Decorate state with a cancel marker so a task that's been
         # asked to cancel but hasn't observed the request yet stands
         # out — that's exactly the kind of state you open this modal
@@ -123,9 +120,7 @@ class AsyncTasksModal(_InspectableListModal[AsyncTaskInfo]):
             state = f"{state}  ↻ deadlock"
         elif task.cancelling:
             state = (
-                f"{state} (×{task.cancelling})"
-                if task.cancelling > 1
-                else f"{state} ⊘"
+                f"{state} (×{task.cancelling})" if task.cancelling > 1 else f"{state} ⊘"
             )
         state_text = Text(state, style="red") if in_cycle else Text(state)
         awaiting = task.awaiting or "—"
@@ -155,7 +150,8 @@ class AsyncTasksModal(_InspectableListModal[AsyncTaskInfo]):
                 content.append(f"  #{i} {frame}\n")
         else:
             content.append(
-                "No stack frames (task may be awaiting)\n", style="dim",
+                "No stack frames (task may be awaiting)\n",
+                style="dim",
             )
         return content
 
@@ -183,10 +179,7 @@ class AsyncTasksModal(_InspectableListModal[AsyncTaskInfo]):
     def _header_text(self) -> str:
         base = super()._header_text()
         if self._cycles:
-            return (
-                f"{base}  —  ⚠ {len(self._cycles)} deadlock cycle(s) "
-                "(press g)"
-            )
+            return f"{base}  —  ⚠ {len(self._cycles)} deadlock cycle(s) (press g)"
         return base
 
     def _empty_state_text(self) -> str:
@@ -207,6 +200,7 @@ class AsyncTasksModal(_InspectableListModal[AsyncTaskInfo]):
 
     class LoadTaskVariables(Message):
         """Request to load variables for a task via DAP evaluate."""
+
         def __init__(self, task_name: str) -> None:
             self.task_name = task_name
             super().__init__()
@@ -215,6 +209,7 @@ class AsyncTasksModal(_InspectableListModal[AsyncTaskInfo]):
         """User double-clicked / Enter'd a row: close the modal and
         populate the main Code/Stack views with this task's coroutine
         stack. Stepping commands still target the live paused thread."""
+
         def __init__(self, task_name: str) -> None:
             self.task_name = task_name
             super().__init__()
@@ -282,9 +277,17 @@ class AsyncTasksModal(_InspectableListModal[AsyncTaskInfo]):
             for child in node.children:
                 # Auto-expand the spine of blocked tasks so the user
                 # immediately sees the wait chain without clicking.
-                self._render_node(tnode, child, expand=node.kind in (
-                    "section_cycles", "section_blocked", "task", "primitive",
-                ))
+                self._render_node(
+                    tnode,
+                    child,
+                    expand=node.kind
+                    in (
+                        "section_cycles",
+                        "section_blocked",
+                        "task",
+                        "primitive",
+                    ),
+                )
             if expand:
                 tnode.expand()
         else:

@@ -72,7 +72,8 @@ def breakpoint(*args: Any, **kwargs: Any) -> None:
             _, _server_port = debugpy.listen((_SERVER_HOST, 0))
             log.info(
                 "tdb.breakpoint: debugpy listening on %s:%d",
-                _SERVER_HOST, _server_port,
+                _SERVER_HOST,
+                _server_port,
             )
         except Exception:
             log.exception("tdb.breakpoint: debugpy.listen failed")

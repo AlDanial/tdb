@@ -45,9 +45,11 @@ Bug 5: Name shadowing a module
 
 import tdb
 import sys
-sys.excepthook = tdb.exception_hook # automatically open tdb on exception
+
+sys.excepthook = tdb.exception_hook  # automatically open tdb on exception
 from pathlib import Path
 from convert_ty_yt import convert_toml_to_yaml, convert_yaml_to_toml
+
 
 def main():
     if len(sys.argv) < 2:
@@ -69,6 +71,7 @@ def main():
     print(f"\nStep 2: Converting {yaml_file} back to TOML for verification...")
     roundtrip_file = convert_yaml_to_toml(yaml_file)
     print(f"Success! Created {roundtrip_file}")
+
 
 if __name__ == "__main__":
     main()

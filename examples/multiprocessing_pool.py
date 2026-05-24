@@ -7,9 +7,11 @@ which distributes a function across multiple CPU cores.
 Note on Windows: multiprocessing code MUST be inside an
   if __name__ == '__main__': block
 """
+
 import multiprocessing
 import time
 import math
+
 
 def heavy_computation(number):
     # Simulate a CPU-heavy task
@@ -18,11 +20,12 @@ def heavy_computation(number):
         result += math.sqrt(i)
     return f"Result for {number} is done."
 
+
 if __name__ == "__main__":
     numbers = [100, 200, 300, 400, 500, 600, 700, 800]
-    
+
     start_time = time.time()
-    
+
     # Create a pool of workers equal to the number of CPU cores
     num_cores = multiprocessing.cpu_count()
     num_procs = 6
@@ -30,8 +33,8 @@ if __name__ == "__main__":
     with multiprocessing.Pool(num_procs) as pool:
         # map() blocks until all are done, maintaining order
         results = pool.map(heavy_computation, numbers)
-        
+
     for r in results:
         print(r)
-        
+
     print(f"Finished in {time.time() - start_time:.2f} seconds")

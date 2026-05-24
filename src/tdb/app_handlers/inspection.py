@@ -67,7 +67,8 @@ class InspectionWorkflows:
             count = int(result)
             menu_bar = self.app.query_one("#menu-bar", MenuBar)
             menu_bar.update_action_label(
-                "async-tasks-label", f"Async Tasks ({count})",
+                "async-tasks-label",
+                f"Async Tasks ({count})",
             )
         except Exception:
             log.debug("Could not fetch async task count (program may not use asyncio)")
@@ -162,7 +163,8 @@ class InspectionWorkflows:
         if modal is None:
             return False
         task = next(
-            (t for t in modal.items if t.name == task_name), None,
+            (t for t in modal.items if t.name == task_name),
+            None,
         )
         if task is None or not task.stack:
             return False
@@ -172,12 +174,14 @@ class InspectionWorkflows:
             if not m:
                 continue
             func, path, lineno = m.group(1), m.group(2), int(m.group(3))
-            synthetic.append(StackFrame(
-                id=i,
-                name=func,
-                source=Source(path=path, name=os.path.basename(path)),
-                line=lineno,
-            ))
+            synthetic.append(
+                StackFrame(
+                    id=i,
+                    name=func,
+                    source=Source(path=path, name=os.path.basename(path)),
+                    line=lineno,
+                )
+            )
         if not synthetic:
             return False
         # Atomic install: stack_frames + current_frame_id + clears
@@ -193,7 +197,8 @@ class InspectionWorkflows:
         menu_bar = self.app.query_one("#menu-bar", MenuBar)
         if len(threads) >= 2:
             menu_bar.update_action_label(
-                "threads-label", f"Threads ({len(threads)})",
+                "threads-label",
+                f"Threads ({len(threads)})",
             )
         else:
             menu_bar.update_action_label("threads-label", "Threads")
@@ -243,8 +248,8 @@ class InspectionWorkflows:
             try:
                 scopes = await ctrl.client.scopes(top_frame.id)
                 for scope in scopes:
-                    variables[scope.variables_reference] = (
-                        await ctrl.client.variables(scope.variables_reference)
+                    variables[scope.variables_reference] = await ctrl.client.variables(
+                        scope.variables_reference
                     )
             except Exception:
                 log.debug("Failed to fetch variables for thread %d", thread_id)
@@ -261,7 +266,8 @@ class InspectionWorkflows:
             return
         if self.app.panels.threads is not None:
             self.app.panels.threads.update_threads(
-                threads, ctrl.state.current_thread_id,
+                threads,
+                ctrl.state.current_thread_id,
             )
 
     # --- Processes ------------------------------------------------------
@@ -278,7 +284,9 @@ class InspectionWorkflows:
                 cmdline_path = Path(f"/proc/{pid}/cmdline")
                 if not cmdline_path.exists():
                     continue
-                cmdline = cmdline_path.read_bytes().replace(b"\x00", b" ").decode().strip()
+                cmdline = (
+                    cmdline_path.read_bytes().replace(b"\x00", b" ").decode().strip()
+                )
                 status_path = Path(f"/proc/{pid}/status")
                 name = f"Process-{pid}"
                 if status_path.exists():
@@ -286,17 +294,19 @@ class InspectionWorkflows:
                         if line.startswith("Name:"):
                             name = line.split(":", 1)[1].strip()
                             break
-                result.append(ProcessInfo(
-                    name=name,
-                    pid=pid,
-                    alive=True,
-                    exitcode=None,
-                    daemon=False,
-                    target=cmdline[:200] if cmdline else "unknown",
-                    args="()",
-                    kwargs="{}",
-                    start_method="",
-                ))
+                result.append(
+                    ProcessInfo(
+                        name=name,
+                        pid=pid,
+                        alive=True,
+                        exitcode=None,
+                        daemon=False,
+                        target=cmdline[:200] if cmdline else "unknown",
+                        args="()",
+                        kwargs="{}",
+                        start_method="",
+                    )
+                )
             except Exception:
                 pass
         return result
@@ -331,7 +341,8 @@ class InspectionWorkflows:
         menu_bar = self.app.query_one("#menu-bar", MenuBar)
         if count >= 2:
             menu_bar.update_action_label(
-                "processes-label", f"Processes ({count})",
+                "processes-label",
+                f"Processes ({count})",
             )
         else:
             menu_bar.update_action_label("processes-label", "Processes")
@@ -355,6 +366,7 @@ class InspectionWorkflows:
             return False
 
         from tdb import processes_cache
+
         cached = processes_cache.load()
         if cached is not None and cached["processes"]:
             modal = ProcessesModal(
@@ -382,9 +394,9 @@ class InspectionWorkflows:
         case, and a fresh write here would resurrect a stale snapshot.
         """
         from tdb import processes_cache
+
         modal = self.app.panels.processes
-        if modal is not None and modal.has_items \
-                and self.app.controller.state.can_step:
+        if modal is not None and modal.has_items and self.app.controller.state.can_step:
             processes, details, current_pid = modal.cache_snapshot()
             processes_cache.save(processes, details, current_pid)
         self.app.panels.processes = None
@@ -431,8 +443,8 @@ class InspectionWorkflows:
                     top_frame = frames[0]
                     scopes = await child.scopes(top_frame.id)
                     for scope in scopes:
-                        variables[scope.variables_reference] = (
-                            await child.variables(scope.variables_reference)
+                        variables[scope.variables_reference] = await child.variables(
+                            scope.variables_reference
                         )
         except Exception:
             log.debug("Failed to fetch detail for child process %d", pid)

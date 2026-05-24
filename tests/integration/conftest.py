@@ -74,9 +74,12 @@ def headless_server(tmp_path):
     # up. Tests can issue `continue` when they want it to run.
     proc = subprocess.Popen(
         [
-            sys.executable, "-m", "tdb",
+            sys.executable,
+            "-m",
+            "tdb",
             "--headless",
-            "--server-port", str(port),
+            "--server-port",
+            str(port),
             str(SAMPLE_PROGRAM),
         ],
         env=env,

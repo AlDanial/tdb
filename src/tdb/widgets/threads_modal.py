@@ -83,6 +83,7 @@ class ThreadsModal(_InspectableListModal["Thread"]):
 
     class LoadThreadDetail(Message):
         """Request to fetch stack trace and variables for a thread."""
+
         def __init__(self, thread_id: int) -> None:
             self.thread_id = thread_id
             super().__init__()
@@ -91,6 +92,7 @@ class ThreadsModal(_InspectableListModal["Thread"]):
         """User double-clicked / Enter'd a row: close modal and switch
         the main Code/Stack/Variable views to this thread. Subsequent
         step / continue commands will also target this thread."""
+
         def __init__(self, thread_id: int) -> None:
             self.thread_id = thread_id
             super().__init__()

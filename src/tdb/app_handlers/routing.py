@@ -85,7 +85,8 @@ class _AppMessageRoutes:
         self._dap.on_exited(message.exit_code)
 
     def on_dap_external_terminal_started(
-        self, message: DapExternalTerminalStarted,
+        self,
+        message: DapExternalTerminalStarted,
     ) -> None:
         self._dap.on_external_terminal_started()
 
@@ -129,12 +130,14 @@ class _AppMessageRoutes:
     # --- Modal: AsyncTasks --------------------------------------------
 
     async def on_async_tasks_modal_load_task_variables(
-        self, message: AsyncTasksModal.LoadTaskVariables,
+        self,
+        message: AsyncTasksModal.LoadTaskVariables,
     ) -> None:
         await self._inspection.load_task_variables(message.task_name)
 
     async def on_async_tasks_modal_select_task(
-        self, message: AsyncTasksModal.SelectTask,
+        self,
+        message: AsyncTasksModal.SelectTask,
     ) -> None:
         if isinstance(self.screen, AsyncTasksModal):  # type: ignore[attr-defined]
             self.screen.dismiss(None)  # type: ignore[attr-defined]
@@ -145,17 +148,20 @@ class _AppMessageRoutes:
     # --- Modal: Threads -----------------------------------------------
 
     async def on_threads_modal_load_thread_detail(
-        self, message: ThreadsModal.LoadThreadDetail,
+        self,
+        message: ThreadsModal.LoadThreadDetail,
     ) -> None:
         await self._inspection.load_thread_detail(message.thread_id)
 
     async def on_threads_modal_refresh_threads(
-        self, message: ThreadsModal.RefreshThreads,
+        self,
+        message: ThreadsModal.RefreshThreads,
     ) -> None:
         await self._inspection.refresh_threads()
 
     async def on_threads_modal_select_thread(
-        self, message: ThreadsModal.SelectThread,
+        self,
+        message: ThreadsModal.SelectThread,
     ) -> None:
         if isinstance(self.screen, ThreadsModal):  # type: ignore[attr-defined]
             self.screen.dismiss(None)  # type: ignore[attr-defined]
@@ -166,17 +172,20 @@ class _AppMessageRoutes:
     # --- Modal: Processes ---------------------------------------------
 
     async def on_processes_modal_refresh_processes(
-        self, message: ProcessesModal.RefreshProcesses,
+        self,
+        message: ProcessesModal.RefreshProcesses,
     ) -> None:
         await self._inspection.refresh_processes()
 
     async def on_processes_modal_load_process_detail(
-        self, message: ProcessesModal.LoadProcessDetail,
+        self,
+        message: ProcessesModal.LoadProcessDetail,
     ) -> None:
         await self._inspection.load_process_detail(message.pid)
 
     async def on_processes_modal_select_process(
-        self, message: ProcessesModal.SelectProcess,
+        self,
+        message: ProcessesModal.SelectProcess,
     ) -> None:
         if isinstance(self.screen, ProcessesModal):  # type: ignore[attr-defined]
             self.screen.dismiss(None)  # type: ignore[attr-defined]

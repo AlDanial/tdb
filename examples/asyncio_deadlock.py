@@ -35,11 +35,16 @@ the event loop alive, pressing `p` has no visible effect. The Monitor
 task wakes every 0.5s on a wallclock timer (independent of any inter-
 task signal) so debugpy always has a Python frame to land on.
 """
+
 import asyncio
 
 
-async def worker_a(first: asyncio.Lock, second: asyncio.Lock,
-                   ready: asyncio.Event, peer_ready: asyncio.Event) -> None:
+async def worker_a(
+    first: asyncio.Lock,
+    second: asyncio.Lock,
+    ready: asyncio.Event,
+    peer_ready: asyncio.Event,
+) -> None:
     async with first:
         ready.set()
         # Wait until the peer has its own first lock — guarantees the
@@ -49,8 +54,12 @@ async def worker_a(first: asyncio.Lock, second: asyncio.Lock,
             print("Worker-A: never reaches here")
 
 
-async def worker_b(first: asyncio.Lock, second: asyncio.Lock,
-                   ready: asyncio.Event, peer_ready: asyncio.Event) -> None:
+async def worker_b(
+    first: asyncio.Lock,
+    second: asyncio.Lock,
+    ready: asyncio.Event,
+    peer_ready: asyncio.Event,
+) -> None:
     async with first:
         ready.set()
         await peer_ready.wait()
@@ -72,19 +81,25 @@ async def main() -> None:
     # A grabs X first, then tries Y. B grabs Y first, then tries X.
     # Opposite acquisition order is the textbook deadlock recipe.
     a = asyncio.create_task(
-        worker_a(lock_x, lock_y, a_ready, b_ready), name="Worker-A",
+        worker_a(lock_x, lock_y, a_ready, b_ready),
+        name="Worker-A",
     )
     b = asyncio.create_task(
-        worker_b(lock_y, lock_x, b_ready, a_ready), name="Worker-B",
+        worker_b(lock_y, lock_x, b_ready, a_ready),
+        name="Worker-B",
     )
     mon = asyncio.create_task(monitor(), name="Monitor")
 
     print("Both workers started — they will deadlock momentarily.")
-    print("In tdb: press `p` to pause, then Alt+A for Async Tasks, then `g` for the wait graph.")
+    print(
+        "In tdb: press `p` to pause, then Alt+A for Async Tasks, then `g` for the wait graph."
+    )
     try:
         await asyncio.gather(a, b)  # never returns
     finally:
         mon.cancel()
+
+
 #       pass
 
 

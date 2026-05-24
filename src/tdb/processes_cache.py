@@ -40,19 +40,29 @@ def cache_path() -> Path:
 
 def _proc_to_dict(p: ProcessInfo) -> dict:
     return {
-        "name": p.name, "pid": p.pid, "alive": p.alive,
-        "exitcode": p.exitcode, "daemon": p.daemon,
-        "target": p.target, "args": p.args, "kwargs": p.kwargs,
+        "name": p.name,
+        "pid": p.pid,
+        "alive": p.alive,
+        "exitcode": p.exitcode,
+        "daemon": p.daemon,
+        "target": p.target,
+        "args": p.args,
+        "kwargs": p.kwargs,
         "start_method": p.start_method,
     }
 
 
 def _proc_from_dict(d: dict) -> ProcessInfo:
     return ProcessInfo(
-        name=d["name"], pid=d.get("pid"), alive=d.get("alive", False),
-        exitcode=d.get("exitcode"), daemon=d.get("daemon", False),
-        target=d.get("target", ""), args=d.get("args", ""),
-        kwargs=d.get("kwargs", ""), start_method=d.get("start_method", ""),
+        name=d["name"],
+        pid=d.get("pid"),
+        alive=d.get("alive", False),
+        exitcode=d.get("exitcode"),
+        daemon=d.get("daemon", False),
+        target=d.get("target", ""),
+        args=d.get("args", ""),
+        kwargs=d.get("kwargs", ""),
+        start_method=d.get("start_method", ""),
     )
 
 
@@ -60,7 +70,8 @@ def _source_to_dict(s: Source | None) -> dict | None:
     if s is None:
         return None
     return {
-        "path": s.path, "name": s.name,
+        "path": s.path,
+        "name": s.name,
         "source_reference": s.source_reference,
     }
 
@@ -69,21 +80,27 @@ def _source_from_dict(d: dict | None) -> Source | None:
     if d is None:
         return None
     return Source(
-        path=d.get("path"), name=d.get("name"),
+        path=d.get("path"),
+        name=d.get("name"),
         source_reference=d.get("source_reference", 0),
     )
 
 
 def _frame_to_dict(f: StackFrame) -> dict:
     return {
-        "id": f.id, "name": f.name, "line": f.line, "column": f.column,
+        "id": f.id,
+        "name": f.name,
+        "line": f.line,
+        "column": f.column,
         "source": _source_to_dict(f.source),
     }
 
 
 def _frame_from_dict(d: dict) -> StackFrame:
     return StackFrame(
-        id=d["id"], name=d["name"], line=d.get("line", 0),
+        id=d["id"],
+        name=d["name"],
+        line=d.get("line", 0),
         column=d.get("column", 0),
         source=_source_from_dict(d.get("source")),
     )
@@ -91,15 +108,18 @@ def _frame_from_dict(d: dict) -> StackFrame:
 
 def _scope_to_dict(s: Scope) -> dict:
     return {
-        "name": s.name, "variables_reference": s.variables_reference,
+        "name": s.name,
+        "variables_reference": s.variables_reference,
         "named_variables": s.named_variables,
-        "indexed_variables": s.indexed_variables, "expensive": s.expensive,
+        "indexed_variables": s.indexed_variables,
+        "expensive": s.expensive,
     }
 
 
 def _scope_from_dict(d: dict) -> Scope:
     return Scope(
-        name=d["name"], variables_reference=d["variables_reference"],
+        name=d["name"],
+        variables_reference=d["variables_reference"],
         named_variables=d.get("named_variables", 0),
         indexed_variables=d.get("indexed_variables", 0),
         expensive=d.get("expensive", False),
@@ -108,7 +128,9 @@ def _scope_from_dict(d: dict) -> Scope:
 
 def _var_to_dict(v: Variable) -> dict:
     return {
-        "name": v.name, "value": v.value, "type": v.type,
+        "name": v.name,
+        "value": v.value,
+        "type": v.type,
         "variables_reference": v.variables_reference,
         "named_variables": v.named_variables,
         "indexed_variables": v.indexed_variables,
@@ -118,7 +140,9 @@ def _var_to_dict(v: Variable) -> dict:
 
 def _var_from_dict(d: dict) -> Variable:
     return Variable(
-        name=d["name"], value=d["value"], type=d.get("type", ""),
+        name=d["name"],
+        value=d["value"],
+        type=d.get("type", ""),
         variables_reference=d.get("variables_reference", 0),
         named_variables=d.get("named_variables", 0),
         indexed_variables=d.get("indexed_variables", 0),
@@ -201,7 +225,8 @@ def load() -> dict | None:
         }
     except (KeyError, TypeError, ValueError):
         log.exception(
-            "Processes cache schema mismatch in %s — discarding", path,
+            "Processes cache schema mismatch in %s — discarding",
+            path,
         )
         return None
 

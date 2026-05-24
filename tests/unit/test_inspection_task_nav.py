@@ -14,7 +14,9 @@ from tdb.inspection import AsyncTaskInfo
 from tdb.session.state import DebugState
 
 
-def _make_workflows_with_tasks(tasks: list[AsyncTaskInfo]) -> tuple[InspectionWorkflows, DebugState]:
+def _make_workflows_with_tasks(
+    tasks: list[AsyncTaskInfo],
+) -> tuple[InspectionWorkflows, DebugState]:
     """Build a minimal stand-in for TdbApp wired up enough for
     navigate_to_task to read the tasks list and mutate controller.state.
 
@@ -50,10 +52,15 @@ def test_task_frame_regex_handles_special_func_names():
 
 
 def test_navigate_to_task_populates_synthetic_frames():
-    tasks = [_task("Task-1", [
-        "inner at /tmp/a.py:10",
-        "outer at /tmp/b.py:20",
-    ])]
+    tasks = [
+        _task(
+            "Task-1",
+            [
+                "inner at /tmp/a.py:10",
+                "outer at /tmp/b.py:20",
+            ],
+        )
+    ]
     workflows, state = _make_workflows_with_tasks(tasks)
 
     assert workflows.navigate_to_task("Task-1") is True
@@ -75,11 +82,16 @@ def test_navigate_to_task_populates_synthetic_frames():
 
 
 def test_navigate_to_task_skips_malformed_entries():
-    tasks = [_task("Task-1", [
-        "garbage with no colon line",
-        "good at /tmp/x.py:5",
-        "",
-    ])]
+    tasks = [
+        _task(
+            "Task-1",
+            [
+                "garbage with no colon line",
+                "good at /tmp/x.py:5",
+                "",
+            ],
+        )
+    ]
     workflows, state = _make_workflows_with_tasks(tasks)
 
     assert workflows.navigate_to_task("Task-1") is True

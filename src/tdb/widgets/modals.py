@@ -95,7 +95,9 @@ class _KeybindingsModal(ModalScreen[None]):
                         id=f"scheme-{scheme}",
                     )
             with VerticalScroll(id="bindings-scroll"):
-                yield Static(self._render_bindings(), id="bindings-display", markup=True)
+                yield Static(
+                    self._render_bindings(), id="bindings-display", markup=True
+                )
 
     def _render_bindings(self) -> str:
         def fmt(key_display: str, description: str) -> str:
@@ -124,7 +126,7 @@ class _KeybindingsModal(ModalScreen[None]):
         pressed_id = event.pressed.id or ""
         if not pressed_id.startswith("scheme-"):
             return
-        scheme = pressed_id[len("scheme-"):]
+        scheme = pressed_id[len("scheme-") :]
         if scheme == self._config.scheme:
             return
         self._config = KeybindingConfig.from_scheme(scheme)
@@ -184,7 +186,9 @@ class _StepModeModal(ModalScreen[None]):
         on_mode_change: Callable[[str], None],
     ) -> None:
         super().__init__()
-        self._current_mode = current_mode if current_mode in self._MODES else "statement"
+        self._current_mode = (
+            current_mode if current_mode in self._MODES else "statement"
+        )
         self._on_mode_change = on_mode_change
 
     def compose(self):
@@ -215,7 +219,7 @@ class _StepModeModal(ModalScreen[None]):
         pressed_id = event.pressed.id or ""
         if not pressed_id.startswith("mode-"):
             return
-        mode = pressed_id[len("mode-"):]
+        mode = pressed_id[len("mode-") :]
         if mode == self._current_mode:
             return
         self._current_mode = mode
@@ -289,17 +293,26 @@ class _OpenFileModal(ModalScreen[str | None]):
 
     def compose(self):
         with Vertical(id="dialog"):
-            yield Static("[bold]Open file to debug[/bold]  (.py files only)", id="open-header", markup=True)
+            yield Static(
+                "[bold]Open file to debug[/bold]  (.py files only)",
+                id="open-header",
+                markup=True,
+            )
             yield Static(str(self._current_path), id="open-path")
             yield Label(" ⬆  .. (parent directory) ", id="up-dir")
             yield _PyFileTree(str(self._current_path), id="file-tree")
-            yield Static("[dim]Enter: open   Backspace: up a directory   ESC: cancel[/dim]", id="open-footer", markup=True)
+            yield Static(
+                "[dim]Enter: open   Backspace: up a directory   ESC: cancel[/dim]",
+                id="open-footer",
+                markup=True,
+            )
 
     def on_mount(self) -> None:
         self.query_one("#file-tree", _PyFileTree).focus()
 
     def on_directory_tree_file_selected(
-        self, event: DirectoryTree.FileSelected,
+        self,
+        event: DirectoryTree.FileSelected,
     ) -> None:
         path = Path(event.path)
         if path.suffix == ".py":
@@ -424,6 +437,7 @@ class _DocumentationModal(ModalScreen):
 
     def compose(self) -> ComposeResult:
         from textual.widgets import MarkdownViewer
+
         with Vertical(id="dialog"):
             yield MarkdownViewer(self._markdown_text, show_table_of_contents=True)
             yield Static("[dim]ESC or q to close[/dim]", id="doc-footer", markup=True)
@@ -567,7 +581,9 @@ class _QuitConfirmModal(ModalScreen):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="dialog"):
-            yield Static("[bold]Hit q again to quit[/bold]     ESC: cancel", markup=True)
+            yield Static(
+                "[bold]Hit q again to quit[/bold]     ESC: cancel", markup=True
+            )
 
     def action_confirm(self) -> None:
         self.dismiss(True)

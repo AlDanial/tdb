@@ -19,8 +19,11 @@ def strip_ansi(s: str) -> str:
 def main():
     env = {**os.environ, "PYTHONPATH": os.path.join(os.path.dirname(HERE), "src")}
     child = pexpect.spawn(
-        VENV_PY, [DEMO],
-        env=env, encoding="utf-8", timeout=30,
+        VENV_PY,
+        [DEMO],
+        env=env,
+        encoding="utf-8",
+        timeout=30,
         dimensions=(50, 120),
     )
     log = open("/tmp/help_menu_test.log", "w")
@@ -41,7 +44,9 @@ def main():
         child.send("\r")
         try:
             # README content-specific string
-            child.expect("A Python debugger built with textual and debugpy.", timeout=10)
+            child.expect(
+                "A Python debugger built with textual and debugpy.", timeout=10
+            )
             print("  OK: Documentation modal opened with rendered README.")
         except pexpect.exceptions.TIMEOUT:
             print("  FAIL: Documentation modal did not open")

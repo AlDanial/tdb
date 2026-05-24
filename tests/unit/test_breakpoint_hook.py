@@ -18,6 +18,7 @@ import pytest
 def hook(monkeypatch):
     """Reload breakpoint_hook so each test starts with a clean module global."""
     import tdb.breakpoint_hook as h
+
     h = importlib.reload(h)
     return h
 
@@ -72,7 +73,9 @@ def test_reuses_existing_subprocess_when_alive(hook, monkeypatch):
     monkeypatch.setitem(__import__("sys").modules, "debugpy", fake_debugpy)
     monkeypatch.setattr(
         "subprocess.Popen",
-        lambda *a, **k: popen_calls.append(1) or pytest.fail("Popen must not be called"),
+        lambda *a, **k: (
+            popen_calls.append(1) or pytest.fail("Popen must not be called")
+        ),
     )
 
     hook.breakpoint()

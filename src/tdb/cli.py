@@ -11,9 +11,11 @@ from pathlib import Path
 def _get_version() -> str:
     try:
         from importlib.metadata import version
+
         return version("textual-debugger")
     except Exception:
         from tdb import __version__
+
         return __version__
 
 
@@ -30,12 +32,14 @@ def build_parser() -> argparse.ArgumentParser:
         description="A Python debugger built with textual and debugpy.",
     )
     parser.add_argument(
-        "-v", "--version",
+        "-v",
+        "--version",
         action="version",
         version=f"tdb {_get_version()}",
     )
     parser.add_argument(
-        "-r", "--remote-attach",
+        "-r",
+        "--remote-attach",
         metavar="[HOST:]PORT",
         default=None,
         help="Attach to a remote debugpy server (e.g. 5678 or localhost:5678)",
@@ -86,8 +90,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--terminal",
         choices=[
-            "xterm", "konsole", "gnome-terminal", "ghostty", "kitty",
-            "iterm2", "warp", "wezterm", "terminator",
+            "xterm",
+            "konsole",
+            "gnome-terminal",
+            "ghostty",
+            "kitty",
+            "iterm2",
+            "warp",
+            "wezterm",
+            "terminator",
         ],
         default=None,
         help="Run debuggee in the named external terminal (for TUI programs)",
@@ -103,14 +114,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="Run as a headless JSON-RPC debug server (no TUI)",
     )
     parser.add_argument(
-        "-k", "--breakpoint",
+        "-k",
+        "--breakpoint",
         action="append",
         default=[],
         metavar="FILE:LINE|LINE",
         help="Set a breakpoint at FILE:LINE, or just LINE for the program "
-             "being debugged (may be repeated). Implies --no-stop-on-entry "
-             "so the program runs to the first breakpoint instead of pausing "
-             "at line 1.",
+        "being debugged (may be repeated). Implies --no-stop-on-entry "
+        "so the program runs to the first breakpoint instead of pausing "
+        "at line 1.",
     )
     parser.add_argument(
         "--server-port",
@@ -125,7 +137,8 @@ def build_parser() -> argparse.ArgumentParser:
         help=argparse.SUPPRESS,  # invoked by tdb.exception_hook, not the user
     )
     parser.add_argument(
-        "-d", "--doc",
+        "-d",
+        "--doc",
         action="store_true",
         help="Display README.md in a markdown viewer and exit (no program needed)",
     )
@@ -133,7 +146,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--doc-text",
         action="store_true",
         help="Print README.md to stdout as wrapped plain text and exit "
-             "(useful for `tdb --doc-text | less`, piping to a file, etc.)",
+        "(useful for `tdb --doc-text | less`, piping to a file, etc.)",
     )
     return parser
 
@@ -161,7 +174,8 @@ def _apply_flag_implications(args: argparse.Namespace) -> None:
 
 
 def _validate_terminal_choice(
-    args: argparse.Namespace, parser: argparse.ArgumentParser,
+    args: argparse.Namespace,
+    parser: argparse.ArgumentParser,
 ) -> None:
     """Fail fast if `--terminal X` refers to an executable not on PATH.
 
@@ -176,7 +190,8 @@ def _validate_terminal_choice(
 
 
 def _parse_attach_spec(
-    args: argparse.Namespace, parser: argparse.ArgumentParser,
+    args: argparse.Namespace,
+    parser: argparse.ArgumentParser,
 ) -> None:
     """Split `--remote-attach [HOST:]PORT` into `attach_host` / `attach_port`."""
     args.attach_host = None
@@ -197,7 +212,8 @@ def _parse_attach_spec(
 
 
 def _resolve_program_path(
-    args: argparse.Namespace, parser: argparse.ArgumentParser,
+    args: argparse.Namespace,
+    parser: argparse.ArgumentParser,
 ) -> None:
     """Resolve `program` to an absolute path + verify it exists.
 
@@ -215,7 +231,8 @@ def _resolve_program_path(
 
 
 def _parse_breakpoints(
-    args: argparse.Namespace, parser: argparse.ArgumentParser,
+    args: argparse.Namespace,
+    parser: argparse.ArgumentParser,
 ) -> None:
     """Parse `-k FILE:LINE | LINE` specs into `[(abs_path, line), ...]`.
 
@@ -240,9 +257,7 @@ def _parse_breakpoints(
             try:
                 line = int(spec)
             except ValueError:
-                parser.error(
-                    f"Invalid breakpoint (expected FILE:LINE or LINE): {spec}"
-                )
+                parser.error(f"Invalid breakpoint (expected FILE:LINE or LINE): {spec}")
             if not args.program:
                 parser.error(
                     f"Bare-line breakpoint -k {spec} requires a program "
@@ -260,6 +275,7 @@ def _snap_breakpoints(args: argparse.Namespace) -> None:
     stderr — keeping an unhittable breakpoint would confuse the user.
     """
     from tdb.source_analysis import snap_breakpoint
+
     snapped_bps: list[tuple[str, int]] = []
     for bp_path, line in args.breakpoint:
         snapped = snap_breakpoint(bp_path, line)
@@ -307,6 +323,7 @@ def main(argv: list[str] | None = None) -> None:
     import logging
     import os
     from tdb.persist import CONFIG_DIR
+
     # Tests set TDB_LOG_DIR to keep their log noise out of the user's
     # config dir; production reads from CONFIG_DIR (XDG on Unix,
     # %APPDATA%/tdb on Windows).
@@ -414,16 +431,18 @@ def _run_headless(args: argparse.Namespace) -> None:
     import asyncio
     from tdb.server.runner import run_headless
 
-    asyncio.run(run_headless(
-        program=args.program,
-        args=args.args,
-        cwd=args.cwd,
-        stop_on_entry=args.stop_on_entry,
-        just_my_code=not args.no_just_my_code,
-        python=args.python,
-        port=args.server_port,
-        cli_breakpoints=args.breakpoint,
-    ))
+    asyncio.run(
+        run_headless(
+            program=args.program,
+            args=args.args,
+            cwd=args.cwd,
+            stop_on_entry=args.stop_on_entry,
+            just_my_code=not args.no_just_my_code,
+            python=args.python,
+            port=args.server_port,
+            cli_breakpoints=args.breakpoint,
+        )
+    )
 
 
 def _run_tui(args: argparse.Namespace) -> None:

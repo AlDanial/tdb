@@ -59,12 +59,14 @@ def _decode_bps(raw: dict) -> dict[str, list[SourceBreakpoint]]:
     for source_path, bp_list in raw.items():
         bps = []
         for entry in bp_list:
-            bps.append(SourceBreakpoint(
-                line=entry["line"],
-                condition=entry.get("condition"),
-                hit_condition=entry.get("hit_condition"),
-                enabled=entry.get("enabled", True),
-            ))
+            bps.append(
+                SourceBreakpoint(
+                    line=entry["line"],
+                    condition=entry.get("condition"),
+                    hit_condition=entry.get("hit_condition"),
+                    enabled=entry.get("enabled", True),
+                )
+            )
         if bps:
             result[source_path] = bps
     return result
@@ -78,7 +80,9 @@ def _read_state() -> dict:
             log.info("Migrated %s -> %s", _LEGACY_STATE_FILE, STATE_FILE)
         except Exception:
             log.exception(
-                "Failed to migrate %s to %s", _LEGACY_STATE_FILE, STATE_FILE,
+                "Failed to migrate %s to %s",
+                _LEGACY_STATE_FILE,
+                STATE_FILE,
             )
     if not STATE_FILE.is_file():
         return {}
@@ -105,7 +109,9 @@ def save_breakpoints(
         existing["programs"] = programs
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
         STATE_FILE.write_text(json.dumps(existing, indent=2) + "\n")
-        log.debug("Saved %d breakpoint(s) for %s", sum(len(v) for v in data.values()), program)
+        log.debug(
+            "Saved %d breakpoint(s) for %s", sum(len(v) for v in data.values()), program
+        )
     except Exception:
         log.exception("Failed to save breakpoints to %s", STATE_FILE)
 

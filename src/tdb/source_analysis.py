@@ -18,9 +18,16 @@ log = logging.getLogger(__name__)
 
 
 _COMPOUND_STMT_TYPES: tuple[type, ...] = (
-    ast.If, ast.For, ast.AsyncFor, ast.While,
-    ast.With, ast.AsyncWith, ast.Try,
-    ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef,
+    ast.If,
+    ast.For,
+    ast.AsyncFor,
+    ast.While,
+    ast.With,
+    ast.AsyncWith,
+    ast.Try,
+    ast.FunctionDef,
+    ast.AsyncFunctionDef,
+    ast.ClassDef,
 )
 if hasattr(ast, "Match"):  # 3.10+
     _COMPOUND_STMT_TYPES = _COMPOUND_STMT_TYPES + (ast.Match,)
@@ -29,7 +36,8 @@ if hasattr(ast, "TryStar"):  # 3.11+
 
 
 def compute_step_units(
-    source: str, filename: str = "<unknown>",
+    source: str,
+    filename: str = "<unknown>",
 ) -> list[tuple[int, int]]:
     """Return (start_line, end_line) ranges, one per atomic step unit.
 
@@ -49,7 +57,8 @@ def compute_step_units(
 
 
 def find_step_unit(
-    line: int, units: list[tuple[int, int]],
+    line: int,
+    units: list[tuple[int, int]],
 ) -> tuple[int, int] | None:
     """Smallest unit containing `line`, or None if no unit covers it."""
     matches = [u for u in units if u[0] <= line <= u[1]]
@@ -59,7 +68,8 @@ def find_step_unit(
 
 
 def snap_to_statement_start(
-    line: int, units: list[tuple[int, int]],
+    line: int,
+    units: list[tuple[int, int]],
 ) -> int | None:
     """Snap `line` to a step-unit start line.
 
@@ -128,7 +138,8 @@ def _walk(node: ast.AST, out: list[tuple[int, int]]) -> None:
 
 
 def _header_range(
-    node: ast.AST, body: list[ast.AST],
+    node: ast.AST,
+    body: list[ast.AST],
 ) -> tuple[int, int]:
     """Range covering only the header of a compound node.
 

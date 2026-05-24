@@ -28,6 +28,7 @@ from tdb.session.controller import DebugController
 
 # --- HandlerRef in isolation -------------------------------------------
 
+
 def test_handler_ref_holds_initial_handler():
     h = ServerEventHandler()
     ref = HandlerRef(h)
@@ -54,6 +55,7 @@ def test_handler_ref_set_to_same_instance_is_a_noop():
 
 
 # --- Subscriber migration ----------------------------------------------
+
 
 def test_subscribers_migrate_to_new_handler():
     h1 = ServerEventHandler()
@@ -105,6 +107,7 @@ def test_post_swap_events_reach_old_subscribers():
 
 # --- RpcHandlers reads through the ref ---------------------------------
 
+
 def test_rpc_handlers_event_handler_follows_ref_swap():
     """The whole point of HandlerRef: RpcHandlers, constructed once,
     must always see the current handler — no rebuilding required."""
@@ -132,6 +135,7 @@ def test_rpc_handlers_accepts_raw_handler_for_compat():
 
 # --- Drain interaction --------------------------------------------------
 
+
 async def test_restart_during_stopped_unblocks_waiters_via_handler_swap():
     """A subscriber waiting on the queue should be released by the
     session_restart event, even if no other event fires.
@@ -152,6 +156,7 @@ async def test_restart_during_stopped_unblocks_waiters_via_handler_swap():
 
 
 # --- Defensive: subscriber migration is idempotent in shape ------------
+
 
 def test_set_then_set_keeps_subscribers_intact():
     h1 = ServerEventHandler()

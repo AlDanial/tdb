@@ -288,13 +288,15 @@ class _InspectableListModal(ModalScreen[None], Generic[T]):
     # --- Event handlers ----------------------------------------------
 
     def on_data_table_row_highlighted(
-        self, event: DataTable.RowHighlighted,
+        self,
+        event: DataTable.RowHighlighted,
     ) -> None:
         if event.cursor_row is not None:
             self._show_detail(event.cursor_row)
 
     def on_data_table_row_selected(
-        self, event: DataTable.RowSelected,
+        self,
+        event: DataTable.RowSelected,
     ) -> None:
         # Fires on Enter or double-click.
         row = event.cursor_row

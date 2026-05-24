@@ -49,9 +49,15 @@ def _make_controller():
     ctrl = DebugController(ServerEventHandler())
     ctrl.client = _StubDAPClient()  # type: ignore[assignment]
     fut: asyncio.Future = asyncio.get_event_loop().create_future()
-    fut.set_result(Response(
-        seq=1, request_seq=1, command="launch", success=True, body={},
-    ))
+    fut.set_result(
+        Response(
+            seq=1,
+            request_seq=1,
+            command="launch",
+            success=True,
+            body={},
+        )
+    )
     ctrl._launch_future = fut
     return ctrl
 
@@ -74,10 +80,13 @@ async def test_do_configure_preserves_stopped_phase_set_before_it_finishes():
     # Simulate the early stopped event that the DAP read loop dispatches
     # synchronously via _on_stopped before do_configure's await chain
     # gets to its final transition_to.
-    ctrl._on_stopped(Event(
-        seq=1, event="stopped",
-        body={"reason": "breakpoint", "threadId": 1},
-    ))
+    ctrl._on_stopped(
+        Event(
+            seq=1,
+            event="stopped",
+            body={"reason": "breakpoint", "threadId": 1},
+        )
+    )
     assert ctrl.state.phase == SessionPhase.STOPPED
 
     await ctrl.do_configure()

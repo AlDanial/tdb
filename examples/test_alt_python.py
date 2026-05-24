@@ -21,8 +21,11 @@ def main():
 
     env = {**os.environ, "PYTHONPATH": os.path.join(os.path.dirname(HERE), "src")}
     child = pexpect.spawn(
-        VENV_PY, ["-m", "tdb", "--python", ALT_PY, PROGRAM],
-        env=env, encoding="utf-8", timeout=30,
+        VENV_PY,
+        ["-m", "tdb", "--python", ALT_PY, PROGRAM],
+        env=env,
+        encoding="utf-8",
+        timeout=30,
         dimensions=(40, 140),
     )
     log = open("/tmp/alt_python_test.log", "w")

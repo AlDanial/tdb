@@ -170,14 +170,16 @@ def test_snap_at_start_is_identity():
 
 def test_snap_breakpoint_on_multi_line_call(tmp_path):
     src = tmp_path / "x.py"
-    src.write_text(dedent("""\
+    src.write_text(
+        dedent("""\
         a = 1
         results = func(
             1,
             2,
         )
         b = 2
-        """))
+        """)
+    )
     # Sub-lines 3 and 4 belong to the assign on line 2 — snap to 2.
     assert snap_breakpoint(str(src), 3) == 2
     assert snap_breakpoint(str(src), 4) == 2
@@ -214,12 +216,14 @@ def test_snap_breakpoint_past_end_of_file_passes_through(tmp_path):
 def test_snap_breakpoint_before_first_statement_returns_none(tmp_path):
     src = tmp_path / "x.py"
     # Lines 1-3 are blank/comment-only; first statement at line 4.
-    src.write_text(dedent("""\
+    src.write_text(
+        dedent("""\
         # header comment
         # more comment
 
         x = 1
-        """))
+        """)
+    )
     assert snap_breakpoint(str(src), 1) is None
     assert snap_breakpoint(str(src), 3) is None
     assert snap_breakpoint(str(src), 4) == 4

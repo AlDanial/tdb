@@ -149,14 +149,22 @@ class Capabilities:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Capabilities:
         return cls(
-            supports_configuration_done_request=data.get("supportsConfigurationDoneRequest", False),
+            supports_configuration_done_request=data.get(
+                "supportsConfigurationDoneRequest", False
+            ),
             supports_evaluate_for_hovers=data.get("supportsEvaluateForHovers", False),
             supports_set_variable=data.get("supportsSetVariable", False),
             supports_completions_request=data.get("supportsCompletionsRequest", False),
-            supports_conditional_breakpoints=data.get("supportsConditionalBreakpoints", False),
-            supports_hit_conditional_breakpoints=data.get("supportsHitConditionalBreakpoints", False),
+            supports_conditional_breakpoints=data.get(
+                "supportsConditionalBreakpoints", False
+            ),
+            supports_hit_conditional_breakpoints=data.get(
+                "supportsHitConditionalBreakpoints", False
+            ),
             supports_log_points=data.get("supportsLogPoints", False),
-            supports_breakpoint_locations_request=data.get("supportsBreakpointLocationsRequest", False),
+            supports_breakpoint_locations_request=data.get(
+                "supportsBreakpointLocationsRequest", False
+            ),
             exception_breakpoint_filters=data.get("exceptionBreakpointFilters", []),
         )
 

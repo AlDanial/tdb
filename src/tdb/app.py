@@ -217,9 +217,11 @@ class TdbApp(_AppMessageRoutes, App):
         if server_port is not None:
             from tdb.server.event_handler import ServerEventHandler
             from tdb.session.event_bus import CompositeEventHandler
+
             self._server_handler = ServerEventHandler()
             self._event_handler = CompositeEventHandler(
-                self._textual_handler, self._server_handler,
+                self._textual_handler,
+                self._server_handler,
             )
         else:
             self._server_handler = None
@@ -232,6 +234,7 @@ class TdbApp(_AppMessageRoutes, App):
         # See app_handlers/ui_panels.py for why the previous pattern
         # (ad-hoc self._processes_modal etc. attrs) was replaced.
         from tdb.app_handlers.ui_panels import UIPanels
+
         self.panels = UIPanels()
         # True after File > Open loads a new program but before the user
         # presses `r` or `c` to start it. While pending, debug actions other
@@ -249,6 +252,7 @@ class TdbApp(_AppMessageRoutes, App):
         # etc., without per-call boilerplate.
         from tdb.app_handlers.dap_events import DapEventCoordinator
         from tdb.app_handlers.inspection import InspectionWorkflows
+
         self._inspection = InspectionWorkflows(self)
         self._dap = DapEventCoordinator(self)
 
@@ -310,12 +314,15 @@ class TdbApp(_AppMessageRoutes, App):
             bps = self.controller.state.breakpoints.get(bp_path, [])
             if not any(bp.line == bp_line for bp in bps):
                 from tdb.dap.types import SourceBreakpoint
+
                 bps.append(SourceBreakpoint(line=bp_line))
                 self.controller.state.breakpoints[bp_path] = bps
         # Update visuals
         if self.controller.state.breakpoints:
             all_bps = self.controller.state.breakpoints
-            bps = all_bps.get(code_view.source_path, []) if code_view.source_path else []
+            bps = (
+                all_bps.get(code_view.source_path, []) if code_view.source_path else []
+            )
             code_view.set_breakpoints(bps)
             bp_view = self.query_one("#breakpoint-view", BreakpointView)
             bp_view.update_breakpoints(all_bps)
@@ -365,7 +372,11 @@ class TdbApp(_AppMessageRoutes, App):
 
     def _update_code_title(self, code_view: CodeView) -> None:
         mode_label = code_view.mode.value
-        styled = f"[red]{mode_label}[/]" if mode_label.lower() == "navigation" else mode_label
+        styled = (
+            f"[red]{mode_label}[/]"
+            if mode_label.lower() == "navigation"
+            else mode_label
+        )
         code_view.border_title = f"[bold orange]C[/]ode \\[{styled}]"
 
     def on_code_view_mode_changed(self, message: CodeView.ModeChanged) -> None:
@@ -451,7 +462,8 @@ class TdbApp(_AppMessageRoutes, App):
                 try:
                     old_key = str(Path(self._program).resolve())
                     save_breakpoints(
-                        self.controller.state.breakpoints, program=old_key,
+                        self.controller.state.breakpoints,
+                        program=old_key,
                     )
                 except Exception:
                     log.exception("Failed to save breakpoints for previous program")
@@ -476,15 +488,17 @@ class TdbApp(_AppMessageRoutes, App):
         if self._server_handler is not None:
             from tdb.server.event_handler import ServerEventHandler
             from tdb.session.event_bus import CompositeEventHandler
+
             # Swap in a fresh ServerEventHandler. HandlerRef.set migrates
             # SSE subscribers from the old instance and broadcasts a
             # `session_restart` event so connected clients can reset
             # before they see events from the new session.
             self._server_handler = ServerEventHandler()
-            if hasattr(self, '_handler_ref'):
+            if hasattr(self, "_handler_ref"):
                 self._handler_ref.set(self._server_handler)
             self._event_handler = CompositeEventHandler(
-                self._textual_handler, self._server_handler,
+                self._textual_handler,
+                self._server_handler,
             )
         else:
             self._event_handler = self._textual_handler
@@ -493,7 +507,7 @@ class TdbApp(_AppMessageRoutes, App):
         self.controller.state.breakpoints = saved_breakpoints
 
         # Update the server's controller reference so RPC sees the new one
-        if hasattr(self, '_controller_ref'):
+        if hasattr(self, "_controller_ref"):
             self._controller_ref.set(self.controller)
 
         self._stderr_buffer.clear()
@@ -509,7 +523,9 @@ class TdbApp(_AppMessageRoutes, App):
 
         if not start_immediately:
             self._session_pending = True
-            self.sub_title = f"Loaded {Path(self._program).name} — press r or c to start"
+            self.sub_title = (
+                f"Loaded {Path(self._program).name} — press r or c to start"
+            )
             return
 
         self._session_pending = False
@@ -545,7 +561,8 @@ class TdbApp(_AppMessageRoutes, App):
                 exc_type = "Exception"
                 if self._post_mortem_snapshot is not None:
                     exc_type = self._post_mortem_snapshot.get(
-                        "exception", {},
+                        "exception",
+                        {},
                     ).get("type", "Exception")
                 self.sub_title = f"Post-mortem · {exc_type}"
             else:
@@ -556,11 +573,17 @@ class TdbApp(_AppMessageRoutes, App):
                 stack_view.update_frames(state.stack_frames, state.current_frame_id)
                 # Navigate Code View and status bar to the current frame
                 for frame in state.stack_frames:
-                    if frame.id == state.current_frame_id and frame.source and frame.source.path:
+                    if (
+                        frame.id == state.current_frame_id
+                        and frame.source
+                        and frame.source.path
+                    ):
                         if frame.source.path != code_view.source_path:
                             code_view.load_file(frame.source.path)
                         code_view.current_line = frame.line
-                        status_bar.set_paused(frame.source.path, frame.line, reason=reason)
+                        status_bar.set_paused(
+                            frame.source.path, frame.line, reason=reason
+                        )
                         break
                 else:
                     status_bar.set_terminated()
@@ -613,11 +636,14 @@ class TdbApp(_AppMessageRoutes, App):
 
     # --- Widget message handlers ---
 
-    async def on_code_view_breakpoint_toggled(self, message: CodeView.BreakpointToggled) -> None:
+    async def on_code_view_breakpoint_toggled(
+        self, message: CodeView.BreakpointToggled
+    ) -> None:
         if self.controller.state.is_post_mortem:
             self.notify(
                 "Breakpoints disabled in post-mortem mode",
-                title="tdb", severity="warning",
+                title="tdb",
+                severity="warning",
             )
             return
         try:
@@ -628,8 +654,14 @@ class TdbApp(_AppMessageRoutes, App):
 
     class _ApplyBreakpointCondition(Message):
         """Internal message to apply condition after modal dismisses."""
-        def __init__(self, source_path: str, line: int,
-                     condition: str | None, hit_condition: str | None) -> None:
+
+        def __init__(
+            self,
+            source_path: str,
+            line: int,
+            condition: str | None,
+            hit_condition: str | None,
+        ) -> None:
             self.source_path = source_path
             self.line = line
             self.condition = condition
@@ -643,7 +675,8 @@ class TdbApp(_AppMessageRoutes, App):
         if bp is None:
             return
         modal = _BreakpointConditionModal(
-            source_path, line,
+            source_path,
+            line,
             condition=bp.condition,
             hit_condition=bp.hit_condition,
         )
@@ -652,31 +685,41 @@ class TdbApp(_AppMessageRoutes, App):
             if result is None:
                 return
             condition, hit_condition = result
-            self.post_message(self._ApplyBreakpointCondition(
-                source_path, line, condition, hit_condition,
-            ))
+            self.post_message(
+                self._ApplyBreakpointCondition(
+                    source_path,
+                    line,
+                    condition,
+                    hit_condition,
+                )
+            )
 
         self.push_screen(modal, callback=on_dismiss)
 
     async def on_tdb_app__apply_breakpoint_condition(
-        self, message: _ApplyBreakpointCondition,
+        self,
+        message: _ApplyBreakpointCondition,
     ) -> None:
         try:
             await self.controller.set_breakpoint_condition(
-                message.source_path, message.line,
-                message.condition, message.hit_condition,
+                message.source_path,
+                message.line,
+                message.condition,
+                message.hit_condition,
             )
             self.post_message(self.BreakpointsChanged())
         except Exception:
             log.exception("Error setting breakpoint condition")
 
     def on_code_view_breakpoint_condition_requested(
-        self, message: CodeView.BreakpointConditionRequested,
+        self,
+        message: CodeView.BreakpointConditionRequested,
     ) -> None:
         self._open_breakpoint_condition_modal(message.source_path, message.line)
 
     def on_breakpoint_view_breakpoint_condition_requested(
-        self, message: BreakpointView.BreakpointConditionRequested,
+        self,
+        message: BreakpointView.BreakpointConditionRequested,
     ) -> None:
         self._open_breakpoint_condition_modal(message.source_path, message.line)
 
@@ -693,7 +736,8 @@ class TdbApp(_AppMessageRoutes, App):
                 # Frozen snapshot — no live debuggee to step/continue/restart.
                 self.notify(
                     "Not available in post-mortem mode",
-                    title="tdb", severity="warning",
+                    title="tdb",
+                    severity="warning",
                 )
                 return
             if message.action == "restart":
@@ -741,7 +785,9 @@ class TdbApp(_AppMessageRoutes, App):
         except Exception:
             log.exception("Error in run to cursor")
 
-    async def on_stack_view_frame_selected(self, message: StackView.FrameSelected) -> None:
+    async def on_stack_view_frame_selected(
+        self, message: StackView.FrameSelected
+    ) -> None:
         await self.controller.select_frame(message.frame_id)
         if message.source_path:
             code_view = self.query_one("#code-view", CodeView)
@@ -790,7 +836,8 @@ class TdbApp(_AppMessageRoutes, App):
         bp_view.set_disabled_state(state.breakpoints_disabled)
 
     async def on_breakpoint_view_disable_all_requested(
-        self, message: BreakpointView.DisableAllRequested,
+        self,
+        message: BreakpointView.DisableAllRequested,
     ) -> None:
         try:
             state = self.controller.state
@@ -803,7 +850,8 @@ class TdbApp(_AppMessageRoutes, App):
             log.exception("Error toggling breakpoint disable")
 
     async def on_breakpoint_view_clear_all_requested(
-        self, message: BreakpointView.ClearAllRequested,
+        self,
+        message: BreakpointView.ClearAllRequested,
     ) -> None:
         try:
             await self.controller.clear_all_breakpoints()
@@ -812,7 +860,8 @@ class TdbApp(_AppMessageRoutes, App):
             log.exception("Error clearing breakpoints")
 
     async def on_breakpoint_view_breakpoint_delete_requested(
-        self, message: BreakpointView.BreakpointDeleteRequested,
+        self,
+        message: BreakpointView.BreakpointDeleteRequested,
     ) -> None:
         try:
             await self.controller.remove_breakpoint(message.source_path, message.line)
@@ -821,11 +870,13 @@ class TdbApp(_AppMessageRoutes, App):
             log.exception("Error deleting breakpoint")
 
     async def on_breakpoint_view_breakpoint_toggle_enabled_requested(
-        self, message: BreakpointView.BreakpointToggleEnabledRequested,
+        self,
+        message: BreakpointView.BreakpointToggleEnabledRequested,
     ) -> None:
         try:
             await self.controller.toggle_breakpoint_enabled(
-                message.source_path, message.line,
+                message.source_path,
+                message.line,
             )
             self.post_message(self.BreakpointsChanged())
         except Exception:
@@ -837,10 +888,16 @@ class TdbApp(_AppMessageRoutes, App):
         if self.controller.state.is_post_mortem:
             source = message.source
             variables = self.controller.state.variables.get(
-                message.variables_reference, [],
+                message.variables_reference,
+                [],
             )
-            target = source if source is not None else self.query_one(
-                "#variable-view", VariableView,
+            target = (
+                source
+                if source is not None
+                else self.query_one(
+                    "#variable-view",
+                    VariableView,
+                )
             )
             target.load_children(message.node, variables)
             return
@@ -861,7 +918,8 @@ class TdbApp(_AppMessageRoutes, App):
             except Exception:
                 log.debug(
                     "Failed to load child (pid=%s) variables (ref=%d)",
-                    pid, message.variables_reference,
+                    pid,
+                    message.variables_reference,
                 )
                 source.load_children(message.node, [])
                 return
@@ -869,12 +927,16 @@ class TdbApp(_AppMessageRoutes, App):
             return
 
         try:
-            variables = await self.controller.active_client.variables(message.variables_reference)
+            variables = await self.controller.active_client.variables(
+                message.variables_reference
+            )
             var_view = self.query_one("#variable-view", VariableView)
             var_view.load_children(message.node, variables)
         except Exception:
-            log.debug("Failed to load variables (reference may be stale): %d",
-                      message.variables_reference)
+            log.debug(
+                "Failed to load variables (reference may be stale): %d",
+                message.variables_reference,
+            )
 
     async def on_evaluate_console_evaluate_requested(
         self, message: EvaluateConsole.EvaluateRequested
@@ -1002,7 +1064,8 @@ class TdbApp(_AppMessageRoutes, App):
         if readme is None:
             self.notify(
                 "README.md not found in the installation.",
-                title="Documentation", severity="warning",
+                title="Documentation",
+                severity="warning",
             )
             return
         self.push_screen(_DocumentationModal(readme))
@@ -1021,7 +1084,9 @@ class TdbApp(_AppMessageRoutes, App):
 
     # --- Async tasks ---
 
-    def on_menu_bar_action_label_clicked(self, message: MenuBar.ActionLabelClicked) -> None:
+    def on_menu_bar_action_label_clicked(
+        self, message: MenuBar.ActionLabelClicked
+    ) -> None:
         if message.label_id == "open-file-label":
             self.action_open_file()
         elif message.label_id == "threads-label":
@@ -1111,7 +1176,7 @@ class TdbApp(_AppMessageRoutes, App):
             program_key = str(Path(self._program).resolve())
             save_breakpoints(self.controller.state.breakpoints, program=program_key)
         await self.controller.stop()
-        if hasattr(self, '_uvicorn_server'):
+        if hasattr(self, "_uvicorn_server"):
             self._uvicorn_server.should_exit = True
         self.exit()
 
@@ -1172,6 +1237,7 @@ class TdbApp(_AppMessageRoutes, App):
         # writer thread doesn't have to flush a backlog of render frames
         # through a slow pty before joining. See _drain_writer_queue_fast.
         from textual import events as _evts
+
         self._begin_batch()
         driver = self._driver
         self._running = False
@@ -1199,5 +1265,3 @@ class TdbApp(_AppMessageRoutes, App):
                 self.run_worker(self.action_quit_debugger())
 
         self.push_screen(_QuitConfirmModal(), callback=on_dismiss)
-
-

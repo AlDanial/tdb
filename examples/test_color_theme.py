@@ -23,6 +23,7 @@ VENV_PY = os.path.join(os.path.dirname(HERE), ".venv", "bin", "python")
 def check_routing() -> bool:
     sys.path.insert(0, os.path.join(os.path.dirname(HERE), "src"))
     from tdb.app import TdbApp
+
     src = inspect.getsource(TdbApp.action_color_theme)
     if "action_change_theme" not in src:
         print(f"FAIL: action_color_theme doesn't call action_change_theme:\n{src}")
@@ -49,8 +50,11 @@ def check_startup_apply() -> bool:
             # and exits cleanly with the preseeded config.
         }
         child = pexpect.spawn(
-            VENV_PY, [DEMO],
-            env=env, encoding="utf-8", timeout=30,
+            VENV_PY,
+            [DEMO],
+            env=env,
+            encoding="utf-8",
+            timeout=30,
             dimensions=(40, 140),
         )
         try:
@@ -87,9 +91,12 @@ def check_runtime_persist() -> bool:
     tmp_home = pathlib.Path(tempfile.mkdtemp(prefix="tdb-theme-"))
     try:
         probe = tmp_home / "probe.py"
-        probe.write_text('''
+        probe.write_text(
+            '''
 import asyncio, json, pathlib, sys
-sys.path.insert(0, "''' + os.path.join(os.path.dirname(HERE), "src") + '''")
+sys.path.insert(0, "'''
+            + os.path.join(os.path.dirname(HERE), "src")
+            + """")
 from tdb.app import TdbApp
 
 async def run():
@@ -101,12 +108,17 @@ async def run():
 asyncio.run(run())
 cfg = pathlib.Path.home() / ".config" / "tdb" / "config.json"
 print("SAVED:", json.loads(cfg.read_text()))
-''')
+"""
+        )
         env = {**os.environ, "HOME": str(tmp_home)}
         import subprocess
+
         result = subprocess.run(
             [VENV_PY, str(probe)],
-            env=env, capture_output=True, text=True, timeout=30,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=30,
         )
         if result.returncode != 0:
             print(f"FAIL: probe exit {result.returncode}")
