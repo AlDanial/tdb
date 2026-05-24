@@ -68,7 +68,7 @@ class AsyncTaskInfo:
 # `tasks.py` (sleep/wait/gather/wait_for) there is no `self`. When no
 # frame is recognizable, fall back to the type name of `_fut_waiter`.
 TASK_COLLECT_EXPR = """\
-(lambda _ns: (exec('''
+(lambda _ns: (exec(r'''
 import asyncio, json, re
 def _natkey(_s):
     return [int(_p) if _p.isdigit() else _p for _p in re.split(r"(\\d+)", _s)]
