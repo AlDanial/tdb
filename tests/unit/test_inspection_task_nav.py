@@ -11,16 +11,19 @@ from types import SimpleNamespace
 from tdb.app_handlers.inspection import InspectionWorkflows, _TASK_FRAME_RE
 from tdb.app_handlers.ui_panels import UIPanels
 from tdb.inspection import AsyncTaskInfo
+from tdb.session.state import DebugState
 
 
-def _make_workflows_with_tasks(tasks: list[AsyncTaskInfo]) -> tuple[InspectionWorkflows, SimpleNamespace]:
+def _make_workflows_with_tasks(tasks: list[AsyncTaskInfo]) -> tuple[InspectionWorkflows, DebugState]:
     """Build a minimal stand-in for TdbApp wired up enough for
-    navigate_to_task to read the tasks list and mutate controller.state."""
-    state = SimpleNamespace(
-        stack_frames=[], current_frame_id=None, scopes=[], variables={},
-    )
+    navigate_to_task to read the tasks list and mutate controller.state.
+
+    Uses a real DebugState (not a SimpleNamespace) so the workflow's
+    `state.set_stack(...)` call resolves to the actual method.
+    """
+    state = DebugState()
     controller = SimpleNamespace(state=state)
-    modal = SimpleNamespace(_tasks=tasks)
+    modal = SimpleNamespace(items=tasks)
     panels = UIPanels()
     panels.async_tasks = modal
     app = SimpleNamespace(controller=controller, panels=panels)
@@ -60,9 +63,10 @@ def test_navigate_to_task_populates_synthetic_frames():
     assert top.source.path == "/tmp/a.py"
     assert top.source.name == "a.py"
     assert top.line == 10
-    # Synthetic ids are negative so controller.select_frame can detect them.
-    assert top.id < 0
-    assert state.stack_frames[1].id < 0
+    # Synthetic-ness now lives on the state flag (replacing the old
+    # negative-id sentinel). Frame ids are natural ints unique within
+    # the stack.
+    assert state.displayed_frames_are_synthetic is True
     assert top.id != state.stack_frames[1].id
     assert state.current_frame_id == top.id
     # No live DAP scopes/variables for a suspended task.
@@ -109,9 +113,7 @@ def test_navigate_to_task_returns_false_when_all_entries_malformed():
 
 
 def test_navigate_to_task_no_modal_returns_false():
-    state = SimpleNamespace(
-        stack_frames=[], current_frame_id=None, scopes=[], variables={},
-    )
+    state = DebugState()
     controller = SimpleNamespace(state=state)
     # panels.async_tasks is None — modal not open.
     app = SimpleNamespace(controller=controller, panels=UIPanels())

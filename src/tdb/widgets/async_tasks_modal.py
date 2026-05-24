@@ -5,13 +5,12 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical
+from textual.containers import Vertical
 from textual.message import Message
-from textual.screen import ModalScreen
-from rich.text import Text
-from textual.widgets import DataTable, Label, Static, Tree
+from textual.widgets import DataTable, Static, Tree
 from textual.widgets._tree import TreeNode
 
 from tdb.inspection import (
@@ -24,6 +23,7 @@ from tdb.inspection import (
     find_cycles,
     parse_task_json,
 )
+from tdb.widgets._inspection_modal import _InspectableListModal
 from tdb.widgets.variable_view import VariableView
 
 if TYPE_CHECKING:
@@ -42,56 +42,31 @@ __all__ = [
 log = logging.getLogger(__name__)
 
 
-class AsyncTasksModal(ModalScreen[None]):
-    """Near-full-screen modal showing all asyncio tasks."""
+class AsyncTasksModal(_InspectableListModal[AsyncTaskInfo]):
+    """Near-full-screen modal showing all asyncio tasks.
+
+    Adds two things on top of the shared inspection-modal base:
+
+    - A **wait-graph view** in a third pane that toggles in/out via `g`.
+      The graph surfaces deadlocks by showing each blocked task and the
+      primitive it's parked on; cycle participants are decorated in red
+      in both the table and the graph.
+
+    - **Deadlock-cycle decoration** on the task table: every time the
+      task list changes we recompute `find_cycles(build_wait_graph(...))`
+      and use the result both for the table colorization and the header
+      "⚠ N deadlock cycle(s)" suffix.
+    """
+
+    KIND_LABEL = "Async Tasks"
+    TABLE_COLUMNS = ("Name", "State", "Awaiting", "Coroutine")
+    FOOTER_HINT = (
+        "ESC close  |  r refresh  |  g graph  |  "
+        "Enter/double-click jump to task"
+    )
 
     DEFAULT_CSS = """
-    AsyncTasksModal {
-        align: center middle;
-    }
-    AsyncTasksModal #dialog {
-        width: 90%;
-        height: 80%;
-        border: solid $primary;
-        background: $surface;
-        padding: 0;
-    }
-    AsyncTasksModal #tasks-header {
-        dock: top;
-        height: 1;
-        padding: 0 1;
-        background: $primary-background;
-        color: $text;
-        text-style: bold;
-    }
-    AsyncTasksModal #tasks-footer {
-        dock: bottom;
-        height: 1;
-        padding: 0 1;
-        background: $primary-background;
-        color: $text-muted;
-    }
-    AsyncTasksModal #tasks-body {
-        height: 1fr;
-    }
-    AsyncTasksModal #task-list-pane {
-        width: 2fr;
-        border-right: solid $primary;
-    }
-    AsyncTasksModal #task-detail-pane {
-        width: 3fr;
-        overflow-y: auto;
-    }
-    AsyncTasksModal #task-info {
-        padding: 1 2;
-        height: auto;
-        max-height: 50%;
-    }
-    AsyncTasksModal #task-vars {
-        height: 1fr;
-        padding: 0 1;
-    }
-    AsyncTasksModal #task-graph-pane {
+    AsyncTasksModal #graph-pane {
         width: 3fr;
         overflow-y: auto;
         padding: 0 1;
@@ -100,113 +75,63 @@ class AsyncTasksModal(ModalScreen[None]):
     AsyncTasksModal #wait-graph-tree {
         height: 1fr;
     }
-    AsyncTasksModal DataTable {
-        height: 1fr;
-    }
     """
 
     BINDINGS = [
-        Binding("escape", "dismiss_modal", "Close", show=False),
-        Binding("q", "dismiss_modal", "Close", show=False),
-        Binding("r", "refresh_tasks", "Refresh", show=False),
         Binding("g", "toggle_graph", "Wait graph", show=False),
     ]
 
     def __init__(self, tasks: list[AsyncTaskInfo]) -> None:
         super().__init__()
-        self._tasks = tasks
+        self._items: list[AsyncTaskInfo] = tasks
+        # Cycle detection runs early (here in __init__ and again on every
+        # `update_tasks`) so `_format_row` can read `_cycle_names` while
+        # the base is still painting the table.
         self._cycles: list[list[str]] = []
         self._cycle_names: set[str] = set()
-
-    def compose(self) -> ComposeResult:
-        with Vertical(id="dialog"):
-            yield Label(f"Async Tasks ({len(self._tasks)})", id="tasks-header")
-            with Horizontal(id="tasks-body"):
-                with Vertical(id="task-list-pane"):
-                    table = DataTable(id="task-table")
-                    table.cursor_type = "row"
-                    yield table
-                with Vertical(id="task-detail-pane"):
-                    yield Static("", id="task-info")
-                    yield VariableView(id="task-vars")
-                with Vertical(id="task-graph-pane"):
-                    tree: Tree[str] = Tree("Wait Graph", id="wait-graph-tree")
-                    tree.show_root = False
-                    tree.guide_depth = 3
-                    yield tree
-            yield Label(
-                "ESC close  |  r refresh  |  g graph  |  Enter/double-click jump to task",
-                id="tasks-footer",
-            )
-
-    def on_mount(self) -> None:
-        table = self.query_one("#task-table", DataTable)
-        table.add_columns("Name", "State", "Awaiting", "Coroutine")
         self._recompute_cycles()
-        self._update_header()
-        self._populate_table()
-        self._populate_graph()
-        if self._tasks:
-            self._show_detail(0)
 
-    def _recompute_cycles(self) -> None:
-        """Recompute deadlock cycles from current task list.
+    # --- Base hooks ---------------------------------------------------
 
-        Called from update_tasks/on_mount so both the table decoration
-        and the graph view share one detection pass."""
-        self._cycles = find_cycles(build_wait_graph(self._tasks))
-        self._cycle_names = {n for c in self._cycles for n in c}
+    def _compose_body(self) -> ComposeResult:
+        yield from super()._compose_body()
+        # Third pane (hidden by default, toggled by `g`) showing the
+        # wait-graph as a tree. Sibling to #detail-pane; only one is
+        # visible at a time. Both occupy the same column-fraction so
+        # layout doesn't shift when toggled.
+        with Vertical(id="graph-pane"):
+            tree: Tree[str] = Tree("Wait Graph", id="wait-graph-tree")
+            tree.show_root = False
+            tree.guide_depth = 3
+            yield tree
 
-    def _update_header(self) -> None:
-        header = self.query_one("#tasks-header", Label)
-        suffix = ""
-        if self._cycles:
-            suffix = f"  —  ⚠ {len(self._cycles)} deadlock cycle(s) (press g)"
-        header.update(f"Async Tasks ({len(self._tasks)}){suffix}")
-
-    def _populate_table(self) -> None:
-        table = self.query_one("#task-table", DataTable)
-        table.clear()
-        for task in self._tasks:
-            coro = task.coro if len(task.coro) <= 40 else task.coro[:37] + "..."
-            in_cycle = task.name in self._cycle_names
-            # Name in red when this task participates in a deadlock —
-            # surfaces the cycle without forcing the user to open the
-            # graph view first.
-            name_text = (
-                Text(task.name, style="bold red") if in_cycle else Text(task.name)
+    def _format_row(self, task: AsyncTaskInfo) -> tuple:
+        coro = task.coro if len(task.coro) <= 40 else task.coro[:37] + "..."
+        in_cycle = task.name in self._cycle_names
+        # Name in red when this task participates in a deadlock —
+        # surfaces the cycle without forcing the user to open the
+        # graph view first.
+        name_text = (
+            Text(task.name, style="bold red") if in_cycle else Text(task.name)
+        )
+        # Decorate state with a cancel marker so a task that's been
+        # asked to cancel but hasn't observed the request yet stands
+        # out — that's exactly the kind of state you open this modal
+        # to find. Cycle marker takes precedence visually.
+        state = task.state
+        if in_cycle:
+            state = f"{state}  ↻ deadlock"
+        elif task.cancelling:
+            state = (
+                f"{state} (×{task.cancelling})"
+                if task.cancelling > 1
+                else f"{state} ⊘"
             )
-            # Decorate state with a cancel marker so a task that's been
-            # asked to cancel but hasn't observed the request yet stands
-            # out — that's exactly the kind of state you open this modal
-            # to find. Cycle marker takes precedence visually.
-            state = task.state
-            if in_cycle:
-                state = f"{state}  ↻ deadlock"
-            elif task.cancelling:
-                state = f"{state} (×{task.cancelling})" if task.cancelling > 1 else f"{state} ⊘"
-            state_text = Text(state, style="red") if in_cycle else Text(state)
-            awaiting = task.awaiting or "—"
-            table.add_row(name_text, state_text, Text(awaiting), Text(coro))
+        state_text = Text(state, style="red") if in_cycle else Text(state)
+        awaiting = task.awaiting or "—"
+        return (name_text, state_text, Text(awaiting), Text(coro))
 
-    def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
-        if event.cursor_row is not None and 0 <= event.cursor_row < len(self._tasks):
-            self._show_detail(event.cursor_row)
-
-    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
-        # Fires on Enter or double-click. The main views get synthetic
-        # frames built from this task's captured coroutine stack so the
-        # user lands on the line the task is suspended at. Stepping
-        # commands still operate on the live paused thread — a task is
-        # not its own DAP stepping target.
-        row = event.cursor_row
-        if row is None or not (0 <= row < len(self._tasks)):
-            return
-        self.post_message(self.SelectTask(self._tasks[row].name))
-
-    def _show_detail(self, index: int) -> None:
-        task = self._tasks[index]
-        # Task info (name, state, coro, stack) in the Static widget
+    def _render_loading_detail(self, task: AsyncTaskInfo) -> Text:
         content = Text()
         content.append("Name:     ", style="bold")
         content.append(task.name + "\n")
@@ -229,12 +154,56 @@ class AsyncTasksModal(ModalScreen[None]):
             for i, frame in enumerate(task.stack):
                 content.append(f"  #{i} {frame}\n")
         else:
-            content.append("No stack frames (task may be awaiting)\n", style="dim")
-        info = self.query_one("#task-info", Static)
-        info.update(content)
+            content.append(
+                "No stack frames (task may be awaiting)\n", style="dim",
+            )
+        return content
 
-        # Request variable loading from the app
+    def _select_id_for(self, task: AsyncTaskInfo) -> str:
+        return task.name
+
+    def _make_select_message(self, task_name: str) -> Message:
+        return self.SelectTask(task_name)
+
+    def _make_refresh_message(self) -> Message:
+        # Tasks are refreshed via the App's existing RefreshAsyncTasks
+        # message rather than a modal-local one. Importing TdbApp at
+        # module load would be circular; the App's nested message class
+        # is reachable via `self.app` at runtime.
+        return self.app.RefreshAsyncTasks()
+
+    def _on_after_show_detail(self, task: AsyncTaskInfo) -> None:
         self.post_message(self.LoadTaskVariables(task.name))
+
+    def _after_populate_table(self) -> None:
+        # The graph mirrors the same items list; populate it whenever
+        # the table is repainted so the two views never diverge.
+        self._populate_graph()
+
+    def _header_text(self) -> str:
+        base = super()._header_text()
+        if self._cycles:
+            return (
+                f"{base}  —  ⚠ {len(self._cycles)} deadlock cycle(s) "
+                "(press g)"
+            )
+        return base
+
+    def _empty_state_text(self) -> str:
+        return "No asyncio tasks found"
+
+    # --- Cycle detection ----------------------------------------------
+
+    def _recompute_cycles(self) -> None:
+        """Recompute deadlock cycles from the current task list.
+
+        Called from __init__ and update_tasks so both the table
+        decoration and the graph view share one detection pass.
+        """
+        self._cycles = find_cycles(build_wait_graph(self._items))
+        self._cycle_names = {n for c in self._cycles for n in c}
+
+    # --- Workflow-facing surface --------------------------------------
 
     class LoadTaskVariables(Message):
         """Request to load variables for a task via DAP evaluate."""
@@ -252,7 +221,7 @@ class AsyncTasksModal(ModalScreen[None]):
 
     def show_task_variables(self, variables: list[Variable]) -> None:
         """Populate the variable tree with DAP variables."""
-        var_view = self.query_one("#task-vars", VariableView)
+        var_view = self.query_one("#vars", VariableView)
         var_view.clear()
         if not variables:
             var_view.root.add_leaf("(no variables — frame not available)")
@@ -267,18 +236,9 @@ class AsyncTasksModal(ModalScreen[None]):
 
     def update_tasks(self, tasks: list[AsyncTaskInfo]) -> None:
         """Replace task list and refresh the display."""
-        self._tasks = tasks
+        self._items = tasks
         self._recompute_cycles()
-        self._update_header()
-        self._populate_table()
-        self._populate_graph()
-        if self._tasks:
-            self._show_detail(0)
-        else:
-            info = self.query_one("#task-info", Static)
-            info.update(Text("No asyncio tasks found", style="dim"))
-            var_view = self.query_one("#task-vars", VariableView)
-            var_view.clear()
+        self._reload_after_items_change()
 
     # --- Wait-graph view ----------------------------------------------
 
@@ -298,10 +258,10 @@ class AsyncTasksModal(ModalScreen[None]):
     def _populate_graph(self) -> None:
         tree = self.query_one("#wait-graph-tree", Tree)
         tree.clear()
-        if not self._tasks:
+        if not self._items:
             tree.root.add_leaf(Text("(no tasks)", style="dim"))
             return
-        sections = build_wait_tree(self._tasks)
+        sections = build_wait_tree(self._items)
         for section in sections:
             self._render_node(tree.root, section, expand=True)
 
@@ -331,8 +291,8 @@ class AsyncTasksModal(ModalScreen[None]):
             parent.add_leaf(label, data=data)
 
     def action_toggle_graph(self) -> None:
-        detail = self.query_one("#task-detail-pane", Vertical)
-        graph = self.query_one("#task-graph-pane", Vertical)
+        detail = self.query_one("#detail-pane", Vertical)
+        graph = self.query_one("#graph-pane", Vertical)
         if graph.display:
             graph.display = False
             detail.display = True
@@ -348,15 +308,8 @@ class AsyncTasksModal(ModalScreen[None]):
         name = event.node.data
         if not isinstance(name, str) or not name:
             return
-        for i, t in enumerate(self._tasks):
+        for i, t in enumerate(self._items):
             if t.name == name:
-                table = self.query_one("#task-table", DataTable)
+                table = self.query_one("#table", DataTable)
                 table.move_cursor(row=i)
                 break
-
-    def action_dismiss_modal(self) -> None:
-        self.dismiss(None)
-
-    def action_refresh_tasks(self) -> None:
-        """Post message to app to re-fetch tasks and update this modal."""
-        self.app.post_message(self.app.RefreshAsyncTasks())

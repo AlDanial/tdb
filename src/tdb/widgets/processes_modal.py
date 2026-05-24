@@ -6,15 +6,12 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from textual.app import ComposeResult
-from textual.binding import Binding
-from textual.containers import Horizontal, Vertical
-from textual.message import Message
-from textual.screen import ModalScreen
 from rich.text import Text
-from textual.widgets import DataTable, Label, Static
+from textual.message import Message
+from textual.widgets import DataTable, Static
 
 from tdb.inspection import PROCESS_COLLECT_EXPR, ProcessInfo, parse_process_json
+from tdb.widgets._inspection_modal import _InspectableListModal
 from tdb.widgets.variable_view import VariableView
 
 if TYPE_CHECKING:
@@ -32,65 +29,12 @@ __all__ = [
 log = logging.getLogger(__name__)
 
 
-class ProcessesModal(ModalScreen[None]):
+class ProcessesModal(_InspectableListModal[ProcessInfo]):
     """Near-full-screen modal showing child processes with stack and variables."""
 
-    DEFAULT_CSS = """
-    ProcessesModal {
-        align: center middle;
-    }
-    ProcessesModal #dialog {
-        width: 90%;
-        height: 80%;
-        border: solid $primary;
-        background: $surface;
-        padding: 0;
-    }
-    ProcessesModal #procs-header {
-        dock: top;
-        height: 1;
-        padding: 0 1;
-        background: $primary-background;
-        color: $text;
-        text-style: bold;
-    }
-    ProcessesModal #procs-footer {
-        dock: bottom;
-        height: 1;
-        padding: 0 1;
-        background: $primary-background;
-        color: $text-muted;
-    }
-    ProcessesModal #procs-body {
-        height: 1fr;
-    }
-    ProcessesModal #proc-list-pane {
-        width: 2fr;
-        border-right: solid $primary;
-    }
-    ProcessesModal #proc-detail-pane {
-        width: 3fr;
-        overflow-y: auto;
-    }
-    ProcessesModal #proc-info {
-        padding: 1 2;
-        height: auto;
-        max-height: 50%;
-    }
-    ProcessesModal #proc-vars {
-        height: 1fr;
-        padding: 0 1;
-    }
-    ProcessesModal DataTable {
-        height: 1fr;
-    }
-    """
-
-    BINDINGS = [
-        Binding("escape", "dismiss_modal", "Close", show=False),
-        Binding("q", "dismiss_modal", "Close", show=False),
-        Binding("r", "refresh_processes", "Refresh", show=False),
-    ]
+    KIND_LABEL = "Processes"
+    TABLE_COLUMNS = ("PID", "Name", "Status")
+    FOOTER_HINT = "ESC close  |  r refresh  |  Enter/double-click jump to process"
 
     def __init__(
         self,
@@ -99,7 +43,7 @@ class ProcessesModal(ModalScreen[None]):
         current_pid: int | None = None,
     ) -> None:
         super().__init__()
-        self._processes = processes
+        self._items: list[ProcessInfo] = processes
         self._mounted = False
         # PID of the process whose detail pane is currently displayed.
         # Used by the app to route variable lazy-loads to the correct
@@ -113,85 +57,43 @@ class ProcessesModal(ModalScreen[None]):
         # serialized on dismiss for the next open within this stop.
         self._detail_cache: dict[int, dict] = dict(detail_cache or {})
 
-    def compose(self) -> ComposeResult:
-        with Vertical(id="dialog"):
-            yield Label(
-                f"Processes ({len(self._processes)})", id="procs-header",
-            )
-            with Horizontal(id="procs-body"):
-                with Vertical(id="proc-list-pane"):
-                    table = DataTable(id="proc-table")
-                    table.cursor_type = "row"
-                    yield table
-                with Vertical(id="proc-detail-pane"):
-                    yield Static("", id="proc-info")
-                    yield VariableView(id="proc-vars")
-            yield Label(
-                "ESC close  |  r refresh  |  Enter/double-click jump to process",
-                id="procs-footer",
-            )
+    # --- Mount: handle the "fresh open, list still empty" case --------
 
     def on_mount(self) -> None:
-        table = self.query_one("#proc-table", DataTable)
-        table.add_columns("PID", "Name", "Status")
         self._mounted = True
-        if self._processes:
-            self._populate_table()
-            # Restore previously-selected row when reopening from cache.
-            idx = 0
-            if self._current_pid is not None:
-                for i, p in enumerate(self._processes):
-                    if p.pid == self._current_pid:
-                        idx = i
-                        break
-            table.move_cursor(row=idx)
-            self._show_detail(idx)
-        else:
-            info = self.query_one("#proc-info", Static)
+        if not self._items:
+            # The Processes modal is unique among the inspection modals
+            # in that it can be pushed before the worker has fetched the
+            # process list. Show a "Loading..." placeholder until
+            # `update_processes` is called with the fetched data, instead
+            # of the default "No processes found" empty state.
+            table = self.query_one("#table", DataTable)
+            table.add_columns(*self.TABLE_COLUMNS)
+            info = self.query_one("#info", Static)
             info.update(Text("Loading...", style="dim italic"))
-
-    def _populate_table(self) -> None:
-        table = self.query_one("#proc-table", DataTable)
-        table.clear()
-        for proc in self._processes:
-            pid = Text(str(proc.pid) if proc.pid is not None else "—")
-            name = Text(proc.name)
-            if proc.alive:
-                status = Text("alive", style="green")
-            elif proc.exitcode is not None and proc.exitcode != 0:
-                status = Text(f"exited ({proc.exitcode})", style="red")
-            elif proc.exitcode == 0:
-                status = Text("exited (0)")
-            else:
-                status = Text("unknown", style="dim")
-            table.add_row(pid, name, status)
-
-    def on_data_table_row_highlighted(
-        self, event: DataTable.RowHighlighted,
-    ) -> None:
-        if (
-            event.cursor_row is not None
-            and 0 <= event.cursor_row < len(self._processes)
-        ):
-            self._show_detail(event.cursor_row)
-
-    def on_data_table_row_selected(
-        self, event: DataTable.RowSelected,
-    ) -> None:
-        # Fires on Enter or double-click. Re-targets the main views to
-        # this child process; ignored for not-yet-started or exited rows
-        # since there's no live DAP session to attach to.
-        row = event.cursor_row
-        if row is None or not (0 <= row < len(self._processes)):
             return
-        proc = self._processes[row]
-        if proc.pid is None or not proc.alive:
-            return
-        self.post_message(self.SelectProcess(proc.pid))
+        super().on_mount()
 
-    def _show_detail(self, index: int) -> None:
-        proc = self._processes[index]
-        # Show basic info immediately; stack + vars arrive via message
+    def _empty_state_text(self) -> str:
+        # Used by the base only for the post-update empty case.
+        return "No child processes found"
+
+    # --- Row + detail rendering ---------------------------------------
+
+    def _format_row(self, proc: ProcessInfo) -> tuple:
+        pid = Text(str(proc.pid) if proc.pid is not None else "—")
+        name = Text(proc.name)
+        if proc.alive:
+            status = Text("alive", style="green")
+        elif proc.exitcode is not None and proc.exitcode != 0:
+            status = Text(f"exited ({proc.exitcode})", style="red")
+        elif proc.exitcode == 0:
+            status = Text("exited (0)")
+        else:
+            status = Text("unknown", style="dim")
+        return (pid, name, status)
+
+    def _render_loading_detail(self, proc: ProcessInfo) -> Text:
         content = Text()
         content.append("Name:    ", style="bold")
         content.append(proc.name + "\n")
@@ -215,28 +117,48 @@ class ProcessesModal(ModalScreen[None]):
         content.append("\n")
         if proc.alive:
             content.append("Loading stack...\n", style="dim")
-        info = self.query_one("#proc-info", Static)
-        info.update(content)
+        return content
 
-        # Clear vars while loading
-        var_view = self.query_one("#proc-vars", VariableView)
-        var_view.clear()
+    def _select_id_for(self, proc: ProcessInfo) -> int | None:
+        # Skip dead and not-yet-started processes: there's no live DAP
+        # session to attach to, so SelectProcess would be a no-op.
+        if proc.pid is None or not proc.alive:
+            return None
+        return proc.pid
 
-        # Request stack + variables from the app — but only if we don't
-        # already have them cached. Reopening the modal within the same
-        # stopped episode (or moving the cursor back to a previously-
-        # viewed row) replays from cache without a DAP round-trip.
-        if proc.pid is not None and proc.alive:
-            cached = self._detail_cache.get(proc.pid)
-            if cached is not None:
-                self.show_process_detail(
-                    proc.pid,
-                    cached["frames"],
-                    cached["scopes"],
-                    cached["variables"],
-                )
-            else:
-                self.post_message(self.LoadProcessDetail(proc.pid))
+    def _make_select_message(self, pid: int) -> Message:
+        return self.SelectProcess(pid)
+
+    def _make_refresh_message(self) -> Message:
+        return self.RefreshProcesses()
+
+    def _on_after_show_detail(self, proc: ProcessInfo) -> None:
+        # Hit the per-pid cache if we have it — reopening a process the
+        # user already viewed (within this stop episode) skips the DAP
+        # round-trip. Cache misses post LoadProcessDetail and let the
+        # workflow side fetch.
+        if proc.pid is None or not proc.alive:
+            return
+        cached = self._detail_cache.get(proc.pid)
+        if cached is not None:
+            self.show_process_detail(
+                proc.pid,
+                cached["frames"],
+                cached["scopes"],
+                cached["variables"],
+            )
+        else:
+            self.post_message(self.LoadProcessDetail(proc.pid))
+
+    def _initial_cursor_index(self) -> int:
+        if self._current_pid is None:
+            return 0
+        for i, p in enumerate(self._items):
+            if p.pid == self._current_pid:
+                return i
+        return 0
+
+    # --- Messages -----------------------------------------------------
 
     class LoadProcessDetail(Message):
         """Request to fetch stack trace and variables for a child process."""
@@ -255,6 +177,8 @@ class ProcessesModal(ModalScreen[None]):
     class RefreshProcesses(Message):
         """Request to refresh the process list."""
 
+    # --- Workflow-callable methods -----------------------------------
+
     def show_process_detail(
         self,
         pid: int,
@@ -263,7 +187,7 @@ class ProcessesModal(ModalScreen[None]):
         variables: dict[int, list[Variable]],
     ) -> None:
         """Populate the detail pane with stack trace and variables."""
-        proc = next((p for p in self._processes if p.pid == pid), None)
+        proc = next((p for p in self._items if p.pid == pid), None)
         if proc is None:
             return
         self._current_pid = pid
@@ -307,11 +231,10 @@ class ProcessesModal(ModalScreen[None]):
         else:
             content.append("No stack frames available\n", style="dim")
 
-        info = self.query_one("#proc-info", Static)
+        info = self.query_one("#info", Static)
         info.update(content)
 
-        # Populate variable tree
-        var_view = self.query_one("#proc-vars", VariableView)
+        var_view = self.query_one("#vars", VariableView)
         if scopes:
             var_view.update_variables(scopes, variables)
         else:
@@ -320,25 +243,15 @@ class ProcessesModal(ModalScreen[None]):
 
     def update_processes(self, processes: list[ProcessInfo]) -> None:
         """Replace process list and refresh the display."""
-        self._processes = processes
+        self._items = processes
         # Any previously-cached per-pid detail is stale relative to the
         # new process list (this is called from refresh and from the
         # initial worker fill-in). Drop the cache so the next row-
         # highlight fetches fresh.
         self._detail_cache.clear()
-        # If not mounted yet, on_mount will pick up _processes
         if not self._mounted:
             return
-        header = self.query_one("#procs-header", Label)
-        header.update(f"Processes ({len(self._processes)})")
-        self._populate_table()
-        if self._processes:
-            self._show_detail(0)
-        else:
-            info = self.query_one("#proc-info", Static)
-            info.update(Text("No child processes found", style="dim"))
-            var_view = self.query_one("#proc-vars", VariableView)
-            var_view.clear()
+        self._reload_after_items_change()
 
     def cache_snapshot(
         self,
@@ -348,7 +261,7 @@ class ProcessesModal(ModalScreen[None]):
         Called by the inspection workflow on modal dismiss so the next
         open within the same stopped episode can skip all DAP fetches.
         """
-        return (self._processes, self._detail_cache, self._current_pid)
+        return (self._items, self._detail_cache, self._current_pid)
 
     @property
     def selected_pid(self) -> int | None:
@@ -359,10 +272,3 @@ class ProcessesModal(ModalScreen[None]):
         without reaching into modal internals.
         """
         return self._current_pid
-
-    def action_dismiss_modal(self) -> None:
-        self.dismiss(None)
-
-    def action_refresh_processes(self) -> None:
-        """Post message to app to re-fetch processes."""
-        self.post_message(self.RefreshProcesses())

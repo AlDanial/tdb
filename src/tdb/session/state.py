@@ -70,6 +70,16 @@ class DebugState:
     # Per-frame scope lists, keyed by frame.id. Populated only in post-mortem.
     frame_scopes: dict[int, list[Scope]] = field(default_factory=dict)
 
+    # True when `stack_frames` are synthetic — i.e. they were built from
+    # an async-task snapshot or a stderr-traceback parse, not from a live
+    # DAP `stackTrace` response. Their `id` fields are NOT valid for
+    # passing back to debugpy (evaluate, scopes, variables would all
+    # fail with "no such frame"). Callers that hand a frame_id to DAP
+    # must check this flag first and fall back to a live frame_id.
+    # Cleared by `enter_stop` (a fresh stop replaces the displayed stack)
+    # and by `clear_frame_data` (continue / step transitions).
+    displayed_frames_are_synthetic: bool = False
+
     # --- State transitions ---------------------------------------------
 
     def transition_to(self, phase: SessionPhase) -> None:
@@ -83,6 +93,60 @@ class DebugState:
         (e.g., post-mortem load wants the frame data preserved).
         """
         self.phase = phase
+
+    def enter_stop(
+        self,
+        thread_id: int | None,
+        reason: str,
+    ) -> None:
+        """Atomically transition to STOPPED with thread/reason set.
+
+        Also clears `displayed_frames_are_synthetic` because a fresh
+        stop event replaces whatever was being displayed (typically the
+        same stack debugpy is now paused at). Used by the DAP `stopped`
+        event handlers so all four mutations land in one step.
+        """
+        self.transition_to(SessionPhase.STOPPED)
+        self.stop_reason = reason
+        if thread_id is not None:
+            self.current_thread_id = thread_id
+        self.displayed_frames_are_synthetic = False
+
+    def set_stack(
+        self,
+        frames: list[StackFrame],
+        *,
+        synthetic: bool = False,
+        current_frame_id: int | None = None,
+    ) -> None:
+        """Install a new stack frame list atomically.
+
+        ``synthetic=False`` (the default) marks the frames as live DAP
+        frames whose ids can be passed back to debugpy.  ``synthetic=True``
+        marks them as constructed locally (async-task navigation, stderr
+        traceback parse) — their ids must not be sent to DAP. Callers
+        that need to evaluate against a frame should consult
+        ``displayed_frames_are_synthetic`` before using ``current_frame_id``.
+
+        ``current_frame_id`` defaults to the top frame's id; pass an
+        explicit value to land on a different frame.
+
+        For synthetic stacks, also clears scopes / variables — those
+        would otherwise show the previous (real) frame's data and
+        confuse the user.
+        """
+        self.stack_frames = frames
+        self.displayed_frames_are_synthetic = synthetic
+        if frames:
+            self.current_frame_id = (
+                current_frame_id if current_frame_id is not None
+                else frames[0].id
+            )
+        else:
+            self.current_frame_id = None
+        if synthetic:
+            self.scopes = []
+            self.variables = {}
 
     # --- Lifecycle properties (derived from phase) ---------------------
     # These are read-only by design — DO NOT add setters. Production code
@@ -149,6 +213,9 @@ class DebugState:
         self.scopes.clear()
         self.variables.clear()
         self.current_frame_id = None
+        # The synthetic flag is tied to whatever was in `stack_frames`;
+        # once those are gone, the flag must reset too.
+        self.displayed_frames_are_synthetic = False
 
     def get_current_source_path(self) -> str | None:
         for frame in self.stack_frames:

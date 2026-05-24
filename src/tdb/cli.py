@@ -17,7 +17,14 @@ def _get_version() -> str:
         return __version__
 
 
-def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+def build_parser() -> argparse.ArgumentParser:
+    """Construct the tdb ArgumentParser.
+
+    Pure-declarative: all option definitions live here, no validation
+    or interpretation. Validation happens in `_post_process` below.
+    Split out from `parse_args` so each piece is independently
+    testable and the file is grep-able by concern.
+    """
     parser = argparse.ArgumentParser(
         prog="tdb",
         description="A Python debugger built with textual and debugpy.",
@@ -128,62 +135,95 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Print README.md to stdout as wrapped plain text and exit "
              "(useful for `tdb --doc-text | less`, piping to a file, etc.)",
     )
+    return parser
 
-    args = parser.parse_args(argv)
+
+# --- Post-processing helpers ------------------------------------------------
+# Each helper takes the parsed Namespace + parser (for parser.error) and
+# either decorates the Namespace in place or exits via parser.error.
+# Tests can exercise each one in isolation by constructing a Namespace
+# directly.
+
+
+def _apply_flag_implications(args: argparse.Namespace) -> None:
+    """Fill in derived flags from primary ones.
+
+    - `stop_on_entry` is derived from `--no-stop-on-entry`.
+    - `-k` implies `--no-stop-on-entry`: a CLI breakpoint means "run
+       to here", not "pause at line 1".
+    - `--headless` implies `--server` (headless IS the server).
+    """
     args.stop_on_entry = not args.no_stop_on_entry
-    # Command-line breakpoints imply the user wants execution to proceed
-    # to the first breakpoint rather than pausing at line 1, so suppress
-    # the default stop-on-entry whenever `-k` was given.
     if args.breakpoint:
         args.stop_on_entry = False
-
-    # --headless implies --server
     if args.headless:
         args.server = True
 
-    # --doc, --doc-text, and --post-mortem short-circuit everything else:
-    # no program needed.
-    if args.doc or args.doc_text or args.post_mortem:
-        return args
 
-    # The terminal-choice names match their executable names — see
-    # _TERMINAL_SPECS in tdb/session/controller.py.
+def _validate_terminal_choice(
+    args: argparse.Namespace, parser: argparse.ArgumentParser,
+) -> None:
+    """Fail fast if `--terminal X` refers to an executable not on PATH.
+
+    The terminal-choice names double as executable names; see
+    `_TERMINAL_SPECS` in `tdb/session/terminal.py`.
+    """
     if args.terminal and not shutil.which(args.terminal):
         parser.error(
             f"--terminal {args.terminal!r}: executable not found on PATH. "
             f"Install {args.terminal} or pick a different --terminal."
         )
 
-    # Parse --remote-attach into (host, port)
+
+def _parse_attach_spec(
+    args: argparse.Namespace, parser: argparse.ArgumentParser,
+) -> None:
+    """Split `--remote-attach [HOST:]PORT` into `attach_host` / `attach_port`."""
     args.attach_host = None
     args.attach_port = None
-    if args.remote_attach:
-        spec = args.remote_attach
-        if ":" in spec:
-            host_part, port_part = spec.rsplit(":", 1)
-            args.attach_host = host_part or "127.0.0.1"
-        else:
-            port_part = spec
-            args.attach_host = "127.0.0.1"
-        try:
-            args.attach_port = int(port_part)
-        except ValueError:
-            parser.error(f"Invalid port in --remote-attach: {spec}")
+    if not args.remote_attach:
+        return
+    spec = args.remote_attach
+    if ":" in spec:
+        host_part, port_part = spec.rsplit(":", 1)
+        args.attach_host = host_part or "127.0.0.1"
+    else:
+        port_part = spec
+        args.attach_host = "127.0.0.1"
+    try:
+        args.attach_port = int(port_part)
+    except ValueError:
+        parser.error(f"Invalid port in --remote-attach: {spec}")
 
-    # Validate: need either --remote-attach or a program
+
+def _resolve_program_path(
+    args: argparse.Namespace, parser: argparse.ArgumentParser,
+) -> None:
+    """Resolve `program` to an absolute path + verify it exists.
+
+    Requires either `program` or `--remote-attach`; either is fine but
+    not neither. In remote-attach mode no local file is required.
+    """
     if args.remote_attach is None and args.program is None:
         parser.error("either a program or --remote-attach is required")
 
-    # Resolve program path (only when launching)
     if args.program and not args.remote_attach:
         program_path = Path(args.program).resolve()
         if not program_path.exists():
             parser.error(f"File not found: {args.program}")
         args.program = str(program_path)
 
-    # Parse -k / --breakpoint specs into (resolved_path, line) tuples.
-    # Two accepted forms: "FILE:LINE", or bare "LINE" — the latter targets
-    # the program being debugged.
+
+def _parse_breakpoints(
+    args: argparse.Namespace, parser: argparse.ArgumentParser,
+) -> None:
+    """Parse `-k FILE:LINE | LINE` specs into `[(abs_path, line), ...]`.
+
+    A bare LINE targets `args.program` (rejected for remote-attach
+    because there's no local program to anchor on). After parsing, the
+    list still needs `_snap_breakpoints` to align lines to logical
+    statement starts.
+    """
     parsed_bps: list[tuple[str, int]] = []
     for spec in args.breakpoint:
         if ":" in spec:
@@ -209,14 +249,19 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                     "(not allowed with --remote-attach)"
                 )
             parsed_bps.append((args.program, line))
-    # Breakpoints land at the start of a logical statement. If the user
-    # passed a sub-line of a multi-line statement (or a blank/comment),
-    # snap to the start of the containing/preceding statement and warn.
-    # Snap failures (line is before any statement) drop the bp with a
-    # warning rather than silently keeping an unhittable target.
+    args.breakpoint = parsed_bps
+
+
+def _snap_breakpoints(args: argparse.Namespace) -> None:
+    """Snap each (path, line) BP to the nearest logical statement start.
+
+    If a line doesn't map to any statement (e.g. line is before the
+    first statement in the file), the BP is dropped with a warning to
+    stderr — keeping an unhittable breakpoint would confuse the user.
+    """
     from tdb.source_analysis import snap_breakpoint
     snapped_bps: list[tuple[str, int]] = []
-    for bp_path, line in parsed_bps:
+    for bp_path, line in args.breakpoint:
         snapped = snap_breakpoint(bp_path, line)
         if snapped is None:
             print(
@@ -234,6 +279,25 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         snapped_bps.append((bp_path, snapped))
     args.breakpoint = snapped_bps
 
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Public entry: build parser, parse argv, run post-processing.
+
+    Short-circuit modes (`--doc`, `--doc-text`, `--post-mortem`) skip
+    the launch-related validation since they don't run a debuggee.
+    """
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    _apply_flag_implications(args)
+
+    if args.doc or args.doc_text or args.post_mortem:
+        return args
+
+    _validate_terminal_choice(args, parser)
+    _parse_attach_spec(args, parser)
+    _resolve_program_path(args, parser)
+    _parse_breakpoints(args, parser)
+    _snap_breakpoints(args)
     return args
 
 

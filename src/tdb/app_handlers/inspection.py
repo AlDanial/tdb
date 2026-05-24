@@ -153,14 +153,16 @@ class InspectionWorkflows:
         the chosen task's captured coroutine stack.
 
         Synthetic because the task isn't a live DAP frame; the frames
-        carry negative ids so `controller.select_frame` knows to skip
-        the DAP scopes fetch. Returns True if frames were installed.
+        are flagged via `state.displayed_frames_are_synthetic` so that
+        `controller.select_frame` and `resolve_evaluate_frame_id` know
+        to skip / route around them. Returns True if frames were
+        installed.
         """
         modal = self.app.panels.async_tasks
         if modal is None:
             return False
         task = next(
-            (t for t in modal._tasks if t.name == task_name), None,
+            (t for t in modal.items if t.name == task_name), None,
         )
         if task is None or not task.stack:
             return False
@@ -171,20 +173,16 @@ class InspectionWorkflows:
                 continue
             func, path, lineno = m.group(1), m.group(2), int(m.group(3))
             synthetic.append(StackFrame(
-                id=-1 - i,
+                id=i,
                 name=func,
                 source=Source(path=path, name=os.path.basename(path)),
                 line=lineno,
             ))
         if not synthetic:
             return False
-        state = self.app.controller.state
-        state.stack_frames = synthetic
-        state.current_frame_id = synthetic[0].id
-        # No live scopes / variables for a suspended task — clear so the
-        # Variable view shows empty rather than the previous frame's data.
-        state.scopes = []
-        state.variables = {}
+        # Atomic install: stack_frames + current_frame_id + clears
+        # scopes/vars + sets displayed_frames_are_synthetic = True.
+        self.app.controller.state.set_stack(synthetic, synthetic=True)
         return True
 
     # --- Threads --------------------------------------------------------
@@ -385,7 +383,7 @@ class InspectionWorkflows:
         """
         from tdb import processes_cache
         modal = self.app.panels.processes
-        if modal is not None and modal._processes \
+        if modal is not None and modal.has_items \
                 and self.app.controller.state.can_step:
             processes, details, current_pid = modal.cache_snapshot()
             processes_cache.save(processes, details, current_pid)

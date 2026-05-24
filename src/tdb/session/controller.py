@@ -5,12 +5,11 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-import shutil
 from pathlib import Path
 from typing import Any
 
 from tdb.dap.client import DAPClient
-from tdb.dap.messages import Event, Request
+from tdb.dap.messages import Event
 from tdb.dap.types import SourceBreakpoint
 from .event_bus import DebugEventHandler
 from .state import DebugState, SessionPhase
@@ -18,43 +17,8 @@ from .state import DebugState, SessionPhase
 log = logging.getLogger(__name__)
 
 
-# --- Terminal emulator command building ---
-
-# Maps the CLI --terminal choice to (executable name, flags before the command).
-# The flags accept the remaining args as the command + arguments.
-_TERMINAL_SPECS: dict[str, tuple[str, list[str]]] = {
-    "xterm":          ("xterm",          ["-e"]),
-    "konsole":        ("konsole",        ["-e"]),
-    "gnome-terminal": ("gnome-terminal", ["--wait", "--"]),
-    "ghostty":        ("ghostty",        ["-e"]),
-    "kitty":          ("kitty",          []),
-    "iterm2":         ("iterm2",         ["-e"]),
-    "warp":           ("warp",           ["-e"]),
-    "wezterm":        ("wezterm",        ["start", "--"]),
-    "terminator":     ("terminator",     ["-x"]),
-}
-
-
-def _resolve_terminal(choice: str) -> str:
-    """Resolve a --terminal choice to a full executable path."""
-    spec = _TERMINAL_SPECS.get(choice)
-    if spec is None:
-        raise RuntimeError(f"Unknown terminal choice: {choice}")
-    exe, _ = spec
-    path = shutil.which(exe)
-    if not path:
-        raise RuntimeError(
-            f"Terminal '{choice}' not found on PATH. Install it or pick a different --terminal.",
-        )
-    return path
-
-
-def _build_terminal_cmd(choice: str, args: list[str]) -> list[str]:
-    """Build the command to launch the chosen terminal running the given args."""
-    path = _resolve_terminal(choice)
-    _, exec_flag = _TERMINAL_SPECS[choice]
-    return [path] + exec_flag + args
-
+# Terminal emulator launching lives in tdb.session.terminal — see
+# TerminalLauncher there.
 
 class DebugController:
     """Orchestrates the debug session between DAP client and event consumers."""
@@ -65,9 +29,15 @@ class DebugController:
         self.state = DebugState()
         self._terminal: str | None = None
         self._lock = asyncio.Lock()
-        # Child process debug sessions (pid → DAPClient)
-        self._child_clients: dict[int, DAPClient] = {}
-        self._child_attach_lock = asyncio.Lock()
+        # Child process debug sessions (pid → DAPClient) — owned by
+        # ChildProcessManager in session/child_processes.py.
+        from tdb.session.child_processes import ChildProcessManager
+        self._children = ChildProcessManager(self)
+        # Back-compat shims so external code that grabbed the raw dict /
+        # lock keeps working (the attribute names match what the previous
+        # in-controller fields exposed).
+        self._child_clients = self._children._clients
+        self._child_attach_lock = self._children._attach_lock
         # The "active" client is the one whose stop event we're currently
         # inspecting.  Defaults to the parent client.
         self._active_client: DAPClient = self.client
@@ -85,27 +55,39 @@ class DebugController:
         # whose main thread is blocked in epoll_wait — debugpy can't
         # deliver pause without a Python frame to trace).
         self._stopped_event = asyncio.Event()
-        # Step granularity: "statement" loops the step until execution leaves
-        # the source-level statement that started it (so `n` over a multi-
-        # line expression doesn't stop on each interior sub-line); "line"
-        # delegates to DAP's per-line trace events. See source_analysis.py.
-        self.step_mode: str = "statement"
-        # Tracks an in-flight statement-granularity step:
-        #   {"kind": "next"|"stepIn", "source_path": str, "range": (s, e),
-        #    "frame_count": int, "iterations": int}
-        # Cleared once execution leaves the range, hits a breakpoint, or
-        # the safety cap is exceeded.
-        self._pending_step: dict | None = None
-        # Cache of (source_path → step-unit list). Populated lazily; keyed
-        # by absolute path. AST parsing is cheap but per-step is wasteful.
-        self._step_unit_cache: dict[str, list[tuple[int, int]]] = {}
+        # Statement-granularity stepping (`n` skips through multi-line
+        # statements as one step). See session/statement_stepper.py.
+        from tdb.session.statement_stepper import StatementStepper
+        self._stepper = StatementStepper(
+            self.state,
+            issue_step=self._issue_statement_step,
+            ensure_stack_loaded=self.fetch_stop_info,
+        )
+
+    @property
+    def step_mode(self) -> str:
+        return self._stepper.mode
+
+    @step_mode.setter
+    def step_mode(self, mode: str) -> None:
+        self._stepper.set_mode(mode)
 
     def set_step_mode(self, mode: str) -> None:
         """Switch step granularity. Clears any pending statement-step."""
-        if mode not in ("statement", "line"):
-            raise ValueError(f"step_mode must be 'statement' or 'line', got {mode!r}")
-        self.step_mode = mode
-        self._pending_step = None
+        self._stepper.set_mode(mode)
+
+    async def _issue_statement_step(self, kind: str) -> None:
+        """Callback used by `StatementStepper` to fire one DAP step
+        against the current active thread. Called from inside the
+        stepper's continue-loop after it has decided we're still in
+        the originating statement."""
+        tid = self.state.current_thread_id
+        if tid is None:
+            return
+        if kind == "next":
+            await self._active_client.next(tid)
+        else:
+            await self._active_client.step_in(tid)
 
     # --- Public capability surface --------------------------------------
     # These properties are how external code (TUI, server, future entry
@@ -139,10 +121,10 @@ class DebugController:
 
     def get_child_client(self, pid: int) -> DAPClient | None:
         """Return the DAP client for a tracked child process, or None."""
-        return self._child_clients.get(pid)
+        return self._children.get_client(pid)
 
     def has_child_clients(self) -> bool:
-        return bool(self._child_clients)
+        return self._children.has_clients()
 
     @staticmethod
     def _enabled_bps(bps: list[SourceBreakpoint]) -> list[SourceBreakpoint]:
@@ -156,8 +138,9 @@ class DebugController:
         self.client.on_event("exited", self._on_exited)
         self.client.on_event("output", self._on_output)
         self.client.on_event("initialized", self._on_initialized)
-        # Child process debugging
-        self.client.on_event("debugpyAttach", self._on_child_attach)
+        # Child process debugging: ChildProcessManager registers its
+        # own debugpyAttach handler that fires _spawn_bg(_attach(...)).
+        self._children.register_on(self.client)
 
     async def start(
         self,
@@ -183,7 +166,14 @@ class DebugController:
         self._setup_event_handlers()
 
         if terminal is not None:
-            self.client.on_reverse_request("runInTerminal", self._handle_run_in_terminal)
+            from tdb.session.terminal import TerminalLauncher
+            self._terminal_launcher = TerminalLauncher(
+                terminal,
+                on_started=self.event_handler.on_external_terminal_started,
+            )
+            self.client.on_reverse_request(
+                "runInTerminal", self._terminal_launcher.handle_run_in_terminal,
+            )
 
         self._launch_params = {
             "program": program,
@@ -236,35 +226,6 @@ class DebugController:
 
         self._launch_future = await self.client.attach(host=host, port=port)
 
-    async def _handle_run_in_terminal(self, request: Request) -> dict[str, Any]:
-        """Handle the runInTerminal reverse request from debugpy."""
-        cmd_args: list[str] = request.arguments.get("args", [])
-        cwd = request.arguments.get("cwd")
-        env = request.arguments.get("env")
-
-        if self._terminal is None:
-            raise RuntimeError("runInTerminal requested but no --terminal was set")
-        full_cmd = _build_terminal_cmd(self._terminal, cmd_args)
-
-        log.info("Launching external terminal: %s", full_cmd)
-
-        # Merge request env into current env so the debuggee inherits
-        # PATH, DISPLAY, etc. needed to connect back to debugpy.
-        merged_env = {**os.environ, **(env or {})}
-
-        await asyncio.create_subprocess_exec(
-            *full_cmd,
-            cwd=cwd,
-            env=merged_env,
-            start_new_session=True,
-        )
-
-        self.event_handler.on_external_terminal_started()
-
-        # Don't return processId — for terminals that fork-and-exit (like
-        # gnome-terminal), the PID is meaningless and confuses debugpy.
-        return {}
-
     async def do_configure(self) -> None:
         """Called after 'initialized' event. Sends breakpoints + configurationDone.
 
@@ -300,33 +261,14 @@ class DebugController:
             self.state.transition_to(SessionPhase.RUNNING)
 
     async def stop(self) -> None:
-        # Child disconnects run in parallel with a short timeout: when the
-        # parent's `disconnect(terminate=True)` lands, debugpy cascades the
-        # termination to all subprocesses, so per-child DAP disconnect is
-        # cleanup, not load-bearing. Serial 30s timeouts (the `_send`
-        # default) per child made multiprocess-debug quit take ~50s with
-        # 8 attached children.
-        from tdb._timeouts import DAP_DISCONNECT_CHILD, DAP_DISCONNECT_PARENT
+        # Child disconnects run in parallel with a short timeout: when
+        # the parent's `disconnect(terminate=True)` lands, debugpy
+        # cascades the termination to all subprocesses, so per-child
+        # DAP disconnect is cleanup, not load-bearing. See
+        # ChildProcessManager.close_all for the per-child loop.
+        from tdb._timeouts import DAP_DISCONNECT_PARENT
 
-        async def _close_child(child: DAPClient) -> None:
-            try:
-                await asyncio.wait_for(
-                    child.disconnect(terminate=False),
-                    timeout=DAP_DISCONNECT_CHILD,
-                )
-            except (asyncio.TimeoutError, Exception):
-                pass
-            try:
-                await child.stop()
-            except Exception:
-                pass
-
-        if self._child_clients:
-            await asyncio.gather(
-                *(_close_child(c) for c in self._child_clients.values()),
-                return_exceptions=True,
-            )
-        self._child_clients.clear()
+        await self._children.close_all()
         try:
             await asyncio.wait_for(
                 self.client.disconnect(terminate=not self._is_remote_attach),
@@ -395,136 +337,37 @@ class DebugController:
 
     async def step_over(self) -> None:
         if self.state.current_thread_id is not None:
-            await self._begin_statement_step("next")
+            await self._stepper.begin("next")
             self.state.transition_to(SessionPhase.RUNNING)
             self.state.clear_frame_data()
             await self._active_client.next(self.state.current_thread_id)
 
     async def step_in(self) -> None:
         if self.state.current_thread_id is not None:
-            await self._begin_statement_step("stepIn")
+            await self._stepper.begin("stepIn")
             self.state.transition_to(SessionPhase.RUNNING)
             self.state.clear_frame_data()
             await self._active_client.step_in(self.state.current_thread_id)
 
     async def step_out(self) -> None:
         if self.state.current_thread_id is not None:
-            # Step-out crosses frames by definition, so statement-granularity
-            # tracking doesn't apply.
-            self._pending_step = None
+            # Step-out crosses frames by definition, so statement-
+            # granularity tracking doesn't apply.
+            self._stepper.cancel()
             self.state.transition_to(SessionPhase.RUNNING)
             self.state.clear_frame_data()
             await self._active_client.step_out(self.state.current_thread_id)
 
-    # --- Statement-granularity stepping --------------------------------
-
-    _STATEMENT_STEP_MAX_ITERATIONS = 40
-
-    async def _begin_statement_step(self, kind: str) -> None:
-        """Record the source statement currently under the cursor so that
-        the next stop can decide whether to keep stepping.
-
-        No-op when `step_mode` is "line" or we can't pin down the current
-        source/line (e.g., library code without a source path).
-
-        If stack frames haven't been fetched yet (the headless RPC server
-        skips fetch_stop_info between stops), fetch them now so we can
-        read the current source path/line.
-        """
-        self._pending_step = None
-        if self.step_mode != "statement":
-            return
-        if not self.state.stack_frames and self.state.current_thread_id is not None:
-            try:
-                await self.fetch_stop_info()
-            except Exception:
-                log.exception("fetch_stop_info failed in _begin_statement_step")
-                return
-        source_path = self.state.get_current_source_path()
-        line = self.state.get_current_line()
-        if source_path is None or line is None:
-            return
-        units = self._get_step_units(source_path)
-        from tdb.source_analysis import find_step_unit
-        rng = find_step_unit(line, units)
-        if rng is None:
-            return
-        self._pending_step = {
-            "kind": kind,
-            "source_path": source_path,
-            "range": rng,
-            "frame_count": len(self.state.stack_frames),
-            "iterations": 0,
-        }
+    # Statement-granularity stepping lives in
+    # session/statement_stepper.py. `_stepper` is built in __init__;
+    # callers reach it via `step_mode` (property forwarder) and
+    # `maybe_continue_statement_step` below.
 
     async def maybe_continue_statement_step(self) -> bool:
-        """If a statement-step is pending and we're still inside its range,
-        fire another step. Returns True if a step was issued (caller
-        should suppress UI refresh until the next stop), False otherwise.
-
-        Called from the TUI's `on_stopped` handler after stack frames have
-        been fetched — that's when `state` reflects the new position.
+        """Called from the TUI's `on_stopped` handler after stack frames
+        have been fetched. Delegates to `StatementStepper.maybe_continue`.
         """
-        pending = self._pending_step
-        if pending is None:
-            return False
-        # Breakpoint / exception / pause: hand control to the user.
-        if self.state.stop_reason not in ("step", None):
-            self._pending_step = None
-            return False
-        pending["iterations"] += 1
-        if pending["iterations"] > self._STATEMENT_STEP_MAX_ITERATIONS:
-            log.warning(
-                "Statement-step hit %d-iteration safety cap; stopping.",
-                self._STATEMENT_STEP_MAX_ITERATIONS,
-            )
-            self._pending_step = None
-            return False
-        cur_source = self.state.get_current_source_path()
-        cur_line = self.state.get_current_line()
-        if cur_source is None or cur_line is None:
-            self._pending_step = None
-            return False
-        # Stepped out (or into) a different file ⇒ different statement.
-        if cur_source != pending["source_path"]:
-            self._pending_step = None
-            return False
-        # For step-in, a deeper call stack means we entered a function. Stop
-        # there so the user sees the new frame, even if its first line happens
-        # to fall in the caller's statement range (unlikely but possible).
-        if pending["kind"] == "stepIn" and len(self.state.stack_frames) > pending["frame_count"]:
-            self._pending_step = None
-            return False
-        s, e = pending["range"]
-        if not (s <= cur_line <= e):
-            self._pending_step = None
-            return False
-        # Still inside the original statement → issue another step.
-        if self.state.current_thread_id is None:
-            self._pending_step = None
-            return False
-        self.state.transition_to(SessionPhase.RUNNING)
-        self.state.clear_frame_data()
-        if pending["kind"] == "next":
-            await self._active_client.next(self.state.current_thread_id)
-        else:
-            await self._active_client.step_in(self.state.current_thread_id)
-        return True
-
-    def _get_step_units(self, source_path: str) -> list[tuple[int, int]]:
-        """Read + parse the source file, caching the unit list per path."""
-        cached = self._step_unit_cache.get(source_path)
-        if cached is not None:
-            return cached
-        try:
-            text = Path(source_path).read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            self._step_unit_cache[source_path] = []
-            return []
-        from tdb.source_analysis import compute_step_units
-        units = compute_step_units(text, filename=source_path)
-        self._step_unit_cache[source_path] = units
-        return units
+        return await self._stepper.maybe_continue()
 
     async def run_to_cursor(self, source_path: str, line: int) -> None:
         """Set a temporary breakpoint at line, continue, then remove it.
@@ -748,14 +591,13 @@ class DebugController:
     async def resolve_evaluate_frame_id(self, client: DAPClient) -> int | None:
         """Return a real DAP frame_id usable for evaluate.
 
-        Falls back to the active thread's top frame when
-        `state.current_frame_id` is synthetic (negative — installed by
-        async-task navigation). debugpy rejects unknown frame ids, so
-        any subsequent evaluate would otherwise fail.
+        Falls back to the active thread's top frame when the displayed
+        stack is synthetic (async-task navigation, traceback parse).
+        debugpy rejects unknown frame ids, so without this fallback the
+        first evaluate after such a navigation would error out.
         """
-        frame_id = self.state.current_frame_id
-        if frame_id is None or frame_id >= 0:
-            return frame_id
+        if not self.state.displayed_frames_are_synthetic:
+            return self.state.current_frame_id
         tid = self.state.current_thread_id
         if tid is None:
             return None
@@ -821,11 +663,11 @@ class DebugController:
             # All data is pre-populated; just swap in the selected frame's scopes.
             self.state.scopes = self.state.frame_scopes.get(frame_id, [])
             return
-        # Synthetic frames from the async-task navigator carry negative
-        # ids — they aren't real DAP frames, so don't try to fetch scopes
-        # for them. Variables stay whatever the navigator left in place
-        # (typically empty, with a "(no variables — task suspended)" hint).
-        if frame_id < 0:
+        # Synthetic frames (async-task navigation, traceback parse)
+        # aren't real DAP frames — don't try to fetch scopes for them.
+        # Variables stay whatever the navigator left in place (typically
+        # empty, with a "(no variables — task suspended)" hint).
+        if self.state.displayed_frames_are_synthetic:
             return
         await self.fetch_scopes_and_variables(frame_id)
 
@@ -839,11 +681,10 @@ class DebugController:
         try:
             self._active_client = self.client
             self.state.current_thread_id = thread_id
-            self.state.stack_frames = await self.client.stack_trace(thread_id)
-            if self.state.stack_frames:
-                top = self.state.stack_frames[0]
-                self.state.current_frame_id = top.id
-                await self.fetch_scopes_and_variables(top.id)
+            frames = await self.client.stack_trace(thread_id)
+            self.state.set_stack(frames)
+            if frames:
+                await self.fetch_scopes_and_variables(frames[0].id)
         except Exception:
             log.exception("switch_active_thread(%s) failed", thread_id)
 
@@ -867,65 +708,22 @@ class DebugController:
             # child's MainThread, which is what the user expects to land on.
             main_tid = threads[0].id
             self.state.current_thread_id = main_tid
-            self.state.stack_frames = await child.stack_trace(main_tid)
-            if self.state.stack_frames:
-                top = self.state.stack_frames[0]
-                self.state.current_frame_id = top.id
-                await self.fetch_scopes_and_variables(top.id)
+            frames = await child.stack_trace(main_tid)
+            self.state.set_stack(frames)
+            if frames:
+                await self.fetch_scopes_and_variables(frames[0].id)
         except Exception:
             log.exception("switch_active_process(pid=%s) failed", pid)
 
     def load_post_mortem(self, snapshot: dict) -> None:
         """Populate state from a snapshot produced by tdb.exception_hook.
 
-        After this call the controller holds a frozen view of the crash:
-        stack_frames, scopes, and variables are all set, no DAP session is
-        active, and is_post_mortem / is_terminated are True.
+        Thin delegator to `post_mortem_loader.load_post_mortem_into`.
+        Kept on the controller so existing callers
+        (cli.py post-mortem entry, tests) don't have to change.
         """
-        from tdb.dap.types import Scope, Source, StackFrame, Variable
-
-        self.state.transition_to(SessionPhase.POST_MORTEM)
-        self.state.stop_reason = "exception"
-
-        frames_data = snapshot.get("frames", [])
-        vars_data: dict[str, list[dict]] = snapshot.get("variables", {})
-
-        # Rebuild variables keyed by int reference.
-        self.state.variables = {}
-        for ref_str, entries in vars_data.items():
-            ref = int(ref_str)
-            self.state.variables[ref] = [
-                Variable(
-                    name=e.get("name", ""),
-                    value=e.get("value", ""),
-                    type=e.get("type", ""),
-                    variables_reference=e.get("variablesReference", 0),
-                )
-                for e in entries
-            ]
-
-        # Rebuild frames + per-frame scopes.
-        self.state.stack_frames = []
-        self.state.frame_scopes = {}
-        for fd in frames_data:
-            fid = fd["id"]
-            path = fd.get("filename", "")
-            frame = StackFrame(
-                id=fid,
-                name=fd.get("funcname", "<frame>"),
-                source=Source(path=path, name=os.path.basename(path) if path else None),
-                line=fd.get("lineno", 0),
-            )
-            self.state.stack_frames.append(frame)
-            self.state.frame_scopes[fid] = [
-                Scope(name=s["name"], variables_reference=s["variablesReference"])
-                for s in fd.get("scopes", [])
-            ]
-
-        if self.state.stack_frames:
-            top = self.state.stack_frames[0]
-            self.state.current_frame_id = top.id
-            self.state.scopes = self.state.frame_scopes.get(top.id, [])
+        from tdb.session.post_mortem_loader import load_post_mortem_into
+        load_post_mortem_into(self.state, snapshot)
 
     async def fetch_stop_info(self) -> None:
         """After stopping, fetch threads, stack trace, scopes, and variables.
@@ -941,17 +739,14 @@ class DebugController:
 
         if self.state.current_thread_id is not None:
             try:
-                self.state.stack_frames = await ac.stack_trace(
-                    self.state.current_thread_id
-                )
+                frames = await ac.stack_trace(self.state.current_thread_id)
             except Exception:
                 log.exception("Error fetching stack trace")
-
-            if self.state.stack_frames:
-                top = self.state.stack_frames[0]
-                self.state.current_frame_id = top.id
+                frames = []
+            self.state.set_stack(frames)
+            if frames:
                 try:
-                    await self.fetch_scopes_and_variables(top.id)
+                    await self.fetch_scopes_and_variables(frames[0].id)
                 except Exception:
                     log.exception("Error fetching scopes/variables")
 
@@ -981,10 +776,7 @@ class DebugController:
         # and the headless RPC server each duplicated these assignments,
         # which is how the `is_terminated` propagation bug crept in for the
         # `_on_terminated` sibling event.
-        self.state.transition_to(SessionPhase.STOPPED)
-        self.state.stop_reason = reason
-        if thread_id is not None:
-            self.state.current_thread_id = thread_id
+        self.state.enter_stop(thread_id, reason)
 
         self._active_client = self.client
         self._stopped_event.set()
@@ -1043,127 +835,17 @@ class DebugController:
         self.event_handler.on_output(text, category)
 
     # --- Child process debugging ---
-
-    def _on_child_attach(self, event: Event) -> None:
-        """debugpyAttach: a child process is ready for debugging."""
-        body = event.body
-        host = body.get("connect", {}).get("host", "127.0.0.1")
-        port = body.get("connect", {}).get("port")
-        pid = body.get("subProcessId") or body.get("processId")
-        if not port:
-            log.warning("debugpyAttach missing port: %s", body)
-            return
-        log.info("Child process detected: pid=%s port=%s", pid, port)
-        self._spawn_bg(self._attach_child(host, port, pid))
-
-    async def _attach_child(self, host: str, port: int, pid: int | None = None) -> None:
-        """Connect to the adapter for a child process and configure breakpoints.
-
-        Each child gets its own DAPClient/TCP connection and its own
-        per-connection DAP sequence numbers, so attaches can run fully
-        in parallel — the only shared state is `_child_clients` (dict
-        assignment is atomic in CPython) and read-only `_launch_params`
-        / `state.breakpoints`. Previously serialized via
-        `_child_attach_lock`; dropping that took 8-child attach from
-        ~2.1s to ~0.3s. The lock object is kept so callers in the wider
-        codebase still see the attribute.
-        """
-        if pid is not None and pid in self._child_clients:
-            return  # already attached (duplicate debugpyAttach event)
-        child = DAPClient()
-        try:
-            await child.connect(host, port)
-
-            # Wait for 'initialized' event before configuring
-            initialized = asyncio.Event()
-            child.on_event("initialized", lambda e: initialized.set())
-
-            # Forward stopped events: pause all others on breakpoint/exception
-            def on_child_stopped(event: Event, _child: DAPClient = child) -> None:
-                thread_id = event.body.get("threadId")
-                reason = event.body.get("reason", "unknown")
-                description = event.body.get("description")
-                text = event.body.get("text")
-
-                # Same state-authority contract as _on_stopped above —
-                # whether the active stop is on parent or child, state
-                # gets updated from one place synchronously.
-                self.state.transition_to(SessionPhase.STOPPED)
-                self.state.stop_reason = reason
-                if thread_id is not None:
-                    self.state.current_thread_id = thread_id
-
-                self._active_client = _child
-                if reason not in ("pause",):
-                    self._spawn_bg(self._pause_parent())
-                self.event_handler.on_stopped(thread_id, reason, description, text)
-
-            def on_child_terminated(event: Event) -> None:
-                # Find and remove this client
-                for pid, c in list(self._child_clients.items()):
-                    if c is child:
-                        self._child_clients.pop(pid, None)
-                        break
-
-            child.on_event("stopped", on_child_stopped)
-            child.on_event("terminated", on_child_terminated)
-            child.on_event("exited", on_child_terminated)
-            child.on_event("output", self._on_output)
-            # Cascade subprocess detection: when this child spawns its
-            # own children (e.g. multiprocessing forkserver workers in
-            # Python 3.14+, where Pool() workers are forked from the
-            # forkserver child rather than the parent), their attach
-            # events arrive on this child's DAP session, not the parent's.
-            child.on_event("debugpyAttach", self._on_child_attach)
-
-            await child.initialize()
-
-            # Send attach with subProcessId (not processId) to route
-            # to the right child without triggering ptrace injection.
-            # Inherit parent's just_my_code setting.
-            jmc = self._launch_params.get("just_my_code", True)
-            attach_future = await child.attach(
-                host=host, port=port, sub_process_id=pid,
-                just_my_code=jmc,
-            )
-
-            from tdb._timeouts import DAP_CHILD_ATTACH, DAP_INITIALIZED
-            await asyncio.wait_for(initialized.wait(), timeout=DAP_INITIALIZED)
-
-            # Configure breakpoints — send per-source setBreakpoints
-            # concurrently. Each call is an independent DAP round-trip
-            # against the child's own session; running them sequentially
-            # was the inner loop's contribution to the attach latency.
-            await child.set_exception_breakpoints(["userUnhandled"])
-            if not self.state.breakpoints_disabled and self.state.breakpoints:
-                async def _set_bps(source_path: str, bps: list) -> None:
-                    try:
-                        await child.set_breakpoints(
-                            source_path, self._enabled_bps(bps),
-                        )
-                    except Exception:
-                        pass
-                await asyncio.gather(*(
-                    _set_bps(sp, bps)
-                    for sp, bps in self.state.breakpoints.items()
-                ))
-
-            await child.configuration_done()
-            await asyncio.wait_for(attach_future, timeout=DAP_CHILD_ATTACH)
-
-            key = pid or port
-            self._child_clients[key] = child
-            log.info("Attached to child process pid=%s (port %d)", pid, port)
-
-        except Exception:
-            log.exception("Failed to attach to child (port %d)", port)
-            try:
-                await child.stop()
-            except Exception:
-                pass
+    # Per-child DAPClient lifecycle (attach, stopped-event handling,
+    # close_all on quit) lives in session/child_processes.py.
 
     async def _pause_parent(self) -> None:
-        """Pause the parent process and wait for it to stop."""
+        """Pause the parent process and wait for it to stop.
+
+        Called by ChildProcessManager.on_child_stopped to ensure the
+        whole process tree is paused together — without this the user
+        could see "child paused at breakpoint, parent still running"
+        which is incoherent.
+        """
         try:
             threads = await self.client.threads()
             if threads:
@@ -1172,13 +854,8 @@ class DebugController:
             pass
 
     async def _pause_children(self) -> None:
-        """Pause all child processes."""
-        for pid, child in list(self._child_clients.items()):
-            try:
-                threads = await child.threads()
-                if threads:
-                    await child.pause(threads[0].id)
-            except Exception:
-                pass
+        """Delegate to ChildProcessManager (kept on controller for the
+        couple of _spawn_bg callers that still reach for it)."""
+        await self._children.pause_all()
 
 

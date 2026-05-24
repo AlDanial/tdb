@@ -250,8 +250,11 @@ class DapEventCoordinator:
             ))
 
         if synthetic_frames:
-            state.stack_frames = synthetic_frames
-            state.current_frame_id = synthetic_frames[0].id
+            # Synthetic: the debuggee is already gone (this runs after a
+            # terminated event), so debugpy has no frame ids these would
+            # map to. Flag them so any straggling evaluate routes around
+            # `current_frame_id` via `resolve_evaluate_frame_id`.
+            state.set_stack(synthetic_frames, synthetic=True)
 
         # Modal body: show every block's body (after its header line) so
         # chained exception separator text is preserved.

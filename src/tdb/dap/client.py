@@ -43,6 +43,11 @@ class DAPClient:
         self._reader: asyncio.StreamReader | None = None
         self._writer: asyncio.StreamWriter | None = None
         self._reader_task: asyncio.Task[None] | None = None
+        # Strong ref so the adapter-death watcher isn't GC'd mid-await.
+        # asyncio only keeps weak refs to running tasks; without this
+        # field the task could be collected before it logs anything,
+        # leaving a silent hang on premature adapter exit.
+        self._watch_task: asyncio.Task[None] | None = None
         self.capabilities = Capabilities()
 
     def _next_seq(self) -> int:
@@ -75,10 +80,12 @@ class DAPClient:
         )
         self._reader = self._process.stdout
         self._reader_task = asyncio.create_task(self._read_loop())
-        # Watch for premature death — if the adapter exits before tdb is
-        # done with it, surface stderr so the user sees an actionable error
-        # instead of a silent hang.
-        asyncio.create_task(self._watch_adapter_death())
+        # Watch for premature death — if the adapter exits before tdb
+        # is done with it, surface stderr so the user sees an
+        # actionable error instead of a silent hang. Strong ref via
+        # `self._watch_task` matches the `_bg_tasks` pattern in
+        # `DebugController` (asyncio holds only weak refs to tasks).
+        self._watch_task = asyncio.create_task(self._watch_adapter_death())
 
     async def _watch_adapter_death(self) -> None:
         if self._process is None:
@@ -119,6 +126,13 @@ class DAPClient:
                 await self._reader_task
             except asyncio.CancelledError:
                 pass
+        if self._watch_task:
+            self._watch_task.cancel()
+            try:
+                await self._watch_task
+            except asyncio.CancelledError:
+                pass
+            self._watch_task = None
         if self._writer:
             self._writer.close()
             self._writer = None
