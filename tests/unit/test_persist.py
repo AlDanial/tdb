@@ -111,19 +111,41 @@ def test_legacy_last_run_json_is_migrated(isolated_persist):
 
 
 def test_save_config_round_trip(isolated_persist):
-    isolated_persist.save_config(keybindings="emacs")
-    assert isolated_persist.load_keybinding_scheme() == "emacs"
+    TdbConfig = isolated_persist.TdbConfig
+    cfg = isolated_persist.load_config()
+    cfg.keybindings = "emacs"
+    isolated_persist.save_config(cfg)
+    assert isolated_persist.load_config().keybindings == "emacs"
 
-    # Updating one field preserves the other
-    isolated_persist.save_config(theme="textual-dark")
-    assert isolated_persist.load_keybinding_scheme() == "emacs"
-    assert isolated_persist.load_theme() == "textual-dark"
+    # Updating one field preserves the other (load-mutate-save pattern).
+    cfg2 = isolated_persist.load_config()
+    cfg2.theme = "textual-dark"
+    isolated_persist.save_config(cfg2)
+    reloaded = isolated_persist.load_config()
+    assert reloaded.keybindings == "emacs"
+    assert reloaded.theme == "textual-dark"
 
 
-def test_load_config_missing_file_returns_empty(isolated_persist):
-    assert isolated_persist.load_config_raw() == {}
-    assert isolated_persist.load_keybinding_scheme() is None
-    assert isolated_persist.load_theme() is None
+def test_load_config_missing_file_returns_defaults(isolated_persist):
+    cfg = isolated_persist.load_config()
+    assert cfg.keybindings == "vim"
+    assert cfg.theme is None
+    assert cfg.step_mode == "statement"
+
+
+def test_config_from_dict_drops_unknown_keys(isolated_persist):
+    cfg = isolated_persist.TdbConfig.from_dict({
+        "keybindings": "emacs",
+        "unknown_future_key": "ignored",
+    })
+    assert cfg.keybindings == "emacs"
+    assert cfg.theme is None
+
+
+def test_config_from_dict_rejects_invalid_step_mode(isolated_persist):
+    # Bad step_mode falls back to default rather than raising.
+    cfg = isolated_persist.TdbConfig.from_dict({"step_mode": "bogus"})
+    assert cfg.step_mode == "statement"
 
 
 def test_load_breakpoints_corrupt_json_returns_empty(isolated_persist):

@@ -12,6 +12,7 @@ from types import SimpleNamespace
 from tdb.app_handlers.dap_events import DapEventCoordinator
 from tdb.dap.types import Source, StackFrame
 from tdb.server.event_handler import ServerEventHandler
+from tdb.app_handlers.ui_panels import UIPanels
 from tdb.session.controller import DebugController
 
 
@@ -19,7 +20,7 @@ class _StubApp:
     def __init__(self) -> None:
         self.controller = DebugController(ServerEventHandler())
         self._stderr_buffer: list[str] = []
-        self._exception_modal_shown = False
+        self.panels = UIPanels()
         self.pushed_screens: list[object] = []
 
     def push_screen(self, screen, callback=None):

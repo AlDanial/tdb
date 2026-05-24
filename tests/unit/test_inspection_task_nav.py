@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from types import SimpleNamespace
 
 from tdb.app_handlers.inspection import InspectionWorkflows, _TASK_FRAME_RE
+from tdb.app_handlers.ui_panels import UIPanels
 from tdb.inspection import AsyncTaskInfo
 
 
@@ -20,7 +21,9 @@ def _make_workflows_with_tasks(tasks: list[AsyncTaskInfo]) -> tuple[InspectionWo
     )
     controller = SimpleNamespace(state=state)
     modal = SimpleNamespace(_tasks=tasks)
-    app = SimpleNamespace(controller=controller, _async_tasks_modal=modal)
+    panels = UIPanels()
+    panels.async_tasks = modal
+    app = SimpleNamespace(controller=controller, panels=panels)
     return InspectionWorkflows(app), state
 
 
@@ -110,6 +113,7 @@ def test_navigate_to_task_no_modal_returns_false():
         stack_frames=[], current_frame_id=None, scopes=[], variables={},
     )
     controller = SimpleNamespace(state=state)
-    app = SimpleNamespace(controller=controller)  # no _async_tasks_modal attr
+    # panels.async_tasks is None — modal not open.
+    app = SimpleNamespace(controller=controller, panels=UIPanels())
     workflows = InspectionWorkflows(app)
     assert workflows.navigate_to_task("Task-1") is False

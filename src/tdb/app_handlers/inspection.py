@@ -100,8 +100,13 @@ class InspectionWorkflows:
             )
             return
 
-        self.app._async_tasks_modal = AsyncTasksModal(tasks)
-        self.app.push_screen(self.app._async_tasks_modal)
+        modal = AsyncTasksModal(tasks)
+        self.app.panels.async_tasks = modal
+        self.app.push_screen(modal, callback=self._on_async_tasks_dismissed)
+
+    def _on_async_tasks_dismissed(self, _result: object) -> None:
+        """Clear the registry slot once the modal is gone."""
+        self.app.panels.async_tasks = None
 
     async def refresh_async_tasks(self) -> None:
         ctrl = self.app.controller
@@ -113,15 +118,16 @@ class InspectionWorkflows:
         except Exception:
             log.exception("Error refreshing async tasks")
             return
-        if hasattr(self.app, "_async_tasks_modal"):
-            self.app._async_tasks_modal.update_tasks(tasks)
+        if self.app.panels.async_tasks is not None:
+            self.app.panels.async_tasks.update_tasks(tasks)
 
     async def load_task_variables(self, task_name: str) -> None:
         """Fetch a task's local variables via DAP and populate the tree."""
         ctrl = self.app.controller
         if ctrl.state.is_terminated or ctrl.state.is_running:
             return
-        if not hasattr(self.app, "_async_tasks_modal"):
+        modal = self.app.panels.async_tasks
+        if modal is None:
             return
         variables: list = []
         try:
@@ -140,7 +146,7 @@ class InspectionWorkflows:
                 variables = await ctrl.active_client.variables(var_ref)
         except Exception:
             log.debug("Failed to load variables for task %s", task_name)
-        self.app._async_tasks_modal.show_task_variables(variables)
+        modal.show_task_variables(variables)
 
     def navigate_to_task(self, task_name: str) -> bool:
         """Populate `state.stack_frames` with synthetic frames built from
@@ -150,7 +156,7 @@ class InspectionWorkflows:
         carry negative ids so `controller.select_frame` knows to skip
         the DAP scopes fetch. Returns True if frames were installed.
         """
-        modal = getattr(self.app, "_async_tasks_modal", None)
+        modal = self.app.panels.async_tasks
         if modal is None:
             return False
         task = next(
@@ -212,17 +218,20 @@ class InspectionWorkflows:
         if not threads:
             self.app.notify("No threads found", title="Threads")
             return
-        self.app._threads_modal = ThreadsModal(
-            threads, ctrl.state.current_thread_id,
-        )
-        self.app.push_screen(self.app._threads_modal)
+        modal = ThreadsModal(threads, ctrl.state.current_thread_id)
+        self.app.panels.threads = modal
+        self.app.push_screen(modal, callback=self._on_threads_dismissed)
+
+    def _on_threads_dismissed(self, _result: object) -> None:
+        self.app.panels.threads = None
 
     async def load_thread_detail(self, thread_id: int) -> None:
         """Fetch stack trace and variables for a thread."""
         ctrl = self.app.controller
         if ctrl.state.is_terminated or ctrl.state.is_running:
             return
-        if not hasattr(self.app, "_threads_modal"):
+        modal = self.app.panels.threads
+        if modal is None:
             return
         try:
             frames = await ctrl.client.stack_trace(thread_id)
@@ -241,9 +250,7 @@ class InspectionWorkflows:
                     )
             except Exception:
                 log.debug("Failed to fetch variables for thread %d", thread_id)
-        self.app._threads_modal.show_thread_detail(
-            thread_id, frames, scopes, variables,
-        )
+        modal.show_thread_detail(thread_id, frames, scopes, variables)
 
     async def refresh_threads(self) -> None:
         ctrl = self.app.controller
@@ -254,8 +261,8 @@ class InspectionWorkflows:
         except Exception:
             log.exception("Error refreshing threads")
             return
-        if hasattr(self.app, "_threads_modal"):
-            self.app._threads_modal.update_threads(
+        if self.app.panels.threads is not None:
+            self.app.panels.threads.update_threads(
                 threads, ctrl.state.current_thread_id,
             )
 
@@ -352,51 +359,43 @@ class InspectionWorkflows:
         from tdb import processes_cache
         cached = processes_cache.load()
         if cached is not None and cached["processes"]:
-            self.app._processes_modal = ProcessesModal(
+            modal = ProcessesModal(
                 cached["processes"],
                 detail_cache=cached["details"],
                 current_pid=cached["current_pid"],
             )
-            self.app.push_screen(
-                self.app._processes_modal,
-                callback=lambda _result: self._save_processes_cache(),
-            )
+            self.app.panels.processes = modal
+            self.app.push_screen(modal, callback=self._on_processes_dismissed)
             # Worker is unnecessary — the modal already has everything.
             return False
 
-        self.app._processes_modal = ProcessesModal([])
-        self.app.push_screen(
-            self.app._processes_modal,
-            callback=lambda _result: self._save_processes_cache(),
-        )
+        modal = ProcessesModal([])
+        self.app.panels.processes = modal
+        self.app.push_screen(modal, callback=self._on_processes_dismissed)
         return True
 
-    def _save_processes_cache(self) -> None:
-        """Push-screen callback: serialize whatever the modal accumulated.
+    def _on_processes_dismissed(self, _result: object) -> None:
+        """Push-screen callback: persist the modal's accumulated state to
+        the cache file, then drop the registry reference.
 
-        Skipped when the modal was dismissed before populate (no
-        processes) or when the program has since stepped/continued —
-        the controller already cleared the file in that case, but
-        writing again here would resurrect a stale snapshot, so we also
-        gate on `state.can_send_dap` standing in for "still paused".
+        Cache write is skipped when the modal was dismissed before
+        populate (no processes) or when the program has since stepped/
+        continued — the controller already cleared the file in that
+        case, and a fresh write here would resurrect a stale snapshot.
         """
         from tdb import processes_cache
-        modal = getattr(self.app, "_processes_modal", None)
-        if modal is None or not modal._processes:
-            return
-        # If we're not paused anymore, _on_continued already cleared the
-        # cache; don't write a fresh snapshot that would survive into
-        # the next stop with stale frame ids.
-        if not self.app.controller.state.can_step:
-            return
-        processes, details, current_pid = modal.cache_snapshot()
-        processes_cache.save(processes, details, current_pid)
+        modal = self.app.panels.processes
+        if modal is not None and modal._processes \
+                and self.app.controller.state.can_step:
+            processes, details, current_pid = modal.cache_snapshot()
+            processes_cache.save(processes, details, current_pid)
+        self.app.panels.processes = None
 
     async def open_processes_worker(self) -> None:
         """Background: fetch processes and populate the already-open modal,
         or dismiss it and toast when there are none."""
         processes = await self.get_processes()
-        modal = getattr(self.app, "_processes_modal", None)
+        modal = self.app.panels.processes
         if modal is None:
             return
         if not processes:
@@ -410,17 +409,18 @@ class InspectionWorkflows:
         if ctrl.state.is_terminated or ctrl.state.is_running:
             return
         processes = await self.get_processes()
-        if hasattr(self.app, "_processes_modal"):
-            self.app._processes_modal.update_processes(processes)
+        if self.app.panels.processes is not None:
+            self.app.panels.processes.update_processes(processes)
 
     async def load_process_detail(self, pid: int) -> None:
         """Fetch stack trace and variables for a child process via its DAPClient."""
-        if not hasattr(self.app, "_processes_modal"):
+        modal = self.app.panels.processes
+        if modal is None:
             return
         child = self.app.controller.get_child_client(pid)
         if child is None:
             # PIDs from /proc might not exactly match the controller's keys
-            self.app._processes_modal.show_process_detail(pid, [], [], {})
+            modal.show_process_detail(pid, [], [], {})
             return
         frames: list = []
         scopes: list = []
@@ -438,4 +438,4 @@ class InspectionWorkflows:
                         )
         except Exception:
             log.debug("Failed to fetch detail for child process %d", pid)
-        self.app._processes_modal.show_process_detail(pid, frames, scopes, variables)
+        modal.show_process_detail(pid, frames, scopes, variables)

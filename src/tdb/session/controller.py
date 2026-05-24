@@ -306,10 +306,13 @@ class DebugController:
         # cleanup, not load-bearing. Serial 30s timeouts (the `_send`
         # default) per child made multiprocess-debug quit take ~50s with
         # 8 attached children.
+        from tdb._timeouts import DAP_DISCONNECT_CHILD, DAP_DISCONNECT_PARENT
+
         async def _close_child(child: DAPClient) -> None:
             try:
                 await asyncio.wait_for(
-                    child.disconnect(terminate=False), timeout=1.0,
+                    child.disconnect(terminate=False),
+                    timeout=DAP_DISCONNECT_CHILD,
                 )
             except (asyncio.TimeoutError, Exception):
                 pass
@@ -327,7 +330,7 @@ class DebugController:
         try:
             await asyncio.wait_for(
                 self.client.disconnect(terminate=not self._is_remote_attach),
-                timeout=2.0,
+                timeout=DAP_DISCONNECT_PARENT,
             )
         except (asyncio.TimeoutError, Exception):
             pass
@@ -1124,7 +1127,8 @@ class DebugController:
                 just_my_code=jmc,
             )
 
-            await asyncio.wait_for(initialized.wait(), timeout=10.0)
+            from tdb._timeouts import DAP_CHILD_ATTACH, DAP_INITIALIZED
+            await asyncio.wait_for(initialized.wait(), timeout=DAP_INITIALIZED)
 
             # Configure breakpoints — send per-source setBreakpoints
             # concurrently. Each call is an independent DAP round-trip
@@ -1145,7 +1149,7 @@ class DebugController:
                 ))
 
             await child.configuration_done()
-            await asyncio.wait_for(attach_future, timeout=30.0)
+            await asyncio.wait_for(attach_future, timeout=DAP_CHILD_ATTACH)
 
             key = pid or port
             self._child_clients[key] = child

@@ -42,8 +42,8 @@ class DapEventCoordinator:
         `_fetch_process_count`, `_fetch_async_task_count` (these stay
         on the App because they are themselves Textual workers),
       - read/write `self.app._stderr_buffer` and
-        `self.app._exception_modal_shown` (cross-cut state owned by
-        the App).
+        `self.app.panels.exception_modal_shown` (cross-cut state
+        owned by the App via the UIPanels registry).
     """
 
     def __init__(self, app: TdbApp) -> None:
@@ -94,7 +94,7 @@ class DapEventCoordinator:
         self.app._fetch_async_task_count()
 
         if message.reason == "exception":
-            self.app._exception_modal_shown = True
+            self.app.panels.exception_modal_shown = True
             self._show_exception_modal(message)
 
     def _stopped_inside_breakpoint_hook(self) -> bool:
@@ -147,7 +147,7 @@ class DapEventCoordinator:
             # App-level state (stderr buffer, exception-modal flag)
             # needs to be reset here.
             self.app._stderr_buffer.clear()
-            self.app._exception_modal_shown = False
+            self.app.panels.exception_modal_shown = False
             self.app._update_ui_state()
         except Exception:
             log.exception("Error handling continued event")
@@ -160,7 +160,7 @@ class DapEventCoordinator:
             # state.is_terminated and state.is_running are set by
             # controller._on_terminated (single state authority). This
             # handler only does TUI-side cleanup.
-            if not self.app._exception_modal_shown:
+            if not self.app.panels.exception_modal_shown:
                 # debugpy may still be delivering OutputEvents for late stderr
                 # (chained tracebacks in particular span many lines). Wait for
                 # the buffer to stabilize before parsing, otherwise the modal

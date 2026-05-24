@@ -47,9 +47,9 @@ from tdb.widgets.stack_view import StackView
 from tdb.widgets.status_bar import StatusBar
 from tdb.app_helpers import find_readme, unquote_dap_string
 from tdb.persist import (
+    TdbConfig,
     load_breakpoints,
-    load_step_mode,
-    load_theme,
+    load_config,
     save_breakpoints,
     save_config,
 )
@@ -62,8 +62,18 @@ from tdb import __version__ as tdb_version
 log = logging.getLogger(__name__)
 
 
-class TdbApp(App):
-    """TUI Python debugger."""
+from tdb.app_handlers.routing import _AppMessageRoutes
+
+
+class TdbApp(_AppMessageRoutes, App):
+    """TUI Python debugger.
+
+    Inherits from `_AppMessageRoutes` (mixin holding the boilerplate
+    on_<widget>_<message> handlers and the @work-decorated inspection
+    workers — see app_handlers/routing.py) and Textual's `App`. The
+    mixin is listed first so its methods take MRO precedence over any
+    same-named defaults App might provide.
+    """
 
     TITLE = "tdb"
     SUB_TITLE = "Python Debugger"
@@ -176,8 +186,7 @@ class TdbApp(App):
         just_my_code: bool = True,
         python: str | None = None,
         terminal: str | None = None,
-        keybindings: str = "vim",
-        step_mode: str = "statement",
+        config: TdbConfig | None = None,
         cli_breakpoints: list[tuple[str, int]] | None = None,
         attach_host: str | None = None,
         attach_port: int | None = None,
@@ -193,8 +202,10 @@ class TdbApp(App):
         self._just_my_code = just_my_code
         self._python = python
         self._terminal = terminal
-        self._keybindings = keybindings
-        self._step_mode = step_mode
+        # User preferences (keybindings / theme / step_mode). Persisted on
+        # change via save_config(self._config). Owners of the values:
+        # the App for in-session reads, persist.py for on-disk format.
+        self._config = config if config is not None else TdbConfig()
         self._cli_breakpoints = cli_breakpoints or []
         self._attach_host = attach_host
         self._attach_port = attach_port
@@ -215,9 +226,13 @@ class TdbApp(App):
             self._event_handler = self._textual_handler
 
         self.controller = DebugController(self._event_handler)
-        self.controller.step_mode = self._step_mode
+        self.controller.step_mode = self._config.step_mode
         self._stderr_buffer: list[str] = []
-        self._exception_modal_shown = False
+        # Typed registry of modal singletons + ephemeral UI flags.
+        # See app_handlers/ui_panels.py for why the previous pattern
+        # (ad-hoc self._processes_modal etc. attrs) was replaced.
+        from tdb.app_handlers.ui_panels import UIPanels
+        self.panels = UIPanels()
         # True after File > Open loads a new program but before the user
         # presses `r` or `c` to start it. While pending, debug actions other
         # than restart/continue are ignored; `c` is rerouted to start.
@@ -271,12 +286,11 @@ class TdbApp(App):
         yield Footer()
 
     def on_mount(self) -> None:
-        saved_theme = load_theme()
-        if saved_theme and saved_theme in self.available_themes:
-            self.theme = saved_theme
+        if self._config.theme and self._config.theme in self.available_themes:
+            self.theme = self._config.theme
 
         code_view = self.query_one("#code-view", CodeView)
-        code_view.keybindings = KeybindingConfig.from_scheme(self._keybindings)
+        code_view.keybindings = KeybindingConfig.from_scheme(self._config.keybindings)
         self._update_code_title(code_view)
 
         if self._post_mortem_snapshot is not None:
@@ -475,7 +489,7 @@ class TdbApp(App):
         else:
             self._event_handler = self._textual_handler
         self.controller = DebugController(self._event_handler)
-        self.controller.step_mode = self._step_mode
+        self.controller.step_mode = self._config.step_mode
         self.controller.state.breakpoints = saved_breakpoints
 
         # Update the server's controller reference so RPC sees the new one
@@ -483,7 +497,7 @@ class TdbApp(App):
             self._controller_ref.set(self.controller)
 
         self._stderr_buffer.clear()
-        self._exception_modal_shown = False
+        self.panels.clear()
 
         status_bar = self.query_one("#status-bar", StatusBar)
         status_bar.set_idle()
@@ -518,37 +532,8 @@ class TdbApp(App):
     # --- DAP event message handlers ---
     # These run in textual's message loop, so async is safe.
 
-    # --- DAP event handlers (delegate to DapEventCoordinator) -----------
-    # These stubs exist because Textual auto-dispatches `on_dap_*` based
-    # on method name on the App. Logic is in self._dap.
-
-    def on_dap_initialized(self, message: DapInitialized) -> None:
-        log.info("on_dap_initialized called")
-        self._do_configure_work()
-
-    @work(exclusive=True, group="configure")
-    async def _do_configure_work(self) -> None:
-        await self._dap.do_configure()
-
-    async def on_dap_stopped(self, message: DapStopped) -> None:
-        await self._dap.on_stopped(message)
-
-    def on_dap_continued(self, message: DapContinued) -> None:
-        self._dap.on_continued()
-
-    async def on_dap_terminated(self, message: DapTerminated) -> None:
-        await self._dap.on_terminated()
-
-    def on_dap_exited(self, message: DapExited) -> None:
-        self._dap.on_exited(message.exit_code)
-
-    def on_dap_external_terminal_started(self, message: DapExternalTerminalStarted) -> None:
-        self._dap.on_external_terminal_started()
-
-    def on_dap_output(self, message: DapOutput) -> None:
-        self._dap.on_output(message)
-
     # --- UI update helper ---
+    # DAP event handlers moved to _AppMessageRoutes mixin.
 
     def _update_ui_state(self) -> None:
         state = self.controller.state
@@ -865,8 +850,8 @@ class TdbApp(App):
         # the variablesReference is scoped to that session, not the parent's.
         source = message.source
         if source is not None and source.id == "proc-vars":
-            modal = getattr(self, "_processes_modal", None)
-            pid = getattr(modal, "_current_pid", None) if modal is not None else None
+            modal = self.panels.processes
+            pid = modal.selected_pid if modal is not None else None
             child = self.controller.get_child_client(pid) if pid is not None else None
             if child is None:
                 source.load_children(message.node, [])
@@ -988,15 +973,16 @@ class TdbApp(App):
         # Fires on any theme change (startup + user-initiated). Save the
         # user-facing picks; startup-restored value is already what's on
         # disk so re-saving is a harmless no-op.
-        save_config(theme=theme)
+        self._config.theme = theme
+        save_config(self._config)
 
     def action_keybindings(self) -> None:
         code_view = self.query_one("#code-view", CodeView)
 
         def on_scheme_change(scheme: str) -> None:
             code_view.keybindings = KeybindingConfig.from_scheme(scheme)
-            self._keybindings = scheme
-            save_config(keybindings=scheme)
+            self._config.keybindings = scheme
+            save_config(self._config)
             # Nav-mode footer hints differ per scheme; nudge Textual so the
             # Footer re-renders against the new keybindings.scheme value.
             self.refresh_bindings()
@@ -1005,9 +991,9 @@ class TdbApp(App):
 
     def action_step_mode(self) -> None:
         def on_mode_change(mode: str) -> None:
-            self._step_mode = mode
+            self._config.step_mode = mode
             self.controller.set_step_mode(mode)
-            save_config(step_mode=mode)
+            save_config(self._config)
 
         self.push_screen(_StepModeModal(self.controller.step_mode, on_mode_change))
 
@@ -1076,92 +1062,14 @@ class TdbApp(App):
     def action_menu_help(self) -> None:
         self.query_one("#menu-bar", MenuBar).open_menu("Help")
 
-    @work(exclusive=True, group="async-tasks")
-    # --- Inspection workflows (delegate to InspectionWorkflows) ---------
-    # The `@work` decorator must wrap a method on this class because
-    # Textual's worker manager is owned by the App. Every body below is
-    # a thin forward to `self._inspection`, which holds the real logic.
-
-    async def _fetch_async_task_count(self) -> None:
-        await self._inspection.fetch_async_task_count()
-
-    @work(exclusive=True, group="async-tasks-open")
-    async def _open_async_tasks(self) -> None:
-        await self._inspection.open_async_tasks()
+    # --- Inspection workflows + modal handlers ---
+    # Moved to _AppMessageRoutes mixin (app_handlers/routing.py).
+    # Only `on_tdb_app_refresh_async_tasks` stays here because the
+    # message class it dispatches on (RefreshAsyncTasks) is nested
+    # inside TdbApp itself.
 
     async def on_tdb_app_refresh_async_tasks(self, message: RefreshAsyncTasks) -> None:
         await self._inspection.refresh_async_tasks()
-
-    async def on_async_tasks_modal_load_task_variables(
-        self, message: AsyncTasksModal.LoadTaskVariables
-    ) -> None:
-        await self._inspection.load_task_variables(message.task_name)
-
-    async def on_async_tasks_modal_select_task(
-        self, message: AsyncTasksModal.SelectTask,
-    ) -> None:
-        if isinstance(self.screen, AsyncTasksModal):
-            self.screen.dismiss(None)
-        if self._inspection.navigate_to_task(message.task_name):
-            self._sync_views_to_top_frame()
-            self.query_one("#code-view", CodeView).focus()
-
-    def _update_thread_count(self) -> None:
-        self._inspection.update_thread_count()
-
-    @work(exclusive=True, group="threads-open")
-    async def _open_threads(self) -> None:
-        await self._inspection.open_threads()
-
-    async def on_threads_modal_load_thread_detail(
-        self, message: ThreadsModal.LoadThreadDetail,
-    ) -> None:
-        await self._inspection.load_thread_detail(message.thread_id)
-
-    async def on_threads_modal_refresh_threads(
-        self, message: ThreadsModal.RefreshThreads,
-    ) -> None:
-        await self._inspection.refresh_threads()
-
-    async def on_threads_modal_select_thread(
-        self, message: ThreadsModal.SelectThread,
-    ) -> None:
-        if isinstance(self.screen, ThreadsModal):
-            self.screen.dismiss(None)
-        await self.controller.switch_active_thread(message.thread_id)
-        self._sync_views_to_top_frame()
-        self.query_one("#code-view", CodeView).focus()
-
-    @work(exclusive=True, group="process-count")
-    async def _fetch_process_count(self) -> None:
-        await self._inspection.fetch_process_count()
-
-    def _open_processes(self) -> None:
-        if self._inspection.open_processes_modal():
-            self._open_processes_worker()
-
-    @work(exclusive=True, group="processes-open")
-    async def _open_processes_worker(self) -> None:
-        await self._inspection.open_processes_worker()
-
-    async def on_processes_modal_refresh_processes(
-        self, message: ProcessesModal.RefreshProcesses,
-    ) -> None:
-        await self._inspection.refresh_processes()
-
-    async def on_processes_modal_load_process_detail(
-        self, message: ProcessesModal.LoadProcessDetail,
-    ) -> None:
-        await self._inspection.load_process_detail(message.pid)
-
-    async def on_processes_modal_select_process(
-        self, message: ProcessesModal.SelectProcess,
-    ) -> None:
-        if isinstance(self.screen, ProcessesModal):
-            self.screen.dismiss(None)
-        await self.controller.switch_active_process(message.pid)
-        self._sync_views_to_top_frame()
-        self.query_one("#code-view", CodeView).focus()
 
     # --- Actions ---
 

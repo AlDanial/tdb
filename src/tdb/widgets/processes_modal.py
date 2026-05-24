@@ -350,6 +350,16 @@ class ProcessesModal(ModalScreen[None]):
         """
         return (self._processes, self._detail_cache, self._current_pid)
 
+    @property
+    def selected_pid(self) -> int | None:
+        """The pid whose detail pane is currently displayed.
+
+        Used by callers that need to route per-process DAP requests
+        (e.g. lazy variable expansion) to the right child DAPClient
+        without reaching into modal internals.
+        """
+        return self._current_pid
+
     def action_dismiss_modal(self) -> None:
         self.dismiss(None)
 

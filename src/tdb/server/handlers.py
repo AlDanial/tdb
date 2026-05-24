@@ -235,8 +235,9 @@ class RpcHandlers:
         # Long timeout: after releasing all breakpoint hits in a multi-process
         # program, the remainder of the script can run for a while before the
         # `terminated` event wakes us. 30s was too short to span that tail.
+        from tdb._timeouts import RPC_STEP_WAIT
         while True:
-            stopped = await self.event_handler.wait_for_stop(timeout=600.0)
+            stopped = await self.event_handler.wait_for_stop(timeout=RPC_STEP_WAIT)
             if not stopped:
                 return RpcResponse.error("Timeout waiting for stop")
             if ctrl.state.is_terminated:
@@ -430,7 +431,8 @@ class RpcHandlers:
         )
 
         # Wait for initialized then configure
-        await asyncio.wait_for(eh.initialized_event.wait(), timeout=10.0)
+        from tdb._timeouts import DAP_INITIALIZED
+        await asyncio.wait_for(eh.initialized_event.wait(), timeout=DAP_INITIALIZED)
         await ctrl.do_configure()
         return RpcResponse.ok("Session restarted")
 

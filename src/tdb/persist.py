@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import sys
+from dataclasses import dataclass, fields
 from pathlib import Path
 
 from tdb.dap.types import SourceBreakpoint
@@ -120,58 +121,70 @@ def load_breakpoints(program: str) -> dict[str, list[SourceBreakpoint]]:
         return {}
 
 
-def save_config(
-    keybindings: str | None = None,
-    theme: str | None = None,
-    step_mode: str | None = None,
-) -> None:
-    """Write user preferences to the config file.
+@dataclass
+class TdbConfig:
+    """User preferences persisted across runs (config.json).
 
-    Merges with existing config so callers can update individual fields.
+    Adding a new persisted option = adding one field here. `from_dict`
+    will tolerate older config files that don't have the key (defaults
+    apply) and silently drop unknown keys (forward-compat).
     """
+
+    # Keybinding scheme for the Code View: "vim" | "emacs" | "default".
+    keybindings: str = "vim"
+
+    # Textual theme name (e.g. "textual-dark"). None ⇒ textual's default.
+    theme: str | None = None
+
+    # Step granularity: "statement" (skip through multi-line expressions
+    # as one step) or "line" (debugpy's native per-line trace).
+    step_mode: str = "statement"
+
+    @classmethod
+    def from_dict(cls, data: dict) -> TdbConfig:
+        """Build a TdbConfig from a raw dict (typically the parsed JSON).
+
+        Unknown keys are dropped. Invalid values for constrained fields
+        (step_mode) fall back to the default rather than raising — we
+        never want a corrupt config file to brick the app.
+        """
+        kwargs: dict = {}
+        if isinstance(data.get("keybindings"), str):
+            kwargs["keybindings"] = data["keybindings"]
+        if "theme" in data:
+            theme = data["theme"]
+            if theme is None or isinstance(theme, str):
+                kwargs["theme"] = theme
+        if data.get("step_mode") in ("statement", "line"):
+            kwargs["step_mode"] = data["step_mode"]
+        return cls(**kwargs)
+
+    def to_dict(self) -> dict:
+        return {f.name: getattr(self, f.name) for f in fields(self)}
+
+
+def load_config() -> TdbConfig:
+    """Read config.json into a TdbConfig. Always returns a usable config
+    (defaults for missing/invalid fields, empty config on file errors).
+    """
+    if not CONFIG_FILE.is_file():
+        return TdbConfig()
     try:
-        existing = load_config_raw()
-        if keybindings is not None:
-            existing["keybindings"] = keybindings
-        if theme is not None:
-            existing["theme"] = theme
-        if step_mode is not None:
-            existing["step_mode"] = step_mode
+        raw = json.loads(CONFIG_FILE.read_text())
+    except Exception:
+        log.exception("Failed to load config from %s", CONFIG_FILE)
+        return TdbConfig()
+    if not isinstance(raw, dict):
+        return TdbConfig()
+    return TdbConfig.from_dict(raw)
+
+
+def save_config(config: TdbConfig) -> None:
+    """Write a TdbConfig to config.json. Best-effort: I/O errors are
+    logged and swallowed (we never want a failed save to crash tdb)."""
+    try:
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-        CONFIG_FILE.write_text(json.dumps(existing, indent=2) + "\n")
+        CONFIG_FILE.write_text(json.dumps(config.to_dict(), indent=2) + "\n")
         log.debug("Saved config to %s", CONFIG_FILE)
     except Exception:
         log.exception("Failed to save config to %s", CONFIG_FILE)
-
-
-def load_config_raw() -> dict:
-    """Read raw config dict. Returns empty dict on any error."""
-    if not CONFIG_FILE.is_file():
-        return {}
-    try:
-        return json.loads(CONFIG_FILE.read_text())
-    except Exception:
-        log.exception("Failed to load config from %s", CONFIG_FILE)
-        return {}
-
-
-def load_keybinding_scheme() -> str | None:
-    """Return the saved keybinding scheme name, or None if not set."""
-    return load_config_raw().get("keybindings")
-
-
-def load_theme() -> str | None:
-    """Return the saved textual theme name, or None if not set."""
-    return load_config_raw().get("theme")
-
-
-def load_step_mode() -> str:
-    """Return the saved step granularity (`"statement"` or `"line"`).
-
-    Defaults to `"statement"` so `n` skips through multi-line expressions
-    as a single logical step.
-    """
-    value = load_config_raw().get("step_mode")
-    if value in ("statement", "line"):
-        return value
-    return "statement"

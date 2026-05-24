@@ -11,6 +11,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from tdb.app_handlers.inspection import InspectionWorkflows
+from tdb.app_handlers.ui_panels import UIPanels
 from tdb.server.event_handler import ServerEventHandler
 from tdb.session.controller import DebugController
 from tdb.session.state import SessionPhase
@@ -36,6 +37,7 @@ class _StubApp:
         self._menu_bar = _StubMenuBar()
         self.notifications: list[tuple[str, str]] = []
         self.pushed_screens: list[object] = []
+        self.panels = UIPanels()
 
     def query_one(self, selector, _type=None):
         if selector == "#menu-bar":
@@ -129,5 +131,5 @@ def test_open_processes_modal_returns_true_when_runnable():
     wf, app = _wf()
     assert wf.open_processes_modal() is True
     assert len(app.pushed_screens) == 1
-    # Modal is now stored on the app for cross-handler access.
-    assert hasattr(app, "_processes_modal")
+    # Modal is now registered in the UIPanels holder for cross-handler access.
+    assert app.panels.processes is not None

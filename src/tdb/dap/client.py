@@ -217,8 +217,9 @@ class DAPClient:
 
     async def _send(self, command: str, arguments: dict[str, Any] | None = None) -> Response:
         """Send a DAP request and wait for its response."""
+        from tdb._timeouts import DAP_REQUEST
         future = await self._send_raw(command, arguments)
-        response = await asyncio.wait_for(future, timeout=30.0)
+        response = await asyncio.wait_for(future, timeout=DAP_REQUEST)
         if not response.success:
             raise DAPError(command, response.message or "Unknown error", response.body)
         return response

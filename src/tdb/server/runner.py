@@ -33,8 +33,8 @@ async def run_headless(
     """
     handler = ServerEventHandler()
     controller = DebugController(handler)
-    from tdb.persist import load_step_mode
-    controller.step_mode = load_step_mode()
+    from tdb.persist import load_config
+    controller.step_mode = load_config().step_mode
 
     # Apply CLI breakpoints
     if cli_breakpoints:
@@ -56,14 +56,15 @@ async def run_headless(
     )
 
     # Wait for initialized event, then configure
-    await asyncio.wait_for(handler.initialized_event.wait(), timeout=10.0)
+    from tdb._timeouts import DAP_INITIALIZED, DAP_STOP_ON_ENTRY
+    await asyncio.wait_for(handler.initialized_event.wait(), timeout=DAP_INITIALIZED)
     await controller.do_configure()
 
     # If stop_on_entry, wait for the debuggee to actually stop. State
     # (is_running, stop_reason, current_thread_id) is set synchronously
     # by controller._on_stopped — no manual sync needed here.
     if stop_on_entry:
-        await handler.wait_for_stop(timeout=10.0)
+        await handler.wait_for_stop(timeout=DAP_STOP_ON_ENTRY)
         await controller.fetch_stop_info()
 
     log.info("Debug session ready (headless)")

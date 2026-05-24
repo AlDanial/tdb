@@ -328,16 +328,18 @@ def _run_post_mortem(args: argparse.Namespace) -> None:
     """Load a snapshot written by tdb.exception_hook and display it."""
     import json
     from tdb.app import TdbApp
-    from tdb.persist import load_keybinding_scheme
+    from tdb.persist import load_config
 
     with open(args.post_mortem) as f:
         snapshot = json.load(f)
 
-    keybindings = args.keybindings or load_keybinding_scheme() or "vim"
+    config = load_config()
+    if args.keybindings:
+        config.keybindings = args.keybindings
 
     app = TdbApp(
         program="",
-        keybindings=keybindings,
+        config=config,
         post_mortem_snapshot=snapshot,
     )
     app.run()
@@ -363,14 +365,14 @@ def _run_headless(args: argparse.Namespace) -> None:
 def _run_tui(args: argparse.Namespace) -> None:
     """Run with the TUI (optionally with the server alongside)."""
     from tdb.app import TdbApp
-    from tdb.persist import load_keybinding_scheme, load_step_mode, save_config
+    from tdb.persist import load_config, save_config
 
-    # CLI flag overrides saved config; if neither, default to "vim"
-    keybindings = args.keybindings
-    if keybindings is None:
-        keybindings = load_keybinding_scheme() or "vim"
-    else:
-        save_config(keybindings=keybindings)
+    config = load_config()
+    # --keybindings overrides saved value and writes it back so the next
+    # run picks up the explicit choice without re-specifying the flag.
+    if args.keybindings is not None:
+        config.keybindings = args.keybindings
+        save_config(config)
 
     app = TdbApp(
         program=args.program or "",
@@ -380,8 +382,7 @@ def _run_tui(args: argparse.Namespace) -> None:
         just_my_code=not args.no_just_my_code,
         python=args.python,
         terminal=args.terminal,
-        keybindings=keybindings,
-        step_mode=load_step_mode(),
+        config=config,
         cli_breakpoints=args.breakpoint,
         attach_host=args.attach_host,
         attach_port=args.attach_port,
