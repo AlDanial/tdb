@@ -31,21 +31,34 @@ CacheWriter = Callable[[int, list[Variable]], None]
 # "(Enter to expand)" sentinel so the user can drill in on demand —
 # avoids pre-fetching every method, dunder, and arbitrary attribute of
 # every object in a dict-of-objects.
-_CONTAINER_TYPES: frozenset[str] = frozenset({
-    "dict", "list", "tuple", "set", "frozenset",
-    "OrderedDict", "defaultdict", "deque", "Counter", "ChainMap",
-    "MappingProxyType", "mappingproxy",
-})
+_CONTAINER_TYPES: frozenset[str] = frozenset(
+    {
+        "dict",
+        "list",
+        "tuple",
+        "set",
+        "frozenset",
+        "OrderedDict",
+        "defaultdict",
+        "deque",
+        "Counter",
+        "ChainMap",
+        "MappingProxyType",
+        "mappingproxy",
+    }
+)
 
 # debugpy groups dunder attrs and methods under these synthetic names
 # in object-instance variable listings. Skip them everywhere — they
 # never appear as real container keys/indices.
-_SKIP_CHILD_NAMES: frozenset[str] = frozenset({
-    "special variables",
-    "function variables",
-    "class variables",
-    "len()",
-})
+_SKIP_CHILD_NAMES: frozenset[str] = frozenset(
+    {
+        "special variables",
+        "function variables",
+        "class variables",
+        "len()",
+    }
+)
 
 _DUNDER_RE = re.compile(r"^__\w+__$")
 
@@ -196,7 +209,9 @@ async def bfs_load_full(
                 parent_node.truncated_by_budget = True
                 break
             nodes_remaining -= 1
-            child = FullContentsNode(label=_format_label(var), ref=var.variables_reference)
+            child = FullContentsNode(
+                label=_format_label(var), ref=var.variables_reference
+            )
             parent_node.children.append(child)
             if _is_container(var):
                 # Pre-fetch container contents recursively.

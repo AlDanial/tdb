@@ -37,8 +37,11 @@ class VariableView(Tree[int]):
     # focus / fires NodeSelected and never opens the modal.
     BINDINGS = [
         Binding(
-            "enter", "show_full_contents", "full contents",
-            show=False, priority=True,
+            "enter",
+            "show_full_contents",
+            "full contents",
+            show=False,
+            priority=True,
         ),
     ]
 

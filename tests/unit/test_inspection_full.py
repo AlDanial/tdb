@@ -17,7 +17,10 @@ from tdb.inspection_full import FullContentsNode, bfs_load_full
 
 
 def _var(
-    name: str, ref: int = 0, value: str = "", type: str = "",
+    name: str,
+    ref: int = 0,
+    value: str = "",
+    type: str = "",
 ) -> Variable:
     return Variable(
         name=name,
@@ -30,11 +33,15 @@ def _var(
 def _container(name: str, ref: int, type: str = "dict") -> Variable:
     """A child variable whose type is in the BFS recursion whitelist."""
     return Variable(
-        name=name, value="{...}", type=type, variables_reference=ref,
+        name=name,
+        value="{...}",
+        type=type,
+        variables_reference=ref,
     )
 
 
 # ---- a tiny scripted-fetch helper ---------------------------------------
+
 
 def _make_fetch(graph: dict[int, list[Variable]]):
     """Return an async fetch closure that serves from a static graph.
@@ -57,6 +64,7 @@ def _make_fetch(graph: dict[int, list[Variable]]):
 
 
 # ---- basic shape --------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_root_zero_ref_returns_bare_node():
@@ -94,7 +102,8 @@ async def test_nested_containers_traversed_breadth_first():
     fetch = _make_fetch(graph)
     root = await bfs_load_full(fetch, root_ref=100, root_label="d")
     assert [c.label.split(" =")[0] for c in root.children] == [
-        "u (dict)", "v (dict)",
+        "u (dict)",
+        "v (dict)",
     ]
     # u's child
     assert [g.label for g in root.children[0].children] == ["x = <x>"]
@@ -106,6 +115,7 @@ async def test_nested_containers_traversed_breadth_first():
 
 
 # ---- depth_cap ----------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_depth_cap_stops_recursion_and_emits_more_zero():
@@ -133,6 +143,7 @@ async def test_depth_cap_stops_recursion_and_emits_more_zero():
 
 
 # ---- items_cap ----------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_items_cap_emits_load_more_sentinel():
@@ -168,6 +179,7 @@ async def test_items_cap_not_triggered_when_undercount():
 
 # ---- total_cap ----------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_total_cap_marks_truncated_branches():
     # 3-wide × 3-deep balanced tree = ~13 nodes if not capped.
@@ -201,6 +213,7 @@ def _walk(node: FullContentsNode):
 
 # ---- cache write-through -----------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_cache_writer_called_for_complete_page_only():
     # 100: 7 entries; 200: 2 entries.
@@ -208,8 +221,7 @@ async def test_cache_writer_called_for_complete_page_only():
     # ref=200's page is undercount → cache write SHOULD happen.
     graph = {
         100: [
-            _container(f"k{i}", ref=200) if i == 0 else _var(f"k{i}")
-            for i in range(7)
+            _container(f"k{i}", ref=200) if i == 0 else _var(f"k{i}") for i in range(7)
         ],
         200: [_var("x"), _var("y")],
     }
@@ -237,6 +249,7 @@ async def test_cache_writer_skipped_when_none():
 
 # ---- non-container leaves are verbatim ---------------------------------
 
+
 @pytest.mark.asyncio
 async def test_leaves_added_verbatim_with_no_fetch():
     graph = {1: [_var("scalar_a", value="42"), _var("scalar_b", value="'hi'")]}
@@ -253,6 +266,7 @@ async def test_leaves_added_verbatim_with_no_fetch():
 
 
 # ---- post-mortem path simulation ---------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_post_mortem_synchronous_path_produces_same_tree():
@@ -278,10 +292,16 @@ async def test_post_mortem_synchronous_path_produces_same_tree():
 
 def _structure(node: FullContentsNode) -> tuple:
     """Comparable shape: (label, ref, more, [children...])."""
-    return (node.label, node.ref, node.more, tuple(_structure(c) for c in node.children))
+    return (
+        node.label,
+        node.ref,
+        node.more,
+        tuple(_structure(c) for c in node.children),
+    )
 
 
 # ---- filtering: synthetic groups, dunders, methods ---------------------
+
 
 @pytest.mark.asyncio
 async def test_special_and_function_variables_groups_are_dropped():
@@ -344,6 +364,7 @@ async def test_method_like_values_are_dropped():
 
 # ---- container gating ---------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_non_container_with_ref_becomes_on_demand_sentinel():
     # A dataclass-like child has ref>0 but type isn't a known container.
@@ -352,8 +373,12 @@ async def test_non_container_with_ref_becomes_on_demand_sentinel():
     # be pre-fetched.
     graph = {
         1: [
-            Variable(name="dc", value="Point(x=1, y=2)", type="Point",
-                     variables_reference=200),
+            Variable(
+                name="dc",
+                value="Point(x=1, y=2)",
+                type="Point",
+                variables_reference=200,
+            ),
         ],
         200: [
             _var("x", value="1", type="int"),
@@ -365,10 +390,10 @@ async def test_non_container_with_ref_becomes_on_demand_sentinel():
     assert len(root.children) == 1
     dc = root.children[0]
     assert dc.label.startswith("dc")
-    assert dc.more == (200, 0)            # on-demand sentinel
-    assert dc.children == []              # not pre-fetched
+    assert dc.more == (200, 0)  # on-demand sentinel
+    assert dc.children == []  # not pre-fetched
     visited = [r for (r, _, _) in fetch.calls]  # type: ignore[attr-defined]
-    assert visited == [1]                 # ref=200 was NOT fetched
+    assert visited == [1]  # ref=200 was NOT fetched
 
 
 @pytest.mark.asyncio
@@ -377,8 +402,11 @@ async def test_recursion_skips_through_non_containers():
     # Only the outer dict is pre-fetched; the custom class becomes a
     # sentinel; the inner dict is reachable only on user demand.
     graph = {
-        1: [Variable(name="key", value="Wrap(d={...})", type="Wrap",
-                     variables_reference=200)],
+        1: [
+            Variable(
+                name="key", value="Wrap(d={...})", type="Wrap", variables_reference=200
+            )
+        ],
         200: [_container("inner", ref=300)],
         300: [_var("leaf", value="42")],
     }
@@ -407,6 +435,7 @@ async def test_list_of_dicts_recurses_fully():
 
 
 # ---- fetch failure leaves parent intact --------------------------------
+
 
 @pytest.mark.asyncio
 async def test_fetch_exception_leaves_parent_empty_not_crashed():

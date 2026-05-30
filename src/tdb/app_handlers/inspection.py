@@ -273,13 +273,17 @@ class InspectionWorkflows:
         state = ctrl.state
 
         if state.is_post_mortem:
+
             async def fetch(r: int, start: int, count: int) -> list[Variable]:
                 page = state.variables.get(r, [])
                 end = start + count if count else len(page)
                 return page[start:end]
 
             return await bfs_load_full(
-                fetch, root_ref=ref, root_label=label, cache_writer=None,
+                fetch,
+                root_ref=ref,
+                root_label=label,
+                cache_writer=None,
             )
 
         client = ctrl.active_client

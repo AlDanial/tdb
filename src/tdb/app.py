@@ -231,6 +231,10 @@ class TdbApp(_AppMessageRoutes, App):
         self.controller = DebugController(self._event_handler)
         self.controller.step_mode = self._config.step_mode
         self._stderr_buffer: list[str] = []
+        # Populated by _start_session on a fatal startup error (e.g.,
+        # remote-attach connection refused). Read by cli._run_tui after
+        # app.run() returns to print the message and exit non-zero.
+        self._startup_error: str | None = None
         # Typed registry of modal singletons + ephemeral UI flags.
         # See app_handlers/ui_panels.py for why the previous pattern
         # (ad-hoc self._processes_modal etc. attrs) was replaced.
@@ -388,10 +392,22 @@ class TdbApp(_AppMessageRoutes, App):
     async def _start_session(self) -> None:
         try:
             if self._attach_host is not None and self._attach_port is not None:
-                await self.controller.remote_attach(
-                    host=self._attach_host,
-                    port=self._attach_port,
-                )
+                try:
+                    await self.controller.remote_attach(
+                        host=self._attach_host,
+                        port=self._attach_port,
+                    )
+                except OSError as exc:
+                    # No server listening, route unreachable, DNS failure,
+                    # etc. Without an exit here the TUI sits empty with no
+                    # explanation; surface the failure to stderr via cli.py
+                    # and exit non-zero.
+                    self._startup_error = (
+                        f"tdb: cannot attach to {self._attach_host}:"
+                        f"{self._attach_port} — {exc.strerror or exc}"
+                    )
+                    self.exit(return_code=2)
+                    return
             else:
                 await self.controller.start(
                     program=self._program,
@@ -780,7 +796,8 @@ class TdbApp(_AppMessageRoutes, App):
         self._update_ui_state()
 
     def on_code_view_show_last_traceback(
-        self, message: CodeView.ShowLastTraceback,
+        self,
+        message: CodeView.ShowLastTraceback,
     ) -> None:
         """Re-summon the most recent traceback modal (`e` in CodeView DEBUG mode).
 
@@ -806,7 +823,8 @@ class TdbApp(_AppMessageRoutes, App):
         )
 
     def on_variable_view_show_full_contents(
-        self, message: VariableView.ShowFullContents,
+        self,
+        message: VariableView.ShowFullContents,
     ) -> None:
         """Open the Full-Contents modal for a container row.
 
@@ -820,7 +838,9 @@ class TdbApp(_AppMessageRoutes, App):
 
     @work(exclusive=True, group="full-contents")
     async def _load_full_contents_worker(
-        self, modal: FullContentsModal, ref: int,
+        self,
+        modal: FullContentsModal,
+        ref: int,
     ) -> None:
         """Background BFS for the Full-Contents modal.
 

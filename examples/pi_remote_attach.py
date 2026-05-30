@@ -104,11 +104,12 @@ def main():
         sys.exit(1)
 
     import debugpy
-    debugpy.listen(("0.0.0.0", 5678))
-    print("Waiting for tdb to attach on port 5678...")
+
+    debugpy.listen(("0.0.0.0", 15678))
+    print("Waiting for tdb to attach on port 15678...")
     debugpy.wait_for_client()
     print("tdb is attached!")
- 
+
     source_code = read_source_file(current_file_path)
     letter_freq, computed_pi_digits = process_characters(source_code, pi_gen)
     display_pi_results(computed_pi_digits)

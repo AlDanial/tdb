@@ -488,3 +488,9 @@ def _run_tui(args: argparse.Namespace) -> None:
         server_port=args.server_port if args.server else None,
     )
     app.run()
+    # Fatal startup error (e.g. remote-attach connection refused). The
+    # TUI has already torn down; surface the reason on stderr so the
+    # user doesn't just see a blank terminal and a non-zero exit code.
+    if app._startup_error:
+        print(app._startup_error, file=sys.stderr)
+        sys.exit(app.return_code or 2)

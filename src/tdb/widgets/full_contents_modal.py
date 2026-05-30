@@ -149,7 +149,10 @@ class FullContentsModal(ModalScreen[None]):
             await self._load_more(event.node, ref, start)
 
     async def _load_more(
-        self, placeholder: TreeNode, ref: int, start: int,
+        self,
+        placeholder: TreeNode,
+        ref: int,
+        start: int,
     ) -> None:
         """Fetch one page (or initial expansion) under `ref` and splice in.
 
@@ -172,6 +175,7 @@ class FullContentsModal(ModalScreen[None]):
         # Same filter the BFS uses — keeps methods/dunders out of the
         # tree when the user expands a dataclass/object on demand.
         from tdb.inspection_full import _filter_children
+
         page = _filter_children(raw_page)
 
         parent = placeholder.parent
@@ -212,6 +216,8 @@ class FullContentsModal(ModalScreen[None]):
             node = parent_node.add(label, data=var.variables_reference)
             # Lazy-expand placeholder so the user can drill further if
             # interested; on activation it'll hit our load_more path.
-            node.add_leaf("… (Enter to load)", data=("more", var.variables_reference, 0))
+            node.add_leaf(
+                "… (Enter to load)", data=("more", var.variables_reference, 0)
+            )
         else:
             parent_node.add_leaf(label, data=0)
