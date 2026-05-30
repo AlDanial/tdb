@@ -653,13 +653,12 @@ Each is JSON with `event`, `data`, and `timestamp` fields.
 ## CLI Reference
 
 ```
-usage: tdb [-h] [-v/--version] [-r [HOST:]PORT] [--cwd CWD] [--no-stop-on-entry]
-           [--no-just-my-code] [--no-subprocess] [--python PYTHON]
-           [-d/--doc] [--doc-text] [--keybindings {default,vim,emacs}]
+usage: tdb [-h] [-v] [-r [HOST:]PORT] [--cwd CWD] [--no-stop-on-entry]
+           [--no-just-my-code] [--no-subprocess] [--python PYTHON] [--pv]
+           [--keybindings {default,vim,emacs}]
            [--terminal {xterm,konsole,gnome-terminal,ghostty,kitty,iterm2,warp,wezterm,terminator}]
-           [--server] [--headless] [-k FILE:LINE|LINE] [--server-port SERVER_PORT]
+           [--server] [--headless] [-k FILE:LINE|LINE] [--server-port SERVER_PORT] [-d] [--doc-text]
            [program] [args ...]
-
 ```
 
 | Flag | Description |
@@ -669,6 +668,7 @@ usage: tdb [-h] [-v/--version] [-r [HOST:]PORT] [--cwd CWD] [--no-stop-on-entry]
 | `--no-stop-on-entry` | Do not pause at the first line (default: stop on entry; automatic when `-k` is given) |
 | `--cwd DIR` | Working directory for the debuggee |
 | `--python PATH` | Python interpreter for the debuggee |
+| `--pv` | Shorthand for --python .venv/bin/python |
 | `--no-just-my-code` | Step into stdlib/site-packages code instead of skipping it
   (default: skipped). On uncaught exceptions, the crash modal always shows the full traceback
   including library frames, regardless of this flag. |

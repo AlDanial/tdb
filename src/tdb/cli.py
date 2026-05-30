@@ -82,6 +82,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Python interpreter to use for debugging",
     )
     parser.add_argument(
+        "--pv",
+        dest="python",
+        action="store_const",
+        const=".venv/bin/python",
+        help="Shorthand for --python .venv/bin/python",
+    )
+    parser.add_argument(
         "--keybindings",
         choices=["default", "vim", "emacs"],
         default=None,
