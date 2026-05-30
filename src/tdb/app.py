@@ -241,6 +241,12 @@ class TdbApp(_AppMessageRoutes, App):
         from tdb.app_handlers.ui_panels import UIPanels
 
         self.panels = UIPanels()
+        # Per-session cache of remote source content keyed by the
+        # path the debug adapter reported. Populated by
+        # `_fetch_remote_source` when a stack frame's path isn't on
+        # the local filesystem (typical for `-r HOST:PORT`). Cleared
+        # by `_restart_session` so a new session starts fresh.
+        self._remote_source_cache: dict[str, str] = {}
         # True after File > Open loads a new program but before the user
         # presses `r` or `c` to start it. While pending, debug actions other
         # than restart/continue are ignored; `c` is rerouted to start.
@@ -423,6 +429,46 @@ class TdbApp(_AppMessageRoutes, App):
             log.exception("Failed to start debug session")
             self.sub_title = "Failed to start"
 
+    @work(group="remote-source")
+    async def _fetch_remote_source(self, path: str) -> None:
+        """Ask the adapter for `path`'s content via DAP `source`.
+
+        Runs when a stop event reports a frame whose file isn't on the
+        tdb host's filesystem — typical for `tdb -r HOST:PORT` against
+        a debuggee on a different machine. On success the CodeView is
+        swapped to in-memory content. Failures are silent; the user
+        keeps seeing the `<Could not read …>` placeholder load_file
+        produced.
+        """
+        if path in self._remote_source_cache:
+            return  # another fetch already ran
+        # Locate the Source object on the stack so we send the full
+        # hint (path + name + sourceReference) — adapters that don't
+        # honour `sourceReference == 0` may still resolve by path.
+        source = None
+        for frame in self.controller.state.stack_frames:
+            if frame.source and frame.source.path == path:
+                source = frame.source
+                break
+        if source is None:
+            return
+        try:
+            content = await self.controller.fetch_source_content(source)
+        except Exception:
+            log.debug("Remote-source fetch raised for %s", path)
+            return
+        if not content:
+            return
+        self._remote_source_cache[path] = content
+        # Only install if the user hasn't navigated away in the meantime
+        # and the file still isn't readable locally.
+        code_view = self.query_one("#code-view", CodeView)
+        if code_view.source_path != path:
+            return
+        if os.path.isfile(path):
+            return
+        code_view.load_content(content, path)
+
     @work(exclusive=True, group="server")
     async def _start_server(self) -> None:
         """Start the JSON-RPC debug server alongside the TUI."""
@@ -529,6 +575,7 @@ class TdbApp(_AppMessageRoutes, App):
 
         self._stderr_buffer.clear()
         self.panels.clear()
+        self._remote_source_cache.clear()
 
         status_bar = self.query_one("#status-bar", StatusBar)
         status_bar.set_idle()
@@ -638,7 +685,18 @@ class TdbApp(_AppMessageRoutes, App):
                 status_bar.set_paused(source_path, current_line, reason=reason)
 
         if source_path and source_path != code_view.source_path:
-            code_view.load_file(source_path)
+            # If we already fetched this remote file in this session,
+            # install from cache immediately — no flash of the
+            # `<Could not read …>` placeholder. Otherwise load_file
+            # tries disk; if that fails, the worker below swaps in
+            # remote content once it arrives.
+            cached = self._remote_source_cache.get(source_path)
+            if cached is not None and not os.path.isfile(source_path):
+                code_view.load_content(cached, source_path)
+            else:
+                code_view.load_file(source_path)
+                if not os.path.isfile(source_path):
+                    self._fetch_remote_source(source_path)
         if source_path:
             bps = state.breakpoints.get(source_path, [])
             code_view.set_breakpoints(bps)

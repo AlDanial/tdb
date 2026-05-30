@@ -14,6 +14,7 @@ from .types import (
     Capabilities,
     CompletionItem,
     Scope,
+    Source,
     SourceBreakpoint,
     StackFrame,
     Thread,
@@ -312,11 +313,17 @@ class DAPClient:
         port: int = 0,
         sub_process_id: int | None = None,
         just_my_code: bool = True,
+        stop_on_entry: bool = False,
     ) -> asyncio.Future[Response]:
         """Send attach request. Returns a Future (same pattern as launch).
 
         Use subProcessId (not processId) to route to a child session
         without triggering ptrace injection.
+
+        `stop_on_entry=True` tells debugpy to suspend the debuggee at
+        the first statement after the attach handshake completes —
+        without it, the program runs freely from `wait_for_client()`
+        and short scripts can finish before any pause request lands.
         """
         arguments: dict[str, Any] = {
             "type": "debugpy",
@@ -324,6 +331,7 @@ class DAPClient:
             "connect": {"host": host, "port": port},
             "justMyCode": just_my_code,
             "subProcess": True,
+            "stopOnEntry": stop_on_entry,
         }
         if sub_process_id is not None:
             arguments["subProcessId"] = sub_process_id
@@ -405,6 +413,44 @@ class DAPClient:
             args["count"] = count
         resp = await self._send("variables", args)
         return [Variable.from_dict(v) for v in resp.body.get("variables", [])]
+
+    async def source(
+        self,
+        source_reference: int,
+        source: Source | None = None,
+    ) -> str:
+        """Fetch source content via the DAP `source` request.
+
+        Used for frames whose `path` isn't accessible to the tdb client
+        (typical in remote-attach mode where the debuggee runs on a
+        different host with a different filesystem). debugpy and most
+        adapters will serve the file content when the request carries
+        the original `Source` object — even when `source_reference == 0`
+        (strict DAP spec requires non-zero, but adapters are usually
+        permissive about path-based lookup).
+
+        Returns the source text, or an empty string on any failure
+        (request rejected, adapter doesn't support it, file unreadable
+        on the debuggee side). Callers should fall back gracefully.
+        """
+        args: dict[str, Any] = {"sourceReference": source_reference}
+        if source is not None:
+            src_obj: dict[str, Any] = {"sourceReference": source.source_reference}
+            if source.path is not None:
+                src_obj["path"] = source.path
+            if source.name is not None:
+                src_obj["name"] = source.name
+            args["source"] = src_obj
+        try:
+            resp = await self._send("source", args)
+        except Exception:
+            log.debug(
+                "DAP source request failed (sourceReference=%d, path=%s)",
+                source_reference,
+                source.path if source else None,
+            )
+            return ""
+        return resp.body.get("content", "") or ""
 
     async def evaluate(
         self,

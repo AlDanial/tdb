@@ -229,7 +229,17 @@ class DebugController:
         await self.client.connect(host, port)
         await self.client.initialize()
 
-        self._launch_future = await self.client.attach(host=host, port=port)
+        # `stopOnEntry=True` is the standard DAP way to say "pause the
+        # debuggee immediately after the attach handshake". Without it,
+        # debugpy unblocks `wait_for_client()` as soon as we send
+        # `configurationDone` and short programs can run to completion
+        # before any post-hoc pause request lands (we'd see a
+        # `terminated` event with no `stopped` in between).
+        self._launch_future = await self.client.attach(
+            host=host,
+            port=port,
+            stop_on_entry=True,
+        )
 
     async def do_configure(self) -> None:
         """Called after 'initialized' event. Sends breakpoints + configurationDone.
@@ -265,6 +275,26 @@ class DebugController:
         # line runs.
         if self.state.phase == SessionPhase.NOT_STARTED:
             self.state.transition_to(SessionPhase.RUNNING)
+
+        # Auto-pause fallback on remote-attach. The primary mechanism
+        # is `stopOnEntry=True` in the attach args (see remote_attach),
+        # which makes debugpy stop the debuggee at the first statement
+        # after the attach handshake. If that didn't fire (state is
+        # still RUNNING here), send an explicit pause as a backup —
+        # useful for long-running servers that debugpy may not regard
+        # as having a meaningful "entry" left to stop at. Skipped when
+        # the debuggee is already stopped (tdb.breakpoint() hook).
+        if self._is_remote_attach and self.state.phase == SessionPhase.RUNNING:
+            try:
+                threads = await self.client.threads()
+                if threads:
+                    # debugpy pauses the whole interpreter on any single
+                    # thread (Python's GIL makes per-thread pause
+                    # effectively global). First thread is conventionally
+                    # MainThread.
+                    await self.client.pause(threads[0].id)
+            except Exception:
+                log.debug("Auto-pause fallback on remote-attach failed", exc_info=True)
 
     async def stop(self) -> None:
         # Child disconnects run in parallel with a short timeout: when
@@ -775,6 +805,21 @@ class DebugController:
         for scope in self.state.scopes:
             variables = await ac.variables(scope.variables_reference)
             self.state.variables[scope.variables_reference] = variables
+
+    async def fetch_source_content(self, source) -> str:
+        """Ask the active adapter for a file's source via DAP `source`.
+
+        Returns empty string on any failure (no live client, adapter
+        rejects the request, post-mortem mode, etc.). Used by the App
+        when a stack-frame's path isn't on the local filesystem — the
+        canonical remote-attach case.
+        """
+        if self.state.is_post_mortem:
+            return ""
+        client = self._active_client
+        if client is None:
+            return ""
+        return await client.source(source.source_reference, source)
 
     # --- DAP event handlers ---
     # Called synchronously from the DAP read loop.

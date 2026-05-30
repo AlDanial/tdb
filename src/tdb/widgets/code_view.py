@@ -651,13 +651,29 @@ class CodeView(ScrollableContainer, can_focus=True):
     # ---- File loading & rendering ----
 
     def load_file(self, path: str) -> None:
-        from tdb.source_analysis import compute_step_units
-
-        self.source_path = path
         try:
             text = Path(path).read_text(encoding="utf-8", errors="replace")
         except OSError:
             text = f"<Could not read {path}>"
+        self._install_source(text, path)
+
+    def load_content(self, content: str, path: str) -> None:
+        """Install source code from an in-memory string.
+
+        Used when the file's local path isn't readable (the typical
+        remote-attach case where the debuggee's `/home/user/app.py`
+        doesn't exist on the tdb host). `path` is still the
+        debugger-reported path — kept as `source_path` so breakpoint
+        lookups and "did the displayed file change?" checks keep
+        working unchanged.
+        """
+        self._install_source(content, path)
+
+    def _install_source(self, text: str, path: str) -> None:
+        """Shared body of load_file / load_content."""
+        from tdb.source_analysis import compute_step_units
+
+        self.source_path = path
         self._lines = text.splitlines()
         # Step units underpin the "breakpoints land on logical statement
         # starts" rule (see _snap_breakpoint_line). Empty list on parse
