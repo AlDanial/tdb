@@ -65,11 +65,6 @@ def main():
 
     print(f"Step 1: Converting {input_file} to YAML...")
 #   breakpoint()
-    import debugpy
-    debugpy.listen(("0.0.0.0", 5678))
-    print("Waiting for tdb to attach on port 5678...")
-    debugpy.wait_for_client()
-    print("tdb is attached!")
     yaml_file = convert_toml_to_yaml(input_file)
     print(f"Success! Created {yaml_file}")
 

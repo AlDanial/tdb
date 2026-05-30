@@ -255,6 +255,45 @@ class InspectionWorkflows:
                 log.debug("Failed to fetch variables for thread %d", thread_id)
         modal.show_thread_detail(thread_id, frames, scopes, variables)
 
+    # --- Full-Contents (variable subtree pre-fetch) --------------------
+
+    async def load_full_variable(self, ref: int, label: str):
+        """BFS-materialize the subtree rooted at `ref` for the Full-Contents
+        modal. Returns a `FullContentsNode`.
+
+        In post-mortem mode we have no live DAP session — the entire
+        variable graph already lives in `state.variables`. Mirror the
+        special-case from `on_tdb_app_lazy_load_variables` and serve the
+        BFS from that dict instead of the wire.
+        """
+        from tdb.dap.types import Variable
+        from tdb.inspection_full import bfs_load_full
+
+        ctrl = self.app.controller
+        state = ctrl.state
+
+        if state.is_post_mortem:
+            async def fetch(r: int, start: int, count: int) -> list[Variable]:
+                page = state.variables.get(r, [])
+                end = start + count if count else len(page)
+                return page[start:end]
+
+            return await bfs_load_full(
+                fetch, root_ref=ref, root_label=label, cache_writer=None,
+            )
+
+        client = ctrl.active_client
+
+        async def fetch(r: int, start: int, count: int) -> list[Variable]:
+            return await client.variables(r, start=start, count=count)
+
+        return await bfs_load_full(
+            fetch,
+            root_ref=ref,
+            root_label=label,
+            cache_writer=state.variables.__setitem__,
+        )
+
     async def refresh_threads(self) -> None:
         ctrl = self.app.controller
         if ctrl.state.is_terminated or ctrl.state.is_running:

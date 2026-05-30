@@ -43,6 +43,7 @@ from tdb.widgets.modals import (
     _StepModeModal,
     _TracebackModal,
 )
+from tdb.widgets.full_contents_modal import FullContentsModal
 from tdb.widgets.stack_view import StackView
 from tdb.widgets.status_bar import StatusBar
 from tdb.app_helpers import find_readme, unquote_dap_string
@@ -803,6 +804,36 @@ class TdbApp(_AppMessageRoutes, App):
             ),
             callback=on_dismiss,
         )
+
+    def on_variable_view_show_full_contents(
+        self, message: VariableView.ShowFullContents,
+    ) -> None:
+        """Open the Full-Contents modal for a container row.
+
+        Double-clicked (or Enter-activated) in `VariableView`. The modal
+        opens immediately showing 'Loading…'; a background worker then
+        BFS-fetches the full subtree and calls `modal.populate(tree)`.
+        """
+        modal = FullContentsModal(message.label)
+        self.push_screen(modal)
+        self._load_full_contents_worker(modal, message.variables_reference)
+
+    @work(exclusive=True, group="full-contents")
+    async def _load_full_contents_worker(
+        self, modal: FullContentsModal, ref: int,
+    ) -> None:
+        """Background BFS for the Full-Contents modal.
+
+        `exclusive=True` cancels any earlier in-flight fetch if the user
+        double-clicks a second variable before the first finishes. The
+        modal's `populate` no-ops if it was already dismissed.
+        """
+        try:
+            tree = await self._inspection.load_full_variable(ref, modal._label)
+        except Exception:
+            log.exception("Full-Contents load failed (ref=%d)", ref)
+            return
+        modal.populate(tree)
 
     async def on_code_view_run_to_cursor(self, message: CodeView.RunToCursor) -> None:
         try:
