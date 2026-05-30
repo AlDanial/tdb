@@ -328,12 +328,20 @@ def main(argv: list[str] | None = None) -> None:
     # config dir; production reads from CONFIG_DIR (XDG on Unix,
     # %APPDATA%/tdb on Windows).
     log_dir = Path(os.environ.get("TDB_LOG_DIR") or CONFIG_DIR)
-    log_dir.mkdir(parents=True, exist_ok=True)
-    logging.basicConfig(
-        filename=str(log_dir / "tdb.log"),
-        level=logging.DEBUG,
-        format="%(asctime)s %(name)s %(levelname)s %(message)s",
-    )
+    try:
+        log_dir.mkdir(parents=True, exist_ok=True)
+        logging.basicConfig(
+            filename=str(log_dir / "tdb.log"),
+            level=logging.DEBUG,
+            format="%(asctime)s %(name)s %(levelname)s %(message)s",
+        )
+    except OSError:
+        # Read-only filesystem (or perm denied). Run without on-disk
+        # logging; route everything to a NullHandler so stray log calls
+        # don't fall through to lastResort and corrupt the TUI on stderr.
+        root = logging.getLogger()
+        root.addHandler(logging.NullHandler())
+        root.setLevel(logging.CRITICAL + 1)
 
     if args.doc:
         _run_doc()

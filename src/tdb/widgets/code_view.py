@@ -275,6 +275,7 @@ class CodeView(ScrollableContainer, can_focus=True):
         Binding("p", "footer_hint_pause", "pause"),
         Binding("t", "footer_hint_run_to", "run to"),
         Binding("b", "footer_hint_breakpoint", "breakpoint"),
+        Binding("e", "footer_hint_show_traceback", "exception"),
         # Navigation hints — vim scheme.
         Binding("j", "footer_hint_nav_vim_down", "down"),
         Binding("k", "footer_hint_nav_vim_up", "up"),
@@ -304,6 +305,7 @@ class CodeView(ScrollableContainer, can_focus=True):
         "footer_hint_pause",
         "footer_hint_run_to",
         "footer_hint_breakpoint",
+        "footer_hint_show_traceback",
     )
     _VIM_NAV_FOOTER_HINT_ACTIONS = (
         "footer_hint_nav_vim_down",
@@ -359,6 +361,9 @@ class CodeView(ScrollableContainer, can_focus=True):
         def __init__(self, mode: Mode) -> None:
             self.mode = mode
             super().__init__()
+
+    class ShowLastTraceback(Message):
+        pass
 
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
@@ -515,6 +520,8 @@ class CodeView(ScrollableContainer, can_focus=True):
             self.post_message(self.DebugAction("restart"))
         elif action == "quit":
             self.post_message(self.DebugAction("quit"))
+        elif action == "show_traceback":
+            self.post_message(self.ShowLastTraceback())
 
     # ---- Footer hint plumbing ----
     # The action_footer_hint_* methods are no-op targets for the c/n/s/p/t/b
@@ -529,6 +536,7 @@ class CodeView(ScrollableContainer, can_focus=True):
     def action_footer_hint_pause(self) -> None: ...
     def action_footer_hint_run_to(self) -> None: ...
     def action_footer_hint_breakpoint(self) -> None: ...
+    def action_footer_hint_show_traceback(self) -> None: ...
     def action_footer_hint_nav_vim_down(self) -> None: ...
     def action_footer_hint_nav_vim_up(self) -> None: ...
     def action_footer_hint_nav_vim_end(self) -> None: ...

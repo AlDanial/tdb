@@ -778,6 +778,32 @@ class TdbApp(_AppMessageRoutes, App):
             log.exception("Error navigating stack")
         self._update_ui_state()
 
+    def on_code_view_show_last_traceback(
+        self, message: CodeView.ShowLastTraceback,
+    ) -> None:
+        """Re-summon the most recent traceback modal (`e` in CodeView DEBUG mode).
+
+        Silent no-op if no exception has occurred this session — the
+        affordance is best-effort. Cache is cleared by `panels.clear()`
+        on session restart.
+        """
+        exc = self.panels.last_exception_text
+        if exc is None:
+            return
+
+        def on_dismiss(result: str | None) -> None:
+            if result == "restart":
+                self._restart_session()
+
+        self.push_screen(
+            _TracebackModal(
+                exc,
+                self.panels.last_frames_text or "",
+                can_restart=self.panels.last_can_restart,
+            ),
+            callback=on_dismiss,
+        )
+
     async def on_code_view_run_to_cursor(self, message: CodeView.RunToCursor) -> None:
         try:
             await self.controller.run_to_cursor(message.source_path, message.line)

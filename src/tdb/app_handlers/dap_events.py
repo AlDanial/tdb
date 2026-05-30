@@ -134,11 +134,15 @@ class DapEventCoordinator:
             if result == "restart":
                 self.app._restart_session()
 
+        can_restart = self.app.controller.supports_restart
+        self.app.panels.last_exception_text = exception_text
+        self.app.panels.last_frames_text = frames_text
+        self.app.panels.last_can_restart = can_restart
         self.app.push_screen(
             _TracebackModal(
                 exception_text,
                 frames_text,
-                can_restart=self.app.controller.supports_restart,
+                can_restart=can_restart,
             ),
             callback=on_dismiss,
         )
@@ -274,11 +278,16 @@ class DapEventCoordinator:
             if result == "restart":
                 self.app._restart_session()
 
+        exc_label = exception_text or "Program crashed"
+        can_restart = self.app.controller.supports_restart
+        self.app.panels.last_exception_text = exc_label
+        self.app.panels.last_frames_text = frames_text
+        self.app.panels.last_can_restart = can_restart
         self.app.push_screen(
             _TracebackModal(
-                exception_text or "Program crashed",
+                exc_label,
                 frames_text,
-                can_restart=self.app.controller.supports_restart,
+                can_restart=can_restart,
             ),
             callback=on_dismiss,
         )

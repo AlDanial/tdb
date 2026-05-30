@@ -1,7 +1,8 @@
 # docker build -t tdb .
+# docker build --target test -t tdb-test .
 # docker run -it --rm tdb [args]
 
-FROM ghcr.io/astral-sh/uv:python3.14-alpine
+FROM ghcr.io/astral-sh/uv:python3.14-alpine AS base
 RUN adduser -D appuser
 ENV PATH="/app/.venv/bin:$PATH"
 
@@ -12,6 +13,11 @@ USER appuser
 RUN ["uv", "sync", "--all-extras"]
 RUN ["uv", "pip", "install", "-e", "."]
 
-ENTRYPOINT ["tdb"]
+# - - - - - test target
+FROM base AS test
+RUN ["uv", "run", "pytest"]
+# - - - - -
 
+FROM base AS final
+ENTRYPOINT ["tdb"]
 CMD ["--help"]

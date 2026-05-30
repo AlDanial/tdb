@@ -223,6 +223,7 @@ those for gdb/pdb, with some aliases and extras thrown in for convenience.
 | `u` / `d` | Navigate stack up (caller) / down (callee) |
 | `j` / `k` | Move cursor down / up (with count: `5j`, `10k`) |
 | `G` | Go to last line (with count: `42G` jumps to line 42) |
+| `e` | Re-display the last error (traceback) |
 | `R` | Restart the debug session |
 | `Ctrl+Q` | Quit |
 
@@ -316,6 +317,9 @@ When the debuggee raises an unhandled exception, `tdb`:
 3. Populates the Stack View with the exception's call stack
 4. Lets you press `R` to restart or `Escape` to dismiss
 
+> Note:  after dismissing the traceback modal, you
+> can display it again by hitting `e` when focus is in the Code View.
+
 ### Post-Mortem Exception Hook
 
 You can have `tdb` pop open automatically when *any* Python program crashes without the
@@ -357,7 +361,6 @@ memoization.
 
 `tdb` has an improved implemenation of the standard `breakpoint()` function (or equivalently,
 `pdb.set_trace()`) used to pause at a specific line to inspect, then
-here=
 continuing--use `tdb.breakpoint()`:
 
 ```python
@@ -408,6 +411,9 @@ as the main Variables View) for the selected task
   cycles" section at the top of the graph. Selecting a node in the tree highlights the
   corresponding task in the table.
 - Navigate with arrow keys; press `r` to refresh, `Escape` to close
+
+> Note:  Async task relationships may be directed acyclic graphs (DAGs) rather than trees
+> but I don't know of a way to visualize DAGs in textual.
 
 RPC equivalents:
 

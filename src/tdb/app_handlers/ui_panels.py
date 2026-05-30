@@ -43,6 +43,13 @@ class UIPanels:
     # Textual's screen stack and we don't track its instance — this
     # flag just records "did we already react to the current stop?".
     exception_modal_shown: bool = False
+    # Cached payload of the most recent `_TracebackModal` so the user
+    # can re-summon it with `e` (CodeView DEBUG mode) after dismissal.
+    # Cleared on session restart, not on `on_continued` — once seen,
+    # the user may want to revisit it later in the same session.
+    last_exception_text: str | None = None
+    last_frames_text: str | None = None
+    last_can_restart: bool = False
 
     def clear(self) -> None:
         """Drop all modal refs and reset transient flags. Called on
@@ -51,3 +58,6 @@ class UIPanels:
         self.processes = None
         self.async_tasks = None
         self.exception_modal_shown = False
+        self.last_exception_text = None
+        self.last_frames_text = None
+        self.last_can_restart = False
