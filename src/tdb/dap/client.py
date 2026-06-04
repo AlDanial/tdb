@@ -313,17 +313,16 @@ class DAPClient:
         port: int = 0,
         sub_process_id: int | None = None,
         just_my_code: bool = True,
-        stop_on_entry: bool = False,
     ) -> asyncio.Future[Response]:
         """Send attach request. Returns a Future (same pattern as launch).
 
         Use subProcessId (not processId) to route to a child session
         without triggering ptrace injection.
 
-        `stop_on_entry=True` tells debugpy to suspend the debuggee at
-        the first statement after the attach handshake completes —
-        without it, the program runs freely from `wait_for_client()`
-        and short scripts can finish before any pause request lands.
+        Note: debugpy ignores `stopOnEntry` for attach (only honored
+        when start_reason == "launch"). To stop the debuggee at the
+        first statement after attach, send a `pause` request before
+        `configurationDone` — see controller.do_configure.
         """
         arguments: dict[str, Any] = {
             "type": "debugpy",
@@ -331,7 +330,6 @@ class DAPClient:
             "connect": {"host": host, "port": port},
             "justMyCode": just_my_code,
             "subProcess": True,
-            "stopOnEntry": stop_on_entry,
         }
         if sub_process_id is not None:
             arguments["subProcessId"] = sub_process_id

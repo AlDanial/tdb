@@ -229,17 +229,7 @@ class DebugController:
         await self.client.connect(host, port)
         await self.client.initialize()
 
-        # `stopOnEntry=True` is the standard DAP way to say "pause the
-        # debuggee immediately after the attach handshake". Without it,
-        # debugpy unblocks `wait_for_client()` as soon as we send
-        # `configurationDone` and short programs can run to completion
-        # before any post-hoc pause request lands (we'd see a
-        # `terminated` event with no `stopped` in between).
-        self._launch_future = await self.client.attach(
-            host=host,
-            port=port,
-            stop_on_entry=True,
-        )
+        self._launch_future = await self.client.attach(host=host, port=port)
 
     async def do_configure(self) -> None:
         """Called after 'initialized' event. Sends breakpoints + configurationDone.
@@ -259,6 +249,28 @@ class DebugController:
                     self._enabled_bps(bps),
                 )
 
+        # Pre-arm pause for remote-attach BEFORE configurationDone.
+        # debugpy ignores `stopOnEntry` for attach (only honored for
+        # launch — see pydevd_process_net_command_json.py:492). Sending
+        # `pause` after configurationDone races the debuggee: short
+        # programs (e.g. examples/pi_remote_attach.py) can run to
+        # completion in the ~100ms before the pause request lands.
+        # Sending pause BEFORE configurationDone queues the "suspend
+        # at next traced line" flag inside debugpy; when configurationDone
+        # unblocks wait_for_client(), the very first user-code statement
+        # trips the flag and emits `stopped` deterministically.
+        # Skipped if the debuggee is already paused (tdb.breakpoint() hook).
+        if self._is_remote_attach and self.state.phase != SessionPhase.STOPPED:
+            try:
+                threads = await self.client.threads()
+                if threads:
+                    # debugpy pauses the whole interpreter on any single
+                    # thread (GIL makes per-thread pause effectively
+                    # global). First thread is conventionally MainThread.
+                    await self.client.pause(threads[0].id)
+            except Exception:
+                log.debug("Pre-arm pause on remote-attach failed", exc_info=True)
+
         # Signal configuration complete — this unblocks the launch response
         await self.client.configuration_done()
 
@@ -275,26 +287,6 @@ class DebugController:
         # line runs.
         if self.state.phase == SessionPhase.NOT_STARTED:
             self.state.transition_to(SessionPhase.RUNNING)
-
-        # Auto-pause fallback on remote-attach. The primary mechanism
-        # is `stopOnEntry=True` in the attach args (see remote_attach),
-        # which makes debugpy stop the debuggee at the first statement
-        # after the attach handshake. If that didn't fire (state is
-        # still RUNNING here), send an explicit pause as a backup —
-        # useful for long-running servers that debugpy may not regard
-        # as having a meaningful "entry" left to stop at. Skipped when
-        # the debuggee is already stopped (tdb.breakpoint() hook).
-        if self._is_remote_attach and self.state.phase == SessionPhase.RUNNING:
-            try:
-                threads = await self.client.threads()
-                if threads:
-                    # debugpy pauses the whole interpreter on any single
-                    # thread (Python's GIL makes per-thread pause
-                    # effectively global). First thread is conventionally
-                    # MainThread.
-                    await self.client.pause(threads[0].id)
-            except Exception:
-                log.debug("Auto-pause fallback on remote-attach failed", exc_info=True)
 
     async def stop(self) -> None:
         # Child disconnects run in parallel with a short timeout: when
