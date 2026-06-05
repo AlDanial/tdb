@@ -272,9 +272,13 @@ def _parse_path_mappings(
         # Normalize remote: forward slashes, no trailing separator. Modern
         # Windows accepts forward slashes so we don't need posixpath vs
         # ntpath gymnastics — one normalized form covers both.
-        remote_norm = remote.replace("\\", "/").rstrip("/")
+        remote_norm = remote.replace("\\", "/").strip()
         if not remote_norm:
-            parser.error(f"--remote-root cannot be empty or root: {remote}")
+            parser.error(f"--remote-root cannot be empty: {remote}")
+        if remote_norm != "/":
+            remote_norm = remote_norm.rstrip("/")
+            if not remote_norm:
+                remote_norm = "/"
         pairs.append((str(local_path), remote_norm))
     args.path_mappings = pairs
 
