@@ -373,23 +373,7 @@ def test_breakpoint_relative_path_resolved_under_local_root(tmp_path):
     local = tmp_path / "code"
     local.mkdir()
     src = local / "program.py"
-    src.write_text("\n" * 20)
-    args = parse_args(
-        [
-            "-r",
-            "5678",
-            "--local-root",
-            str(local),
-            "--remote-root",
-            "/srv/code",
-            "-k",
-            "program.py:5",
-        ]
-    )
-    # Resolved to the local-root copy; snap_breakpoint may move the line
-    # to the nearest statement (blank file → likely dropped, so only
-    # assert path-resolution here by inspecting before-snap state).
-    # Use a real statement so snap_breakpoint keeps it:
+    # Use a real statement so snap_breakpoint keeps the breakpoint (and avoid warnings).
     src.write_text("x = 1\n" * 20)
     args = parse_args(
         [
