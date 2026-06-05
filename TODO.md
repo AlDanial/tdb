@@ -1,1 +1,7 @@
-when the debuggee runs a debugpy service, it should not open tdb when the remote attachment ends
+remote attachment 
+
+# this works:  tdb -r PORT
+
+# this fails:  tdb -r PORT  file.py
+
+# need to be able to specify a file so that an additional breakpoint can be set

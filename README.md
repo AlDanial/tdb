@@ -526,6 +526,36 @@ All debugging features (breakpoints, stepping, variable inspection, threads, pro
 async tasks) work in remote attach mode. The Code View automatically navigates to the
 source file when the program stops.
 
+**Mapping remote paths to local copies (`--local-root` / `--remote-root`):** when the
+debuggee lives on another machine, or in a container, or simply in a different directory
+on the same machine, the source paths it reports (and the paths it expects breakpoints
+to refer to) won't match anything on the `tdb` host. To bridge that gap, give `tdb` one
+or more `--local-root` / `--remote-root` pairs. Each `--local-root` points at a local
+directory containing a copy of the code; each `--remote-root` is the corresponding path
+on the debuggee. The two flags must be supplied in equal numbers and are paired in CLI
+order via `zip()`, so the first `--local-root` matches the first `--remote-root`, the
+second matches the second, and so on. `debugpy` then translates paths bidirectionally:
+breakpoints set on a local file land on the matching remote file, and source paths
+returned in stopped-events / stack-traces are rewritten back to the local copy so the
+Code View loads directly from disk (no DAP `source` round-trip needed).
+
+These flags are required whenever you want to set a `-k` breakpoint against a remote
+debuggee whose code lives at a different path than your local copy. For example, if the
+remote runs `program.py` at `/path/to/code/program.py` and your local copy is at
+`/local/project/code/program.py`, set a breakpoint at line 321 with:
+
+```bash
+tdb -r RHOST:15678 \
+    --local-root /local/project/code \
+    --remote-root /path/to/code \
+    -k program.py:321
+```
+
+With `--local-root` set, a relative `-k FILE:LINE` is resolved by searching each
+`--local-root` directory in CLI order (first match wins); absolute paths still work as
+before. Multiple pairs can be supplied to mirror multiple source trees (e.g. an
+application directory and a shared library directory) in one invocation.
+
 ### External Terminal Support
 
 Some Python programs, notably text user interfaces, use terminal control
@@ -657,6 +687,7 @@ usage: tdb [-h] [-v] [-r [HOST:]PORT] [--cwd CWD] [--no-stop-on-entry]
            [--no-just-my-code] [--no-subprocess] [--python PYTHON] [--pv]
            [--keybindings {default,vim,emacs}]
            [--terminal {xterm,konsole,gnome-terminal,ghostty,kitty,iterm2,warp,wezterm,terminator}]
+           [--local-root PATH] [--remote-root PATH]
            [--server] [--headless] [-k FILE:LINE|LINE] [--server-port SERVER_PORT] [-d] [--doc-text]
            [program] [args ...]
 ```
@@ -664,6 +695,8 @@ usage: tdb [-h] [-v] [-r [HOST:]PORT] [--cwd CWD] [--no-stop-on-entry]
 | Flag | Description |
 |------|-------------|
 | `-r HOST:PORT` | Attach to a remote debugpy server |
+| `--local-root PATH` | Local directory containing a copy of remote code (repeat to mirror multiple trees). Pair with `--remote-root`; counts must match. Required when `-k` sets a breakpoint against a remote debuggee whose code lives at a different path. |
+| `--remote-root PATH` | Remote directory matched to `--local-root` (same CLI position via `zip()`). |
 | `-k`, `--breakpoint FILE:LINE|LINE` | Set a breakpoint (may be repeated). Passing `-k` implies `--no-stop-on-entry` so the program runs straight to the first breakpoint. |
 | `--no-stop-on-entry` | Do not pause at the first line (default: stop on entry; automatic when `-k` is given) |
 | `--cwd DIR` | Working directory for the debuggee |

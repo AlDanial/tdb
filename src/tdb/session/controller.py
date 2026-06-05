@@ -211,7 +211,12 @@ class DebugController:
             sub_process=p["sub_process"],
         )
 
-    async def remote_attach(self, host: str, port: int) -> None:
+    async def remote_attach(
+        self,
+        host: str,
+        port: int,
+        path_mappings: list[tuple[str, str]] | None = None,
+    ) -> None:
         """Attach to a remote debugpy server listening on host:port.
 
         DAP sequence (same as launch, but with attach instead):
@@ -221,6 +226,9 @@ class DebugController:
         4. debugpy sends 'initialized' event
         5. on_dap_initialized handler sends breakpoints + configurationDone
         6. debugpy sends attach response
+
+        `path_mappings` is forwarded to debugpy's `pathMappings` attach
+        arg — see `dap/client.py::attach`.
         """
         self._setup_event_handlers()
         self._launch_params = {}
@@ -229,7 +237,11 @@ class DebugController:
         await self.client.connect(host, port)
         await self.client.initialize()
 
-        self._launch_future = await self.client.attach(host=host, port=port)
+        self._launch_future = await self.client.attach(
+            host=host,
+            port=port,
+            path_mappings=path_mappings,
+        )
 
     async def do_configure(self) -> None:
         """Called after 'initialized' event. Sends breakpoints + configurationDone.

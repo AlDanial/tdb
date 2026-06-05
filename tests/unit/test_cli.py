@@ -257,3 +257,215 @@ def test_doc_text_renders_to_stdout(capsys):
     assert "textual-debugger" in out
     # And tables in the README produce box-drawing characters.
     assert "─" in out or "━" in out
+
+
+# --- --local-root / --remote-root path mappings -----------------------------
+
+
+def test_path_mappings_default_empty():
+    args = parse_args(["-r", "5678"])
+    assert args.path_mappings == []
+
+
+def test_path_mappings_single_pair(tmp_path):
+    local = tmp_path / "code"
+    local.mkdir()
+    args = parse_args(
+        ["-r", "5678", "--local-root", str(local), "--remote-root", "/srv/code"]
+    )
+    assert args.path_mappings == [(str(local.resolve()), "/srv/code")]
+
+
+def test_path_mappings_multiple_pairs_zip_in_order(tmp_path):
+    a = tmp_path / "a"
+    a.mkdir()
+    b = tmp_path / "b"
+    b.mkdir()
+    args = parse_args(
+        [
+            "-r",
+            "5678",
+            "--local-root",
+            str(a),
+            "--remote-root",
+            "/srv/A",
+            "--local-root",
+            str(b),
+            "--remote-root",
+            "/srv/B",
+        ]
+    )
+    assert args.path_mappings == [
+        (str(a.resolve()), "/srv/A"),
+        (str(b.resolve()), "/srv/B"),
+    ]
+
+
+def test_path_mappings_count_mismatch_errors(tmp_path):
+    local = tmp_path / "code"
+    local.mkdir()
+    with pytest.raises(SystemExit):
+        parse_args(
+            [
+                "-r",
+                "5678",
+                "--local-root",
+                str(local),
+                "--remote-root",
+                "/srv/A",
+                "--remote-root",
+                "/srv/B",
+            ]
+        )
+
+
+def test_path_mappings_require_remote_attach(tmp_path):
+    prog = tmp_path / "x.py"
+    prog.write_text("\n")
+    local = tmp_path / "code"
+    local.mkdir()
+    with pytest.raises(SystemExit):
+        parse_args(
+            [
+                str(prog),
+                "--local-root",
+                str(local),
+                "--remote-root",
+                "/srv/A",
+            ]
+        )
+
+
+def test_path_mappings_local_root_must_be_directory(tmp_path):
+    not_a_dir = tmp_path / "nope.py"
+    not_a_dir.write_text("\n")
+    with pytest.raises(SystemExit):
+        parse_args(
+            [
+                "-r",
+                "5678",
+                "--local-root",
+                str(not_a_dir),
+                "--remote-root",
+                "/srv/A",
+            ]
+        )
+
+
+def test_path_mappings_remote_root_normalized(tmp_path):
+    local = tmp_path / "code"
+    local.mkdir()
+    # Trailing slash + backslashes both normalize to clean forward-slash form.
+    args = parse_args(
+        [
+            "-r",
+            "5678",
+            "--local-root",
+            str(local),
+            "--remote-root",
+            r"C:\srv\code\\",
+        ]
+    )
+    assert args.path_mappings == [(str(local.resolve()), "C:/srv/code")]
+
+
+def test_breakpoint_relative_path_resolved_under_local_root(tmp_path):
+    local = tmp_path / "code"
+    local.mkdir()
+    src = local / "program.py"
+    src.write_text("\n" * 20)
+    args = parse_args(
+        [
+            "-r",
+            "5678",
+            "--local-root",
+            str(local),
+            "--remote-root",
+            "/srv/code",
+            "-k",
+            "program.py:5",
+        ]
+    )
+    # Resolved to the local-root copy; snap_breakpoint may move the line
+    # to the nearest statement (blank file → likely dropped, so only
+    # assert path-resolution here by inspecting before-snap state).
+    # Use a real statement so snap_breakpoint keeps it:
+    src.write_text("x = 1\n" * 20)
+    args = parse_args(
+        [
+            "-r",
+            "5678",
+            "--local-root",
+            str(local),
+            "--remote-root",
+            "/srv/code",
+            "-k",
+            "program.py:5",
+        ]
+    )
+    assert args.breakpoint == [(str(src.resolve()), 5)]
+
+
+def test_breakpoint_relative_path_not_found_under_local_root_errors(tmp_path):
+    local = tmp_path / "code"
+    local.mkdir()
+    with pytest.raises(SystemExit):
+        parse_args(
+            [
+                "-r",
+                "5678",
+                "--local-root",
+                str(local),
+                "--remote-root",
+                "/srv/code",
+                "-k",
+                "nope.py:5",
+            ]
+        )
+
+
+def test_breakpoint_absolute_path_still_works_with_local_root(tmp_path):
+    local = tmp_path / "code"
+    local.mkdir()
+    elsewhere = tmp_path / "elsewhere.py"
+    elsewhere.write_text("x = 1\n" * 20)
+    args = parse_args(
+        [
+            "-r",
+            "5678",
+            "--local-root",
+            str(local),
+            "--remote-root",
+            "/srv/code",
+            "-k",
+            f"{elsewhere}:5",
+        ]
+    )
+    assert args.breakpoint == [(str(elsewhere.resolve()), 5)]
+
+
+def test_breakpoint_relative_searches_local_roots_in_order(tmp_path):
+    a = tmp_path / "a"
+    a.mkdir()
+    b = tmp_path / "b"
+    b.mkdir()
+    # Only the second local-root has the file.
+    src = b / "found.py"
+    src.write_text("x = 1\n" * 20)
+    args = parse_args(
+        [
+            "-r",
+            "5678",
+            "--local-root",
+            str(a),
+            "--remote-root",
+            "/srv/A",
+            "--local-root",
+            str(b),
+            "--remote-root",
+            "/srv/B",
+            "-k",
+            "found.py:5",
+        ]
+    )
+    assert args.breakpoint == [(str(src.resolve()), 5)]

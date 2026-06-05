@@ -191,6 +191,7 @@ class TdbApp(_AppMessageRoutes, App):
         cli_breakpoints: list[tuple[str, int]] | None = None,
         attach_host: str | None = None,
         attach_port: int | None = None,
+        path_mappings: list[tuple[str, str]] | None = None,
         sub_process: bool = True,
         server_port: int | None = None,
         post_mortem_snapshot: dict | None = None,
@@ -210,6 +211,7 @@ class TdbApp(_AppMessageRoutes, App):
         self._cli_breakpoints = cli_breakpoints or []
         self._attach_host = attach_host
         self._attach_port = attach_port
+        self._path_mappings = path_mappings or []
         self._sub_process = sub_process
         self._server_port = server_port
         self._post_mortem_snapshot = post_mortem_snapshot
@@ -402,6 +404,7 @@ class TdbApp(_AppMessageRoutes, App):
                     await self.controller.remote_attach(
                         host=self._attach_host,
                         port=self._attach_port,
+                        path_mappings=self._path_mappings or None,
                     )
                 except OSError as exc:
                     # No server listening, route unreachable, DNS failure,

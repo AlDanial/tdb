@@ -313,6 +313,7 @@ class DAPClient:
         port: int = 0,
         sub_process_id: int | None = None,
         just_my_code: bool = True,
+        path_mappings: list[tuple[str, str]] | None = None,
     ) -> asyncio.Future[Response]:
         """Send attach request. Returns a Future (same pattern as launch).
 
@@ -323,6 +324,11 @@ class DAPClient:
         when start_reason == "launch"). To stop the debuggee at the
         first statement after attach, send a `pause` request before
         `configurationDone` — see controller.do_configure.
+
+        `path_mappings` is a list of `(local_root, remote_root)` pairs;
+        debugpy translates paths bidirectionally so the tdb host can
+        read local copies of remote source files instead of fetching
+        them via DAP `source` requests.
         """
         arguments: dict[str, Any] = {
             "type": "debugpy",
@@ -333,6 +339,11 @@ class DAPClient:
         }
         if sub_process_id is not None:
             arguments["subProcessId"] = sub_process_id
+        if path_mappings:
+            arguments["pathMappings"] = [
+                {"localRoot": local, "remoteRoot": remote}
+                for local, remote in path_mappings
+            ]
         return await self._send_raw("attach", arguments)
 
     async def configuration_done(self) -> None:
