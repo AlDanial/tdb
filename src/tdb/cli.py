@@ -276,10 +276,19 @@ def _parse_path_mappings(
         if not remote_norm:
             parser.error(f"--remote-root cannot be empty: {remote}")
         if remote_norm != "/":
+            had_trailing = remote_norm.endswith("/")
             remote_norm = remote_norm.rstrip("/")
+            # Preserve Windows drive root (e.g. "C:/") — stripping the slash
+            # would change semantics to drive-relative "C:".
+            if (
+                had_trailing
+                and len(remote_norm) == 2
+                and remote_norm[0].isalpha()
+                and remote_norm[1] == ":"
+            ):
+                remote_norm += "/"
             if not remote_norm:
                 remote_norm = "/"
-        pairs.append((str(local_path), remote_norm))
     args.path_mappings = pairs
 
 
