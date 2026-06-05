@@ -346,7 +346,8 @@ def _parse_breakpoints(
                         f"Breakpoint file not found: {file_part} "
                         f"(searched: cwd, {roots_str})"
                     )
-                parser.error(f"Breakpoint file not found: {file_part}")
+                else:
+                    parser.error(f"Breakpoint file not found: {file_part}")
             parsed_bps.append((str(bp_path), line))
         else:
             try:
