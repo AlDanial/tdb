@@ -41,6 +41,8 @@ async def run_headless(
     `dap/client.py::attach`.
     """
     is_remote = attach_host is not None and attach_port is not None
+    if not is_remote and program is None:
+        raise ValueError("program is required unless remote attach is used")
 
     handler = ServerEventHandler()
     controller = DebugController(handler)
