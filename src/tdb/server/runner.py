@@ -18,7 +18,7 @@ log = logging.getLogger(__name__)
 
 
 async def run_headless(
-    program: str,
+    program: str | None,
     args: list[str] | None = None,
     cwd: str | None = None,
     stop_on_entry: bool = False,
