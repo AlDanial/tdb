@@ -23,9 +23,9 @@ It specifically supports modules
     - `threading` (with a thread inspector)
     - `multiprocessing` / `concurrent.futures` (with automatic child process attachment and a process inspector)
 
-- supports remote attachment to any debugpy-enabled Python program
+- supports remote attachment to debugpy-enabled Python programs
 
-- includes a JSON-RPC server mode for programmatic debug control, making it suitable for
+- includes a JSON-RPC server mode that enables programmatic debug control, making it suitable for
 automated, headless debugging workflows and AI-assisted debugging
 
 - can spawn the debuggee in an external terminal to enable debugging TUI applications
@@ -117,10 +117,20 @@ tdb --no-stop-on-entry my_program.py
 tdb --terminal xterm my_program.py
 
 # attach to a remote Python program that has a debugpy server on port 5678
-tdb -r remotehost:5678 my_program.py
+# (source code is automatically downloaded from the remote host)
+tdb -r remotehost:5678
 
-# prevent `argparse` confusion by separating `tdb` switches from
-# the debuggee switches by prefixing the debuggee with `--`
+# attach to a remote Python program that has a debugpy server on port 5678
+# and set a breakpoint where tdb and the remote program have the same
+# source code layout
+tdb -r remotehost:5678  -k my_program.py:42
+
+# attach to a remote Python program that has a debugpy server on port 5678
+# and set a breakpoint where code on the local host is at a different location
+# than code on the remote host
+tdb -r remotehost:5678 --local-root /my/code/dir --remote-root /app -k my_program.py:42
+
+# separate tdb arguments from debuggee arguments with `--` 
 tdb --python /path/to/venv/bin/python -- my_program.py -k 17 --max 23.3
 ```
 
@@ -134,7 +144,7 @@ python -m tdb my_program.py
 
 ```
 ┌─ Header ──────────────────────────────────────────────┐
-├─ Menu Bar (File | Configure | Help) ──────────────────┤
+├─ Menu Bar (File / Configure / Help)───────────────────┤
 │                           │                           │
 │   Code View               │  Console View (stdout)    │
 │   (source + breakpoints)  ├───────────────────────────┤
@@ -205,7 +215,7 @@ Switch from Navigate back to Debug mode with `Escape`.
 
 > **Note:** Many terminals send the byte sequence `ESC+f` for `Alt+F`, which Textual's
 ANSI parser rewrites to `Ctrl+Right` (the readline "forward-word" convention).
-`tdb` binds both so `Alt+F` works as expected regardless.
+`tdb` binds both so `Alt+F` works as expected.
 
 ### Debugging Controls
 
@@ -225,7 +235,8 @@ those for gdb/pdb, with some aliases and extras thrown in for convenience.
 | `G` | Go to last line (with count: `42G` jumps to line 42) |
 | `e` | Re-display the last error (traceback) |
 | `R` | Restart the debug session |
-| `Ctrl+Q` | Quit |
+| `q q` | Quit |
+| `Ctrl+q` | Quit |
 
 > **Note:** `f` ("finish") and `r` ("return") are both aliases for step-out. DAP's only
 "exit-a-function" primitive is `stepOut`, which runs the rest of the current function
@@ -246,7 +257,7 @@ print(results)   # next stop lands here, not on each sub-line above
 
 lands on `print(results)`, not on each interior sub-line of the `gather` call. Switch to
 **Line** mode (Configure > Step Mode) to get debugpy's native per-line behavior, which
-stops on each physical line — useful for inspecting how a complex expression is built up.
+stops on each physical line--useful for inspecting how a complex expression is built up.
 The choice is saved to `~/.config/tdb/config.json`.
 
 ### Breakpoints
@@ -272,6 +283,9 @@ Breakpoints persist across session restarts.
 The Variable View shows a tree of scopes (Locals, Globals) with all variables in the current
 frame. Expand nodes to drill into complex objects.  Children are loaded lazily on demand.
 Variable values can be changed in the Evaluate Console.
+
+Double-click a variable to display it in a modal.  This simplifies inspection of
+large or deeply nested data structures.
 
 ### Call Stack
 
@@ -306,8 +320,8 @@ The Console View captures stdout (normal text) and stderr (red text) from the de
 in real time.
 
 If your program prints a lot, or prompts for input, or uses colors or
-terminal control codes, consider running it in an external terminal
-with `--terminal` for the best experience.
+terminal control codes, run the program in an external terminal
+with `--terminal` for a better experience.
 
 ### Crash Detection
 
@@ -328,7 +342,6 @@ need to launch through `tdb` up front. Install the hook once at the top of your 
 ```python
 import sys
 import tdb
-
 sys.excepthook = tdb.exception_hook
 ```
 
@@ -346,11 +359,11 @@ In post-mortem mode you can:
 - Read the full traceback (including chained `cause`/`context` exceptions) in the Console View
 - Jump around the source with the full Code View (syntax highlighting, goto-line, etc.)
 
-Stepping, `continue`, breakpoints, restart, and Evaluate are disabled. The original
-interpreter is gone, the view is a frozen snapshot. Press `q` to exit.
+Stepping, continue, breakpoints, restart, and the Evaluate View are disabled. The original
+interpreter is gone since the view is a frozen snapshot. Press `q` to exit.
 
 The hook is a no-op when stdin/stdout aren't a tty (e.g. when your program is piped or
-run from cron), so it's safe to leave installed in production-style code. Snapshots are
+run from cron), so it is safe to leave installed in production code. Snapshots are
 written to a temp file that is deleted as soon as `tdb` exits.
 
 Snapshot depth / breadth is capped (5 levels, 50 children per container) to keep the
@@ -383,7 +396,7 @@ spawns `python -m tdb -r <port>` as a subprocess so the TUI takes over the termi
 and pauses the calling thread at the line that called `tdb.breakpoint()` (the hook
 auto-steps out of its own helper so you land in your own frame, not inside
 `breakpoint_hook.py`). Stepping (`n`/`s`/`o`), `continue`, and setting/removing breakpoints
-all work normally; quitting `tdb` (`Ctrl+Q`) detaches without killing the program, and
+all work normally; quitting `tdb` (`Ctrl+q`) detaches without killing the program, and
 debugpy auto-resumes any threads still paused.
 
 This differs from `tdb.exception_hook` in one way:
@@ -405,7 +418,8 @@ active tasks (updated each time the program stops). Click it to open a full-scre
   primitive (`Lock.acquire`, `Queue.get`, `asyncio.sleep`, …), and coroutine
 - **Right pane**: detail view with full stack trace and an expandable variable tree (same
 as the main Variables View) for the selected task
-- Press `g` to switch the right pane to the **wait graph** — a tree showing each blocked
+- Press `g` to switch the right pane to the **wait graph** which is a tree showing
+  each blocked
   task, the asyncio primitive it's parked on, and the task(s) holding that primitive.
   Cycles (deadlocks) are highlighted in red both in the task table and as a "Deadlock
   cycles" section at the top of the graph. Selecting a node in the tree highlights the
@@ -525,6 +539,36 @@ tdb -r 5678 -k my_program.py:42
 All debugging features (breakpoints, stepping, variable inspection, threads, processes,
 async tasks) work in remote attach mode. The Code View automatically navigates to the
 source file when the program stops.
+
+**Mapping remote paths to local copies (`--local-root` / `--remote-root`):** when the
+debuggee lives on another machine, or in a container, or simply in a different directory
+on the same machine, the source paths it reports (and the paths it expects breakpoints
+to refer to) won't match anything on the `tdb` host. To bridge that gap, give `tdb` one
+or more `--local-root` / `--remote-root` pairs. Each `--local-root` points at a local
+directory containing a copy of the code; each `--remote-root` is the corresponding path
+on the debuggee. The two flags must be supplied in equal numbers and are paired in CLI
+order via `zip()`, so the first `--local-root` matches the first `--remote-root`, the
+second matches the second, and so on. `debugpy` then translates paths bidirectionally:
+breakpoints set on a local file land on the matching remote file, and source paths
+returned in stopped-events / stack-traces are rewritten back to the local copy so the
+Code View loads directly from disk (no DAP `source` round-trip needed).
+
+These flags are required whenever you want to set a `-k` breakpoint against a remote
+debuggee whose code lives at a different path than your local copy. For example, if the
+remote runs `program.py` at `/path/to/code/program.py` and your local copy is at
+`/local/project/code/program.py`, set a breakpoint at line 321 with:
+
+```bash
+tdb -r RHOST:15678 \
+    --local-root /local/project/code \
+    --remote-root /path/to/code \
+    -k program.py:321
+```
+
+With `--local-root` set, a relative `-k FILE:LINE` is resolved by searching each
+`--local-root` directory in CLI order (first match wins); absolute paths still work as
+before. Multiple pairs can be supplied to mirror multiple source trees (e.g. an
+application directory and a shared library directory) in one invocation.
 
 ### External Terminal Support
 
@@ -657,6 +701,7 @@ usage: tdb [-h] [-v] [-r [HOST:]PORT] [--cwd CWD] [--no-stop-on-entry]
            [--no-just-my-code] [--no-subprocess] [--python PYTHON] [--pv]
            [--keybindings {default,vim,emacs}]
            [--terminal {xterm,konsole,gnome-terminal,ghostty,kitty,iterm2,warp,wezterm,terminator}]
+           [--local-root PATH] [--remote-root PATH]
            [--server] [--headless] [-k FILE:LINE|LINE] [--server-port SERVER_PORT] [-d] [--doc-text]
            [program] [args ...]
 ```
@@ -664,6 +709,8 @@ usage: tdb [-h] [-v] [-r [HOST:]PORT] [--cwd CWD] [--no-stop-on-entry]
 | Flag | Description |
 |------|-------------|
 | `-r HOST:PORT` | Attach to a remote debugpy server |
+| `--local-root PATH` | Local directory containing a copy of remote code (repeat to mirror multiple trees). Pair with `--remote-root`; counts must match. Required when `-k` sets a breakpoint against a remote debuggee whose code lives at a different path. |
+| `--remote-root PATH` | Remote directory matched to `--local-root` (same CLI position via `zip()`). |
 | `-k`, `--breakpoint FILE:LINE|LINE` | Set a breakpoint (may be repeated). Passing `-k` implies `--no-stop-on-entry` so the program runs straight to the first breakpoint. |
 | `--no-stop-on-entry` | Do not pause at the first line (default: stop on entry; automatic when `-k` is given) |
 | `--cwd DIR` | Working directory for the debuggee |
@@ -700,7 +747,7 @@ into) handle multi-line source statements:
 | Value | Behavior |
 |-------|----------|
 | `"statement"` (default) | A multi-line statement (e.g. a `gather(...)` call spanning five lines) is one step. The debugger keeps issuing DAP steps until execution leaves the statement, then stops on the next logical line. |
-| `"line"` | debugpy's native per-line behavior — stops on every physical line, including each interior sub-line of a multi-line expression. |
+| `"line"` | debugpy's native per-line behavior (stops on every physical line, including each interior sub-line of a multi-line expression)|
 
 Change it from the menu (**Configure > Step Mode**); the choice is saved immediately and
 applies to all future sessions. Breakpoint hits, exceptions, and pauses always interrupt

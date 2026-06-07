@@ -111,6 +111,27 @@ def build_parser() -> argparse.ArgumentParser:
         help="Run debuggee in the named external terminal (for TUI programs)",
     )
     parser.add_argument(
+        "--local-root",
+        action="append",
+        default=[],
+        metavar="PATH",
+        help="Local directory containing a copy of code from the remote "
+        "debuggee. Pair with --remote-root: each --local-root is zipped "
+        "in CLI order with the matching --remote-root, so the two flags "
+        "must be supplied in equal numbers. Used for remote-attach mode "
+        "(-r); debugpy translates paths bidirectionally so tdb reads "
+        "local files instead of requesting source over DAP.",
+    )
+    parser.add_argument(
+        "--remote-root",
+        action="append",
+        default=[],
+        metavar="PATH",
+        help="Remote directory matched to --local-root. Must appear the "
+        "same number of times as --local-root; pairs are taken in CLI "
+        "order via zip().",
+    )
+    parser.add_argument(
         "--server",
         action="store_true",
         help="Start JSON-RPC debug server alongside the TUI",
@@ -218,6 +239,61 @@ def _parse_attach_spec(
         parser.error(f"Invalid port in --remote-attach: {spec}")
 
 
+def _parse_path_mappings(
+    args: argparse.Namespace,
+    parser: argparse.ArgumentParser,
+) -> None:
+    """Pair --local-root with --remote-root via zip(), validate counts/usage.
+
+    Stores `args.path_mappings` as `list[tuple[local, remote]]` (or empty).
+    --remote-attach is required when either flag is used; counts must match.
+    Local roots must be existing directories; remote roots are normalized
+    (trailing-separator stripped) but otherwise opaque since they live on
+    the debuggee's machine.
+    """
+    args.path_mappings = []
+    locals_ = args.local_root or []
+    remotes = args.remote_root or []
+    if not locals_ and not remotes:
+        return
+    if not args.remote_attach:
+        parser.error("--local-root / --remote-root require --remote-attach")
+    if len(locals_) != len(remotes):
+        parser.error(
+            f"--local-root and --remote-root must be supplied in equal "
+            f"numbers (got {len(locals_)} local, {len(remotes)} remote); "
+            f"each pair is matched in CLI order"
+        )
+    pairs: list[tuple[str, str]] = []
+    for local, remote in zip(locals_, remotes):
+        local_path = Path(local).resolve()
+        if not local_path.is_dir():
+            parser.error(f"--local-root not a directory: {local}")
+        # Normalize remote: forward slashes, no trailing separator. Modern
+        # Windows accepts forward slashes so we don't need posixpath vs
+        # ntpath gymnastics — one normalized form covers both.
+        remote_norm = remote.replace("\\", "/").strip()
+        if not remote_norm:
+            parser.error(f"--remote-root cannot be empty: {remote}")
+        if remote_norm != "/":
+            had_trailing = remote_norm.endswith("/")
+            remote_norm = remote_norm.rstrip("/")
+            # Preserve Windows drive root (e.g. "C:/") — stripping the slash
+            # would change semantics to drive-relative "C:".
+            if (
+                had_trailing
+                and len(remote_norm) == 2
+                and remote_norm[0].isalpha()
+                and remote_norm[1] == ":"
+            ):
+                remote_norm += "/"
+            # All-slashes input (e.g. "///") rstrips to empty → treat as "/".
+            if not remote_norm:
+                remote_norm = "/"
+        pairs.append((str(local_path), remote_norm))
+    args.path_mappings = pairs
+
+
 def _resolve_program_path(
     args: argparse.Namespace,
     parser: argparse.ArgumentParser,
@@ -237,6 +313,26 @@ def _resolve_program_path(
         args.program = str(program_path)
 
 
+def _resolve_breakpoint_file(file_part: str, local_roots: list[str]) -> Path | None:
+    """Find a `-k FILE:LINE` file on disk.
+
+    Absolute or cwd-relative paths resolve directly. If those don't
+    exist and `--local-root` directories were given, search each one
+    in CLI order; first match wins. Returns None if nothing matches —
+    caller turns that into a parser.error with the search path.
+    """
+    direct = Path(file_part).resolve()
+    if direct.is_file():
+        return direct
+    if Path(file_part).is_absolute():
+        return None
+    for root in local_roots:
+        candidate = Path(root) / file_part
+        if candidate.is_file():
+            return candidate.resolve()
+    return None
+
+
 def _parse_breakpoints(
     args: argparse.Namespace,
     parser: argparse.ArgumentParser,
@@ -249,6 +345,7 @@ def _parse_breakpoints(
     statement starts.
     """
     parsed_bps: list[tuple[str, int]] = []
+    local_roots = [local for local, _ in args.path_mappings]
     for spec in args.breakpoint:
         if ":" in spec:
             file_part, line_part = spec.rsplit(":", 1)
@@ -256,9 +353,16 @@ def _parse_breakpoints(
                 line = int(line_part)
             except ValueError:
                 parser.error(f"Invalid line number in breakpoint: {spec}")
-            bp_path = Path(file_part).resolve()
-            if not bp_path.is_file():
-                parser.error(f"Breakpoint file not found: {file_part}")
+            bp_path = _resolve_breakpoint_file(file_part, local_roots)
+            if bp_path is None:
+                if local_roots:
+                    roots_str = ", ".join(local_roots)
+                    parser.error(
+                        f"Breakpoint file not found: {file_part} "
+                        f"(searched: cwd, {roots_str})"
+                    )
+                else:
+                    parser.error(f"Breakpoint file not found: {file_part}")
             parsed_bps.append((str(bp_path), line))
         else:
             try:
@@ -318,6 +422,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
     _validate_terminal_choice(args, parser)
     _parse_attach_spec(args, parser)
+    if args.headless and args.remote_attach:
+        parser.error("--headless does not currently support --remote-attach")
+    _parse_path_mappings(args, parser)
     _resolve_program_path(args, parser)
     _parse_breakpoints(args, parser)
     _snap_breakpoints(args)
@@ -484,6 +591,7 @@ def _run_tui(args: argparse.Namespace) -> None:
         cli_breakpoints=args.breakpoint,
         attach_host=args.attach_host,
         attach_port=args.attach_port,
+        path_mappings=args.path_mappings,
         sub_process=not args.no_subprocess,
         server_port=args.server_port if args.server else None,
     )
