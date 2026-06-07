@@ -326,7 +326,7 @@ If your program prints a lot, or prompts for input, or uses colors or
 terminal control codes, run the program in an external terminal
 with `--terminal` for a better experience.
 The `--terminal` switch requires a graphical environment and a compatible
-terminal emulator ().
+terminal emulator.
 
 
 ### Crash Detection
