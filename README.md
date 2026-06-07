@@ -286,7 +286,7 @@ Variable values can be changed in the Evaluate Console.
 
 Double-click a variable, or highlight the variable with the text cursor in
 the Variables View and press `Enter`
-to display the that variable in a modal.  This simplifies inspection of
+to display that variable in a modal.  This simplifies inspection of
 large or deeply nested data structures.
 
 ### Call Stack
