@@ -287,8 +287,10 @@ def _parse_path_mappings(
                 and remote_norm[1] == ":"
             ):
                 remote_norm += "/"
+            # All-slashes input (e.g. "///") rstrips to empty → treat as "/".
             if not remote_norm:
                 remote_norm = "/"
+        pairs.append((str(local_path), remote_norm))
     args.path_mappings = pairs
 
 
