@@ -428,6 +428,85 @@ def test_breakpoint_absolute_path_still_works_with_local_root(tmp_path):
     assert args.breakpoint == [(str(elsewhere.resolve()), 5)]
 
 
+def test_headless_remote_attach_parses(tmp_path):
+    """--headless + --remote-attach is allowed (was guarded; now wired up)."""
+    args = parse_args(["--headless", "-r", "5678"])
+    assert args.headless is True
+    assert args.server is True
+    assert args.attach_host == "127.0.0.1"
+    assert args.attach_port == 5678
+    assert args.program is None
+
+
+def test_headless_remote_attach_with_path_mappings_parses(tmp_path):
+    local = tmp_path / "code"
+    local.mkdir()
+    args = parse_args(
+        [
+            "--headless",
+            "-r",
+            "rhost:15678",
+            "--local-root",
+            str(local),
+            "--remote-root",
+            "/srv/code",
+        ]
+    )
+    assert args.headless is True
+    assert args.attach_host == "rhost"
+    assert args.attach_port == 15678
+    assert args.path_mappings == [(str(local.resolve()), "/srv/code")]
+
+
+def test_run_headless_forwards_attach_args_to_runner(tmp_path, monkeypatch):
+    """cli._run_headless plumbs attach_host/attach_port/path_mappings through."""
+    import asyncio as _asyncio
+
+    captured: dict = {}
+
+    async def _fake_run_headless(**kwargs):
+        captured.update(kwargs)
+
+    # Patch the import target inside _run_headless (it does
+    # `from tdb.server.runner import run_headless` at call time).
+    import tdb.server.runner as runner_mod
+
+    monkeypatch.setattr(runner_mod, "run_headless", _fake_run_headless)
+
+    # Patch asyncio.run so it just awaits the coroutine synchronously here.
+    def _run(coro):
+        loop = _asyncio.new_event_loop()
+        try:
+            return loop.run_until_complete(coro)
+        finally:
+            loop.close()
+
+    monkeypatch.setattr("asyncio.run", _run)
+
+    local = tmp_path / "code"
+    local.mkdir()
+    args = parse_args(
+        [
+            "--headless",
+            "-r",
+            "rhost:15678",
+            "--local-root",
+            str(local),
+            "--remote-root",
+            "/srv/code",
+        ]
+    )
+
+    from tdb.cli import _run_headless
+
+    _run_headless(args)
+
+    assert captured["attach_host"] == "rhost"
+    assert captured["attach_port"] == 15678
+    assert captured["path_mappings"] == [(str(local.resolve()), "/srv/code")]
+    assert captured["program"] is None
+
+
 def test_breakpoint_relative_searches_local_roots_in_order(tmp_path):
     a = tmp_path / "a"
     a.mkdir()

@@ -284,7 +284,9 @@ The Variable View shows a tree of scopes (Locals, Globals) with all variables in
 frame. Expand nodes to drill into complex objects.  Children are loaded lazily on demand.
 Variable values can be changed in the Evaluate Console.
 
-Double-click a variable to display it in a modal.  This simplifies inspection of
+Double-click a variable, or highlight the variable with the text cursor in
+the Variables View and press `Enter`
+to display the that variable in a modal.  This simplifies inspection of
 large or deeply nested data structures.
 
 ### Call Stack
@@ -294,7 +296,8 @@ location and inspect its variables.
 
 ### Evaluate Console
 
-A REPL at the bottom-left evaluates expressions in the current scope:
+A read-evaluate-print loop (REPL) at the bottom left permits
+interactive evaluation of expressions in the current scope:
 
 ```
 >>> len(items)
@@ -322,6 +325,9 @@ in real time.
 If your program prints a lot, or prompts for input, or uses colors or
 terminal control codes, run the program in an external terminal
 with `--terminal` for a better experience.
+The `--terminal` switch requires a graphical environment and a compatible
+terminal emulator ().
+
 
 ### Crash Detection
 
@@ -408,6 +414,12 @@ drive the user's program forward.
 
 As with `exception_hook`, the call is a no-op when stdin/stdout aren't a tty, so it's
 safe to leave in code paths that sometimes run headless.
+
+Quitting `tdb` while paused in a `tdb.breakpoint()` session detaches the debugger and
+lets the program continue running normally.
+This behavior matches hitting `c` while in a conventional (that is, the Python
+standard library's) `breakpoint()` session.
+If you want to kill the program instead, use `Ctrl+c` in the terminal running the debuggee.
 
 ### Async Task Inspector
 

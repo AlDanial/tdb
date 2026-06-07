@@ -422,8 +422,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
     _validate_terminal_choice(args, parser)
     _parse_attach_spec(args, parser)
-    if args.headless and args.remote_attach:
-        parser.error("--headless does not currently support --remote-attach")
     _parse_path_mappings(args, parser)
     _resolve_program_path(args, parser)
     _parse_breakpoints(args, parser)
@@ -563,6 +561,9 @@ def _run_headless(args: argparse.Namespace) -> None:
             python=args.python,
             port=args.server_port,
             cli_breakpoints=args.breakpoint,
+            attach_host=args.attach_host,
+            attach_port=args.attach_port,
+            path_mappings=args.path_mappings or None,
         )
     )
 
