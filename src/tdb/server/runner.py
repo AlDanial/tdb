@@ -95,8 +95,8 @@ async def run_headless(
     # Wait for the debuggee to actually stop. State (is_running,
     # stop_reason, current_thread_id) is set synchronously by
     # controller._on_stopped — no manual sync needed here. Remote-attach
-    # always produces a stop via the pre-arm pause in do_configure
-    # (see project_attach_stop_on_entry memory), so wait there too.
+    # produces a stop via the pre-arm pause in controller.do_configure,
+    # so wait there too.
     if stop_on_entry or is_remote:
         await handler.wait_for_stop(timeout=DAP_STOP_ON_ENTRY)
         await controller.fetch_stop_info()
