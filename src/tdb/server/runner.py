@@ -79,6 +79,7 @@ async def run_headless(
             )
             sys.exit(2)
     else:
+        assert program is not None
         await controller.start(
             program=program,
             args=args,
