@@ -20,18 +20,11 @@ from __future__ import annotations
 import logging
 import os
 import re
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from tdb.dap.types import Source, StackFrame
-from tdb.inspection import (
-    PROCESS_COLLECT_EXPR,
-    ProcessInfo,
-    TASK_COLLECT_EXPR,
-    TASK_LOCALS_EXPR,
-    parse_process_json,
-    parse_task_json,
-)
+from tdb.inspection import ProcessInfo
+from tdb.session.inspect_service import InspectService, SessionGateError
 from tdb.widgets.async_tasks_modal import AsyncTasksModal
 from tdb.widgets.menu_bar import MenuBar
 from tdb.widgets.processes_modal import ProcessesModal
@@ -48,10 +41,17 @@ log = logging.getLogger(__name__)
 
 
 class InspectionWorkflows:
-    """Drives the threads/processes/async-tasks UI flows."""
+    """Drives the threads/processes/async-tasks UI flows.
+
+    Fetch-and-parse mechanics live in `tdb.session.inspect_service.
+    InspectService` (shared with the JSON-RPC server); this collaborator
+    holds only the TUI presentation around them — gates rendered as
+    toasts, modal lifecycle, menu-bar labels.
+    """
 
     def __init__(self, app: TdbApp) -> None:
         self.app = app
+        self._svc = InspectService(lambda: self.app.controller)
 
     # --- Async tasks ----------------------------------------------------
 
@@ -82,19 +82,15 @@ class InspectionWorkflows:
         if ctrl.state.is_running:
             self.app.notify("Program is running — pause first", title="Async Tasks")
             return
-        raw = ""
         try:
-            raw = await ctrl.evaluate(TASK_COLLECT_EXPR)
-            tasks = parse_task_json(raw)
+            tasks = await self._svc.collect_tasks()
+        except SessionGateError:
+            return  # phase changed between our gate and the fetch
         except Exception:
             log.exception("Error fetching async tasks")
             tasks = []
 
         if not tasks:
-            log.warning(
-                "Async task collection returned no tasks. Raw: %s",
-                raw[:300] if raw else "(empty)",
-            )
             self.app.notify(
                 "No asyncio tasks found (program may not use asyncio)",
                 title="Async Tasks",
@@ -110,12 +106,10 @@ class InspectionWorkflows:
         self.app.panels.async_tasks = None
 
     async def refresh_async_tasks(self) -> None:
-        ctrl = self.app.controller
-        if ctrl.state.is_terminated or ctrl.state.is_running:
-            return
         try:
-            raw = await ctrl.evaluate(TASK_COLLECT_EXPR)
-            tasks = parse_task_json(raw)
+            tasks = await self._svc.collect_tasks()
+        except SessionGateError:
+            return
         except Exception:
             log.exception("Error refreshing async tasks")
             return
@@ -124,29 +118,15 @@ class InspectionWorkflows:
 
     async def load_task_variables(self, task_name: str) -> None:
         """Fetch a task's local variables via DAP and populate the tree."""
-        ctrl = self.app.controller
-        if ctrl.state.is_terminated or ctrl.state.is_running:
-            return
         modal = self.app.panels.async_tasks
         if modal is None:
             return
-        variables: list = []
         try:
-            expr = TASK_LOCALS_EXPR.format(task_name=task_name)
-            # Route around synthetic frame ids — see
-            # controller.resolve_evaluate_frame_id. Without this, after
-            # the user has navigated to a task once, state.current_frame_id
-            # is negative and debugpy rejects the evaluate request.
-            frame_id = await ctrl.resolve_evaluate_frame_id(ctrl.active_client)
-            _result, var_ref = await ctrl.active_client.evaluate(
-                expr,
-                frame_id=frame_id,
-                context="repl",
-            )
-            if var_ref > 0:
-                variables = await ctrl.active_client.variables(var_ref)
-        except Exception:
-            log.debug("Failed to load variables for task %s", task_name)
+            # Routes around synthetic frame ids and evaluates against the
+            # active client — see InspectService.task_locals.
+            variables = await self._svc.task_locals(task_name)
+        except SessionGateError:
+            return
         modal.show_task_variables(variables)
 
     def navigate_to_task(self, task_name: str) -> bool:
@@ -213,7 +193,9 @@ class InspectionWorkflows:
             self.app.notify("Program is running — pause first", title="Threads")
             return
         try:
-            threads = await ctrl.client.threads()
+            threads = await self._svc.list_threads()
+        except SessionGateError:
+            return
         except Exception:
             log.exception("Error fetching threads")
             self.app.notify("Failed to fetch threads", title="Threads")
@@ -230,29 +212,16 @@ class InspectionWorkflows:
 
     async def load_thread_detail(self, thread_id: int) -> None:
         """Fetch stack trace and variables for a thread."""
-        ctrl = self.app.controller
-        if ctrl.state.is_terminated or ctrl.state.is_running:
-            return
         modal = self.app.panels.threads
         if modal is None:
             return
         try:
-            frames = await ctrl.client.stack_trace(thread_id)
+            frames, scopes, variables = await self._svc.thread_stack(thread_id)
+        except SessionGateError:
+            return
         except Exception:
             log.debug("Failed to fetch stack trace for thread %d", thread_id)
-            frames = []
-        scopes: list = []
-        variables: dict = {}
-        if frames:
-            top_frame = frames[0]
-            try:
-                scopes = await ctrl.client.scopes(top_frame.id)
-                for scope in scopes:
-                    variables[scope.variables_reference] = await ctrl.client.variables(
-                        scope.variables_reference
-                    )
-            except Exception:
-                log.debug("Failed to fetch variables for thread %d", thread_id)
+            frames, scopes, variables = [], [], {}
         modal.show_thread_detail(thread_id, frames, scopes, variables)
 
     # --- Full-Contents (variable subtree pre-fetch) --------------------
@@ -315,55 +284,17 @@ class InspectionWorkflows:
 
     # --- Processes ------------------------------------------------------
 
-    def get_processes_from_pids(self) -> list[ProcessInfo]:
-        """Build ProcessInfo list from tracked child PIDs via /proc.
-
-        Linux-only fallback used when DAP `evaluate` against the parent
-        is unavailable (e.g., the parent isn't the active process).
-        """
-        result = []
-        for pid in self.app.controller.get_child_pids():
-            try:
-                cmdline_path = Path(f"/proc/{pid}/cmdline")
-                if not cmdline_path.exists():
-                    continue
-                cmdline = (
-                    cmdline_path.read_bytes().replace(b"\x00", b" ").decode().strip()
-                )
-                status_path = Path(f"/proc/{pid}/status")
-                name = f"Process-{pid}"
-                if status_path.exists():
-                    for line in status_path.read_text().splitlines():
-                        if line.startswith("Name:"):
-                            name = line.split(":", 1)[1].strip()
-                            break
-                result.append(
-                    ProcessInfo(
-                        name=name,
-                        pid=pid,
-                        alive=True,
-                        exitcode=None,
-                        daemon=False,
-                        target=cmdline[:200] if cmdline else "unknown",
-                        args="()",
-                        kwargs="{}",
-                        start_method="",
-                    )
-                )
-            except Exception:
-                pass
-        return result
-
     async def get_processes(self) -> list[ProcessInfo]:
-        """Get child process info, trying eval on parent first, then /proc."""
+        """Get child process info, trying eval on parent first, then /proc.
+
+        Maps a gate failure (phase changed mid-flight) to an empty list:
+        callers treat "nothing to show" and "can't look right now" the
+        same way.
+        """
         try:
-            raw = await self.app.controller.evaluate_on_parent(PROCESS_COLLECT_EXPR)
-            processes = parse_process_json(raw)
-            if processes:
-                return processes
-        except Exception:
-            pass
-        return self.get_processes_from_pids()
+            return await self._svc.collect_processes()
+        except SessionGateError:
+            return []
 
     async def fetch_process_count(self) -> None:
         """Update the Processes label with child process count."""
@@ -470,25 +401,10 @@ class InspectionWorkflows:
         modal = self.app.panels.processes
         if modal is None:
             return
-        child = self.app.controller.get_child_client(pid)
-        if child is None:
+        detail = await self._svc.process_stack(pid)
+        if detail is None:
             # PIDs from /proc might not exactly match the controller's keys
             modal.show_process_detail(pid, [], [], {})
             return
-        frames: list = []
-        scopes: list = []
-        variables: dict = {}
-        try:
-            threads = await child.threads()
-            if threads:
-                frames = await child.stack_trace(threads[0].id)
-                if frames:
-                    top_frame = frames[0]
-                    scopes = await child.scopes(top_frame.id)
-                    for scope in scopes:
-                        variables[scope.variables_reference] = await child.variables(
-                            scope.variables_reference
-                        )
-        except Exception:
-            log.debug("Failed to fetch detail for child process %d", pid)
+        frames, scopes, variables = detail
         modal.show_process_detail(pid, frames, scopes, variables)
