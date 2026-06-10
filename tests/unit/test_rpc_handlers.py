@@ -497,3 +497,69 @@ async def test_wait_graph_in_dispatch_table(handlers):
     assert "wait_graph" in handlers.dispatch_table()
     assert "wait_graph" in RpcHandlers.ACTIONS
     assert "wait_graph" in RpcHandlers.ACTION_HELP
+
+# --- Mid-action gate races (phase changes between service calls) --------
+#
+# Inspector actions make more than one InspectService call (e.g.
+# inspect_task: collect_tasks then task_locals; inspect_thread:
+# list_threads then thread_stack). The service re-gates on every entry,
+# so a `terminated` / `continued` DAP event landing between the calls
+# raises SessionGateError mid-action. The handler must map that to the
+# same wording as the up-front gate — not let it escape to the
+# dispatcher's generic exception handler, and not mislabel it as a
+# fetch failure.
+
+
+async def test_inspect_task_gate_race_maps_to_gate_error(handlers, monkeypatch):
+    from tdb.session import inspect_service as _isvc
+
+    ctrl = handlers.controller
+    payload = _json.dumps(
+        [{"name": "Task-1", "state": "pending", "coro": "main()", "stack": []}]
+    )
+
+    async def fake_evaluate(expr: str) -> str:
+        return payload
+
+    monkeypatch.setattr(ctrl, "evaluate", fake_evaluate)
+
+    # Flip the phase after collect_tasks succeeds but before task_locals
+    # gates, by hooking resolve_evaluate_frame_id (first await inside
+    # task_locals after its gate would be too late — so flip inside the
+    # gate's read path instead: transition right before calling).
+    original_gate = _isvc.InspectService._gate
+
+    def racing_gate(self):
+        original_gate(self)
+        # After the first successful gate (collect_tasks), terminate the
+        # session so the *next* gate (task_locals) trips.
+        ctrl.state.transition_to(SessionPhase.TERMINATED)
+
+    monkeypatch.setattr(_isvc.InspectService, "_gate", racing_gate)
+
+    rsp = await handlers.action_inspect_task(["Task-1"])
+    assert rsp.success is False
+    assert rsp.value == "Program has terminated"
+
+
+async def test_inspect_thread_gate_race_maps_to_gate_error(handlers, monkeypatch):
+    from tdb.session import inspect_service as _isvc
+
+    ctrl = handlers.controller
+    ctrl.client._threads = [Thread(id=1, name="MainThread")]
+
+    original_gate = _isvc.InspectService._gate
+
+    def racing_gate(self):
+        original_gate(self)
+        # list_threads gates first and passes; thread_stack's gate then
+        # sees RUNNING.
+        ctrl.state.transition_to(SessionPhase.RUNNING)
+
+    monkeypatch.setattr(_isvc.InspectService, "_gate", racing_gate)
+
+    rsp = await handlers.action_inspect_thread([1])
+    assert rsp.success is False
+    assert rsp.value == "Cannot inspect threads while program is running"
+    # Specifically: the race must NOT be mislabeled as a stack failure.
+    assert "failed to fetch stack trace" not in rsp.value

@@ -546,8 +546,15 @@ class RpcHandlers:
         # Shared with the TUI's task-variables flow: evaluates against
         # the active client (parent or child) with a real frame id —
         # synthetic (negative) frame ids from task navigation are routed
-        # around inside the service.
-        variables = await self._inspect.task_locals(target_name)
+        # around inside the service. The service re-gates on entry, so a
+        # phase change between collect_tasks above and this call (e.g. a
+        # `terminated` event landing mid-action) raises SessionGateError
+        # here too — map it like the initial gate rather than letting it
+        # escape to the dispatcher's generic handler.
+        try:
+            variables = await self._inspect.task_locals(target_name)
+        except SessionGateError as e:
+            return self._gate_error(e, "inspect tasks")
         if variables:
             for v in variables:
                 type_str = f" ({v.type})" if v.type else ""
@@ -640,24 +647,30 @@ class RpcHandlers:
         ]
         try:
             frames, scopes, variables = await self._inspect.thread_stack(thread_id)
-            if frames:
-                for i, frame in enumerate(frames):
-                    src = (
-                        frame.source.path
-                        if frame.source and frame.source.path
-                        else "<unknown>"
-                    )
-                    lines.append(f"  #{i} {frame.name} at {src}:{frame.line}")
-                lines.append("")
-                lines.append("Variables:")
-                for scope in scopes:
-                    for v in variables.get(scope.variables_reference, []):
-                        type_str = f" ({v.type})" if v.type else ""
-                        lines.append(f"  {v.name}{type_str} = {v.value}")
-            else:
-                lines.append("  (no stack frames)")
+        except SessionGateError as e:
+            # Phase changed between list_threads above and the stack
+            # fetch — report it as the gate condition it is, not as a
+            # stack-trace failure.
+            return self._gate_error(e, "inspect threads")
         except Exception:
             lines.append("  (failed to fetch stack trace)")
+            return RpcResponse.ok("\n".join(lines))
+        if frames:
+            for i, frame in enumerate(frames):
+                src = (
+                    frame.source.path
+                    if frame.source and frame.source.path
+                    else "<unknown>"
+                )
+                lines.append(f"  #{i} {frame.name} at {src}:{frame.line}")
+            lines.append("")
+            lines.append("Variables:")
+            for scope in scopes:
+                for v in variables.get(scope.variables_reference, []):
+                    type_str = f" ({v.type})" if v.type else ""
+                    lines.append(f"  {v.name}{type_str} = {v.value}")
+        else:
+            lines.append("  (no stack frames)")
         return RpcResponse.ok("\n".join(lines))
 
     async def action_list_processes(self, params: list[Any]) -> RpcResponse:
