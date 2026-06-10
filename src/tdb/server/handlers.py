@@ -19,15 +19,11 @@ from pathlib import Path
 from typing import Any, Callable
 
 from tdb.inspection import (
-    PROCESS_COLLECT_EXPR,
-    TASK_COLLECT_EXPR,
-    TASK_LOCALS_EXPR,
     build_wait_graph,
     find_cycles,
-    parse_process_json,
-    parse_task_json,
 )
 from tdb.session.controller import DebugController
+from tdb.session.inspect_service import InspectService, SessionGateError
 from .event_handler import ServerEventHandler
 from .rpc_types import RpcResponse
 
@@ -165,6 +161,17 @@ class RpcHandlers:
             self._handler_ref = event_handler
         else:
             self._handler_ref = HandlerRef(event_handler)
+        # Shared fetch-and-parse workflows (tasks / threads / processes),
+        # common with the TUI's InspectionWorkflows. Reads the controller
+        # through the ref so it follows restart swaps.
+        self._inspect = InspectService(lambda: self._controller_ref.ctrl)
+
+    @staticmethod
+    def _gate_error(e: SessionGateError, doing: str) -> RpcResponse:
+        """Map a SessionGateError onto this API's established wording."""
+        if e.reason == "terminated":
+            return RpcResponse.error("Program has terminated")
+        return RpcResponse.error(f"Cannot {doing} while program is running")
 
     # --- Convenience accessors ------------------------------------------
 
@@ -477,13 +484,10 @@ class RpcHandlers:
         return RpcResponse.ok(text)
 
     async def action_list_tasks(self, params: list[Any]) -> RpcResponse:
-        if self.controller.state.is_running:
-            return RpcResponse.error("Cannot list tasks while program is running")
-        if self.controller.state.is_terminated:
-            return RpcResponse.error("Program has terminated")
         try:
-            raw = await self.controller.evaluate(TASK_COLLECT_EXPR)
-            tasks = parse_task_json(raw)
+            tasks = await self._inspect.collect_tasks()
+        except SessionGateError as e:
+            return self._gate_error(e, "list tasks")
         except Exception as e:
             return RpcResponse.error(f"Failed to collect tasks: {e}")
         if not tasks:
@@ -502,14 +506,11 @@ class RpcHandlers:
     async def action_inspect_task(self, params: list[Any]) -> RpcResponse:
         if not params:
             return RpcResponse.error("params[0] must be a task name")
-        if self.controller.state.is_running:
-            return RpcResponse.error("Cannot inspect tasks while program is running")
-        if self.controller.state.is_terminated:
-            return RpcResponse.error("Program has terminated")
         target_name = str(params[0])
         try:
-            raw = await self.controller.evaluate(TASK_COLLECT_EXPR)
-            tasks = parse_task_json(raw)
+            tasks = await self._inspect.collect_tasks()
+        except SessionGateError as e:
+            return self._gate_error(e, "inspect tasks")
         except Exception as e:
             return RpcResponse.error(f"Failed to collect tasks: {e}")
         task = next((t for t in tasks if t.name == target_name), None)
@@ -542,39 +543,24 @@ class RpcHandlers:
             lines.append("  (no stack frames — task may be awaiting)")
         lines.append("")
         lines.append("Variables:")
-        try:
-            expr = TASK_LOCALS_EXPR.format(task_name=target_name)
-            # Skip synthetic (negative) frame ids installed by the TUI
-            # task-navigation feature — they aren't valid for DAP evaluate.
-            frame_id = await self.controller.resolve_evaluate_frame_id(
-                self.controller.client,
-            )
-            _result, var_ref = await self.controller.client.evaluate(
-                expr,
-                frame_id=frame_id,
-                context="repl",
-            )
-            if var_ref > 0:
-                variables = await self.controller.client.variables(var_ref)
-                for v in variables:
-                    type_str = f" ({v.type})" if v.type else ""
-                    lines.append(f"  {v.name}{type_str} = {v.value}")
-            else:
-                lines.append("  (no variables — frame not available)")
-        except Exception:
+        # Shared with the TUI's task-variables flow: evaluates against
+        # the active client (parent or child) with a real frame id —
+        # synthetic (negative) frame ids from task navigation are routed
+        # around inside the service.
+        variables = await self._inspect.task_locals(target_name)
+        if variables:
+            for v in variables:
+                type_str = f" ({v.type})" if v.type else ""
+                lines.append(f"  {v.name}{type_str} = {v.value}")
+        else:
             lines.append("  (no variables — frame not available)")
         return RpcResponse.ok("\n".join(lines))
 
     async def action_wait_graph(self, params: list[Any]) -> RpcResponse:
-        if self.controller.state.is_running:
-            return RpcResponse.error(
-                "Cannot compute wait graph while program is running"
-            )
-        if self.controller.state.is_terminated:
-            return RpcResponse.error("Program has terminated")
         try:
-            raw = await self.controller.evaluate(TASK_COLLECT_EXPR)
-            tasks = parse_task_json(raw)
+            tasks = await self._inspect.collect_tasks()
+        except SessionGateError as e:
+            return self._gate_error(e, "compute wait graph")
         except Exception as e:
             return RpcResponse.error(f"Failed to collect tasks: {e}")
         if not tasks:
@@ -612,12 +598,10 @@ class RpcHandlers:
         return RpcResponse.ok("\n".join(lines).rstrip())
 
     async def action_list_threads(self, params: list[Any]) -> RpcResponse:
-        if self.controller.state.is_running:
-            return RpcResponse.error("Cannot list threads while program is running")
-        if self.controller.state.is_terminated:
-            return RpcResponse.error("Program has terminated")
         try:
-            threads = await self.controller.client.threads()
+            threads = await self._inspect.list_threads()
+        except SessionGateError as e:
+            return self._gate_error(e, "list threads")
         except Exception as e:
             return RpcResponse.error(f"Failed to fetch threads: {e}")
         if not threads:
@@ -632,16 +616,14 @@ class RpcHandlers:
     async def action_inspect_thread(self, params: list[Any]) -> RpcResponse:
         if not params:
             return RpcResponse.error("params[0] must be a thread ID")
-        if self.controller.state.is_running:
-            return RpcResponse.error("Cannot inspect threads while program is running")
-        if self.controller.state.is_terminated:
-            return RpcResponse.error("Program has terminated")
         try:
             thread_id = int(params[0])
         except (ValueError, TypeError):
             return RpcResponse.error(f"Invalid thread ID: {params[0]}")
         try:
-            threads = await self.controller.client.threads()
+            threads = await self._inspect.list_threads()
+        except SessionGateError as e:
+            return self._gate_error(e, "inspect threads")
         except Exception as e:
             return RpcResponse.error(f"Failed to fetch threads: {e}")
         thread = next((t for t in threads if t.id == thread_id), None)
@@ -657,7 +639,7 @@ class RpcHandlers:
             "Stack:",
         ]
         try:
-            frames = await self.controller.client.stack_trace(thread_id)
+            frames, scopes, variables = await self._inspect.thread_stack(thread_id)
             if frames:
                 for i, frame in enumerate(frames):
                     src = (
@@ -666,15 +648,10 @@ class RpcHandlers:
                         else "<unknown>"
                     )
                     lines.append(f"  #{i} {frame.name} at {src}:{frame.line}")
-                top = frames[0]
-                scopes = await self.controller.client.scopes(top.id)
                 lines.append("")
                 lines.append("Variables:")
                 for scope in scopes:
-                    variables = await self.controller.client.variables(
-                        scope.variables_reference
-                    )
-                    for v in variables:
+                    for v in variables.get(scope.variables_reference, []):
                         type_str = f" ({v.type})" if v.type else ""
                         lines.append(f"  {v.name}{type_str} = {v.value}")
             else:
@@ -684,13 +661,10 @@ class RpcHandlers:
         return RpcResponse.ok("\n".join(lines))
 
     async def action_list_processes(self, params: list[Any]) -> RpcResponse:
-        if self.controller.state.is_running:
-            return RpcResponse.error("Cannot list processes while program is running")
-        if self.controller.state.is_terminated:
-            return RpcResponse.error("Program has terminated")
         try:
-            raw = await self.controller.evaluate(PROCESS_COLLECT_EXPR)
-            processes = parse_process_json(raw)
+            processes = await self._inspect.collect_processes()
+        except SessionGateError as e:
+            return self._gate_error(e, "list processes")
         except Exception as e:
             return RpcResponse.error(f"Failed to collect processes: {e}")
         if not processes:
@@ -705,16 +679,11 @@ class RpcHandlers:
     async def action_inspect_process(self, params: list[Any]) -> RpcResponse:
         if not params:
             return RpcResponse.error("params[0] must be a process name or PID")
-        if self.controller.state.is_running:
-            return RpcResponse.error(
-                "Cannot inspect processes while program is running"
-            )
-        if self.controller.state.is_terminated:
-            return RpcResponse.error("Program has terminated")
         target = str(params[0])
         try:
-            raw = await self.controller.evaluate(PROCESS_COLLECT_EXPR)
-            processes = parse_process_json(raw)
+            processes = await self._inspect.collect_processes()
+        except SessionGateError as e:
+            return self._gate_error(e, "inspect processes")
         except Exception as e:
             return RpcResponse.error(f"Failed to collect processes: {e}")
         proc = None
