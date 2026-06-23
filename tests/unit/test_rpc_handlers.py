@@ -707,6 +707,6 @@ async def test_dispatcher_pause_bypasses_session_lock(handlers):
 def test_no_lock_actions_constant_includes_pause():
     """The bypass list is a small, deliberate surface. Pin its contents
     so adding a new bypass becomes a visible decision in code review."""
-    from tdb.server.app import _NO_LOCK_ACTIONS
+    from tdb.server.app import NO_LOCK_ACTIONS
 
-    assert _NO_LOCK_ACTIONS == frozenset({"pause"})
+    assert NO_LOCK_ACTIONS == frozenset({"pause"})

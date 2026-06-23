@@ -230,6 +230,39 @@ def test_doc_text_flag_default_false(tmp_path):
     assert args.doc_text is False
 
 
+def test_mcp_flag_short_circuits_program_check():
+    """--mcp owns its own lifecycle (sessions come from the agent's
+    debug_launch tool); no program argument is needed on the CLI."""
+    args = parse_args(["--mcp"])
+    assert args.mcp is True
+    assert args.program is None
+
+
+def test_mcp_flag_default_false(tmp_path):
+    prog = tmp_path / "x.py"
+    prog.write_text("\n")
+    args = parse_args([str(prog)])
+    assert args.mcp is False
+
+
+def test_main_dispatches_to_mcp_runner(monkeypatch):
+    """`tdb --mcp` must route to the MCP entry point, not to the TUI
+    or headless server. Equivalent to `python -m tdb.mcp`."""
+    called: list[bool] = []
+
+    def _fake_mcp_main():
+        called.append(True)
+
+    import tdb.mcp.server as mcp_server
+
+    monkeypatch.setattr(mcp_server, "main", _fake_mcp_main)
+
+    from tdb.cli import main as cli_main
+
+    cli_main(["--mcp"])
+    assert called == [True]
+
+
 def test_version_flag_prints_and_exits(capsys):
     with pytest.raises(SystemExit) as exc:
         parse_args(["--version"])

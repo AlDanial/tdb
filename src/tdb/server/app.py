@@ -33,7 +33,7 @@ log = logging.getLogger(__name__)
 # any other RPC: it sends a DAP pause request and waits on the
 # controller's own stopped-event, which is the only state it mutates;
 # that mutation already races safely with DAP event callbacks.
-_NO_LOCK_ACTIONS = frozenset({"pause"})
+NO_LOCK_ACTIONS = frozenset({"pause"})
 
 
 def create_app(handlers: RpcHandlers) -> FastAPI:
@@ -51,7 +51,7 @@ def create_app(handlers: RpcHandlers) -> FastAPI:
         if action_fn is None:
             return RpcResponse.error(f"Unknown action: {request.action}")
         try:
-            if request.action in _NO_LOCK_ACTIONS:
+            if request.action in NO_LOCK_ACTIONS:
                 return await action_fn(request.params)
             async with handlers.session_lock:
                 return await action_fn(request.params)

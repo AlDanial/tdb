@@ -673,11 +673,12 @@ curl -s -X POST http://127.0.0.1:8150/rpc \
 | `set_breakpoint` | `["file:line"]` or `["file:line", "condition", "hit_condition"]` | Set a breakpoint |
 | `remove_breakpoint` | `["file:line"]` | Remove a breakpoint |
 | `list_breakpoints` | `[]` | Show all breakpoints |
-| `continue` | `[]` | Resume execution |
-| `next` | `[]` | Step over |
-| `step_in` | `[]` | Step into |
-| `step_out` | `[]` | Step out |
-| `pause` | `[]` | Pause execution |
+| `continue` | `[]` or `[timeout_s]` | Resume execution; on timeout returns `"still running — call pause or wait again"` (success) |
+| `next` | `[]` or `[timeout_s]` | Step over |
+| `step_in` | `[]` or `[timeout_s]` | Step into |
+| `step_out` | `[]` or `[timeout_s]` | Step out |
+| `pause` | `[]` | Pause execution; bypasses the dispatch lock so it can interrupt an in-flight blocking action |
+| `wait_for_stop` | `[]` or `[timeout_s]` | Wait for the next stop without issuing a step (use after `continue` returns `"still running"` to keep waiting) |
 | `inspect` | `["expr1", "expr2", ...]` | Evaluate multiple expressions |
 | `evaluate` | `["expression"]` | Evaluate a single expression |
 | `stack_up` | `[]` | Move up the call stack |
@@ -705,6 +706,84 @@ curl -N http://127.0.0.1:8150/events
 
 Events: `initialized`, `stopped`, `continued`, `terminated`, `exited`, `output`.
 Each is JSON with `event`, `data`, and `timestamp` fields.
+
+## MCP Integration
+
+tdb ships a Model Context Protocol (MCP) server (`tdb-mcp`) that exposes
+the debugger as a curated set of tools an AI agent can call. The MCP
+server is a third in-process consumer of the same dispatch handlers the
+TUI and the HTTP server use — so an agent gets the same lock semantics,
+including the pause-during-continue bypass, and the same DAP-backed
+inspection surface.
+
+### Running the MCP server
+
+Configure your MCP client (Claude Desktop, an IDE extension, etc.) to
+launch `tdb-mcp` over stdio. Example `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "tdb": {
+      "command": "tdb-mcp"
+    }
+  }
+}
+```
+
+Three equivalent invocation forms: `tdb-mcp` (the dedicated entry
+point), `tdb --mcp` (the main CLI with the `--mcp` switch), and
+`python -m tdb.mcp` (module form). Pick whichever matches how your MCP
+client expects to launch servers.
+
+### Tool surface (16 tools, curated)
+
+| Cluster | Tools |
+|---------|-------|
+| Lifecycle | `debug_launch`, `debug_attach`, `quit` |
+| Control | `control(action, timeout_s=30)` — `action ∈ {continue, next, step_in, step_out, pause, wait_for_stop}` |
+| Inspection | `inspect(expressions)`, `read_source(file_path)`, `stack_trace()`, `status()`, `get_output()` |
+| Breakpoints | `set_breakpoint(spec, condition?, hit_condition?)`, `remove_breakpoint(spec)`, `list_breakpoints()` |
+| Differentiators | `threads(thread_id?)`, `tasks(task_name?)`, `processes(name_or_pid?)`, `wait_graph()` |
+
+`control` is intentionally one tool that takes an action enum — the six
+underlying RPC actions share a return shape, and agents perform
+measurably better with a small surface than with one tool per action.
+`threads` / `tasks` / `processes` overload list-vs-inspect via a
+single optional argument for the same reason.
+
+### Agent flow for a long-running step
+
+```
+agent → control(action="continue", timeout_s=30)
+mcp   → "still running — call pause or wait again"
+agent → control(action="pause")        # OR: control(action="wait_for_stop", timeout_s=30)
+mcp   → "<file>:<line>"
+agent → inspect(["x", "len(buf)"])
+mcp   → "x = 7\nlen(buf) = 1024"
+```
+
+`pause` bypasses the dispatch lock so it can interrupt a `continue`
+that's still mid-flight (HTTP and MCP share the same `NO_LOCK_ACTIONS`
+policy — see `tdb/server/app.py`).
+
+### Security caveat
+
+`inspect` calls debugpy's `evaluate`, which is **arbitrary Python
+execution in the debuggee process**. This is inherent to a debugger and
+not a tdb-specific concern, but MCP clients (and the humans running
+them) should apply appropriate permission models: don't auto-approve
+`inspect` against untrusted expressions, and don't expose `tdb-mcp` on
+a network — stdio transport only by design.
+
+### Deferred / out of scope (v1)
+
+- SSE-style event push — `control` and `wait_for_stop` make polling
+  efficient enough; events would also need uneven MCP-client support.
+- HTTP / streamable-HTTP transports — would require auth (which the
+  HTTP RPC server also currently lacks); stdio inherits the trust of
+  the process that spawned it.
+- Multi-session — one debug session per MCP process.
 
 ## CLI Reference
 
