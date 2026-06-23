@@ -78,7 +78,7 @@ def build_mcp(session: McpSession | None = None) -> FastMCP:
         instructions=(
             "tdb is a Python debugger driven via DAP. Use `debug_launch` "
             "or `debug_attach` to start a session, `control` to step / "
-            "continue / pause, and the `inspect` / stack / variable "
+            "continue / pause, and the `inspect` / `stack_trace` / `threads` / `tasks` / `processes` "
             "tools to examine state at a stopped frame. `control` and "
             "`wait_for_stop` return the sentinel 'still running — call "
             "pause or wait again' on timeout; respond with `control "
