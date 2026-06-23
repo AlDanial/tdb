@@ -1,6 +1,6 @@
 """FastMCP server exposing tdb as a Model Context Protocol tool surface.
 
-15 curated tools (not 26 auto-generated) so the agent's tool list stays
+16 curated tools (not 26 auto-generated) so the agent's tool list stays
 small and focused. Tool wrappers translate kwargs → JSON-RPC `params`
 list and call through `McpSession._call`, which preserves the HTTP
 dispatcher's lock policy — `pause` bypasses `session_lock` so an agent
