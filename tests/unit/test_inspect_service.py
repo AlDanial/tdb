@@ -127,9 +127,7 @@ async def test_task_locals_uses_active_client(monkeypatch):
             return [Variable(name="x", value="1", type="int")]
 
     fake = FakeClient()
-    monkeypatch.setattr(
-        type(ctrl), "active_client", property(lambda self: fake)
-    )
+    monkeypatch.setattr(type(ctrl), "active_client", property(lambda self: fake))
 
     async def fake_resolve(client):
         assert client is fake
@@ -146,9 +144,7 @@ async def test_task_locals_uses_active_client(monkeypatch):
 
 async def test_thread_stack_shape(monkeypatch):
     svc, ctrl = _service()
-    frame = StackFrame(
-        id=1, name="main", source=Source(path="/app/main.py"), line=3
-    )
+    frame = StackFrame(id=1, name="main", source=Source(path="/app/main.py"), line=3)
     scope = Scope(name="Locals", variables_reference=11)
 
     class FakeClient:

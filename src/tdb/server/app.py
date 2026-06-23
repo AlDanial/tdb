@@ -24,6 +24,18 @@ __all__ = ["ControllerRef", "create_app"]
 log = logging.getLogger(__name__)
 
 
+# Actions dispatched WITHOUT holding `session_lock` so they can interrupt
+# an in-flight blocking action (continue / step / wait_for_stop). The TUI
+# escapes a runaway `continue` by pressing `p`, which bypasses the RPC
+# path entirely; an MCP agent or scripted caller has no such side channel
+# and would otherwise sit through the full `RPC_STEP_WAIT` ceiling waiting
+# to get the lock. `controller.pause` is safe to call concurrently with
+# any other RPC: it sends a DAP pause request and waits on the
+# controller's own stopped-event, which is the only state it mutates;
+# that mutation already races safely with DAP event callbacks.
+_NO_LOCK_ACTIONS = frozenset({"pause"})
+
+
 def create_app(handlers: RpcHandlers) -> FastAPI:
     """Build the FastAPI app wired to the given RpcHandlers instance.
 
@@ -39,6 +51,8 @@ def create_app(handlers: RpcHandlers) -> FastAPI:
         if action_fn is None:
             return RpcResponse.error(f"Unknown action: {request.action}")
         try:
+            if request.action in _NO_LOCK_ACTIONS:
+                return await action_fn(request.params)
             async with handlers.session_lock:
                 return await action_fn(request.params)
         except Exception as e:

@@ -9,14 +9,9 @@ from pathlib import Path
 
 
 def _get_version() -> str:
-    try:
-        from importlib.metadata import version
+    from tdb import __version__
 
-        return version("textual-debugger")
-    except Exception:
-        from tdb import __version__
-
-        return __version__
+    return __version__
 
 
 def build_parser() -> argparse.ArgumentParser:
