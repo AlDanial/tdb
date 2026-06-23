@@ -99,6 +99,7 @@ class RpcHandlers:
         "step_out",
         "continue",
         "pause",
+        "wait_for_stop",
         "inspect",
         "evaluate",
         "stack_up",
@@ -123,11 +124,12 @@ class RpcHandlers:
         "set_breakpoint": 'params: ["file:line"] or ["file:line", "condition", "hit_condition"]',
         "remove_breakpoint": 'params: ["file:line"]',
         "list_breakpoints": "params: []",
-        "next": "params: []",
-        "step_in": "params: []",
-        "step_out": "params: []",
-        "continue": "params: []",
-        "pause": "params: []",
+        "next": "params: [] or [timeout_s]",
+        "step_in": "params: [] or [timeout_s]",
+        "step_out": "params: [] or [timeout_s]",
+        "continue": "params: [] or [timeout_s]",
+        "pause": "params: []  -- bypasses the dispatch lock; can interrupt a blocked step / continue",
+        "wait_for_stop": "params: [] or [timeout_s]  -- wait for the next stop without issuing a step",
         "inspect": 'params: ["expr1", "expr2", ...]',
         "evaluate": 'params: ["expression"]',
         "stack_up": "params: []",
@@ -202,6 +204,7 @@ class RpcHandlers:
             "step_out": self.action_step_out,
             "continue": self.action_continue,
             "pause": self.action_pause,
+            "wait_for_stop": self.action_wait_for_stop,
             "inspect": self.action_inspect,
             "evaluate": self.action_evaluate,
             "stack_up": self.action_stack_up,
@@ -223,7 +226,32 @@ class RpcHandlers:
 
     # --- Helpers --------------------------------------------------------
 
-    async def _step_action(self, action_fn: Callable[[], Any]) -> RpcResponse:
+    # Returned (success) when a blocking step / wait expires before the
+    # debuggee stops. MCP agents and scripted callers pivot on this exact
+    # wording to decide whether to issue `pause` or call `wait_for_stop`
+    # again — keep it stable.
+    STILL_RUNNING_MSG = "still running — call pause or wait again"
+
+    @staticmethod
+    def _parse_timeout(params: list[Any], default: float | None) -> float | None:
+        """Extract an optional timeout from params[0]. Falls back to default.
+
+        Returning `None` means "use the handler's wait ceiling" — the four
+        step actions pass `None` so the existing `RPC_STEP_WAIT` default
+        applies when no timeout is supplied, preserving HTTP-API behavior.
+        """
+        if not params:
+            return default
+        try:
+            return float(params[0])
+        except (TypeError, ValueError):
+            return default
+
+    async def _step_action(
+        self,
+        action_fn: Callable[[], Any],
+        timeout_s: float | None = None,
+    ) -> RpcResponse:
         """Common handler for next / step_in / step_out / continue.
 
         State (is_running, stop_reason, current_thread_id, is_terminated)
@@ -231,6 +259,12 @@ class RpcHandlers:
         (`_on_stopped`, `_on_continued`, `_on_terminated`, `_on_exited`),
         so by the time `wait_for_stop` returns, controller.state is
         already current — no sync step needed.
+
+        `timeout_s` caps how long we block awaiting the next stop. On
+        timeout, returns success with `STILL_RUNNING_MSG` so callers
+        (especially agentic ones) can poll: either issue `pause` to
+        interrupt or call `wait_for_stop` to keep waiting without
+        re-issuing the step.
         """
         ctrl = self.controller
         if ctrl.state.is_terminated:
@@ -239,15 +273,26 @@ class RpcHandlers:
             return RpcResponse.error("Program is already running")
         self.event_handler.reset_for_continue()
         await action_fn()
-        # Long timeout: after releasing all breakpoint hits in a multi-process
-        # program, the remainder of the script can run for a while before the
-        # `terminated` event wakes us. 30s was too short to span that tail.
+        return await self._await_stop_loop(timeout_s)
+
+    async def _await_stop_loop(self, timeout_s: float | None) -> RpcResponse:
+        """Wait for the next stop, honoring statement-step continuation.
+
+        Shared by `_step_action` (after issuing a step) and
+        `action_wait_for_stop` (no step issued — pure wait).
+        """
         from tdb._timeouts import RPC_STEP_WAIT
 
+        ctrl = self.controller
+        # Long ceiling: after releasing all breakpoint hits in a multi-process
+        # program, the remainder of the script can run for a while before the
+        # `terminated` event wakes us. Callers wanting agent-friendly polling
+        # pass a shorter `timeout_s`.
+        wait = RPC_STEP_WAIT if timeout_s is None else timeout_s
         while True:
-            stopped = await self.event_handler.wait_for_stop(timeout=RPC_STEP_WAIT)
+            stopped = await self.event_handler.wait_for_stop(timeout=wait)
             if not stopped:
-                return RpcResponse.error("Timeout waiting for stop")
+                return RpcResponse.ok(self.STILL_RUNNING_MSG)
             if ctrl.state.is_terminated:
                 output = self.event_handler.drain_output()
                 return RpcResponse.ok(
@@ -334,16 +379,41 @@ class RpcHandlers:
         return RpcResponse.ok("\n".join(lines))
 
     async def action_next(self, params: list[Any]) -> RpcResponse:
-        return await self._step_action(self.controller.step_over)
+        return await self._step_action(
+            self.controller.step_over,
+            timeout_s=self._parse_timeout(params, None),
+        )
 
     async def action_step_in(self, params: list[Any]) -> RpcResponse:
-        return await self._step_action(self.controller.step_in)
+        return await self._step_action(
+            self.controller.step_in,
+            timeout_s=self._parse_timeout(params, None),
+        )
 
     async def action_step_out(self, params: list[Any]) -> RpcResponse:
-        return await self._step_action(self.controller.step_out)
+        return await self._step_action(
+            self.controller.step_out,
+            timeout_s=self._parse_timeout(params, None),
+        )
 
     async def action_continue(self, params: list[Any]) -> RpcResponse:
-        return await self._step_action(self.controller.continue_)
+        return await self._step_action(
+            self.controller.continue_,
+            timeout_s=self._parse_timeout(params, None),
+        )
+
+    async def action_wait_for_stop(self, params: list[Any]) -> RpcResponse:
+        """Wait for the next stop without issuing a step.
+
+        After a step / continue returns `STILL_RUNNING_MSG` on timeout, an
+        agent that wants to keep waiting can't re-call `continue` (the
+        `is_running` guard rejects it). This action re-enters the wait
+        loop directly. `params[0]` is an optional timeout in seconds.
+        """
+        ctrl = self.controller
+        if ctrl.state.is_terminated:
+            return RpcResponse.error("Program has terminated")
+        return await self._await_stop_loop(self._parse_timeout(params, None))
 
     async def action_pause(self, params: list[Any]) -> RpcResponse:
         if self.controller.state.is_terminated:

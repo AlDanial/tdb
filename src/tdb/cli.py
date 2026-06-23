@@ -10,6 +10,7 @@ from pathlib import Path
 
 def _get_version() -> str:
     from tdb import __version__
+
     return __version__
 
 

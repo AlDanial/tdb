@@ -498,6 +498,7 @@ async def test_wait_graph_in_dispatch_table(handlers):
     assert "wait_graph" in RpcHandlers.ACTIONS
     assert "wait_graph" in RpcHandlers.ACTION_HELP
 
+
 # --- Mid-action gate races (phase changes between service calls) --------
 #
 # Inspector actions make more than one InspectService call (e.g.
@@ -563,3 +564,149 @@ async def test_inspect_thread_gate_race_maps_to_gate_error(handlers, monkeypatch
     assert rsp.value == "Cannot inspect threads while program is running"
     # Specifically: the race must NOT be mislabeled as a stack failure.
     assert "failed to fetch stack trace" not in rsp.value
+
+
+# --- timeout_s / wait_for_stop / lock bypass (PR1 for MCP) --------------
+#
+# The MCP-server work needs three contracts:
+#   1. Blocking actions accept a per-call timeout and surface a stable
+#      "still running" sentinel instead of erroring on expiry.
+#   2. `wait_for_stop` re-enters the wait without re-issuing a step (so an
+#      agent that got "still running" can keep waiting cleanly).
+#   3. `pause` bypasses the dispatcher lock so it can interrupt an
+#      in-flight `continue` — agents have no UI side channel.
+
+
+def test_parse_timeout_extracts_first_param():
+    assert RpcHandlers._parse_timeout([0.5], None) == 0.5
+    assert RpcHandlers._parse_timeout(["2.5"], None) == 2.5
+
+
+def test_parse_timeout_falls_back_to_default_when_missing_or_bad():
+    assert RpcHandlers._parse_timeout([], 7.0) == 7.0
+    assert RpcHandlers._parse_timeout(["not-a-number"], 7.0) == 7.0
+    assert RpcHandlers._parse_timeout([None], 7.0) == 7.0
+
+
+@pytest.mark.parametrize("action_name", ["next", "step_in", "step_out", "continue"])
+async def test_step_action_returns_still_running_on_timeout(handlers, action_name):
+    """When the debuggee doesn't stop within `timeout_s`, the step
+    action returns success with the documented sentinel so MCP / scripted
+    callers can poll. Drives the real ServerEventHandler whose
+    stopped_event never fires — and controller.continue_/step_* are
+    no-ops here because current_thread_id is None on the fixture, so
+    the action_fn() leg doesn't touch the fake DAP client."""
+    fn = handlers.dispatch_table()[action_name]
+    rsp = await fn([0.05])  # 50ms — small but well above scheduler noise
+    assert rsp.success is True
+    assert rsp.value == RpcHandlers.STILL_RUNNING_MSG
+
+
+async def test_step_action_default_timeout_uses_rpc_step_wait(handlers, monkeypatch):
+    """Omitting params[0] must NOT change the historical HTTP-API
+    default of `RPC_STEP_WAIT`. We verify by recording what value the
+    event handler's `wait_for_stop` was called with."""
+    captured: list[float] = []
+
+    async def _spy_wait(timeout: float = 30.0) -> bool:
+        captured.append(timeout)
+        return False  # surface the still-running path immediately
+
+    handlers.event_handler.wait_for_stop = _spy_wait
+
+    rsp = await handlers.action_continue([])
+    assert rsp.success is True
+    assert rsp.value == RpcHandlers.STILL_RUNNING_MSG
+    from tdb._timeouts import RPC_STEP_WAIT
+
+    assert captured == [RPC_STEP_WAIT]
+
+
+async def test_wait_for_stop_in_dispatch_table(handlers):
+    table = handlers.dispatch_table()
+    assert "wait_for_stop" in table
+
+
+async def test_wait_for_stop_rejected_when_terminated(handlers):
+    handlers.controller.state.transition_to(SessionPhase.TERMINATED)
+    rsp = await handlers.action_wait_for_stop([])
+    assert rsp.success is False
+    assert "terminated" in rsp.value.lower()
+
+
+async def test_wait_for_stop_returns_still_running_on_timeout(handlers):
+    """Pure wait — no step issued. Unlike `continue`, this action must
+    NOT trip the `is_running` guard: an agent reaches this code path
+    *because* the program is already running."""
+    handlers.controller.state.transition_to(SessionPhase.RUNNING)
+    rsp = await handlers.action_wait_for_stop([0.05])
+    assert rsp.success is True
+    assert rsp.value == RpcHandlers.STILL_RUNNING_MSG
+
+
+async def test_wait_for_stop_does_not_call_any_step_action(handlers):
+    """Regression guard: wait_for_stop must not issue next/step/continue
+    on the underlying controller — its whole reason for existing is to
+    re-enter the wait loop without re-issuing a step."""
+    called: list[str] = []
+
+    async def _record(name):
+        async def _impl(*args, **kwargs):
+            called.append(name)
+
+        return _impl
+
+    handlers.controller.continue_ = await _record("continue_")
+    handlers.controller.step_over = await _record("step_over")
+    handlers.controller.step_in = await _record("step_in")
+    handlers.controller.step_out = await _record("step_out")
+
+    handlers.controller.state.transition_to(SessionPhase.RUNNING)
+    await handlers.action_wait_for_stop([0.05])
+    assert called == []
+
+
+async def test_dispatcher_pause_bypasses_session_lock(handlers):
+    """End-to-end at the dispatcher: while `session_lock` is held (as it
+    would be during an in-flight `continue`), a `pause` POST must still
+    complete promptly. A non-bypassed action (`status`) must block on
+    the lock — that's the control case proving the bypass is what made
+    pause go through, not loose lock semantics."""
+    import asyncio
+
+    import httpx
+
+    from tdb.server.app import create_app
+
+    app = create_app(handlers)
+    transport = httpx.ASGITransport(app=app)
+
+    async with handlers.session_lock:
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://test"
+        ) as client:
+            # pause: must come back quickly despite the held lock.
+            rsp = await asyncio.wait_for(
+                client.post("/rpc", json={"action": "pause", "params": []}),
+                timeout=1.0,
+            )
+            assert rsp.status_code == 200
+            body = rsp.json()
+            # action_pause early-returns ok when state is already STOPPED.
+            assert body["success"] is True
+
+            # status: should NOT bypass — confirms the dispatcher is
+            # actually holding the lock for everything else.
+            with pytest.raises(asyncio.TimeoutError):
+                await asyncio.wait_for(
+                    client.post("/rpc", json={"action": "status", "params": []}),
+                    timeout=0.2,
+                )
+
+
+def test_no_lock_actions_constant_includes_pause():
+    """The bypass list is a small, deliberate surface. Pin its contents
+    so adding a new bypass becomes a visible decision in code review."""
+    from tdb.server.app import _NO_LOCK_ACTIONS
+
+    assert _NO_LOCK_ACTIONS == frozenset({"pause"})
