@@ -137,6 +137,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Run as a headless JSON-RPC debug server (no TUI)",
     )
     parser.add_argument(
+        "--mcp",
+        action="store_true",
+        help="Run as a Model Context Protocol (MCP) server over stdio. "
+        "Equivalent to `python -m tdb.mcp`. The session is owned by the "
+        "MCP client (via debug_launch / debug_attach tools); no program "
+        "argument is needed on the CLI.",
+    )
+    parser.add_argument(
         "-k",
         "--breakpoint",
         action="append",
@@ -412,7 +420,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     args = parser.parse_args(argv)
     _apply_flag_implications(args)
 
-    if args.doc or args.doc_text or args.post_mortem:
+    if args.doc or args.doc_text or args.post_mortem or args.mcp:
         return args
 
     _validate_terminal_choice(args, parser)
@@ -456,10 +464,19 @@ def main(argv: list[str] | None = None) -> None:
         _run_doc_text()
     elif args.post_mortem:
         _run_post_mortem(args)
+    elif args.mcp:
+        _run_mcp()
     elif args.headless:
         _run_headless(args)
     else:
         _run_tui(args)
+
+
+def _run_mcp() -> None:
+    """Launch the MCP server over stdio. Mirrors `python -m tdb.mcp`."""
+    from tdb.mcp.server import main as mcp_main
+
+    mcp_main()
 
 
 def _run_doc() -> None:

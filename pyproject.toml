@@ -25,7 +25,8 @@
       "pygments>=2.17.0",
       "fastapi>=0.115.0",
       "uvicorn>=0.30.0",
-  ]
+      "mcp>=1.28.0",
+]
 
   # extras needed to run the examples and tests
   [project.optional-dependencies]
@@ -43,6 +44,7 @@
 
   [project.scripts]
   tdb = "tdb.cli:main"
+  tdb-mcp = "tdb.mcp.server:main"
 
   [build-system]
   requires = ["setuptools>=68.0"]
