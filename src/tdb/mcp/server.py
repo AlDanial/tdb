@@ -65,7 +65,15 @@ def _parse_path_mappings(
     normalize to a list of tuples for the DAP client."""
     if not mappings:
         return None
-    return [(str(pair[0]), str(pair[1])) for pair in mappings]
+    out: list[tuple[str, str]] = []
+    for pair in mappings:
+        if len(pair) != 2:
+            raise ValueError(
+                "path_mappings entries must be [local_root, remote_root], got "
+                f"{pair!r}"
+            )
+        out.append((str(pair[0]), str(pair[1])))
+    return out
 
 
 def build_mcp(session: McpSession | None = None) -> FastMCP:
