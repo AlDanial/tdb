@@ -716,6 +716,11 @@ TUI and the HTTP server use — so an agent gets the same lock semantics,
 including the pause-during-continue bypass, and the same DAP-backed
 inspection surface.
 
+For a worked end-to-end example (prompting an agent to find two
+runtime bugs in a sample program) see
+[docs/tutorial-mcp-debugging.md](docs/tutorial-mcp-debugging.md) and
+its companion `examples/sales_report_buggy.py`.
+
 ### Running the MCP server
 
 Configure your MCP client (Claude Desktop, an IDE extension, etc.) to

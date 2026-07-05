@@ -69,8 +69,7 @@ def _parse_path_mappings(
     for pair in mappings:
         if len(pair) != 2:
             raise ValueError(
-                "path_mappings entries must be [local_root, remote_root], got "
-                f"{pair!r}"
+                f"path_mappings entries must be [local_root, remote_root], got {pair!r}"
             )
         out.append((str(pair[0]), str(pair[1])))
     return out
