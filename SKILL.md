@@ -10,12 +10,62 @@ Use this skill when you need to understand runtime behavior of Python code -- va
 - An exception traceback doesn't give enough context
 - You want to test what an expression evaluates to in a live scope
 
-## Quick start
+## Two ways to drive tdb
+
+1. **MCP tools (preferred when available).** If the `tdb` MCP server is
+   registered in this session, use its tools directly (`debug_launch`,
+   `control`, `inspect`, ...) — no server process or curl needed. See
+   "MCP mode" below.
+2. **Headless HTTP JSON-RPC.** Start `tdb --headless` yourself and POST
+   to `/rpc` with curl. Works everywhere, no MCP registration required.
+   See "Quick start" below.
+
+## MCP mode
+
+Register the server once (any of the three invocations work):
+
+```bash
+claude mcp add tdb -- tdb-mcp          # or: tdb --mcp, or: python -m tdb.mcp
+```
+
+The server owns the debug session — do not also start `tdb --headless`.
+16 tools:
+
+| Cluster | Tools |
+|---------|-------|
+| Lifecycle | `debug_launch(program, args?, cwd?, stop_on_entry?, just_my_code?, python?, breakpoints?)`, `debug_attach(host, port, breakpoints?, path_mappings?)`, `quit()` |
+| Control | `control(action, timeout_s=30)` — `action ∈ {continue, next, step_in, step_out, pause, wait_for_stop}` |
+| Inspection | `inspect(expressions)`, `read_source(file_path)`, `stack_trace()`, `status()`, `get_output()` |
+| Breakpoints | `set_breakpoint(spec, condition?, hit_condition?)`, `remove_breakpoint(spec)`, `list_breakpoints()` |
+| Concurrency | `threads(thread_id?)`, `tasks(task_name?)`, `processes(name_or_pid?)`, `wait_graph()` |
+
+Typical flow:
+
+```
+debug_launch(program="/abs/path/script.py", breakpoints=["/abs/path/script.py:42"])
+control(action="continue", timeout_s=30)
+inspect(expressions=["x", "len(items)", "type(data)"])
+control(action="next")
+quit()
+```
+
+Notes:
+- `breakpoints` specs are `"file.py:42"` strings; paths must be absolute.
+- If `control` returns `still running — call pause or wait again`, the
+  program didn't stop within `timeout_s`. Call `control(action="pause")`
+  to interrupt it, or `control(action="wait_for_stop")` to keep waiting.
+  `pause` bypasses the session lock, so it works even while another
+  `control` call is still blocked.
+- `wait_graph()` is the fastest way to diagnose an asyncio hang: it shows
+  blocked tasks, what each awaits, and any deadlock cycles.
+- `inspect` executes arbitrary Python in the debuggee — same caveat as
+  the `inspect`/`evaluate` RPC actions.
+
+## Quick start (HTTP JSON-RPC)
 
 ### 1. Start the debug server
 
 ```bash
-cd /home/al/projects/tdb/work
 .venv/bin/python -m tdb --headless --stop-on-entry /path/to/script.py &
 ```
 
@@ -80,11 +130,12 @@ curl -s -X POST http://127.0.0.1:8150/rpc \
 | `set_breakpoint` | `["file:line"]` or `["file:line", "condition", "hit_condition"]` | Set a breakpoint, optionally conditional |
 | `remove_breakpoint` | `["file:line"]` | Remove a breakpoint |
 | `list_breakpoints` | `[]` | Show all breakpoints with conditions |
-| `continue` | `[]` | Resume execution until next breakpoint or exit |
-| `next` | `[]` | Step over (execute current line, stop at next) |
-| `step_in` | `[]` | Step into function call |
-| `step_out` | `[]` | Step out of current function |
-| `pause` | `[]` | Pause a running program |
+| `continue` | `[]` or `[timeout_s]` | Resume execution until next breakpoint or exit |
+| `next` | `[]` or `[timeout_s]` | Step over (execute current line, stop at next) |
+| `step_in` | `[]` or `[timeout_s]` | Step into function call |
+| `step_out` | `[]` or `[timeout_s]` | Step out of current function |
+| `pause` | `[]` | Pause a running program (works even while a step/continue is blocked) |
+| `wait_for_stop` | `[]` or `[timeout_s]` | Wait for the next stop without issuing a step |
 | `inspect` | `["expr1", "expr2", ...]` | Evaluate multiple expressions, return all results |
 | `evaluate` | `["expression"]` | Evaluate a single expression in the current scope |
 | `stack_up` | `[]` | Move up the call stack (toward caller) |
@@ -191,7 +242,7 @@ curl -s -X POST http://127.0.0.1:8150/rpc -H 'Content-Type: application/json' \
 - **Breakpoint paths must be absolute.** Use the full path, not relative.
 - **`next` vs `step_in`:** `next` stays in the current function; `step_in` enters called functions.
 - **`inspect` vs `evaluate`:** `inspect` takes multiple expressions and labels each result; `evaluate` returns a single raw result.
-- **Step/continue actions block** until the program stops (breakpoint, exception, or exit). Timeout is 30 seconds.
+- **Step/continue actions block** until the program stops (breakpoint, exception, or exit). Default timeout is 600 seconds; pass a shorter per-call timeout as the first param (e.g. `{"action":"continue","params":[30]}`). On timeout the response is a success with value `still running — call pause or wait again` — follow up with `pause` to interrupt or `wait_for_stop` to keep waiting.
 - **`--stop-on-entry`** pauses at the first line. Without it, the program runs until a breakpoint or exit.
 - **Output capture:** stdout/stderr from the debuggee is buffered. Use `get_output` to retrieve it, or it's included automatically in step/continue responses.
 - **After termination:** stepping and evaluation are unavailable. Use `restart` to start over, or `quit` to shut down.
