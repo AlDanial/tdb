@@ -87,6 +87,58 @@ def test_try_except_finally():
     assert find_step_unit(6, units) == (6, 6)
 
 
+def test_match_statement_header_cases_and_bodies():
+    # Regression: ast.Match has no `body` attribute (suites live in
+    # `cases`); compute_step_units used to crash with AttributeError on
+    # any real match statement.
+    units = _units("""\
+        match command:
+            case "go":
+                move()
+                log()
+            case _:
+                stop()
+        after = True
+        """)
+    assert find_step_unit(1, units) == (1, 1)  # match header
+    assert find_step_unit(2, units) == (2, 2)  # case "go":
+    assert find_step_unit(3, units) == (3, 3)  # move()
+    assert find_step_unit(4, units) == (4, 4)  # log()
+    assert find_step_unit(5, units) == (5, 5)  # case _:
+    assert find_step_unit(6, units) == (6, 6)  # stop()
+    assert find_step_unit(7, units) == (7, 7)  # after = True
+
+
+def test_match_with_multiline_subject():
+    units = _units("""\
+        match build(
+            arg,
+        ):
+            case _:
+                pass
+        """)
+    # Header spans the multi-line subject up to the first case.
+    assert find_step_unit(1, units) == (1, 3)
+    assert find_step_unit(4, units) == (4, 4)
+    assert find_step_unit(5, units) == (5, 5)
+
+
+def test_match_inside_function():
+    units = _units("""\
+        def handler(arg_type):
+            match arg_type:
+                case int():
+                    return 1
+                case _:
+                    return 0
+        """)
+    assert find_step_unit(1, units) == (1, 1)
+    assert find_step_unit(2, units) == (2, 2)
+    assert find_step_unit(3, units) == (3, 3)
+    assert find_step_unit(4, units) == (4, 4)
+    assert find_step_unit(6, units) == (6, 6)
+
+
 def test_function_def_header_separate_from_body():
     units = _units("""\
         def foo():

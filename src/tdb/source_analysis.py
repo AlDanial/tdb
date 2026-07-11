@@ -121,8 +121,11 @@ def _walk(node: ast.AST, out: list[tuple[int, int]]) -> None:
         out.append((dec.lineno, dec.end_lineno or dec.lineno))
 
     if isinstance(node, _COMPOUND_STMT_TYPES):
-        out.append(_header_range(node, node.body))
-        for sublist in _all_suites(node):
+        # ast.Match has no `body` — its suites live in `cases` — so
+        # derive the header end from the first suite whatever its name.
+        suites = list(_all_suites(node))
+        out.append(_header_range(node, suites[0] if suites else []))
+        for sublist in suites:
             for child in sublist:
                 _walk(child, out)
     elif isinstance(node, ast.ExceptHandler):
@@ -130,7 +133,14 @@ def _walk(node: ast.AST, out: list[tuple[int, int]]) -> None:
         for child in node.body:
             _walk(child, out)
     elif hasattr(ast, "match_case") and isinstance(node, ast.match_case):
-        out.append(_header_range(node, node.body))
+        # match_case carries no lineno of its own — its pattern does.
+        # The header is the `case <pattern> [if guard]:` line(s).
+        start = node.pattern.lineno
+        if node.body:
+            end = node.body[0].lineno - 1
+        else:
+            end = node.pattern.end_lineno or start
+        out.append((start, max(start, end)))
         for child in node.body:
             _walk(child, out)
     elif isinstance(node, ast.stmt):
@@ -149,7 +159,13 @@ def _header_range(
     """
     start = node.lineno  # type: ignore[attr-defined]
     if body:
-        end = body[0].lineno - 1  # type: ignore[attr-defined]
+        first = body[0]
+        # A Match node's first suite is `cases`, whose match_case
+        # elements have no lineno; their pattern does.
+        first_line = getattr(first, "lineno", None)
+        if first_line is None:
+            first_line = first.pattern.lineno
+        end = first_line - 1
     else:
         end = node.end_lineno or start  # type: ignore[attr-defined]
     return (start, max(start, end))
