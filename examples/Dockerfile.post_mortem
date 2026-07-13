@@ -1,0 +1,35 @@
+# Example showing how to use tdb's post-mortem exception hook to
+# catch unhandled exceptions in a Python program running in a
+# Docker container.  The application is post_mortem_example.py,
+# which enables the exception hook with
+#   import sys
+#   import tdb
+#   sys.excepthook = tdb.exception_hook
+#
+# 1. Build the container
+#       docker build -t pm_example Dockerfile.post_mortem
+#
+# 2. Run the container in detached mode.  It invokes the Python application,
+#    post_mortem_example.py, via the post_mortem_entrypoint.sh script
+#       docker run -d --rm --name pm_example pm_example
+#
+# 3. View the application in tdb's post-mortem analysis by attaching
+#    to the running container with
+#       docker exec -it pm_example /bin/sh
+#    then, witin the container, attach to the tmux session containing
+#    the Python program with
+#       tmux a
+
+FROM ghcr.io/astral-sh/uv:python3.14-alpine AS base
+RUN adduser -D appuser
+ENV PATH="/app/.venv/bin:$PATH"
+
+RUN ["apk", "add", "tmux"]
+RUN ["uv", "pip", "install", "--system", "textual-debugger"]
+
+WORKDIR /app
+COPY --chown=appuser:appuser post_mortem_example.py post_mortem_entrypoint.sh /app/
+USER appuser
+
+FROM base AS final
+ENTRYPOINT ["./post_mortem_entrypoint.sh"]
