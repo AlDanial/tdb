@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-A copy of digits_of_pi,py with a deliberate error to demonstrate
+A copy of digits_of_pi.py with a deliberate error to demonstrate
 post-mortem tdb attachment.
 """
 
