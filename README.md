@@ -25,7 +25,7 @@ It specifically supports modules
 
 - supports remote attachment to debugpy-enabled Python programs
 
-- includes a JSON-RPC server mode, an MPC mode, and a `SKILL.md` file that enable
+- includes a JSON-RPC server mode, an MCP mode, and a `SKILL.md` file that enable
 programmatic debug control, making it suitable for
 automated, headless debugging workflows and AI-assisted debugging
 
