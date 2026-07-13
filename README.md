@@ -25,7 +25,8 @@ It specifically supports modules
 
 - supports remote attachment to debugpy-enabled Python programs
 
-- includes a JSON-RPC server mode that enables programmatic debug control, making it suitable for
+- includes a JSON-RPC server mode, an MCP mode, and a `SKILL.md` file that enable
+programmatic debug control, making it suitable for
 automated, headless debugging workflows and AI-assisted debugging
 
 - can spawn the debuggee in an external terminal to enable debugging TUI applications
@@ -53,6 +54,9 @@ as open source.
 - Anthropic, for providing access to Claude Code through the
 [Claude for Open Source](https://claude.com/contact-sales/claude-for-oss) program.
 `tdb` was made almost entirely with Claude Code.
+
+- OpenAI, for providing access to Codex through the
+[Codex for Open Source](https://developers.openai.com/community/codex-for-oss) program.
 
 ## Gallery
 <p align="center">
@@ -375,6 +379,17 @@ written to a temp file that is deleted as soon as `tdb` exits.
 Snapshot depth / breadth is capped (5 levels, 50 children per container) to keep the
 capture cheap even for pathological object graphs; cycles are handled via identity
 memoization.
+
+### Post-Mortem within a Docker Container
+
+The `textual-debugger` GitHub repository's `examples/` directory has three files
+that show how to run a `tdb`-enabled Python program under `tmux` in a Docker
+container so that you can attach to the container and inspect the program
+in `tdb` post-mortem analysis mode if the program hits an unhandled exception:
+
+- [post_mortem_example.py](https://github.com/AlDanial/tdb/blob/main/examples/post_mortem_example.py)
+- [post_mortem_entrypoint.sh](https://github.com/AlDanial/tdb/blob/main/examples/post_mortem_entrypoint.sh)
+- [Dockerfile.post_mortem](https://github.com/AlDanial/tdb/blob/main/examples/Dockerfile.post_mortem)
 
 ### Live Breakpoint Hook
 
