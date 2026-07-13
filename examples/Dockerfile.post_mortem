@@ -7,7 +7,7 @@
 #   sys.excepthook = tdb.exception_hook
 #
 # 1. Build the container
-#       docker build -t pm_example Dockerfile.post_mortem
+#       docker build -t pm_example -f Dockerfile.post_mortem .
 #
 # 2. Run the container in detached mode.  It invokes the Python application,
 #    post_mortem_example.py, via the post_mortem_entrypoint.sh script
