@@ -166,3 +166,35 @@ def test_load_breakpoints_corrupt_json_returns_empty(isolated_persist):
     isolated_persist.STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
     isolated_persist.STATE_FILE.write_text("{not json")
     assert isolated_persist.load_breakpoints(program="/abs/x.py") == {}
+
+
+def test_config_adapter_fields_default_empty(isolated_persist):
+    TdbConfig = isolated_persist.TdbConfig
+    cfg = TdbConfig()
+    assert cfg.adapters == {}
+    assert cfg.default_adapters == {}
+
+
+def test_config_adapter_fields_from_dict(isolated_persist):
+    TdbConfig = isolated_persist.TdbConfig
+    cfg = TdbConfig.from_dict(
+        {
+            "adapters": {"lldb-dap": "/opt/llvm/bin/lldb-dap"},
+            "default_adapters": {"cpp": "gdb"},
+        }
+    )
+    assert cfg.adapters == {"lldb-dap": "/opt/llvm/bin/lldb-dap"}
+    assert cfg.default_adapters == {"cpp": "gdb"}
+
+
+def test_config_adapter_fields_reject_bad_shapes(isolated_persist):
+    TdbConfig = isolated_persist.TdbConfig
+    cfg = TdbConfig.from_dict({"adapters": "nope", "default_adapters": [1]})
+    assert cfg.adapters == {}
+    assert cfg.default_adapters == {}
+
+
+def test_config_adapter_fields_round_trip(isolated_persist):
+    TdbConfig = isolated_persist.TdbConfig
+    cfg = TdbConfig(adapters={"gdb": "/usr/bin/gdb"})
+    assert TdbConfig.from_dict(cfg.to_dict()).adapters == {"gdb": "/usr/bin/gdb"}
