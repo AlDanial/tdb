@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import sys
-from typing import Any, Awaitable, Callable
+from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 from .messages import Event, Request, Response, parse_message
 from .protocol import encode_message, read_message
@@ -21,6 +20,9 @@ from .types import (
     Variable,
 )
 
+if TYPE_CHECKING:
+    from tdb.languages.base import AdapterSpec
+
 log = logging.getLogger(__name__)
 
 EventHandler = Callable[[Event], Any]
@@ -35,7 +37,12 @@ class DAPClient:
     - ``connect()`` — connect to an adapter over TCP (for child processes)
     """
 
-    def __init__(self) -> None:
+    def __init__(self, adapter: "AdapterSpec | None" = None) -> None:
+        if adapter is None:
+            from tdb.languages.python import DebugpyAdapter
+
+            adapter = DebugpyAdapter()
+        self._adapter = adapter
         self._seq = 0
         self._pending: dict[int, asyncio.Future[Response]] = {}
         self._event_handlers: dict[str, list[EventHandler]] = {}
@@ -63,20 +70,18 @@ class DAPClient:
         self._reverse_request_handlers[command] = handler
 
     async def start(self) -> None:
-        """Spawn the debugpy adapter subprocess.
+        """Spawn the debug adapter subprocess.
 
-        Always uses ``sys.executable`` (tdb's own Python, which has debugpy
-        installed). The user's ``--python`` is for the *debuggee*, not the
-        adapter — it's threaded through as ``debugLauncherPython`` in the
-        launch request instead. Running the adapter on a Python without
-        debugpy would make this subprocess die immediately with
+        Argv comes from ``AdapterSpec.command()`` (e.g. debugpy always
+        runs on tdb's own interpreter, which has debugpy installed — the
+        user's ``--python`` is for the *debuggee*, threaded through as a
+        launch-request key instead). Running the adapter on a Python
+        without debugpy would make this subprocess die immediately with
         ``ModuleNotFoundError`` and tdb would hang waiting on stdout.
         """
+        argv = self._adapter.command()
         self._process = await asyncio.create_subprocess_exec(
-            sys.executable,
-            "-Xfrozen_modules=off",
-            "-m",
-            "debugpy.adapter",
+            *argv,
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -103,13 +108,14 @@ class DAPClient:
                 pass
         stderr_text = stderr_bytes.decode("utf-8", errors="replace").strip()
         log.error(
-            "debugpy adapter exited with code %s%s",
+            "%s adapter exited with code %s%s",
+            self._adapter.id,
             rc,
             f"\nstderr:\n{stderr_text}" if stderr_text else "",
         )
         # Fail any still-pending requests so callers don't await forever.
         err = ConnectionError(
-            f"debugpy adapter died (exit {rc}): "
+            f"{self._adapter.id} adapter died (exit {rc}): "
             f"{stderr_text.splitlines()[-1] if stderr_text else 'no output'}"
         )
         for fut in list(self._pending.values()):
@@ -260,7 +266,7 @@ class DAPClient:
             {
                 "clientID": "tdb",
                 "clientName": "tdb",
-                "adapterID": "debugpy",
+                "adapterID": self._adapter.id,
                 "pathFormat": "path",
                 "linesStartAt1": True,
                 "columnsStartAt1": True,
@@ -277,76 +283,37 @@ class DAPClient:
         cwd: str | None = None,
         env: dict[str, str] | None = None,
         stop_on_entry: bool = False,
-        just_my_code: bool = True,
-        python: str | None = None,
         console: str = "internalConsole",
-        sub_process: bool = True,
+        **adapter_opts: Any,
     ) -> asyncio.Future[Response]:
         """Send launch request. Returns a Future for the response.
 
-        debugpy delays the launch response until after configurationDone,
-        so callers must NOT await this directly — await the returned Future
-        after sending configurationDone.
+        Adapters may delay the launch response until configurationDone
+        (DAP-spec behavior; debugpy does this), so callers must NOT await
+        this directly — await the returned Future after configurationDone.
+
+        ``**adapter_opts`` carries adapter-specific keys (debugpy:
+        just_my_code, python, sub_process) into AdapterSpec.launch_body.
         """
-        arguments: dict[str, Any] = {
-            "type": "debugpy",
-            "request": "launch",
-            "program": program,
-            "args": args or [],
-            "cwd": cwd or ".",
-            "console": console,
-            "redirectOutput": console == "internalConsole",
-            "justMyCode": just_my_code,
-            "stopOnEntry": stop_on_entry,
-            "subProcess": sub_process,
-            "pythonArgs": ["-Xfrozen_modules=off"],
-        }
-        if env:
-            arguments["env"] = env
-        if python:
-            # "python" sets the debuggee interpreter; the adapter defaults
-            # "debugLauncherPython" from this (they're different components
-            # but here we want them to match).
-            arguments["python"] = python
+        arguments = self._adapter.launch_body(
+            program=program,
+            args=args or [],
+            cwd=cwd or ".",
+            env=env,
+            stop_on_entry=stop_on_entry,
+            console=console,
+            opts=adapter_opts,
+        )
         return await self._send_raw("launch", arguments)
 
     async def attach(
         self,
         host: str = "127.0.0.1",
         port: int = 0,
-        sub_process_id: int | None = None,
-        just_my_code: bool = True,
-        path_mappings: list[tuple[str, str]] | None = None,
+        **adapter_opts: Any,
     ) -> asyncio.Future[Response]:
-        """Send attach request. Returns a Future (same pattern as launch).
-
-        Use subProcessId (not processId) to route to a child session
-        without triggering ptrace injection.
-
-        Note: debugpy ignores `stopOnEntry` for attach (only honored
-        when start_reason == "launch"). To stop the debuggee at the
-        first statement after attach, send a `pause` request before
-        `configurationDone` — see controller.do_configure.
-
-        `path_mappings` is a list of `(local_root, remote_root)` pairs;
-        debugpy translates paths bidirectionally so the tdb host can
-        read local copies of remote source files instead of fetching
-        them via DAP `source` requests.
-        """
-        arguments: dict[str, Any] = {
-            "type": "debugpy",
-            "request": "attach",
-            "connect": {"host": host, "port": port},
-            "justMyCode": just_my_code,
-            "subProcess": True,
-        }
-        if sub_process_id is not None:
-            arguments["subProcessId"] = sub_process_id
-        if path_mappings:
-            arguments["pathMappings"] = [
-                {"localRoot": local, "remoteRoot": remote}
-                for local, remote in path_mappings
-            ]
+        """Send attach request. Returns a Future (same pattern as launch)."""
+        arguments = self._adapter.attach_body(host=host, port=port, opts=adapter_opts)
         return await self._send_raw("attach", arguments)
 
     async def configuration_done(self) -> None:
