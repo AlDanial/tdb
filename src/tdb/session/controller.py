@@ -6,13 +6,16 @@ import asyncio
 import logging
 import os
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from tdb.dap.client import DAPClient
 from tdb.dap.messages import Event
 from tdb.dap.types import SourceBreakpoint
 from .event_bus import DebugEventHandler
 from .state import DebugState, SessionPhase
+
+if TYPE_CHECKING:
+    from tdb.languages.base import LanguageProfile
 
 log = logging.getLogger(__name__)
 
@@ -24,9 +27,18 @@ log = logging.getLogger(__name__)
 class DebugController:
     """Orchestrates the debug session between DAP client and event consumers."""
 
-    def __init__(self, event_handler: DebugEventHandler) -> None:
+    def __init__(
+        self,
+        event_handler: DebugEventHandler,
+        profile: "LanguageProfile | None" = None,
+    ) -> None:
+        if profile is None:
+            from tdb.languages.python import PYTHON_PROFILE
+
+            profile = PYTHON_PROFILE
+        self.profile = profile
         self.event_handler = event_handler
-        self.client = DAPClient()
+        self.client = DAPClient(profile.adapter)
         self.state = DebugState()
         self._terminal: str | None = None
         self._lock = asyncio.Lock()
@@ -143,7 +155,10 @@ class DebugController:
         self.client.on_event("initialized", self._on_initialized)
         # Child process debugging: ChildProcessManager registers its
         # own debugpyAttach handler that fires _spawn_bg(_attach(...)).
-        self._children.register_on(self.client)
+        # This is a debugpy-proprietary mechanism (the `debugpyAttach`
+        # reverse event); only wire it up when the profile opts in.
+        if self.profile.capabilities.child_process_strategy == "debugpy":
+            self._children.register_on(self.client)
 
     async def start(
         self,
@@ -248,10 +263,11 @@ class DebugController:
 
         This unblocks the launch response from debugpy.
         """
-        # Break on exceptions that crash the program or escape user code.
-        # "userUnhandled" avoids spurious stops on internal exceptions like
-        # GeneratorExit in traceback.walk_stack.
-        await self.client.set_exception_breakpoints(["userUnhandled"])
+        # Exception-breakpoint filters are adapter-specific; the spec
+        # picks them from what the adapter advertised at initialize.
+        filters = self.profile.adapter.pick_exception_filters(self.client.capabilities)
+        if filters:
+            await self.client.set_exception_breakpoints(filters)
 
         # Send breakpoints (skip if globally disabled; also filter per-bp enabled)
         if not self.state.breakpoints_disabled:
@@ -272,7 +288,11 @@ class DebugController:
         # unblocks wait_for_client(), the very first user-code statement
         # trips the flag and emits `stopped` deterministically.
         # Skipped if the debuggee is already paused (tdb.breakpoint() hook).
-        if self._is_remote_attach and self.state.phase != SessionPhase.STOPPED:
+        if (
+            self._is_remote_attach
+            and self.profile.adapter.quirks.pre_arm_pause_on_attach
+            and self.state.phase != SessionPhase.STOPPED
+        ):
             try:
                 threads = await self.client.threads()
                 if threads:

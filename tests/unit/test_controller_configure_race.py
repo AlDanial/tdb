@@ -20,6 +20,7 @@ import asyncio
 import pytest
 
 from tdb.dap.messages import Event, Response
+from tdb.dap.types import Capabilities
 from tdb.server.event_handler import ServerEventHandler
 from tdb.session.controller import DebugController
 from tdb.session.state import SessionPhase
@@ -31,6 +32,7 @@ class _StubDAPClient:
     def __init__(self) -> None:
         self.events: dict = {}
         self.reverse_handlers: dict = {}
+        self.capabilities = Capabilities()
 
     def on_event(self, name, fn):
         self.events[name] = fn

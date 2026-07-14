@@ -19,7 +19,22 @@ from tdb.dap.messages import Event, Response
 from tdb.session.controller import DebugController
 from tdb.session.event_bus import DebugEventHandler
 from tdb.session.state import SessionPhase
-from tdb.dap.types import Scope, Source, SourceBreakpoint, StackFrame, Thread, Variable
+from tdb.dap.types import (
+    Capabilities,
+    Scope,
+    Source,
+    SourceBreakpoint,
+    StackFrame,
+    Thread,
+    Variable,
+)
+from tdb.languages.base import (
+    AdapterQuirks,
+    AdapterSpec,
+    LanguageProfile,
+    Presentation,
+    ProfileCapabilities,
+)
 
 
 class _RecordingHandler(DebugEventHandler):
@@ -54,6 +69,11 @@ class _FakeDAP:
         self.evaluate_effects: list = []  # exceptions or (result, ref) tuples
         self.source_result = "print('hi')\n"
         self.fail: set[str] = set()
+        self.capabilities = Capabilities()
+        self._event_handlers: dict[str, list] = {}
+
+    def on_event(self, event_name, handler) -> None:
+        self._event_handlers.setdefault(event_name, []).append(handler)
 
     def _hit(self, method: str, *args) -> None:
         self.calls.append((method,) + args)
@@ -127,10 +147,11 @@ class _FakeDAP:
 def _make(
     thread_id: int | None = 1,
     with_frames: bool = True,
+    profile=None,
 ) -> tuple[DebugController, _FakeDAP, _RecordingHandler]:
     """Controller stopped at a breakpoint with a two-frame stack."""
     handler = _RecordingHandler()
-    ctrl = DebugController(handler)
+    ctrl = DebugController(handler, profile=profile)
     fake = _FakeDAP()
     ctrl.client = fake
     ctrl._active_client = fake
@@ -704,3 +725,66 @@ async def test_do_configure_raises_on_failed_launch():
     ctrl._launch_future = _resolved_launch_future(success=False)
     with pytest.raises(Exception, match="Launch failed: bad interpreter"):
         await ctrl.do_configure()
+
+
+# --- LanguageProfile threading ---------------------------------------------
+
+
+class _NullSpec(AdapterSpec):
+    id = "null"
+
+    def command(self):
+        return ["true"]
+
+    def launch_body(self, **kw):
+        return {}
+
+    def attach_body(self, **kw):
+        return {}
+
+    def pick_exception_filters(self, caps):
+        return []
+
+
+def _bare_profile(**cap_kwargs) -> LanguageProfile:
+    return LanguageProfile(
+        id="bare",
+        display_name="Bare",
+        adapter=_NullSpec(),
+        presentation=Presentation(),
+        capabilities=ProfileCapabilities(**cap_kwargs),
+    )
+
+
+def test_default_profile_is_python():
+    ctrl, _dap, _handler = _make()
+    assert ctrl.profile.id == "python"
+
+
+async def test_do_configure_skips_exception_bps_when_no_filters():
+    ctrl, dap, _handler = _make(profile=_bare_profile())
+    ctrl._launch_future = _resolved_launch_future()
+    await ctrl.do_configure()
+    assert dap.calls_to("setExceptionBreakpoints") == []
+
+
+async def test_do_configure_uses_profile_filters():
+    ctrl, dap, _handler = _make()  # python profile
+    ctrl._launch_future = _resolved_launch_future()
+    await ctrl.do_configure()
+    assert dap.calls_to("setExceptionBreakpoints")[0] == (
+        "setExceptionBreakpoints",
+        ("userUnhandled",),
+    )
+
+
+def test_children_not_registered_without_strategy():
+    ctrl, dap, _handler = _make(profile=_bare_profile())
+    ctrl._setup_event_handlers()
+    assert "debugpyAttach" not in ctrl.client._event_handlers
+
+
+def test_children_registered_for_python():
+    ctrl, dap, _handler = _make()
+    ctrl._setup_event_handlers()
+    assert "debugpyAttach" in ctrl.client._event_handlers
