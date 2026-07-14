@@ -141,7 +141,10 @@ class DAPClient:
             self._writer.close()
             self._writer = None
         if self._process:
-            self._process.terminate()
+            try:
+                self._process.terminate()
+            except ProcessLookupError:
+                pass  # adapter already died (crash or kill) — nothing to stop
             await self._process.wait()
 
     async def _read_loop(self) -> None:
