@@ -2,8 +2,8 @@
 
 Default adapter: lldb-dap (ships with LLVM >= 17; debugs GCC- and
 clang-built binaries alike — DWARF is compiler-neutral). Alternate:
-`gdb -i dap` (GDB >= 14), added as GdbDapAdapter in a later task,
-selected via `--adapter gdb`.
+`gdb -i dap` (GDB >= 14) via GdbDapAdapter, selected via
+`--adapter gdb`.
 
 Core-DAP capabilities only: no statement stepping (no C++ source
 model), no task inspection, no child-process tracking.
