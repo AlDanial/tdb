@@ -100,3 +100,7 @@ def detect(program: str | None) -> str:
 
 
 register("python", build_python_profile)
+
+from tdb.languages.cpp import build_cpp_profile  # noqa: E402
+
+register("cpp", build_cpp_profile)

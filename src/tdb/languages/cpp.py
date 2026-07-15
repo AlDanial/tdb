@@ -1,0 +1,94 @@
+"""The C/C++ language profile.
+
+Default adapter: lldb-dap (ships with LLVM >= 17; debugs GCC- and
+clang-built binaries alike — DWARF is compiler-neutral). Alternate:
+`gdb -i dap` (GDB >= 14), added as GdbDapAdapter in a later task,
+selected via `--adapter gdb`.
+
+Core-DAP capabilities only: no statement stepping (no C++ source
+model), no task inspection, no child-process tracking.
+"""
+
+from __future__ import annotations
+
+import shutil
+from typing import Any
+
+from tdb.dap.types import Capabilities
+from tdb.languages.base import (
+    AdapterNotFoundError,
+    AdapterSpec,
+    LanguageNotSupportedError,
+    LanguageProfile,
+    Presentation,
+    ProfileCapabilities,
+)
+
+
+class LldbDapAdapter(AdapterSpec):
+    id = "lldb-dap"
+
+    def __init__(self, executable: str | None = None) -> None:
+        self._executable = executable
+
+    def command(self) -> list[str]:
+        exe = self._executable or shutil.which("lldb-dap")
+        if exe is None:
+            raise AdapterNotFoundError(
+                "lldb-dap not found on PATH — install LLVM >= 17 "
+                '(package `lldb`), or set {"adapters": {"lldb-dap": '
+                '"/path/to/lldb-dap"}} in tdb\'s config.json'
+            )
+        return [exe]
+
+    def launch_body(
+        self,
+        *,
+        program: str,
+        args: list[str],
+        cwd: str,
+        env: dict[str, str] | None,
+        stop_on_entry: bool,
+        console: str,
+        opts: dict[str, Any],
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {
+            "type": "lldb-dap",
+            "request": "launch",
+            "program": program,
+            "args": args,
+            "cwd": cwd,
+            "stopOnEntry": stop_on_entry,
+        }
+        if env:
+            # lldb-dap wants ["KEY=VALUE", ...], not a mapping.
+            body["env"] = [f"{k}={v}" for k, v in env.items()]
+        return body
+
+    def attach_body(
+        self, *, host: str, port: int, opts: dict[str, Any]
+    ) -> dict[str, Any]:
+        raise LanguageNotSupportedError(
+            "remote attach is not supported for lldb-dap yet"
+        )
+
+
+def build_cpp_profile(
+    adapter: str | None = None, adapter_paths: dict[str, str] | None = None
+) -> LanguageProfile:
+    adapters: dict[str, type[AdapterSpec]] = {"lldb-dap": LldbDapAdapter}
+    adapter_id = adapter or "lldb-dap"
+    if adapter_id not in adapters:
+        raise LanguageNotSupportedError(
+            f"unknown adapter {adapter_id!r} for cpp "
+            f"(known: {', '.join(sorted(adapters))}; note: codelldb is "
+            f"not packaged standalone — use lldb-dap)"
+        )
+    executable = (adapter_paths or {}).get(adapter_id)
+    return LanguageProfile(
+        id="cpp",
+        display_name="C/C++",
+        adapter=adapters[adapter_id](executable=executable),
+        presentation=Presentation(lexer="cpp"),
+        capabilities=ProfileCapabilities(),
+    )
