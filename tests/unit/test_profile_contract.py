@@ -11,6 +11,13 @@ def profile(request):
     return registry.resolve(request.param)
 
 
+def test_expected_languages_are_registered():
+    # Guards the parametrized fixture above: if registration ever moves
+    # out of import time, this fails loudly instead of the contract
+    # suite silently collecting zero profiles.
+    assert {"python", "cpp"} <= set(registry.known_languages())
+
+
 def test_identity_fields(profile):
     assert profile.id
     assert profile.display_name

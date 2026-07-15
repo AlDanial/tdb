@@ -14,7 +14,6 @@ from __future__ import annotations
 import shutil
 from typing import Any
 
-from tdb.dap.types import Capabilities
 from tdb.languages.base import (
     AdapterNotFoundError,
     AdapterSpec,
