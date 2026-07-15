@@ -4,7 +4,7 @@ import pytest
 
 from tdb.dap.types import Capabilities
 from tdb.languages.base import AdapterNotFoundError, LanguageNotSupportedError
-from tdb.languages.cpp import LldbDapAdapter, build_cpp_profile
+from tdb.languages.cpp import GdbDapAdapter, LldbDapAdapter, build_cpp_profile
 from tdb.languages import registry
 
 
@@ -84,3 +84,45 @@ def test_exception_filters_use_adapter_defaults():
 def test_unknown_cpp_adapter_rejected():
     with pytest.raises(LanguageNotSupportedError, match="codelldb"):
         build_cpp_profile(adapter="codelldb")
+
+
+def test_gdb_adapter_selectable():
+    p = build_cpp_profile(adapter="gdb")
+    assert p.adapter.id == "gdb"
+    assert p.id == "cpp"  # same language side
+
+
+def test_gdb_command():
+    assert GdbDapAdapter(executable="/usr/bin/gdb").command() == [
+        "/usr/bin/gdb",
+        "-i",
+        "dap",
+    ]
+
+
+def test_gdb_command_missing_hints_gdb14(monkeypatch):
+    import shutil as _sh
+
+    monkeypatch.setattr(_sh, "which", lambda name: None)
+    with pytest.raises(AdapterNotFoundError, match="GDB >= 14"):
+        GdbDapAdapter().command()
+
+
+def test_gdb_launch_body():
+    body = GdbDapAdapter().launch_body(
+        program="/x/prog",
+        args=["a"],
+        cwd="/x",
+        env=None,
+        stop_on_entry=True,
+        console="internalConsole",
+        opts={},
+    )
+    assert body == {
+        "type": "gdb",
+        "request": "launch",
+        "program": "/x/prog",
+        "args": ["a"],
+        "cwd": "/x",
+        "stopAtBeginningOfMainSubprogram": True,
+    }

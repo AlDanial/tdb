@@ -72,10 +72,67 @@ class LldbDapAdapter(AdapterSpec):
         )
 
 
+class GdbDapAdapter(AdapterSpec):
+    """GDB's built-in DAP interpreter (`gdb -i dap`, GDB >= 14).
+
+    Alternate C++ adapter: GDB's libstdc++ pretty-printers are more
+    complete than LLDB's, which matters for heavily GCC codebases.
+    """
+
+    id = "gdb"
+
+    def __init__(self, executable: str | None = None) -> None:
+        self._executable = executable
+
+    def command(self) -> list[str]:
+        exe = self._executable or shutil.which("gdb")
+        if exe is None:
+            raise AdapterNotFoundError(
+                "gdb not found on PATH — install GDB >= 14 (its DAP mode), "
+                'or set {"adapters": {"gdb": "/path/to/gdb"}} in '
+                "tdb's config.json"
+            )
+        return [exe, "-i", "dap"]
+
+    def launch_body(
+        self,
+        *,
+        program: str,
+        args: list[str],
+        cwd: str,
+        env: dict[str, str] | None,
+        stop_on_entry: bool,
+        console: str,
+        opts: dict[str, Any],
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {
+            "type": "gdb",
+            "request": "launch",
+            "program": program,
+            "args": args,
+            "cwd": cwd,
+            # GDB's DAP name for stop-on-entry.
+            "stopAtBeginningOfMainSubprogram": stop_on_entry,
+        }
+        if env:
+            body["env"] = env  # GDB takes a mapping, unlike lldb-dap
+        return body
+
+    def attach_body(
+        self, *, host: str, port: int, opts: dict[str, Any]
+    ) -> dict[str, Any]:
+        raise LanguageNotSupportedError(
+            "remote attach is not supported for gdb -i dap yet"
+        )
+
+
 def build_cpp_profile(
     adapter: str | None = None, adapter_paths: dict[str, str] | None = None
 ) -> LanguageProfile:
-    adapters: dict[str, type[AdapterSpec]] = {"lldb-dap": LldbDapAdapter}
+    adapters: dict[str, type[AdapterSpec]] = {
+        "lldb-dap": LldbDapAdapter,
+        "gdb": GdbDapAdapter,
+    }
     adapter_id = adapter or "lldb-dap"
     if adapter_id not in adapters:
         raise LanguageNotSupportedError(
