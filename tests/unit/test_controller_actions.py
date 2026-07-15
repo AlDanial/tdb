@@ -821,6 +821,25 @@ def test_default_profile_is_python():
     assert ctrl.profile.id == "python"
 
 
+def test_restart_new_controller_preserves_profile_adapter():
+    """Regression for the TUI restart path: app.py._restart_session
+    replaces the controller with `DebugController(handler, profile=self._profile)`
+    rather than reusing the old one. Pin that the fresh controller's
+    client is wired to the *same* profile's adapter — a regression here
+    (e.g. dropping the `profile=` kwarg) would silently revert non-Python
+    sessions to DebugpyAdapter on restart, same bug class as the RPC
+    restart path fixed in handlers.action_restart."""
+    profile = _bare_profile()
+    handler = _RecordingHandler()
+    old_ctrl = DebugController(handler, profile=profile)
+    assert old_ctrl.client._adapter is profile.adapter
+
+    # Mirrors app.py._restart_session: a brand-new controller, same profile.
+    new_ctrl = DebugController(handler, profile=profile)
+    assert new_ctrl.profile is profile
+    assert new_ctrl.client._adapter is profile.adapter
+
+
 async def test_do_configure_skips_exception_bps_when_no_filters():
     ctrl, dap, _handler = _make(profile=_bare_profile())
     ctrl._launch_future = _resolved_launch_future()

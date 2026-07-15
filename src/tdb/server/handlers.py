@@ -487,8 +487,11 @@ class RpcHandlers:
         except Exception:
             log.exception("Error stopping session for restart")
 
-        # Reinitialize the controller in-place
-        ctrl.client.__init__()
+        # Reinitialize the controller in-place. Must pass the profile's
+        # adapter through — a bare `__init__()` silently reverts to
+        # DAPClient's default (DebugpyAdapter), breaking restart for
+        # non-Python sessions.
+        ctrl.client.__init__(ctrl.profile.adapter)
         ctrl.state.__init__()
         ctrl.state.breakpoints = saved_breakpoints
         ctrl._terminal = None
