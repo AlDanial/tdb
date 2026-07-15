@@ -102,6 +102,8 @@ class DapEventCoordinator:
     def _stopped_inside_breakpoint_hook(self) -> bool:
         """True if the active stop is inside `tdb.breakpoint()`'s helper."""
         ctrl = self.app.controller
+        if ctrl.profile.id != "python":
+            return False
         if not ctrl.is_remote_attach:
             return False
         frames = ctrl.state.stack_frames

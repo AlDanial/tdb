@@ -84,7 +84,13 @@ class InspectionWorkflows:
             return
         try:
             tasks = await self._svc.collect_tasks()
-        except SessionGateError:
+        except SessionGateError as e:
+            if e.reason == "unsupported":
+                self.app.notify(
+                    f"Not available for {self.app.controller.profile.display_name}",
+                    title="Async Tasks",
+                    severity="warning",
+                )
             return  # phase changed between our gate and the fetch
         except Exception:
             log.exception("Error fetching async tasks")
@@ -108,7 +114,13 @@ class InspectionWorkflows:
     async def refresh_async_tasks(self) -> None:
         try:
             tasks = await self._svc.collect_tasks()
-        except SessionGateError:
+        except SessionGateError as e:
+            if e.reason == "unsupported":
+                self.app.notify(
+                    f"Not available for {self.app.controller.profile.display_name}",
+                    title="Async Tasks",
+                    severity="warning",
+                )
             return
         except Exception:
             log.exception("Error refreshing async tasks")
@@ -125,7 +137,13 @@ class InspectionWorkflows:
             # Routes around synthetic frame ids and evaluates against the
             # active client — see InspectService.task_locals.
             variables = await self._svc.task_locals(task_name)
-        except SessionGateError:
+        except SessionGateError as e:
+            if e.reason == "unsupported":
+                self.app.notify(
+                    f"Not available for {self.app.controller.profile.display_name}",
+                    title="Async Tasks",
+                    severity="warning",
+                )
             return
         modal.show_task_variables(variables)
 
@@ -293,7 +311,13 @@ class InspectionWorkflows:
         """
         try:
             return await self._svc.collect_processes()
-        except SessionGateError:
+        except SessionGateError as e:
+            if e.reason == "unsupported":
+                self.app.notify(
+                    f"Not available for {self.app.controller.profile.display_name}",
+                    title="Processes",
+                    severity="warning",
+                )
             return []
 
     async def fetch_process_count(self) -> None:

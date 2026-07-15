@@ -566,6 +566,43 @@ async def test_inspect_thread_gate_race_maps_to_gate_error(handlers, monkeypatch
     assert "failed to fetch stack trace" not in rsp.value
 
 
+# --- Capability gate (task_inspection) -----------------------------------
+#
+# Profiles that don't opt into task/process inspection (e.g. cpp) raise
+# SessionGateError("unsupported") from InspectService; the RPC layer must
+# map that onto a message naming the profile, via `self._gate_error` (an
+# instance method, since it now reads `self.controller.profile`).
+
+
+async def test_gate_error_unsupported_names_the_profile():
+    from tests.unit.test_controller_actions import _bare_profile
+    from tdb.session.inspect_service import SessionGateError
+
+    eh = ServerEventHandler()
+    controller = DebugController(eh, profile=_bare_profile())
+    controller.client = _FakeDAPClient()
+    controller.state.transition_to(SessionPhase.STOPPED)
+    handlers = RpcHandlers(ControllerRef(controller), eh)
+
+    rsp = handlers._gate_error(SessionGateError("unsupported"), "list tasks")
+    assert rsp.success is False
+    assert rsp.value == "Not supported when debugging Bare"
+
+
+async def test_list_tasks_unsupported_for_gated_profile():
+    from tests.unit.test_controller_actions import _bare_profile
+
+    eh = ServerEventHandler()
+    controller = DebugController(eh, profile=_bare_profile())
+    controller.client = _FakeDAPClient()
+    controller.state.transition_to(SessionPhase.STOPPED)
+    handlers = RpcHandlers(ControllerRef(controller), eh)
+
+    rsp = await handlers.action_list_tasks([])
+    assert rsp.success is False
+    assert rsp.value == "Not supported when debugging Bare"
+
+
 # --- timeout_s / wait_for_stop / lock bypass (PR1 for MCP) --------------
 #
 # The MCP-server work needs three contracts:

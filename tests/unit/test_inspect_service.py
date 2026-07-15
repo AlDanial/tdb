@@ -252,6 +252,53 @@ async def test_process_stack_none_without_client(monkeypatch):
     assert await svc.process_stack(1234) is None
 
 
+# --- Capability gate (task_inspection) ------------------------------------
+#
+# Profiles that don't opt into task/process inspection (e.g. cpp) must
+# raise SessionGateError("unsupported") from the three DAP-evaluate-based
+# queries, while the generic thread/stack path stays available.
+
+
+async def test_collect_tasks_unsupported_for_gated_profile():
+    from tests.unit.test_controller_actions import _bare_profile, _make
+
+    ctrl, _dap, _handler = _make(profile=_bare_profile())
+    svc = InspectService(lambda: ctrl)
+    with pytest.raises(SessionGateError) as exc:
+        await svc.collect_tasks()
+    assert exc.value.reason == "unsupported"
+
+
+async def test_task_locals_unsupported_for_gated_profile():
+    from tests.unit.test_controller_actions import _bare_profile, _make
+
+    ctrl, _dap, _handler = _make(profile=_bare_profile())
+    svc = InspectService(lambda: ctrl)
+    with pytest.raises(SessionGateError, match="unsupported"):
+        await svc.task_locals("Task-1")
+
+
+async def test_collect_processes_unsupported_for_gated_profile():
+    from tests.unit.test_controller_actions import _bare_profile, _make
+
+    ctrl, _dap, _handler = _make(profile=_bare_profile())
+    svc = InspectService(lambda: ctrl)
+    with pytest.raises(SessionGateError, match="unsupported"):
+        await svc.collect_processes()
+
+
+async def test_thread_stack_still_allowed_for_gated_profile():
+    """The generic DAP thread/stack path isn't gated by the capability —
+    only the evaluate-based task/process queries are."""
+    from tests.unit.test_controller_actions import _bare_profile, _make
+
+    ctrl, dap, _handler = _make(profile=_bare_profile())
+    svc = InspectService(lambda: ctrl)
+    frames, scopes, variables = await svc.thread_stack(1)
+    assert isinstance(frames, list)
+    assert frames == dap.frames_result
+
+
 async def test_service_follows_controller_swap():
     """The provider indirection must track ControllerRef-style swaps."""
     first = DebugController(ServerEventHandler())

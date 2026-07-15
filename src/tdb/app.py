@@ -279,6 +279,10 @@ class TdbApp(_AppMessageRoutes, App):
 
     def compose(self) -> ComposeResult:
         yield Header()
+        action_labels = {"threads-label": "Threads"}
+        if self.controller.profile.capabilities.task_inspection:
+            action_labels["processes-label"] = "Processes"
+            action_labels["async-tasks-label"] = "Async Tasks"
         yield MenuBar(
             {
                 "Configure": ["Color Theme", "Keybindings", "Step Mode"],
@@ -287,11 +291,7 @@ class TdbApp(_AppMessageRoutes, App):
             leading_action_labels={
                 "open-file-label": "File",
             },
-            action_labels={
-                "threads-label": "Threads",
-                "processes-label": "Processes",
-                "async-tasks-label": "Async Tasks",
-            },
+            action_labels=action_labels,
             right_menus=["Help"],
             id="menu-bar",
         )
@@ -1096,6 +1096,9 @@ class TdbApp(_AppMessageRoutes, App):
     async def on_evaluate_console_help_requested(
         self, message: EvaluateConsole.HelpRequested
     ) -> None:
+        if self.controller.profile.id != "python":
+            self.notify("? help is available for Python debuggees only")
+            return
         eval_console = self.query_one("#eval-console", EvaluateConsole)
         obj = message.expression
         parts: list[str] = []

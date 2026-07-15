@@ -93,6 +93,26 @@ def test_breakpoint_hook_check_false_for_other_files():
     assert co._stopped_inside_breakpoint_hook() is False
 
 
+def test_breakpoint_hook_check_false_for_non_python_profile():
+    """`tdb.breakpoint()` is a Python-only helper; a non-Python profile
+    (e.g. cpp) must never be treated as stopped inside it, even if the
+    other conditions (remote attach, matching basename) hold."""
+    from tests.unit.test_controller_actions import _bare_profile
+
+    co, app = _coord()
+    app.controller.profile = _bare_profile()
+    app.controller._is_remote_attach = True
+    app.controller.state.stack_frames = [
+        StackFrame(
+            id=1,
+            name="breakpoint",
+            source=Source(path="/site-packages/tdb/breakpoint_hook.py"),
+            line=87,
+        ),
+    ]
+    assert co._stopped_inside_breakpoint_hook() is False
+
+
 # --- _check_stderr_traceback parsing -----------------------------------
 
 
