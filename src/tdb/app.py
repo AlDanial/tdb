@@ -17,6 +17,7 @@ from textual.message import Message
 from textual.widgets import Footer, Header, Label, OptionList, Static
 from textual.widgets._tree import TreeNode
 
+from tdb.languages.base import AdapterNotFoundError
 from tdb.session.controller import DebugController
 from tdb.session.messages import (
     DapInitialized,
@@ -442,6 +443,14 @@ class TdbApp(_AppMessageRoutes, App):
                     terminal=self._terminal,
                     sub_process=self._sub_process,
                 )
+        except AdapterNotFoundError as exc:
+            # The adapter couldn't be located (e.g. lldb-dap / gdb not
+            # installed). Without this, the hint (what to install / which
+            # config key to set) only ever reached the log — surface it
+            # the same way the remote-attach OSError above does.
+            log.exception("Failed to start debug session")
+            self._startup_error = f"tdb: {exc.hint}"
+            self.exit(return_code=2)
         except Exception:
             log.exception("Failed to start debug session")
             self.sub_title = "Failed to start"

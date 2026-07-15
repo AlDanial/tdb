@@ -85,14 +85,23 @@ async def run_headless(
             sys.exit(2)
     else:
         assert program is not None
-        await controller.start(
-            program=program,
-            args=args,
-            cwd=cwd or str(Path.cwd()),
-            stop_on_entry=stop_on_entry,
-            just_my_code=just_my_code,
-            python=python,
-        )
+        from tdb.languages.base import AdapterNotFoundError
+
+        try:
+            await controller.start(
+                program=program,
+                args=args,
+                cwd=cwd or str(Path.cwd()),
+                stop_on_entry=stop_on_entry,
+                just_my_code=just_my_code,
+                python=python,
+            )
+        except AdapterNotFoundError as exc:
+            # Adapter executable missing (e.g. lldb-dap / gdb not
+            # installed). Mirror the remote-attach OSError handling
+            # above: print the install hint instead of a raw traceback.
+            print(f"tdb: {exc.hint}", file=sys.stderr)
+            sys.exit(2)
 
     # Wait for initialized event, then configure
     from tdb._timeouts import DAP_INITIALIZED, DAP_STOP_ON_ENTRY
