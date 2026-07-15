@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 from tdb.dap.client import DAPClient
 from tdb.dap.messages import Event
-from tdb.dap.types import SourceBreakpoint
+from tdb.dap.types import Breakpoint, SourceBreakpoint
 from .event_bus import DebugEventHandler
 from .state import DebugState, SessionPhase
 
@@ -147,6 +147,37 @@ class DebugController:
         """Return only the breakpoints that are enabled."""
         return [bp for bp in bps if bp.enabled]
 
+    def _warn_unbound_breakpoints(
+        self, source_path: str, result: list[Breakpoint]
+    ) -> None:
+        """A file whose breakpoints ALL failed to bind usually means the
+        target has no debug info for it (native binary built without -g,
+        or generated/stale source). Surface a hint on the console.
+
+        Deliberately a no-op when `result` is empty (e.g. sending an
+        empty breakpoint list to disable/clear) — there's nothing to
+        warn about when no breakpoints were requested at all.
+        """
+        if result and all(not bp.verified for bp in result):
+            self.event_handler.on_output(
+                f"warning: no breakpoints bound in {source_path} — "
+                f"was the program compiled with debug info (-g)?\n",
+                "console",
+            )
+
+    async def _send_breakpoints(
+        self, source_path: str, bps: list[SourceBreakpoint]
+    ) -> list[Breakpoint]:
+        """Transmit breakpoints for one file on the parent client and warn
+        if none of them bound. Excludes run_to_cursor/cleanup_run_to_cursor,
+        whose temporary breakpoint failing to bind is handled by that flow
+        (and which also propagate to child-process clients, unlike the
+        sites that route through here).
+        """
+        result = await self.client.set_breakpoints(source_path, bps)
+        self._warn_unbound_breakpoints(source_path, result)
+        return result
+
     def _setup_event_handlers(self) -> None:
         self.client.on_event("stopped", self._on_stopped)
         self.client.on_event("continued", self._on_continued)
@@ -273,7 +304,7 @@ class DebugController:
         # Send breakpoints (skip if globally disabled; also filter per-bp enabled)
         if not self.state.breakpoints_disabled:
             for source_path, bps in self.state.breakpoints.items():
-                await self.client.set_breakpoints(
+                await self._send_breakpoints(
                     source_path,
                     self._enabled_bps(bps),
                 )
@@ -533,7 +564,7 @@ class DebugController:
         self.state.breakpoints[source_path] = bps
 
         if self.state.is_ready and not self.state.is_terminated:
-            await self.client.set_breakpoints(source_path, self._enabled_bps(bps))
+            await self._send_breakpoints(source_path, self._enabled_bps(bps))
 
     async def toggle_breakpoint_enabled(self, source_path: str, line: int) -> None:
         """Toggle the enabled state of a single breakpoint.
@@ -549,7 +580,7 @@ class DebugController:
         else:
             return  # not found
         if self.state.is_ready and not self.state.is_terminated:
-            await self.client.set_breakpoints(source_path, self._enabled_bps(bps))
+            await self._send_breakpoints(source_path, self._enabled_bps(bps))
 
     async def add_breakpoint(
         self,
@@ -575,7 +606,7 @@ class DebugController:
             self.state.breakpoints[source_path] = bps
 
         if self.state.is_ready and not self.state.is_terminated:
-            await self.client.set_breakpoints(
+            await self._send_breakpoints(
                 source_path,
                 self._enabled_bps(self.state.breakpoints[source_path]),
             )
@@ -589,7 +620,7 @@ class DebugController:
         self.state.breakpoints[source_path] = new_bps
 
         if self.state.is_ready and not self.state.is_terminated:
-            await self.client.set_breakpoints(source_path, self._enabled_bps(new_bps))
+            await self._send_breakpoints(source_path, self._enabled_bps(new_bps))
 
     async def set_breakpoint_condition(
         self,
@@ -605,27 +636,27 @@ class DebugController:
                 bp.hit_condition = hit_condition
                 break
         if self.state.is_ready and not self.state.is_terminated:
-            await self.client.set_breakpoints(source_path, self._enabled_bps(bps))
+            await self._send_breakpoints(source_path, self._enabled_bps(bps))
 
     async def disable_all_breakpoints(self) -> None:
         """Tell debugpy to remove all breakpoints without clearing them from state."""
         self.state.breakpoints_disabled = True
         if self.state.is_ready and not self.state.is_terminated:
             for source_path in self.state.breakpoints:
-                await self.client.set_breakpoints(source_path, [])
+                await self._send_breakpoints(source_path, [])
 
     async def enable_all_breakpoints(self) -> None:
         """Re-send all breakpoints to debugpy."""
         self.state.breakpoints_disabled = False
         if self.state.is_ready and not self.state.is_terminated:
             for source_path, bps in self.state.breakpoints.items():
-                await self.client.set_breakpoints(source_path, self._enabled_bps(bps))
+                await self._send_breakpoints(source_path, self._enabled_bps(bps))
 
     async def clear_all_breakpoints(self) -> None:
         """Remove all breakpoints from state and debugpy."""
         if self.state.is_ready and not self.state.is_terminated:
             for source_path in self.state.breakpoints:
-                await self.client.set_breakpoints(source_path, [])
+                await self._send_breakpoints(source_path, [])
         self.state.breakpoints.clear()
         self.state.breakpoints_disabled = False
 

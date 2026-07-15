@@ -20,6 +20,7 @@ from tdb.session.controller import DebugController
 from tdb.session.event_bus import DebugEventHandler
 from tdb.session.state import SessionPhase
 from tdb.dap.types import (
+    Breakpoint,
     Capabilities,
     Scope,
     Source,
@@ -68,6 +69,10 @@ class _FakeDAP:
         self.variables_result = [Variable(name="x", value="7")]
         self.evaluate_effects: list = []  # exceptions or (result, ref) tuples
         self.source_result = "print('hi')\n"
+        # When set, setBreakpoints returns these (as Breakpoint objects)
+        # instead of the default `[]` — lets tests script verified/
+        # unverified results per call.
+        self.breakpoint_results: list[dict] | None = None
         self.fail: set[str] = set()
         self.capabilities = Capabilities()
         self._event_handlers: dict[str, list] = {}
@@ -129,6 +134,8 @@ class _FakeDAP:
 
     async def set_breakpoints(self, source_path, breakpoints):
         self._hit("setBreakpoints", source_path, tuple(bp.line for bp in breakpoints))
+        if self.breakpoint_results is not None:
+            return [Breakpoint.from_dict(d) for d in self.breakpoint_results]
         return []
 
     async def set_exception_breakpoints(self, filters):
@@ -390,6 +397,42 @@ async def test_clear_all_breakpoints_wipes_state_and_wire():
     await ctrl.clear_all_breakpoints()
     assert ctrl.state.breakpoints == {}
     assert fake.calls_to("setBreakpoints")[-1] == ("setBreakpoints", "/f.py", ())
+
+
+# --- Unbound-breakpoint warning (missing debug info) ----------------------
+
+
+async def test_unbound_breakpoints_warn_on_console():
+    ctrl, fake, handler = _make()
+    fake.breakpoint_results = [{"verified": False, "line": 3}]
+    await ctrl.add_breakpoint("/x/prog.cpp", 3)
+    warnings = [o for o in handler.outputs if "debug info" in o[0]]
+    assert warnings, "expected an unbound-breakpoint warning"
+
+
+async def test_verified_breakpoints_do_not_warn():
+    ctrl, fake, handler = _make()
+    fake.breakpoint_results = [{"verified": True, "line": 3}]
+    await ctrl.add_breakpoint("/x/prog.py", 3)
+    assert not [o for o in handler.outputs if "debug info" in o[0]]
+
+
+async def test_partially_bound_breakpoints_do_not_warn():
+    """Only warn when EVERY breakpoint in the file failed to bind — a
+    mix of verified/unverified is normal (e.g. a conditional bp debugpy
+    can't evaluate yet) and shouldn't trigger the missing-debug-info hint.
+    """
+    ctrl, fake, handler = _make()
+    ctrl.state.breakpoints["/f.py"] = [
+        SourceBreakpoint(line=3),
+        SourceBreakpoint(line=5),
+    ]
+    fake.breakpoint_results = [
+        {"verified": True, "line": 3},
+        {"verified": False, "line": 5},
+    ]
+    await ctrl.set_breakpoint_condition("/f.py", 3, "x > 1")
+    assert not [o for o in handler.outputs if "debug info" in o[0]]
 
 
 # --- Stack navigation ------------------------------------------------------
@@ -715,6 +758,23 @@ async def test_do_configure_skips_prearm_pause_when_already_stopped():
     await ctrl.do_configure()
     assert fake.calls_to("pause") == []
     assert ctrl.state.phase is SessionPhase.STOPPED  # not clobbered
+
+
+async def test_do_configure_warns_on_unbound_breakpoints():
+    """The classic C++-without--g symptom: setBreakpoints comes back with
+    every breakpoint unverified. do_configure is the initial-launch
+    transmit site, so this is where users should see the hint first.
+    """
+    handler = _RecordingHandler()
+    ctrl = DebugController(handler)
+    fake = _FakeDAP()
+    ctrl.client = fake
+    fake.breakpoint_results = [{"verified": False, "line": 3}]
+    ctrl.state.breakpoints["/prog.cpp"] = [SourceBreakpoint(line=3)]
+    ctrl._launch_future = _resolved_launch_future()
+    await ctrl.do_configure()
+    warnings = [o for o in handler.outputs if "debug info" in o[0]]
+    assert warnings, "expected an unbound-breakpoint warning from do_configure"
 
 
 async def test_do_configure_raises_on_failed_launch():
