@@ -144,6 +144,10 @@ class ChildProcessManager:
         """
         if pid is not None and pid in self._clients:
             return  # already attached (duplicate debugpyAttach event)
+        # DAPClient() with no adapter defaults to DebugpyAdapter, which is
+        # correct here: this whole attach path only runs when
+        # controller._setup_event_handlers registered it, which it only
+        # does for profile.capabilities.child_process_strategy == "debugpy".
         child = DAPClient()
         try:
             await child.connect(host, port)
@@ -215,6 +219,9 @@ class ChildProcessManager:
             # concurrently. Each call is an independent DAP round-trip
             # against the child's own session; running them sequentially
             # was the inner loop's contribution to the attach latency.
+            # "userUnhandled" is debugpy's exception-filter id — safe to
+            # hardcode since this whole path is debugpy-only (see the
+            # DAPClient() comment above).
             await child.set_exception_breakpoints(["userUnhandled"])
             state = self._ctl.state
             if not state.breakpoints_disabled and state.breakpoints:
