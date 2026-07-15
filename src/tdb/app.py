@@ -284,14 +284,21 @@ class TdbApp(_AppMessageRoutes, App):
         if self.controller.profile.capabilities.task_inspection:
             action_labels["processes-label"] = "Processes"
             action_labels["async-tasks-label"] = "Async Tasks"
+        # File > Open only makes sense for Python: the picker filters to
+        # .py files and relaunches through the *current* profile, so
+        # offering it for a cpp/other session would either hide the
+        # picker's real files or silently relaunch under the wrong
+        # adapter. Hide the label for non-Python profiles (the action
+        # handler also no-ops, so a keybinding can't reach it either).
+        leading_action_labels = {}
+        if self.controller.profile.id == "python":
+            leading_action_labels["open-file-label"] = "File"
         yield MenuBar(
             {
                 "Configure": ["Color Theme", "Keybindings", "Step Mode"],
                 "Help": ["Documentation", "About"],
             },
-            leading_action_labels={
-                "open-file-label": "File",
-            },
+            leading_action_labels=leading_action_labels,
             action_labels=action_labels,
             right_menus=["Help"],
             id="menu-bar",
@@ -1180,6 +1187,15 @@ class TdbApp(_AppMessageRoutes, App):
         event.stop()
 
     def action_open_file(self) -> None:
+        if self.controller.profile.id != "python":
+            # No-op guard mirroring the hidden menu label above — reached
+            # directly by the Alt+F keybinding (action_menu_file), which
+            # bypasses the label entirely.
+            self.notify(
+                "File > Open is only available for Python sessions.",
+                severity="warning",
+            )
+            return
         initial = self._cwd or (
             str(Path(self._program).parent) if self._program else str(Path.cwd())
         )
