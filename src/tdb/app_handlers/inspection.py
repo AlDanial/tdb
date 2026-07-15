@@ -302,12 +302,15 @@ class InspectionWorkflows:
 
     # --- Processes ------------------------------------------------------
 
-    async def get_processes(self) -> list[ProcessInfo]:
+    async def get_processes(self) -> list[ProcessInfo] | None:
         """Get child process info, trying eval on parent first, then /proc.
 
-        Maps a gate failure (phase changed mid-flight) to an empty list:
-        callers treat "nothing to show" and "can't look right now" the
-        same way.
+        Returns `None` for the "unsupported" gate reason — the warning
+        toast here already explains why nothing is shown, so callers
+        must not layer their own "nothing found" notification on top.
+        Any other gate failure (phase changed mid-flight) maps to an
+        empty list: callers treat "nothing to show" and "can't look
+        right now" the same way in that case.
         """
         try:
             return await self._svc.collect_processes()
@@ -318,6 +321,7 @@ class InspectionWorkflows:
                     title="Processes",
                     severity="warning",
                 )
+                return None
             return []
 
     async def fetch_process_count(self) -> None:
@@ -406,6 +410,12 @@ class InspectionWorkflows:
         modal = self.app.panels.processes
         if modal is None:
             return
+        if processes is None:
+            # Unsupported for this language — get_processes() already
+            # explained why via its own warning toast. Dismiss quietly
+            # instead of piling on a contradictory "No extra processes".
+            modal.dismiss(None)
+            return
         if not processes:
             modal.dismiss(None)
             self.app.notify("No extra processes", title="Processes")
@@ -417,6 +427,10 @@ class InspectionWorkflows:
         if ctrl.state.is_terminated or ctrl.state.is_running:
             return
         processes = await self.get_processes()
+        if processes is None:
+            # Unsupported for this language — get_processes() already
+            # toasted the reason; nothing to refresh the modal with.
+            return
         if self.app.panels.processes is not None:
             self.app.panels.processes.update_processes(processes)
 
