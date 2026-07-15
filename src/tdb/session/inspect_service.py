@@ -59,8 +59,10 @@ class SessionGateError(Exception):
     """The session is in a phase where inspection is impossible.
 
     ``reason`` is ``"running"`` (debuggee executing — no frames to
-    inspect; pause first) or ``"terminated"`` (session over). Consumers
-    translate the reason into their own user-facing wording.
+    inspect; pause first), ``"terminated"`` (session over), or
+    ``"unsupported"`` (the active language profile doesn't support
+    task/process inspection — e.g. cpp). Consumers translate the reason
+    into their own user-facing wording.
     """
 
     def __init__(self, reason: str) -> None:
@@ -97,6 +99,13 @@ class InspectService:
         if state.is_running:
             raise SessionGateError("running")
 
+    def _require_task_inspection(self) -> None:
+        """Task/process inspection injects language-specific code into
+        the debuggee via DAP evaluate; only profiles that opt in
+        (Python/asyncio today) support it."""
+        if not self._ctrl.profile.capabilities.task_inspection:
+            raise SessionGateError("unsupported")
+
     # --- asyncio tasks ---------------------------------------------------
 
     async def collect_tasks(self) -> list[AsyncTaskInfo]:
@@ -107,6 +116,7 @@ class InspectService:
         expected JSON (typically because the evaluate itself failed and
         `controller.evaluate` returned the error string).
         """
+        self._require_task_inspection()
         self._gate()
         raw = await self._ctrl.evaluate(TASK_COLLECT_EXPR)
         tasks = parse_task_json(raw)
@@ -129,6 +139,7 @@ class InspectService:
         the frame isn't available rather than raising: both consumers
         render that as a "(no variables)" state.
         """
+        self._require_task_inspection()
         self._gate()
         ctrl = self._ctrl
         try:
@@ -188,6 +199,7 @@ class InspectService:
         /proc (Linux), which still works when the parent isn't paused in
         a frame we can evaluate against.
         """
+        self._require_task_inspection()
         self._gate()
         try:
             raw = await self._ctrl.evaluate_on_parent(PROCESS_COLLECT_EXPR)

@@ -6,7 +6,7 @@ import json
 import logging
 import os
 import sys
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 
 from tdb.dap.types import SourceBreakpoint
@@ -146,6 +146,14 @@ class TdbConfig:
     # as one step) or "line" (debugpy's native per-line trace).
     step_mode: str = "statement"
 
+    # Debug-adapter executable overrides: adapter id -> path
+    # (e.g. {"lldb-dap": "/opt/llvm/bin/lldb-dap"}).
+    adapters: dict[str, str] = field(default_factory=dict)
+
+    # Preferred adapter per language: language id -> adapter id
+    # (e.g. {"cpp": "gdb"}).
+    default_adapters: dict[str, str] = field(default_factory=dict)
+
     @classmethod
     def from_dict(cls, data: dict) -> TdbConfig:
         """Build a TdbConfig from a raw dict (typically the parsed JSON).
@@ -163,6 +171,12 @@ class TdbConfig:
                 kwargs["theme"] = theme
         if data.get("step_mode") in ("statement", "line"):
             kwargs["step_mode"] = data["step_mode"]
+        for key in ("adapters", "default_adapters"):
+            value = data.get(key)
+            if isinstance(value, dict) and all(
+                isinstance(k, str) and isinstance(v, str) for k, v in value.items()
+            ):
+                kwargs[key] = value
         return cls(**kwargs)
 
     def to_dict(self) -> dict:

@@ -14,6 +14,7 @@ from tdb.app_handlers.inspection import InspectionWorkflows
 from tdb.app_handlers.ui_panels import UIPanels
 from tdb.server.event_handler import ServerEventHandler
 from tdb.session.controller import DebugController
+from tdb.session.inspect_service import SessionGateError
 from tdb.session.state import SessionPhase
 
 
@@ -28,8 +29,8 @@ class _StubMenuBar:
 class _StubApp:
     """The minimum surface InspectionWorkflows reaches for."""
 
-    def __init__(self) -> None:
-        self.controller = DebugController(ServerEventHandler())
+    def __init__(self, profile=None) -> None:
+        self.controller = DebugController(ServerEventHandler(), profile=profile)
         # Start the stub session in STOPPED so guards behave like a
         # paused-and-ready debugger; tests flip to RUNNING/TERMINATED as
         # they need to exercise specific guards.
@@ -51,8 +52,8 @@ class _StubApp:
         self.pushed_screens.append(screen)
 
 
-def _wf() -> tuple[InspectionWorkflows, _StubApp]:
-    app = _StubApp()
+def _wf(profile=None) -> tuple[InspectionWorkflows, _StubApp]:
+    app = _StubApp(profile=profile)
     return InspectionWorkflows(app), app
 
 
@@ -96,6 +97,52 @@ async def test_fetch_process_count_is_a_no_op_when_running():
     assert app._menu_bar.labels == {}
 
 
+# --- Capability gate (task_inspection) -----------------------------------
+#
+# Both count-badge fetchers fire on every `stopped` event regardless of
+# profile (see app_handlers/dap_events.py). For a profile that doesn't
+# support task inspection (e.g. cpp), they must not send a Python-only
+# evaluate expression against the debuggee.
+
+
+async def test_fetch_async_task_count_noop_for_gated_profile():
+    from tests.unit.test_controller_actions import _bare_profile
+
+    wf, app = _wf(profile=_bare_profile())
+
+    calls = []
+
+    async def _fake_evaluate_on_parent(expr):
+        calls.append(expr)
+        return "0"
+
+    app.controller.evaluate_on_parent = _fake_evaluate_on_parent
+
+    await wf.fetch_async_task_count()
+
+    assert calls == []
+    assert app._menu_bar.labels == {}
+
+
+async def test_fetch_process_count_noop_for_gated_profile():
+    from tests.unit.test_controller_actions import _bare_profile
+
+    wf, app = _wf(profile=_bare_profile())
+
+    calls = []
+
+    async def _fake_evaluate_on_parent(expr):
+        calls.append(expr)
+        return "0"
+
+    app.controller.evaluate_on_parent = _fake_evaluate_on_parent
+
+    await wf.fetch_process_count()
+
+    assert calls == []
+    assert app._menu_bar.labels == {}
+
+
 # --- Thread-count label thresholding (no DAP needed) -------------------
 
 
@@ -136,3 +183,64 @@ def test_open_processes_modal_returns_true_when_runnable():
     assert len(app.pushed_screens) == 1
     # Modal is now registered in the UIPanels holder for cross-handler access.
     assert app.panels.processes is not None
+
+
+# --- Unsupported-profile double-toast regression -----------------------
+
+
+class _StubProcessesModal:
+    """Records dismiss()/update_processes() calls without needing a
+    real Textual screen (ProcessesModal.dismiss() requires a mounted
+    app; the worker-branch logic under test doesn't care which modal
+    type it's holding)."""
+
+    def __init__(self) -> None:
+        self.dismissed_with: object = "not-called"
+        self.updated_with: object = "not-called"
+
+    def dismiss(self, result: object = None) -> None:
+        self.dismissed_with = result
+
+    def update_processes(self, processes) -> None:
+        self.updated_with = processes
+
+
+async def test_get_processes_returns_none_for_unsupported_profile(monkeypatch):
+    """get_processes() must distinguish 'unsupported' (None) from
+    'genuinely no child processes' ([]) so callers can react
+    differently."""
+    wf, app = _wf()
+
+    async def fake_collect_processes():
+        raise SessionGateError("unsupported")
+
+    monkeypatch.setattr(wf._svc, "collect_processes", fake_collect_processes)
+
+    result = await wf.get_processes()
+
+    assert result is None
+    assert len(app.notifications) == 1
+    assert "not available" in app.notifications[0][1].lower()
+
+
+async def test_open_processes_worker_single_toast_when_unsupported(monkeypatch):
+    """Regression: previously get_processes() notified 'Not available
+    for <lang>' AND open_processes_worker() notified 'No extra
+    processes' — two contradictory toasts. Only the warning should
+    fire, and the modal should still be dismissed quietly."""
+    wf, app = _wf()
+    modal = _StubProcessesModal()
+    app.panels.processes = modal
+
+    async def fake_collect_processes():
+        raise SessionGateError("unsupported")
+
+    monkeypatch.setattr(wf._svc, "collect_processes", fake_collect_processes)
+
+    await wf.open_processes_worker()
+
+    assert modal.dismissed_with is None
+    assert len(app.notifications) == 1
+    title, msg = app.notifications[0]
+    assert title == "Processes"
+    assert "not available" in msg.lower()

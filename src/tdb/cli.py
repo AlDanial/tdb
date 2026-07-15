@@ -24,7 +24,8 @@ def build_parser() -> argparse.ArgumentParser:
     """
     parser = argparse.ArgumentParser(
         prog="tdb",
-        description="A Python debugger built with textual and debugpy.",
+        description="A multi-language DAP debugger with a textual TUI "
+        "(Python via debugpy, C/C++ via lldb-dap/gdb).",
     )
     parser.add_argument(
         "-v",
@@ -43,7 +44,7 @@ def build_parser() -> argparse.ArgumentParser:
         "program",
         nargs="?",
         default=None,
-        help="Python script to debug",
+        help="Program to debug (Python script, or a native executable built with -g)",
     )
     parser.add_argument(
         "args",
@@ -82,6 +83,20 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_const",
         const=".venv/bin/python",
         help="Shorthand for --python .venv/bin/python",
+    )
+    parser.add_argument(
+        "--lang",
+        default=None,
+        metavar="LANGUAGE",
+        help="Debuggee language (default: auto-detect from the program "
+        "target — .py -> python, native executables -> cpp).",
+    )
+    parser.add_argument(
+        "--adapter",
+        default=None,
+        metavar="ADAPTER",
+        help="Debug adapter to use within the language (e.g. `--lang cpp "
+        "--adapter gdb`). Default: the language's standard adapter.",
     )
     parser.add_argument(
         "--keybindings",
@@ -316,6 +331,44 @@ def _resolve_program_path(
         args.program = str(program_path)
 
 
+def _resolve_language(
+    args: argparse.Namespace,
+    parser: argparse.ArgumentParser,
+) -> None:
+    """Resolve args.profile from --lang/--adapter, detection, and config.
+
+    Also enforces that Python/debugpy-only flags aren't combined with a
+    non-Python profile — failing fast beats a confusing adapter error.
+    """
+    from tdb.languages import registry
+    from tdb.languages.base import LanguageNotSupportedError
+    from tdb.persist import load_config
+
+    config = load_config()
+    try:
+        lang_id = args.lang or registry.detect(args.program)
+        adapter = args.adapter or config.default_adapters.get(lang_id)
+        profile = registry.resolve(
+            lang_id, adapter=adapter, adapter_paths=config.adapters
+        )
+    except LanguageNotSupportedError as e:
+        parser.error(str(e))
+    args.profile = profile
+
+    if profile.id != "python":
+        if args.python is not None:
+            parser.error(
+                f"--python/--pv apply only to Python debuggees "
+                f"(detected language: {profile.id})"
+            )
+        if args.no_subprocess:
+            parser.error(
+                f"--no-subprocess is debugpy-specific (detected language: {profile.id})"
+            )
+        if args.remote_attach:
+            parser.error("--remote-attach currently supports Python debuggees only")
+
+
 def _resolve_breakpoint_file(file_part: str, local_roots: list[str]) -> Path | None:
     """Find a `-k FILE:LINE` file on disk.
 
@@ -388,6 +441,9 @@ def _snap_breakpoints(args: argparse.Namespace) -> None:
     first statement in the file), the BP is dropped with a warning to
     stderr — keeping an unhittable breakpoint would confuse the user.
     """
+    if args.profile.capabilities.compute_step_units is None:
+        return  # no source-statement model for this language; lines pass through
+
     from tdb.source_analysis import snap_breakpoint
 
     snapped_bps: list[tuple[str, int]] = []
@@ -427,6 +483,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     _parse_attach_spec(args, parser)
     _parse_path_mappings(args, parser)
     _resolve_program_path(args, parser)
+    _resolve_language(args, parser)
     _parse_breakpoints(args, parser)
     _snap_breakpoints(args)
     return args
@@ -576,6 +633,7 @@ def _run_headless(args: argparse.Namespace) -> None:
             attach_host=args.attach_host,
             attach_port=args.attach_port,
             path_mappings=args.path_mappings or None,
+            profile=args.profile,
         )
     )
 
@@ -607,6 +665,7 @@ def _run_tui(args: argparse.Namespace) -> None:
         path_mappings=args.path_mappings,
         sub_process=not args.no_subprocess,
         server_port=args.server_port if args.server else None,
+        profile=args.profile,
     )
     app.run()
     # Fatal startup error (e.g. remote-attach connection refused). The

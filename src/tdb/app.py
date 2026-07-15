@@ -7,6 +7,7 @@ import logging
 import os
 from pathlib import Path
 from textwrap import dedent
+from typing import TYPE_CHECKING
 
 from textual import work
 from textual.app import App, ComposeResult
@@ -16,6 +17,7 @@ from textual.message import Message
 from textual.widgets import Footer, Header, Label, OptionList, Static
 from textual.widgets._tree import TreeNode
 
+from tdb.languages.base import AdapterNotFoundError
 from tdb.session.controller import DebugController
 from tdb.session.messages import (
     DapInitialized,
@@ -60,6 +62,9 @@ from tdb.widgets.threads_modal import ThreadsModal
 from tdb.widgets.variable_view import VariableView
 from tdb import __version__ as tdb_version
 
+if TYPE_CHECKING:
+    from tdb.languages.base import LanguageProfile
+
 log = logging.getLogger(__name__)
 
 
@@ -77,7 +82,9 @@ class TdbApp(_AppMessageRoutes, App):
     """
 
     TITLE = "tdb"
-    SUB_TITLE = "Python Debugger"
+    # Overridden in on_mount from the resolved LanguageProfile's
+    # display_name; this is only the pre-mount fallback.
+    SUB_TITLE = "Debugger"
 
     CSS = """
     Screen {
@@ -195,6 +202,7 @@ class TdbApp(_AppMessageRoutes, App):
         sub_process: bool = True,
         server_port: int | None = None,
         post_mortem_snapshot: dict | None = None,
+        profile: "LanguageProfile | None" = None,
     ) -> None:
         super().__init__()
         self._program = program
@@ -215,6 +223,7 @@ class TdbApp(_AppMessageRoutes, App):
         self._sub_process = sub_process
         self._server_port = server_port
         self._post_mortem_snapshot = post_mortem_snapshot
+        self._profile = profile
 
         self._textual_handler = TextualEventHandler(self)
         if server_port is not None:
@@ -230,7 +239,7 @@ class TdbApp(_AppMessageRoutes, App):
             self._server_handler = None
             self._event_handler = self._textual_handler
 
-        self.controller = DebugController(self._event_handler)
+        self.controller = DebugController(self._event_handler, profile=self._profile)
         self.controller.step_mode = self._config.step_mode
         self._stderr_buffer: list[str] = []
         # Populated by _start_session on a fatal startup error (e.g.,
@@ -271,19 +280,26 @@ class TdbApp(_AppMessageRoutes, App):
 
     def compose(self) -> ComposeResult:
         yield Header()
+        action_labels = {"threads-label": "Threads"}
+        if self.controller.profile.capabilities.task_inspection:
+            action_labels["processes-label"] = "Processes"
+            action_labels["async-tasks-label"] = "Async Tasks"
+        # File > Open only makes sense for Python: the picker filters to
+        # .py files and relaunches through the *current* profile, so
+        # offering it for a cpp/other session would either hide the
+        # picker's real files or silently relaunch under the wrong
+        # adapter. Hide the label for non-Python profiles (the action
+        # handler also no-ops, so a keybinding can't reach it either).
+        leading_action_labels = {}
+        if self.controller.profile.id == "python":
+            leading_action_labels["open-file-label"] = "File"
         yield MenuBar(
             {
                 "Configure": ["Color Theme", "Keybindings", "Step Mode"],
                 "Help": ["Documentation", "About"],
             },
-            leading_action_labels={
-                "open-file-label": "File",
-            },
-            action_labels={
-                "threads-label": "Threads",
-                "processes-label": "Processes",
-                "async-tasks-label": "Async Tasks",
-            },
+            leading_action_labels=leading_action_labels,
+            action_labels=action_labels,
             right_menus=["Help"],
             id="menu-bar",
         )
@@ -308,7 +324,9 @@ class TdbApp(_AppMessageRoutes, App):
 
         code_view = self.query_one("#code-view", CodeView)
         code_view.keybindings = KeybindingConfig.from_scheme(self._config.keybindings)
+        code_view.lexer_name = self.controller.profile.presentation.lexer
         self._update_code_title(code_view)
+        self.sub_title = f"{self.controller.profile.display_name} Debugger"
 
         if self._post_mortem_snapshot is not None:
             self._enter_post_mortem(code_view)
@@ -360,10 +378,14 @@ class TdbApp(_AppMessageRoutes, App):
             console = self.query_one("#console-view", ConsoleView)
             console.write_output(tb_text, "stderr")
 
-        # Load crash site into Code View.
+        # Load crash site into Code View. load_file degrades to the
+        # `<Could not read …>` placeholder on OSError (e.g. DWARF
+        # compile-dir paths for C++ frames with no source on disk) —
+        # don't gate the call on os.path.isfile, or the pane stays
+        # blank instead of showing that placeholder.
         if state.stack_frames:
             top = state.stack_frames[0]
-            if top.source and top.source.path and os.path.isfile(top.source.path):
+            if top.source and top.source.path:
                 code_view.load_file(top.source.path)
             code_view.current_line = top.line
 
@@ -428,6 +450,14 @@ class TdbApp(_AppMessageRoutes, App):
                     terminal=self._terminal,
                     sub_process=self._sub_process,
                 )
+        except AdapterNotFoundError as exc:
+            # The adapter couldn't be located (e.g. lldb-dap / gdb not
+            # installed). Without this, the hint (what to install / which
+            # config key to set) only ever reached the log — surface it
+            # the same way the remote-attach OSError above does.
+            log.exception("Failed to start debug session")
+            self._startup_error = f"tdb: {exc.hint}"
+            self.exit(return_code=2)
         except Exception:
             log.exception("Failed to start debug session")
             self.sub_title = "Failed to start"
@@ -568,7 +598,7 @@ class TdbApp(_AppMessageRoutes, App):
             )
         else:
             self._event_handler = self._textual_handler
-        self.controller = DebugController(self._event_handler)
+        self.controller = DebugController(self._event_handler, profile=self._profile)
         self.controller.step_mode = self._config.step_mode
         self.controller.state.breakpoints = saved_breakpoints
 
@@ -1086,6 +1116,9 @@ class TdbApp(_AppMessageRoutes, App):
     async def on_evaluate_console_help_requested(
         self, message: EvaluateConsole.HelpRequested
     ) -> None:
+        if self.controller.profile.id != "python":
+            self.notify("? help is available for Python debuggees only")
+            return
         eval_console = self.query_one("#eval-console", EvaluateConsole)
         obj = message.expression
         parts: list[str] = []
@@ -1154,6 +1187,15 @@ class TdbApp(_AppMessageRoutes, App):
         event.stop()
 
     def action_open_file(self) -> None:
+        if self.controller.profile.id != "python":
+            # No-op guard mirroring the hidden menu label above — reached
+            # directly by the Alt+F keybinding (action_menu_file), which
+            # bypasses the label entirely.
+            self.notify(
+                "File > Open is only available for Python sessions.",
+                severity="warning",
+            )
+            return
         initial = self._cwd or (
             str(Path(self._program).parent) if self._program else str(Path.cwd())
         )
@@ -1190,6 +1232,14 @@ class TdbApp(_AppMessageRoutes, App):
         self.push_screen(_KeybindingsModal(code_view.keybindings, on_scheme_change))
 
     def action_step_mode(self) -> None:
+        if self.controller.profile.capabilities.compute_step_units is None:
+            self.notify(
+                f"Statement stepping is not available for "
+                f"{self.controller.profile.display_name} — using line mode",
+                severity="warning",
+            )
+            return
+
         def on_mode_change(mode: str) -> None:
             self._config.step_mode = mode
             self.controller.set_step_mode(mode)

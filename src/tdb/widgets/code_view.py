@@ -258,6 +258,10 @@ class CodeView(ScrollableContainer, can_focus=True):
     # which would otherwise select the whole container.
     ALLOW_SELECT = False
 
+    # Rich/pygments lexer name for syntax highlighting; set per-instance
+    # from LanguageProfile.presentation.lexer by TdbApp at startup.
+    lexer_name: str = "python"
+
     # Only keep non-printable key bindings; everything else goes through on_key.
     # The footer_hint_* bindings below exist purely to surface their hints in
     # the Footer when CodeView has focus — `_on_key` handles the actual
@@ -726,9 +730,8 @@ class CodeView(ScrollableContainer, can_focus=True):
         half_height = self.size.height // 2
         self.scroll_to(y=max(0, target_y - half_height), animate=False)
 
-    @staticmethod
-    def _highlight_source(source: str) -> list[Text]:
-        syntax = Syntax(source, "python", theme="monokai", line_numbers=False)
+    def _highlight_source(self, source: str) -> list[Text]:
+        syntax = Syntax(source, self.lexer_name, theme="monokai", line_numbers=False)
         text = syntax.highlight(source)
         lines = text.split("\n")
         for line in lines:

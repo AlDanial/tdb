@@ -167,9 +167,11 @@ class RpcHandlers:
         # through the ref so it follows restart swaps.
         self._inspect = InspectService(lambda: self._controller_ref.ctrl)
 
-    @staticmethod
-    def _gate_error(e: SessionGateError, doing: str) -> RpcResponse:
+    def _gate_error(self, e: SessionGateError, doing: str) -> RpcResponse:
         """Map a SessionGateError onto this API's established wording."""
+        if e.reason == "unsupported":
+            lang = self.controller.profile.display_name
+            return RpcResponse.error(f"Not supported when debugging {lang}")
         if e.reason == "terminated":
             return RpcResponse.error("Program has terminated")
         return RpcResponse.error(f"Cannot {doing} while program is running")
@@ -485,8 +487,11 @@ class RpcHandlers:
         except Exception:
             log.exception("Error stopping session for restart")
 
-        # Reinitialize the controller in-place
-        ctrl.client.__init__()
+        # Reinitialize the controller in-place. Must pass the profile's
+        # adapter through — a bare `__init__()` silently reverts to
+        # DAPClient's default (DebugpyAdapter), breaking restart for
+        # non-Python sessions.
+        ctrl.client.__init__(ctrl.profile.adapter)
         ctrl.state.__init__()
         ctrl.state.breakpoints = saved_breakpoints
         ctrl._terminal = None

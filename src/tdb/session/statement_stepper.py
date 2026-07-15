@@ -36,7 +36,7 @@ from pathlib import Path
 from typing import Awaitable, Callable
 
 from tdb.session.state import DebugState, SessionPhase
-from tdb.source_analysis import compute_step_units, find_step_unit
+from tdb.source_analysis import find_step_unit
 
 log = logging.getLogger(__name__)
 
@@ -53,6 +53,7 @@ class StatementStepper:
         state: DebugState,
         issue_step: Callable[[str], Awaitable[None]],
         ensure_stack_loaded: Callable[[], Awaitable[None]],
+        compute_units: Callable[[str], list[tuple[int, int]]] | None = None,
     ) -> None:
         """
         Args:
@@ -66,11 +67,18 @@ class StatementStepper:
                 frames if `state.stack_frames` is empty (the headless
                 RPC server skips this between stops). Called only by
                 `begin` when needed.
+            compute_units: Language-specific callable that parses source
+                text into a list of (start_line, end_line) step units.
+                None means the active language profile has no source
+                model to derive statement units from, so statement mode
+                is impossible and this stepper is locked to "line".
         """
         self._state = state
         self._issue_step = issue_step
         self._ensure_stack_loaded = ensure_stack_loaded
-        self.mode: str = "statement"
+        self._compute_units = compute_units
+        # No source model for this language -> statement mode impossible.
+        self.mode: str = "statement" if compute_units is not None else "line"
         # When set, tracks an in-flight statement step:
         #   {"kind": "next"|"stepIn", "source_path": str,
         #    "range": (start_line, end_line), "frame_count": int,
@@ -84,6 +92,8 @@ class StatementStepper:
 
     def set_mode(self, mode: str) -> None:
         """Switch step granularity. Clears any pending statement-step."""
+        if self._compute_units is None:
+            mode = "line"
         if mode not in ("statement", "line"):
             raise ValueError(
                 f"mode must be 'statement' or 'line', got {mode!r}",
@@ -191,6 +201,9 @@ class StatementStepper:
         except OSError:
             self._unit_cache[source_path] = []
             return []
-        units = compute_step_units(text, filename=source_path)
+        # _compute_units is only ever consulted from statement mode, and
+        # `mode` cannot be "statement" unless _compute_units is not None
+        # (see __init__ / set_mode).
+        units = self._compute_units(text)
         self._unit_cache[source_path] = units
         return units

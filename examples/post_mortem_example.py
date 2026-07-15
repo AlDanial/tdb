@@ -7,10 +7,11 @@ post-mortem tdb attachment.
 import sys
 from collections import Counter
 
-# - - - - - \/ - - - - - \/ - - - - - \/ - - - - - \/ - - - - - \/ - - - - - \/ 
-import tdb                          # These two lines cause the program to open
-sys.excepthook = tdb.exception_hook # tdb when an unhandled exception occurs.
-# - - - - - /\ - - - - - /\ - - - - - /\ - - - - - /\ - - - - - /\ - - - - - /\ 
+# - - - - - \/ - - - - - \/ - - - - - \/ - - - - - \/ - - - - - \/ - - - - - \/
+import tdb  # These two lines cause the program to open
+
+sys.excepthook = tdb.exception_hook  # tdb when an unhandled exception occurs.
+# - - - - - /\ - - - - - /\ - - - - - /\ - - - - - /\ - - - - - /\ - - - - - /\
 
 
 def generate_pi_digits():
@@ -57,9 +58,11 @@ def process_characters(source_code, pi_gen):
     computed_pi_digits = []
 
     for char in source_code:
-        if char == 'q':
-            print('Encountered "q".  Access a non-existent key in a dict to trigger traceback.')
-            this_is_a_deliberate['error'] = True
+        if char == "q":
+            print(
+                'Encountered "q".  Access a non-existent key in a dict to trigger traceback.'
+            )
+            this_is_a_deliberate["error"] = True
         if char.isalpha():
             letter_freq[char.lower()] += 1
 

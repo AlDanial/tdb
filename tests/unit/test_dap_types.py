@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from tdb.dap.types import (
     Breakpoint,
+    Capabilities,
     Scope,
     Source,
     SourceBreakpoint,
@@ -119,3 +120,24 @@ def test_scope_dataclass_defaults():
     s = Scope(name="Locals", variables_reference=5)
     assert s.named_variables == 0
     assert s.indexed_variables == 0
+
+
+def test_capabilities_parses_exception_breakpoint_filters():
+    caps = Capabilities.from_dict(
+        {
+            "supportsConfigurationDoneRequest": True,
+            "exceptionBreakpointFilters": [
+                {"filter": "userUnhandled", "label": "User Uncaught", "default": False},
+                {"filter": "raised", "label": "Raised", "default": True},
+            ],
+        }
+    )
+    assert caps.exception_breakpoint_filters == [
+        {"filter": "userUnhandled", "label": "User Uncaught", "default": False},
+        {"filter": "raised", "label": "Raised", "default": True},
+    ]
+
+
+def test_capabilities_filters_default_empty():
+    assert Capabilities().exception_breakpoint_filters == []
+    assert Capabilities.from_dict({}).exception_breakpoint_filters == []

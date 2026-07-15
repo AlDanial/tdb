@@ -566,6 +566,43 @@ async def test_inspect_thread_gate_race_maps_to_gate_error(handlers, monkeypatch
     assert "failed to fetch stack trace" not in rsp.value
 
 
+# --- Capability gate (task_inspection) -----------------------------------
+#
+# Profiles that don't opt into task/process inspection (e.g. cpp) raise
+# SessionGateError("unsupported") from InspectService; the RPC layer must
+# map that onto a message naming the profile, via `self._gate_error` (an
+# instance method, since it now reads `self.controller.profile`).
+
+
+async def test_gate_error_unsupported_names_the_profile():
+    from tests.unit.test_controller_actions import _bare_profile
+    from tdb.session.inspect_service import SessionGateError
+
+    eh = ServerEventHandler()
+    controller = DebugController(eh, profile=_bare_profile())
+    controller.client = _FakeDAPClient()
+    controller.state.transition_to(SessionPhase.STOPPED)
+    handlers = RpcHandlers(ControllerRef(controller), eh)
+
+    rsp = handlers._gate_error(SessionGateError("unsupported"), "list tasks")
+    assert rsp.success is False
+    assert rsp.value == "Not supported when debugging Bare"
+
+
+async def test_list_tasks_unsupported_for_gated_profile():
+    from tests.unit.test_controller_actions import _bare_profile
+
+    eh = ServerEventHandler()
+    controller = DebugController(eh, profile=_bare_profile())
+    controller.client = _FakeDAPClient()
+    controller.state.transition_to(SessionPhase.STOPPED)
+    handlers = RpcHandlers(ControllerRef(controller), eh)
+
+    rsp = await handlers.action_list_tasks([])
+    assert rsp.success is False
+    assert rsp.value == "Not supported when debugging Bare"
+
+
 # --- timeout_s / wait_for_stop / lock bypass (PR1 for MCP) --------------
 #
 # The MCP-server work needs three contracts:
@@ -710,3 +747,63 @@ def test_no_lock_actions_constant_includes_pause():
     from tdb.server.app import NO_LOCK_ACTIONS
 
     assert NO_LOCK_ACTIONS == frozenset({"pause"})
+
+
+# --- action_restart: adapter must survive reinit ------------------------
+#
+# action_restart reinitializes ctrl.client in-place via ctrl.client.__init__().
+# DAPClient's __init__ defaults to DebugpyAdapter when no adapter is passed,
+# so calling it with no args silently reverts a non-Python session's
+# adapter to debugpy on restart. Regression test for that.
+
+
+class _RestartTrackingDAPClient:
+    """Fake DAPClient whose __init__ signature mirrors the real one
+    (optional adapter, defaulting differently if omitted) so the test
+    can catch a regression to the no-arg re-init form."""
+
+    _DEFAULT_MARKER = object()
+
+    def __init__(self, adapter=None) -> None:
+        self._adapter = adapter if adapter is not None else self._DEFAULT_MARKER
+
+    async def disconnect(self, terminate: bool = True) -> None:
+        pass
+
+    async def stop(self) -> None:
+        pass
+
+
+async def test_action_restart_preserves_profile_adapter():
+    """RPC restart path: after action_restart, the client's adapter must
+    still be the profile's adapter, not DAPClient's default."""
+    from tests.unit.test_controller_actions import _bare_profile
+
+    eh = ServerEventHandler()
+    profile = _bare_profile()
+    controller = DebugController(eh, profile=profile)
+    controller.client = _RestartTrackingDAPClient(profile.adapter)
+    controller.state.transition_to(SessionPhase.STOPPED)
+    controller._launch_params = {
+        "program": "x.py",
+        "args": [],
+        "cwd": None,
+        "stop_on_entry": False,
+        "just_my_code": True,
+        "python": None,
+    }
+
+    async def _fake_start(**kwargs) -> None:
+        eh.initialized_event.set()
+
+    async def _fake_configure() -> None:
+        pass
+
+    controller.start = _fake_start
+    controller.do_configure = _fake_configure
+
+    handlers = RpcHandlers(ControllerRef(controller), eh)
+    rsp = await handlers.action_restart([])
+
+    assert rsp.success is True
+    assert controller.client._adapter is profile.adapter

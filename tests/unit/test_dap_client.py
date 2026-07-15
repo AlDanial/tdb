@@ -19,6 +19,7 @@ from tdb.dap.client import DAPClient, DAPError
 from tdb.dap.messages import Request, Response, parse_message
 from tdb.dap.protocol import encode_message, read_message
 from tdb.dap.types import Source, SourceBreakpoint
+from tdb.languages.base import AdapterQuirks
 
 
 class FakeAdapter:
@@ -131,6 +132,15 @@ class FakeAdapter:
                 await asyncio.sleep(0.005)
 
         return await asyncio.wait_for(_poll(), timeout)
+
+    def requests_for(self, command: str) -> list[Request]:
+        """Synchronously return already-received requests for `command`.
+
+        Unlike `wait_for_requests`, this doesn't poll/await — callers must
+        ensure the request has already landed (e.g. by awaiting the call
+        that sends it).
+        """
+        return [r for r in self.requests if r.command == command]
 
 
 @pytest.fixture
@@ -530,3 +540,93 @@ async def test_adapter_death_without_stderr_reports_no_output():
     await client._watch_adapter_death()
     with pytest.raises(ConnectionError, match="no output"):
         fut.result()
+
+
+# --- AdapterSpec threading -----------------------------------------------
+
+
+class _RecordingSpec:
+    """Minimal AdapterSpec double that records what the client asked for."""
+
+    id = "recording"
+    quirks = AdapterQuirks()
+
+    def __init__(self):
+        self.launch_calls = []
+        self.attach_calls = []
+
+    def command(self):
+        return ["true"]  # never actually spawned in these tests
+
+    def launch_body(self, **kwargs):
+        self.launch_calls.append(kwargs)
+        return {"request": "launch", "program": kwargs["program"]}
+
+    def attach_body(self, **kwargs):
+        self.attach_calls.append(kwargs)
+        return {"request": "attach", "port": kwargs["port"]}
+
+    def pick_exception_filters(self, caps):
+        return []
+
+
+async def test_initialize_sends_adapter_id_from_spec(dap):
+    client, adapter = dap
+    client._adapter = _RecordingSpec()
+    await client.initialize()
+    req = adapter.requests_for("initialize")[-1]
+    assert req.arguments["adapterID"] == "recording"
+
+
+async def test_launch_body_comes_from_adapter_spec(dap):
+    client, adapter = dap
+    spec = _RecordingSpec()
+    client._adapter = spec
+    fut = await client.launch(
+        program="p.py", args=["x"], stop_on_entry=True, just_my_code=False
+    )
+    assert spec.launch_calls == [
+        {
+            "program": "p.py",
+            "args": ["x"],
+            "cwd": ".",
+            "env": None,
+            "stop_on_entry": True,
+            "console": "internalConsole",
+            "opts": {"just_my_code": False},
+        }
+    ]
+    (req,) = await adapter.wait_for_requests("launch")
+    assert req.arguments == {"request": "launch", "program": "p.py"}
+    fut.cancel()
+
+
+async def test_attach_body_comes_from_adapter_spec(dap):
+    client, adapter = dap
+    spec = _RecordingSpec()
+    client._adapter = spec
+    fut = await client.attach(host="h", port=9, sub_process_id=3)
+    assert spec.attach_calls == [
+        {"host": "h", "port": 9, "opts": {"sub_process_id": 3}}
+    ]
+    fut.cancel()
+
+
+def test_default_adapter_is_debugpy():
+    from tdb.dap.client import DAPClient
+    from tdb.languages.python import DebugpyAdapter
+
+    assert isinstance(DAPClient()._adapter, DebugpyAdapter)
+
+
+async def test_launch_normalizes_missing_args_and_cwd(dap):
+    """Not in the brief: the client must still default args/cwd itself,
+    since DebugpyAdapter.launch_body does not normalize them (Task 3
+    reviewer flag)."""
+    client, adapter = dap
+    spec = _RecordingSpec()
+    client._adapter = spec
+    fut = await client.launch(program="p.py")
+    assert spec.launch_calls[-1]["args"] == []
+    assert spec.launch_calls[-1]["cwd"] == "."
+    fut.cancel()

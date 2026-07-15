@@ -6,6 +6,7 @@ import asyncio
 import logging
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import uvicorn
 
@@ -13,6 +14,9 @@ from tdb.session.controller import DebugController
 from .app import create_app
 from .event_handler import ServerEventHandler
 from .handlers import ControllerRef, RpcHandlers
+
+if TYPE_CHECKING:
+    from tdb.languages.base import LanguageProfile
 
 log = logging.getLogger(__name__)
 
@@ -30,6 +34,7 @@ async def run_headless(
     attach_host: str | None = None,
     attach_port: int | None = None,
     path_mappings: list[tuple[str, str]] | None = None,
+    profile: "LanguageProfile | None" = None,
 ) -> None:
     """Run the debug server in headless mode (no TUI).
 
@@ -45,7 +50,7 @@ async def run_headless(
         raise ValueError("program is required unless remote attach is used")
 
     handler = ServerEventHandler()
-    controller = DebugController(handler)
+    controller = DebugController(handler, profile=profile)
     from tdb.persist import load_config
 
     controller.step_mode = load_config().step_mode
@@ -80,14 +85,23 @@ async def run_headless(
             sys.exit(2)
     else:
         assert program is not None
-        await controller.start(
-            program=program,
-            args=args,
-            cwd=cwd or str(Path.cwd()),
-            stop_on_entry=stop_on_entry,
-            just_my_code=just_my_code,
-            python=python,
-        )
+        from tdb.languages.base import AdapterNotFoundError
+
+        try:
+            await controller.start(
+                program=program,
+                args=args,
+                cwd=cwd or str(Path.cwd()),
+                stop_on_entry=stop_on_entry,
+                just_my_code=just_my_code,
+                python=python,
+            )
+        except AdapterNotFoundError as exc:
+            # Adapter executable missing (e.g. lldb-dap / gdb not
+            # installed). Mirror the remote-attach OSError handling
+            # above: print the install hint instead of a raw traceback.
+            print(f"tdb: {exc.hint}", file=sys.stderr)
+            sys.exit(2)
 
     # Wait for initialized event, then configure
     from tdb._timeouts import DAP_INITIALIZED, DAP_STOP_ON_ENTRY

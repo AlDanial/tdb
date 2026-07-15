@@ -58,6 +58,11 @@ class InspectionWorkflows:
     async def fetch_async_task_count(self) -> None:
         """Evaluate asyncio.all_tasks() count and update the menu bar label."""
         ctrl = self.app.controller
+        # asyncio.all_tasks() is a Python-only expression; don't evaluate
+        # it against a profile that doesn't support task inspection (e.g.
+        # cpp) — it would just fail (or misbehave) on every stopped event.
+        if not ctrl.profile.capabilities.task_inspection:
+            return
         if ctrl.state.is_terminated or ctrl.state.is_running:
             return
         try:
@@ -84,7 +89,13 @@ class InspectionWorkflows:
             return
         try:
             tasks = await self._svc.collect_tasks()
-        except SessionGateError:
+        except SessionGateError as e:
+            if e.reason == "unsupported":
+                self.app.notify(
+                    f"Not available for {self.app.controller.profile.display_name}",
+                    title="Async Tasks",
+                    severity="warning",
+                )
             return  # phase changed between our gate and the fetch
         except Exception:
             log.exception("Error fetching async tasks")
@@ -108,7 +119,13 @@ class InspectionWorkflows:
     async def refresh_async_tasks(self) -> None:
         try:
             tasks = await self._svc.collect_tasks()
-        except SessionGateError:
+        except SessionGateError as e:
+            if e.reason == "unsupported":
+                self.app.notify(
+                    f"Not available for {self.app.controller.profile.display_name}",
+                    title="Async Tasks",
+                    severity="warning",
+                )
             return
         except Exception:
             log.exception("Error refreshing async tasks")
@@ -125,7 +142,13 @@ class InspectionWorkflows:
             # Routes around synthetic frame ids and evaluates against the
             # active client — see InspectService.task_locals.
             variables = await self._svc.task_locals(task_name)
-        except SessionGateError:
+        except SessionGateError as e:
+            if e.reason == "unsupported":
+                self.app.notify(
+                    f"Not available for {self.app.controller.profile.display_name}",
+                    title="Async Tasks",
+                    severity="warning",
+                )
             return
         modal.show_task_variables(variables)
 
@@ -284,21 +307,36 @@ class InspectionWorkflows:
 
     # --- Processes ------------------------------------------------------
 
-    async def get_processes(self) -> list[ProcessInfo]:
+    async def get_processes(self) -> list[ProcessInfo] | None:
         """Get child process info, trying eval on parent first, then /proc.
 
-        Maps a gate failure (phase changed mid-flight) to an empty list:
-        callers treat "nothing to show" and "can't look right now" the
-        same way.
+        Returns `None` for the "unsupported" gate reason — the warning
+        toast here already explains why nothing is shown, so callers
+        must not layer their own "nothing found" notification on top.
+        Any other gate failure (phase changed mid-flight) maps to an
+        empty list: callers treat "nothing to show" and "can't look
+        right now" the same way in that case.
         """
         try:
             return await self._svc.collect_processes()
-        except SessionGateError:
+        except SessionGateError as e:
+            if e.reason == "unsupported":
+                self.app.notify(
+                    f"Not available for {self.app.controller.profile.display_name}",
+                    title="Processes",
+                    severity="warning",
+                )
+                return None
             return []
 
     async def fetch_process_count(self) -> None:
         """Update the Processes label with child process count."""
         ctrl = self.app.controller
+        # The multiprocessing.active_children() eval fallback below is a
+        # Python-only expression; don't fire it for profiles that don't
+        # support task/process inspection (e.g. cpp).
+        if not ctrl.profile.capabilities.task_inspection:
+            return
         if ctrl.state.is_terminated or ctrl.state.is_running:
             return
         # Use tracked PIDs as primary source — always available
@@ -382,6 +420,12 @@ class InspectionWorkflows:
         modal = self.app.panels.processes
         if modal is None:
             return
+        if processes is None:
+            # Unsupported for this language — get_processes() already
+            # explained why via its own warning toast. Dismiss quietly
+            # instead of piling on a contradictory "No extra processes".
+            modal.dismiss(None)
+            return
         if not processes:
             modal.dismiss(None)
             self.app.notify("No extra processes", title="Processes")
@@ -393,6 +437,10 @@ class InspectionWorkflows:
         if ctrl.state.is_terminated or ctrl.state.is_running:
             return
         processes = await self.get_processes()
+        if processes is None:
+            # Unsupported for this language — get_processes() already
+            # toasted the reason; nothing to refresh the modal with.
+            return
         if self.app.panels.processes is not None:
             self.app.panels.processes.update_processes(processes)
 
