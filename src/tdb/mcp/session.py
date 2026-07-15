@@ -81,7 +81,7 @@ class McpSession:
                 "starting a new one."
             )
 
-        profile = self._resolve_profile(program, lang, adapter)
+        profile = self._resolve_profile(program, lang, adapter, python)
         self._build_handlers(profile=profile)
         assert self._controller is not None and self._handler is not None
 
@@ -173,11 +173,20 @@ class McpSession:
     # --- internals ----------------------------------------------------
 
     def _resolve_profile(
-        self, program: str, lang: str | None, adapter: str | None
+        self,
+        program: str,
+        lang: str | None,
+        adapter: str | None,
+        python: str | None = None,
     ) -> "LanguageProfile | None":
         """Mirror cli.py's _resolve_language for the MCP launch path.
         Returns None (controller default: PYTHON_PROFILE) when neither
-        `lang` nor `adapter` was given."""
+        `lang` nor `adapter` was given.
+
+        Raises ValueError if `python` (interpreter override) was
+        supplied for a non-Python profile — mirrors cli.py's
+        --python/--pv validation (cli.py:358-365), which rejects the
+        same combination at the CLI layer."""
         if lang is None and adapter is None:
             return None
         from tdb.languages import registry
@@ -186,9 +195,15 @@ class McpSession:
         config = load_config()
         lang_id = lang or registry.detect(program)
         resolved_adapter = adapter or config.default_adapters.get(lang_id)
-        return registry.resolve(
+        profile = registry.resolve(
             lang_id, adapter=resolved_adapter, adapter_paths=config.adapters
         )
+        if profile.id != "python" and python is not None:
+            raise ValueError(
+                f"the 'python' option applies only to Python debuggees "
+                f"(language is {profile.id})"
+            )
+        return profile
 
     def _build_handlers(self, profile: "LanguageProfile | None" = None) -> None:
         self._handler = ServerEventHandler()

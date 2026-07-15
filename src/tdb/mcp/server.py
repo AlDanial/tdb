@@ -117,7 +117,10 @@ def build_mcp(session: McpSession | None = None) -> FastMCP:
         `lang` selects a non-Python language (auto-detected from
         `program` when omitted) and `adapter` overrides its default
         debug adapter — both are optional and Python needs neither.
-        Returns a status line indicating where the debuggee landed."""
+        `python` (interpreter override) applies only to Python
+        debuggees; combining it with a non-Python `lang`/`adapter`
+        raises an error. Returns a status line indicating where the
+        debuggee landed."""
         return await sess.launch(
             program=program,
             args=args,

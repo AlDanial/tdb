@@ -23,6 +23,7 @@ import asyncio
 import pytest
 
 from tdb.dap.types import SourceBreakpoint, Thread
+from tdb.languages.base import AdapterSpec, LanguageNotSupportedError, LanguageProfile
 from tdb.mcp.session import McpSession
 from tdb.server.event_handler import ServerEventHandler
 from tdb.server.handlers import ControllerRef, RpcHandlers
@@ -183,3 +184,66 @@ async def test_attach_rejects_when_already_active():
     _attach_fake_session(sess)
     msg = await sess.attach(host="localhost", port=15678)
     assert "already active" in msg.lower()
+
+
+# --- _resolve_profile + python-arg validation ---------------------------
+
+
+class _FakeAdapter(AdapterSpec):
+    id = "fake"
+
+
+def _fake_non_python_profile() -> LanguageProfile:
+    """A minimal non-Python LanguageProfile, built without registering
+    a fake language globally — only "python" is registered today, so
+    tests that need a non-Python *resolved* profile monkeypatch
+    `registry.resolve` to return this instead."""
+    return LanguageProfile(id="cobol", display_name="COBOL", adapter=_FakeAdapter())
+
+
+def test_resolve_profile_returns_none_when_lang_and_adapter_omitted():
+    sess = McpSession()
+    assert sess._resolve_profile("prog.py", None, None) is None
+
+
+def test_resolve_profile_returns_python_profile_for_lang_python():
+    sess = McpSession()
+    profile = sess._resolve_profile("prog.py", "python", None)
+    assert profile is not None
+    assert profile.id == "python"
+
+
+def test_resolve_profile_raises_for_unsupported_language():
+    sess = McpSession()
+    with pytest.raises(LanguageNotSupportedError):
+        sess._resolve_profile("prog.cobol", "cobol", None)
+
+
+def test_resolve_profile_allows_python_arg_for_python_profile():
+    sess = McpSession()
+    profile = sess._resolve_profile(
+        "prog.py", "python", None, python="/usr/bin/python3"
+    )
+    assert profile is not None
+    assert profile.id == "python"
+
+
+def test_resolve_profile_rejects_python_arg_for_non_python_profile(monkeypatch):
+    from tdb.languages import registry
+
+    monkeypatch.setattr(registry, "resolve", lambda *a, **k: _fake_non_python_profile())
+    sess = McpSession()
+    with pytest.raises(ValueError, match="python"):
+        sess._resolve_profile("prog.cbl", "cobol", None, python="/usr/bin/python3")
+
+
+async def test_launch_rejects_python_arg_for_non_python_profile(monkeypatch):
+    """Integration-level check for Finding 1: cli.py rejects --python
+    combined with a non-Python profile (cli.py:358-365); debug_launch
+    must reject the same combination instead of silently ignoring it."""
+    from tdb.languages import registry
+
+    monkeypatch.setattr(registry, "resolve", lambda *a, **k: _fake_non_python_profile())
+    sess = McpSession()
+    with pytest.raises(ValueError, match="python"):
+        await sess.launch(program="prog.cbl", lang="cobol", python="/usr/bin/python3")
