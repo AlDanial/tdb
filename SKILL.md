@@ -1,6 +1,11 @@
-# Skill: Interactive Python Debugging with tdb
+# Skill: Interactive Debugging with tdb (Python, C/C++)
 
-Use this skill when you need to understand runtime behavior of Python code -- variable values, control flow, why a condition is or isn't met, what a function actually returns, or why an exception occurs. This is faster and more reliable than inserting print/logging statements.
+Use this skill when you need to understand runtime behavior of code -- variable values, control flow, why a condition is or isn't met, what a function actually returns, or why an exception occurs. This is faster and more reliable than inserting print/logging statements.
+
+`tdb` debugs Python (via debugpy, full feature set) and C/C++ or any native
+binary built with `-g` (via `lldb-dap`, or `gdb -i dap` with
+`adapter="gdb"`). The language is auto-detected from the target: `.py` →
+Python, ELF/Mach-O/PE executable → C/C++.
 
 ## When to use this
 
@@ -33,11 +38,26 @@ The server owns the debug session — do not also start `tdb --headless`.
 
 | Cluster | Tools |
 |---------|-------|
-| Lifecycle | `debug_launch(program, args?, cwd?, stop_on_entry?, just_my_code?, python?, breakpoints?)`, `debug_attach(host, port, breakpoints?, path_mappings?)`, `quit()` |
+| Lifecycle | `debug_launch(program, args?, cwd?, stop_on_entry?, just_my_code?, python?, breakpoints?, lang?, adapter?)`, `debug_attach(host, port, breakpoints?, path_mappings?)`, `quit()` |
 | Control | `control(action, timeout_s=30)` — `action ∈ {continue, next, step_in, step_out, pause, wait_for_stop}` |
 | Inspection | `inspect(expressions)`, `read_source(file_path)`, `stack_trace()`, `status()`, `get_output()` |
 | Breakpoints | `set_breakpoint(spec, condition?, hit_condition?)`, `remove_breakpoint(spec)`, `list_breakpoints()` |
 | Concurrency | `threads(thread_id?)`, `tasks(task_name?)`, `processes(name_or_pid?)`, `wait_graph()` |
+
+Multi-language notes:
+- `debug_launch` auto-detects the language from `program` — pass a compiled
+  binary directly (`debug_launch(program="/abs/path/prog")` debugs it via
+  lldb-dap). `lang="cpp"` forces it; `adapter="gdb"` selects GDB. The
+  `python` param is only valid for Python debuggees (errors otherwise).
+- `tasks`, `processes`, and `wait_graph` are Python-only; for other
+  languages they return a structured "not supported" error. `threads`
+  works everywhere.
+- **GDB only:** `inspect`/`evaluate` expressions go through GDB's CLI —
+  prefix with `print` (`inspect(expressions=["print x"])`); bare `x`
+  collides with GDB's examine-memory command. lldb-dap evaluates bare
+  expressions directly.
+- If breakpoints in a C/C++ file never bind, the binary likely lacks debug
+  info — rebuild with `-g -O0`.
 
 Typical flow:
 
@@ -79,6 +99,12 @@ If the script takes arguments:
 If the script needs a specific virtualenv:
 ```bash
 .venv/bin/python -m tdb --headless --stop-on-entry --python /path/to/venv/bin/python /path/to/script.py &
+```
+
+For a C/C++ binary (compiled with `-g`), the same headless mode works — the
+language is auto-detected; add `--adapter gdb` to use GDB instead of lldb-dap:
+```bash
+.venv/bin/python -m tdb --headless /path/to/binary arg1 &
 ```
 
 ### 2. Send commands via JSON-RPC
@@ -242,6 +268,7 @@ curl -s -X POST http://127.0.0.1:8150/rpc -H 'Content-Type: application/json' \
 - **Breakpoint paths must be absolute.** Use the full path, not relative.
 - **`next` vs `step_in`:** `next` stays in the current function; `step_in` enters called functions.
 - **`inspect` vs `evaluate`:** `inspect` takes multiple expressions and labels each result; `evaluate` returns a single raw result.
+- **Non-Python debuggees:** expressions are evaluated by the language's adapter, not Python — with GDB, prefix expressions with `print` (see MCP notes above).
 - **Step/continue actions block** until the program stops (breakpoint, exception, or exit). Default timeout is 600 seconds; pass a shorter per-call timeout as the first param (e.g. `{"action":"continue","params":[30]}`). On timeout the response is a success with value `still running — call pause or wait again` — follow up with `pause` to interrupt or `wait_for_stop` to keep waiting.
 - **`--stop-on-entry`** pauses at the first line. Without it, the program runs until a breakpoint or exit.
 - **Output capture:** stdout/stderr from the debuggee is buffered. Use `get_output` to retrieve it, or it's included automatically in step/continue responses.
