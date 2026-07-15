@@ -788,3 +788,9 @@ def test_children_registered_for_python():
     ctrl, dap, _handler = _make()
     ctrl._setup_event_handlers()
     assert "debugpyAttach" in ctrl.client._event_handlers
+
+
+def test_step_mode_forced_line_without_capability():
+    ctrl, _dap, _handler = _make(profile=_bare_profile())
+    ctrl.step_mode = "statement"
+    assert ctrl.step_mode == "line"

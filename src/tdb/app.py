@@ -1200,6 +1200,14 @@ class TdbApp(_AppMessageRoutes, App):
         self.push_screen(_KeybindingsModal(code_view.keybindings, on_scheme_change))
 
     def action_step_mode(self) -> None:
+        if self.controller.profile.capabilities.compute_step_units is None:
+            self.notify(
+                f"Statement stepping is not available for "
+                f"{self.controller.profile.display_name} — using line mode",
+                severity="warning",
+            )
+            return
+
         def on_mode_change(mode: str) -> None:
             self._config.step_mode = mode
             self.controller.set_step_mode(mode)

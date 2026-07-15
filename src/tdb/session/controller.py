@@ -77,6 +77,7 @@ class DebugController:
             self.state,
             issue_step=self._issue_statement_step,
             ensure_stack_loaded=self.fetch_stop_info,
+            compute_units=self.profile.capabilities.compute_step_units,
         )
 
     @property

@@ -13,6 +13,7 @@ import pytest
 from tdb.dap.types import Source, StackFrame
 from tdb.session.state import DebugState, SessionPhase
 from tdb.session.statement_stepper import StatementStepper
+from tdb.source_analysis import compute_step_units
 
 MULTILINE_SRC = """\
 x = foo(
@@ -63,7 +64,12 @@ class _Harness:
         self.ensure_calls = 0
         self.ensure_error: Exception | None = None
         self.ensure_frames: list[StackFrame] | None = None
-        self.stepper = StatementStepper(state, self._issue, self._ensure)
+        self.stepper = StatementStepper(
+            state,
+            self._issue,
+            self._ensure,
+            compute_units=compute_step_units,
+        )
 
     async def _issue(self, kind: str) -> None:
         self.issued.append(kind)
@@ -322,3 +328,34 @@ async def test_multiline_match_subject_is_one_statement(tmp_path):
     assert await h.stepper.maybe_continue() is True
     _restop(h.state, str(path), 4)  # case _: — its own unit
     assert await h.stepper.maybe_continue() is False
+
+
+# --- compute_units=None (no source model for language) ----------------
+
+
+def test_no_compute_units_forces_line_mode():
+    h = _Harness(DebugState())  # default harness passes compute_units
+
+    stepper = StatementStepper(
+        h.state,
+        issue_step=h._issue,
+        ensure_stack_loaded=h._ensure,
+        compute_units=None,
+    )
+    assert stepper.mode == "line"
+    stepper.set_mode("statement")
+    assert stepper.mode == "line"
+
+
+async def test_line_mode_stepper_never_continues(prog):
+    h = _Harness(_stopped_state(prog, 1))
+    stepper = StatementStepper(
+        h.state,
+        issue_step=h._issue,
+        ensure_stack_loaded=h._ensure,
+        compute_units=None,
+    )
+    await stepper.begin("next")
+    _restop(h.state, prog, 2)
+    assert await stepper.maybe_continue() is False
+    assert h.issued == []
