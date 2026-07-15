@@ -17,6 +17,7 @@ from tdb.languages.cpp import build_cpp_profile
 from tdb.dap.types import SourceBreakpoint
 from tdb.server.event_handler import ServerEventHandler
 from tdb.session.controller import DebugController
+from tdb.session.state import SessionPhase
 
 pytestmark = pytest.mark.skipif(
     shutil.which("lldb-dap") is None
@@ -159,3 +160,4 @@ async def test_stop_terminates_debuggee(session, cpp_binary):
     ctrl, handler = session
     await _launch(ctrl, handler, binary, breakpoints=[(src, BP_LINE)])
     await ctrl.stop()  # must not hang or raise
+    assert ctrl.state.phase is SessionPhase.TERMINATED
