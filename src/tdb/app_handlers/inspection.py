@@ -58,6 +58,11 @@ class InspectionWorkflows:
     async def fetch_async_task_count(self) -> None:
         """Evaluate asyncio.all_tasks() count and update the menu bar label."""
         ctrl = self.app.controller
+        # asyncio.all_tasks() is a Python-only expression; don't evaluate
+        # it against a profile that doesn't support task inspection (e.g.
+        # cpp) — it would just fail (or misbehave) on every stopped event.
+        if not ctrl.profile.capabilities.task_inspection:
+            return
         if ctrl.state.is_terminated or ctrl.state.is_running:
             return
         try:
@@ -327,6 +332,11 @@ class InspectionWorkflows:
     async def fetch_process_count(self) -> None:
         """Update the Processes label with child process count."""
         ctrl = self.app.controller
+        # The multiprocessing.active_children() eval fallback below is a
+        # Python-only expression; don't fire it for profiles that don't
+        # support task/process inspection (e.g. cpp).
+        if not ctrl.profile.capabilities.task_inspection:
+            return
         if ctrl.state.is_terminated or ctrl.state.is_running:
             return
         # Use tracked PIDs as primary source — always available

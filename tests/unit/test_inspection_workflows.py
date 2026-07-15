@@ -29,8 +29,8 @@ class _StubMenuBar:
 class _StubApp:
     """The minimum surface InspectionWorkflows reaches for."""
 
-    def __init__(self) -> None:
-        self.controller = DebugController(ServerEventHandler())
+    def __init__(self, profile=None) -> None:
+        self.controller = DebugController(ServerEventHandler(), profile=profile)
         # Start the stub session in STOPPED so guards behave like a
         # paused-and-ready debugger; tests flip to RUNNING/TERMINATED as
         # they need to exercise specific guards.
@@ -52,8 +52,8 @@ class _StubApp:
         self.pushed_screens.append(screen)
 
 
-def _wf() -> tuple[InspectionWorkflows, _StubApp]:
-    app = _StubApp()
+def _wf(profile=None) -> tuple[InspectionWorkflows, _StubApp]:
+    app = _StubApp(profile=profile)
     return InspectionWorkflows(app), app
 
 
@@ -94,6 +94,52 @@ async def test_fetch_process_count_is_a_no_op_when_running():
     wf, app = _wf()
     app.controller.state.transition_to(SessionPhase.RUNNING)
     await wf.fetch_process_count()
+    assert app._menu_bar.labels == {}
+
+
+# --- Capability gate (task_inspection) -----------------------------------
+#
+# Both count-badge fetchers fire on every `stopped` event regardless of
+# profile (see app_handlers/dap_events.py). For a profile that doesn't
+# support task inspection (e.g. cpp), they must not send a Python-only
+# evaluate expression against the debuggee.
+
+
+async def test_fetch_async_task_count_noop_for_gated_profile():
+    from tests.unit.test_controller_actions import _bare_profile
+
+    wf, app = _wf(profile=_bare_profile())
+
+    calls = []
+
+    async def _fake_evaluate_on_parent(expr):
+        calls.append(expr)
+        return "0"
+
+    app.controller.evaluate_on_parent = _fake_evaluate_on_parent
+
+    await wf.fetch_async_task_count()
+
+    assert calls == []
+    assert app._menu_bar.labels == {}
+
+
+async def test_fetch_process_count_noop_for_gated_profile():
+    from tests.unit.test_controller_actions import _bare_profile
+
+    wf, app = _wf(profile=_bare_profile())
+
+    calls = []
+
+    async def _fake_evaluate_on_parent(expr):
+        calls.append(expr)
+        return "0"
+
+    app.controller.evaluate_on_parent = _fake_evaluate_on_parent
+
+    await wf.fetch_process_count()
+
+    assert calls == []
     assert app._menu_bar.labels == {}
 
 
