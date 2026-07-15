@@ -1,9 +1,9 @@
 # `textual-debugger`
 
 `textual-debugger` (the package) provides `tdb` (the command-line tool and module),
-a full-featured terminal-based debugger for Python — and for any other language
+a full-featured terminal-based debugger for Python and other languages
 with a Debug Adapter Protocol (DAP) implementation. C and C++ support (via
-`lldb-dap` or `gdb`) ships built in.
+`lldb-dap` or `gdb`) is built in.
 
 `tdb` is built with [textual](https://github.com/Textualize/textual) and speaks
 DAP to a pluggable debug adapter: [debugpy](https://github.com/microsoft/debugpy)
@@ -25,7 +25,7 @@ MIT License.  Copyright 2026 by Al Danial.
 
 - debugs multiple languages through the Debug Adapter Protocol: Python (via `debugpy`,
 the richest feature set) and C/C++ (via `lldb-dap` or `gdb -i dap`), with the language
-auto-detected from the target — see [Multi-Language Debugging](#multi-language-debugging)
+auto-detected from the target (ref. [Multi-Language Debugging](#multi-language-debugging)).
 
 - supports debugging of synchronous, asynchronous, multi-threaded, and multi-process Python code.
 It specifically supports modules
@@ -113,7 +113,7 @@ tdb my_program.py
 # debug with arguments
 tdb my_program.py arg1 arg2
 
-# debug a C/C++ (or other native) executable built with -g — the ELF/Mach-O/PE
+# debug a C/C++ (or other native) executable built with -g.  The ELF/Mach-O/PE
 # binary is auto-detected and debugged through lldb-dap
 tdb ./myprog arg1 arg2
 
@@ -182,8 +182,7 @@ The language is auto-detected from the debug target:
 2. Native executables (ELF, Mach-O, PE magic bytes) → C/C++.
 3. A `#!...python` shebang → Python.
 4. C/C++/Rust *source* files (`.c`, `.cpp`, `.rs`, …) produce an error with a
-   hint: compile with debug info (`g++ -g -O0`) and debug the binary — you
-   debug the executable, not the source file.
+   hint: compile with debug info (`g++ -g -O0`) and debug the binary.
 5. Anything else produces an error naming the `--lang` override.
 
 `--lang` forces the language; `--adapter` picks a non-default adapter within
@@ -231,8 +230,7 @@ currently ignored for non-Python targets.
   the Code View shows a `<Could not read …>` placeholder while the stack,
   variables, and evaluate console remain fully usable.
 - `lldb-dap` debugs GCC-built binaries fine (DWARF is compiler-neutral), but
-  GDB's libstdc++ pretty-printing is more complete — that's what
-  `--adapter gdb` is for.
+  GDB's libstdc++ pretty-printing (via `--adapter gdb`) is more complete.
 - **GDB evaluate-console quirk:** GDB's DAP treats REPL input as CLI
   commands, so evaluate expressions with an explicit `print`, e.g.
   `print x` rather than bare `x` (bare `x` collides with GDB's
@@ -785,7 +783,7 @@ curl -s -X POST http://127.0.0.1:8150/rpc \
 | `set_breakpoint` | `["file:line"]` or `["file:line", "condition", "hit_condition"]` | Set a breakpoint |
 | `remove_breakpoint` | `["file:line"]` | Remove a breakpoint |
 | `list_breakpoints` | `[]` | Show all breakpoints |
-| `continue` | `[]` or `[timeout_s]` | Resume execution; on timeout returns `"still running — call pause or wait again"` (success) |
+| `continue` | `[]` or `[timeout_s]` | Resume execution; on timeout returns `"still running--call pause or wait again"` (success) |
 | `next` | `[]` or `[timeout_s]` | Step over |
 | `step_in` | `[]` or `[timeout_s]` | Step into |
 | `step_out` | `[]` or `[timeout_s]` | Step out |
@@ -824,7 +822,7 @@ Each is JSON with `event`, `data`, and `timestamp` fields.
 tdb ships a Model Context Protocol (MCP) server (`tdb-mcp`) that exposes
 the debugger as a curated set of tools an AI agent can call. The MCP
 server is a third in-process consumer of the same dispatch handlers the
-TUI and the HTTP server use — so an agent gets the same lock semantics,
+TUI and the HTTP server use so an agent gets the same lock semantics,
 including the pause-during-continue bypass, and the same DAP-backed
 inspection surface.
 
@@ -863,7 +861,7 @@ client expects to launch servers.
 | Breakpoints | `set_breakpoint(spec, condition?, hit_condition?)`, `remove_breakpoint(spec)`, `list_breakpoints()` |
 | Differentiators | `threads(thread_id?)`, `tasks(task_name?)`, `processes(name_or_pid?)`, `wait_graph()` |
 
-`control` is intentionally one tool that takes an action enum — the six
+`control` is intentionally one tool that takes an action enum. The six
 underlying RPC actions share a return shape, and agents perform
 measurably better with a small surface than with one tool per action.
 `threads` / `tasks` / `processes` overload list-vs-inspect via a
@@ -880,7 +878,7 @@ non-Python debuggees.
 
 ```
 agent → control(action="continue", timeout_s=30)
-mcp   → "still running — call pause or wait again"
+mcp   → "still running, call pause or wait again"
 agent → control(action="pause")        # OR: control(action="wait_for_stop", timeout_s=30)
 mcp   → "<file>:<line>"
 agent → inspect(["x", "len(buf)"])
@@ -889,7 +887,7 @@ mcp   → "x = 7\nlen(buf) = 1024"
 
 `pause` bypasses the dispatch lock so it can interrupt a `continue`
 that's still mid-flight (HTTP and MCP share the same `NO_LOCK_ACTIONS`
-policy — see `tdb/server/app.py`).
+policy; see `tdb/server/app.py`).
 
 ### Security caveat
 
@@ -898,16 +896,16 @@ execution in the debuggee process**. This is inherent to a debugger and
 not a tdb-specific concern, but MCP clients (and the humans running
 them) should apply appropriate permission models: don't auto-approve
 `inspect` against untrusted expressions, and don't expose `tdb-mcp` on
-a network — stdio transport only by design.
+a network (stdio transport only by design).
 
 ### Deferred / out of scope (v1)
 
-- SSE-style event push — `control` and `wait_for_stop` make polling
+- SSE-style event push: `control` and `wait_for_stop` make polling
   efficient enough; events would also need uneven MCP-client support.
-- HTTP / streamable-HTTP transports — would require auth (which the
+- HTTP / streamable-HTTP transports: would require auth (which the
   HTTP RPC server also currently lacks); stdio inherits the trust of
   the process that spawned it.
-- Multi-session — one debug session per MCP process.
+- Multi-session: one debug session per MCP process.
 
 ## CLI Reference
 
