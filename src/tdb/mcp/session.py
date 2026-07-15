@@ -174,21 +174,23 @@ class McpSession:
 
     def _resolve_profile(
         self,
-        program: str,
+        program: str | None,
         lang: str | None,
         adapter: str | None,
         python: str | None = None,
-    ) -> "LanguageProfile | None":
+    ) -> "LanguageProfile":
         """Mirror cli.py's _resolve_language for the MCP launch path.
-        Returns None (controller default: PYTHON_PROFILE) when neither
-        `lang` nor `adapter` was given.
+        Always detects/resolves a profile — `lang`/`adapter` override
+        auto-detection from `program`, but omitting both still runs
+        `registry.detect(program)` so non-Python programs (e.g. an ELF
+        binary) aren't silently launched under debugpy.
+        `registry.detect(None)` returns "python", so attach-mode/no-program
+        callers still get the Python profile.
 
         Raises ValueError if `python` (interpreter override) was
         supplied for a non-Python profile — mirrors cli.py's
         --python/--pv validation (cli.py:358-365), which rejects the
         same combination at the CLI layer."""
-        if lang is None and adapter is None:
-            return None
         from tdb.languages import registry
         from tdb.persist import load_config
 

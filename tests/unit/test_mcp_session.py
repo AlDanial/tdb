@@ -201,9 +201,23 @@ def _fake_non_python_profile() -> LanguageProfile:
     return LanguageProfile(id="cobol", display_name="COBOL", adapter=_FakeAdapter())
 
 
-def test_resolve_profile_returns_none_when_lang_and_adapter_omitted():
+def test_resolve_profile_detects_python_when_lang_and_adapter_omitted():
+    """Both omitted no longer short-circuits to None — it must still
+    auto-detect from the program, same as cli.py's _resolve_language."""
     sess = McpSession()
-    assert sess._resolve_profile("prog.py", None, None) is None
+    profile = sess._resolve_profile("prog.py", None, None)
+    assert profile is not None
+    assert profile.id == "python"
+
+
+def test_resolve_profile_detects_cpp_for_elf_binary(tmp_path):
+    """An ELF binary with no --lang/--adapter must auto-detect as cpp,
+    not silently fall through to the Python default (Finding 2)."""
+    binary = tmp_path / "a.out"
+    binary.write_bytes(b"\x7fELF" + b"\x00" * 32)
+    sess = McpSession()
+    profile = sess._resolve_profile(str(binary), None, None)
+    assert profile.id == "cpp"
 
 
 def test_resolve_profile_returns_python_profile_for_lang_python():
