@@ -538,6 +538,34 @@ def test_run_headless_forwards_attach_args_to_runner(tmp_path, monkeypatch):
     assert captured["attach_port"] == 15678
     assert captured["path_mappings"] == [(str(local.resolve()), "/srv/code")]
     assert captured["program"] is None
+    assert captured["profile"] is args.profile
+
+
+def test_run_headless_forwards_profile_to_runner(tmp_path):
+    """cli._run_headless threads args.profile through to run_headless."""
+    captured: dict = {}
+
+    async def _fake_run_headless(**kwargs):
+        captured.update(kwargs)
+
+    import tdb.server.runner as runner_mod
+
+    program = tmp_path / "prog.py"
+    program.write_text("print('hi')\n")
+
+    args = parse_args(["--headless", str(program)])
+
+    from tdb.cli import _run_headless
+
+    orig = runner_mod.run_headless
+    runner_mod.run_headless = _fake_run_headless
+    try:
+        _run_headless(args)
+    finally:
+        runner_mod.run_headless = orig
+
+    assert captured["profile"] is args.profile
+    assert args.profile.id == "python"
 
 
 def _write_elf(tmp_path):

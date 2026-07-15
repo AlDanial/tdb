@@ -633,6 +633,7 @@ def _run_headless(args: argparse.Namespace) -> None:
             attach_host=args.attach_host,
             attach_port=args.attach_port,
             path_mappings=args.path_mappings or None,
+            profile=args.profile,
         )
     )
 
@@ -664,6 +665,7 @@ def _run_tui(args: argparse.Namespace) -> None:
         path_mappings=args.path_mappings,
         sub_process=not args.no_subprocess,
         server_port=args.server_port if args.server else None,
+        profile=args.profile,
     )
     app.run()
     # Fatal startup error (e.g. remote-attach connection refused). The

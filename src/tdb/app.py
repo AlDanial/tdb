@@ -7,6 +7,7 @@ import logging
 import os
 from pathlib import Path
 from textwrap import dedent
+from typing import TYPE_CHECKING
 
 from textual import work
 from textual.app import App, ComposeResult
@@ -60,6 +61,9 @@ from tdb.widgets.threads_modal import ThreadsModal
 from tdb.widgets.variable_view import VariableView
 from tdb import __version__ as tdb_version
 
+if TYPE_CHECKING:
+    from tdb.languages.base import LanguageProfile
+
 log = logging.getLogger(__name__)
 
 
@@ -77,7 +81,9 @@ class TdbApp(_AppMessageRoutes, App):
     """
 
     TITLE = "tdb"
-    SUB_TITLE = "Python Debugger"
+    # Overridden in on_mount from the resolved LanguageProfile's
+    # display_name; this is only the pre-mount fallback.
+    SUB_TITLE = "Debugger"
 
     CSS = """
     Screen {
@@ -195,6 +201,7 @@ class TdbApp(_AppMessageRoutes, App):
         sub_process: bool = True,
         server_port: int | None = None,
         post_mortem_snapshot: dict | None = None,
+        profile: "LanguageProfile | None" = None,
     ) -> None:
         super().__init__()
         self._program = program
@@ -215,6 +222,7 @@ class TdbApp(_AppMessageRoutes, App):
         self._sub_process = sub_process
         self._server_port = server_port
         self._post_mortem_snapshot = post_mortem_snapshot
+        self._profile = profile
 
         self._textual_handler = TextualEventHandler(self)
         if server_port is not None:
@@ -230,7 +238,7 @@ class TdbApp(_AppMessageRoutes, App):
             self._server_handler = None
             self._event_handler = self._textual_handler
 
-        self.controller = DebugController(self._event_handler)
+        self.controller = DebugController(self._event_handler, profile=self._profile)
         self.controller.step_mode = self._config.step_mode
         self._stderr_buffer: list[str] = []
         # Populated by _start_session on a fatal startup error (e.g.,
@@ -308,7 +316,9 @@ class TdbApp(_AppMessageRoutes, App):
 
         code_view = self.query_one("#code-view", CodeView)
         code_view.keybindings = KeybindingConfig.from_scheme(self._config.keybindings)
+        code_view.lexer_name = self.controller.profile.presentation.lexer
         self._update_code_title(code_view)
+        self.sub_title = f"{self.controller.profile.display_name} Debugger"
 
         if self._post_mortem_snapshot is not None:
             self._enter_post_mortem(code_view)
@@ -568,7 +578,7 @@ class TdbApp(_AppMessageRoutes, App):
             )
         else:
             self._event_handler = self._textual_handler
-        self.controller = DebugController(self._event_handler)
+        self.controller = DebugController(self._event_handler, profile=self._profile)
         self.controller.step_mode = self._config.step_mode
         self.controller.state.breakpoints = saved_breakpoints
 

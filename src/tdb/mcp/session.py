@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from tdb._timeouts import DAP_INITIALIZED, DAP_STOP_ON_ENTRY
 from tdb.dap.types import SourceBreakpoint
@@ -25,6 +26,9 @@ from tdb.server.event_handler import ServerEventHandler
 from tdb.server.handlers import ControllerRef, RpcHandlers
 from tdb.server.rpc_types import RpcResponse
 from tdb.session.controller import DebugController
+
+if TYPE_CHECKING:
+    from tdb.languages.base import LanguageProfile
 
 log = logging.getLogger(__name__)
 
@@ -62,18 +66,23 @@ class McpSession:
         just_my_code: bool = True,
         python: str | None = None,
         breakpoints: list[tuple[str, int]] | None = None,
+        lang: str | None = None,
+        adapter: str | None = None,
     ) -> str:
         """Start a debug session on a local program. Returns a status
         line summarizing where the debuggee landed (entry or first
         stop). Errors if a session is already active — call `quit`
-        first to start a new one."""
+        first to start a new one. `lang`/`adapter` select a non-Python
+        LanguageProfile (mirrors the CLI's --lang/--adapter); omit both
+        for Python (the default)."""
         if self.is_active:
             return (
                 "A debug session is already active. Call `quit` before "
                 "starting a new one."
             )
 
-        self._build_handlers()
+        profile = self._resolve_profile(program, lang, adapter)
+        self._build_handlers(profile=profile)
         assert self._controller is not None and self._handler is not None
 
         # Mirror server/runner.py::run_headless. config persists across
@@ -163,9 +172,27 @@ class McpSession:
 
     # --- internals ----------------------------------------------------
 
-    def _build_handlers(self) -> None:
+    def _resolve_profile(
+        self, program: str, lang: str | None, adapter: str | None
+    ) -> "LanguageProfile | None":
+        """Mirror cli.py's _resolve_language for the MCP launch path.
+        Returns None (controller default: PYTHON_PROFILE) when neither
+        `lang` nor `adapter` was given."""
+        if lang is None and adapter is None:
+            return None
+        from tdb.languages import registry
+        from tdb.persist import load_config
+
+        config = load_config()
+        lang_id = lang or registry.detect(program)
+        resolved_adapter = adapter or config.default_adapters.get(lang_id)
+        return registry.resolve(
+            lang_id, adapter=resolved_adapter, adapter_paths=config.adapters
+        )
+
+    def _build_handlers(self, profile: "LanguageProfile | None" = None) -> None:
         self._handler = ServerEventHandler()
-        self._controller = DebugController(self._handler)
+        self._controller = DebugController(self._handler, profile=profile)
         self._handlers = RpcHandlers(ControllerRef(self._controller), self._handler)
 
     def _apply_cli_breakpoints(self, breakpoints: list[tuple[str, int]] | None) -> None:

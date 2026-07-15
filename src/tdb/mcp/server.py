@@ -98,7 +98,7 @@ def build_mcp(session: McpSession | None = None) -> FastMCP:
 
     # --- Lifecycle ----------------------------------------------------
 
-    @mcp.tool(description="Start debugging a local Python program.")
+    @mcp.tool(description="Start debugging a local program.")
     async def debug_launch(
         program: str,
         args: list[str] | None = None,
@@ -107,11 +107,16 @@ def build_mcp(session: McpSession | None = None) -> FastMCP:
         just_my_code: bool = True,
         python: str | None = None,
         breakpoints: list[str] | None = None,
+        lang: str | None = None,
+        adapter: str | None = None,
     ) -> str:
         """Launch `program` under the debugger. `breakpoints` is a list
         of 'file.py:42' specs set before the program starts running. If
         `stop_on_entry` is true the debuggee pauses at the first line;
         otherwise it runs until the first breakpoint or terminates.
+        `lang` selects a non-Python language (auto-detected from
+        `program` when omitted) and `adapter` overrides its default
+        debug adapter — both are optional and Python needs neither.
         Returns a status line indicating where the debuggee landed."""
         return await sess.launch(
             program=program,
@@ -121,6 +126,8 @@ def build_mcp(session: McpSession | None = None) -> FastMCP:
             just_my_code=just_my_code,
             python=python,
             breakpoints=_parse_breakpoints(breakpoints),
+            lang=lang,
+            adapter=adapter,
         )
 
     @mcp.tool(description="Attach to a remote debugpy server (host:port).")
