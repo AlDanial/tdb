@@ -370,10 +370,14 @@ class TdbApp(_AppMessageRoutes, App):
             console = self.query_one("#console-view", ConsoleView)
             console.write_output(tb_text, "stderr")
 
-        # Load crash site into Code View.
+        # Load crash site into Code View. load_file degrades to the
+        # `<Could not read …>` placeholder on OSError (e.g. DWARF
+        # compile-dir paths for C++ frames with no source on disk) —
+        # don't gate the call on os.path.isfile, or the pane stays
+        # blank instead of showing that placeholder.
         if state.stack_frames:
             top = state.stack_frames[0]
-            if top.source and top.source.path and os.path.isfile(top.source.path):
+            if top.source and top.source.path:
                 code_view.load_file(top.source.path)
             code_view.current_line = top.line
 
