@@ -417,6 +417,15 @@ interactive evaluation of expressions in the current scope:
 
 Variable values set here are reflected in the running code.
 
+### Cut / Paste
+
+Expression for the Evaluate Console are often copied from the Code View.
+Doing this in `tdb` differs from traditional terminal behavior, because `textual` applications
+capture mouse events for their own use.
+
+Instead, hold the `Shift` key while performing your conventional cut/paste keystrokes or mouse
+operation to get the expected behavior.
+
 ### Console Output
 
 The Console View captures stdout (normal text) and stderr (red text) from the debuggee
