@@ -11,7 +11,7 @@ from tdb.languages import registry
 def test_profile_shape():
     p = build_cpp_profile()
     assert p.id == "cpp"
-    assert p.adapter.id == "lldb-dap"
+    assert p.adapter.id == "gdb"
     assert p.presentation.lexer == "cpp"
     assert p.capabilities.compute_step_units is None
     assert p.capabilities.child_process_strategy is None
@@ -29,8 +29,8 @@ def test_command_uses_explicit_executable():
 
 
 def test_adapter_paths_override_reaches_default_adapter():
-    p = build_cpp_profile(adapter_paths={"lldb-dap": "/opt/lldb-dap"})
-    assert p.adapter.command() == ["/opt/lldb-dap"]
+    p = build_cpp_profile(adapter_paths={"gdb": "/opt/gdb"})
+    assert p.adapter.command() == ["/opt/gdb", "-i", "dap"]
 
 
 def test_command_missing_executable_hints_install(monkeypatch):
@@ -89,6 +89,12 @@ def test_unknown_cpp_adapter_rejected():
 def test_gdb_adapter_selectable():
     p = build_cpp_profile(adapter="gdb")
     assert p.adapter.id == "gdb"
+    assert p.id == "cpp"  # same language side
+
+
+def test_lldb_adapter_selectable():
+    p = build_cpp_profile(adapter="lldb-dap")
+    assert p.adapter.id == "lldb-dap"
     assert p.id == "cpp"  # same language side
 
 

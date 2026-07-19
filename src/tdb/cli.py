@@ -25,7 +25,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tdb",
         description="A multi-language DAP debugger with a textual TUI "
-        "(Python via debugpy, C/C++ via lldb-dap/gdb).",
+        "(Python via debugpy, C/C++ via gdb/lldb-dap).",
     )
     parser.add_argument(
         "-v",
@@ -96,7 +96,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="ADAPTER",
         help="Debug adapter to use within the language (e.g. `--lang cpp "
-        "--adapter gdb`). Default: the language's standard adapter.",
+        "--adapter lldb-dap`). Default: the language's standard adapter.",
     )
     parser.add_argument(
         "--keybindings",

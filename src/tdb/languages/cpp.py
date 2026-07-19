@@ -1,9 +1,9 @@
 """The C/C++ language profile.
 
-Default adapter: lldb-dap (ships with LLVM >= 17; debugs GCC- and
-clang-built binaries alike — DWARF is compiler-neutral). Alternate:
-`gdb -i dap` (GDB >= 14) via GdbDapAdapter, selected via
-`--adapter gdb`.
+Default adapter: `gdb -i dap` (GDB >= 14) via GdbDapAdapter.
+Alternate: lldb-dap (ships with LLVM >= 17; debugs GCC- and
+clang-built binaries alike — DWARF is compiler-neutral), selected
+via `--adapter lldb-dap`.
 
 Core-DAP capabilities only: no statement stepping (no C++ source
 model), no task inspection, no child-process tracking.
@@ -75,7 +75,7 @@ class LldbDapAdapter(AdapterSpec):
 class GdbDapAdapter(AdapterSpec):
     """GDB's built-in DAP interpreter (`gdb -i dap`, GDB >= 14).
 
-    Alternate C++ adapter: GDB's libstdc++ pretty-printers are more
+    Default C++ adapter: GDB's libstdc++ pretty-printers are more
     complete than LLDB's, which matters for heavily GCC codebases.
     """
 
@@ -133,7 +133,7 @@ def build_cpp_profile(
         "lldb-dap": LldbDapAdapter,
         "gdb": GdbDapAdapter,
     }
-    adapter_id = adapter or "lldb-dap"
+    adapter_id = adapter or "gdb"
     if adapter_id not in adapters:
         raise LanguageNotSupportedError(
             f"unknown adapter {adapter_id!r} for cpp "

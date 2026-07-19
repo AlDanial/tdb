@@ -3,8 +3,8 @@
 Use this skill when you need to understand runtime behavior of code -- variable values, control flow, why a condition is or isn't met, what a function actually returns, or why an exception occurs. This is faster and more reliable than inserting print/logging statements.
 
 `tdb` debugs Python (via debugpy, full feature set) and C/C++ or any native
-binary built with `-g` (via `lldb-dap`, or `gdb -i dap` with
-`adapter="gdb"`). The language is auto-detected from the target: `.py` →
+binary built with `-g` (via `gdb -i dap`, or `lldb-dap` with
+`adapter="lldb-dap"`). The language is auto-detected from the target: `.py` →
 Python, ELF/Mach-O/PE executable → C/C++.
 
 ## When to use this
@@ -47,15 +47,16 @@ The server owns the debug session — do not also start `tdb --headless`.
 Multi-language notes:
 - `debug_launch` auto-detects the language from `program` — pass a compiled
   binary directly (`debug_launch(program="/abs/path/prog")` debugs it via
-  lldb-dap). `lang="cpp"` forces it; `adapter="gdb"` selects GDB. The
-  `python` param is only valid for Python debuggees (errors otherwise).
+  GDB's DAP mode). `lang="cpp"` forces it; `adapter="lldb-dap"` selects
+  lldb-dap instead. The `python` param is only valid for Python debuggees
+  (errors otherwise).
 - `tasks`, `processes`, and `wait_graph` are Python-only; for other
   languages they return a structured "not supported" error. `threads`
   works everywhere.
-- **GDB only:** `inspect`/`evaluate` expressions go through GDB's CLI —
-  prefix with `print` (`inspect(expressions=["print x"])`); bare `x`
-  collides with GDB's examine-memory command. lldb-dap evaluates bare
-  expressions directly.
+- **GDB (the default C/C++ adapter):** `inspect`/`evaluate` expressions
+  go through GDB's CLI — prefix with `print`
+  (`inspect(expressions=["print x"])`); bare `x` collides with GDB's
+  examine-memory command. lldb-dap evaluates bare expressions directly.
 - If breakpoints in a C/C++ file never bind, the binary likely lacks debug
   info — rebuild with `-g -O0`.
 
@@ -102,7 +103,8 @@ If the script needs a specific virtualenv:
 ```
 
 For a C/C++ binary (compiled with `-g`), the same headless mode works — the
-language is auto-detected; add `--adapter gdb` to use GDB instead of lldb-dap:
+language is auto-detected; add `--adapter lldb-dap` to use lldb-dap instead
+of GDB:
 ```bash
 .venv/bin/python -m tdb --headless /path/to/binary arg1 &
 ```
