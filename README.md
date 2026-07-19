@@ -3,13 +3,13 @@
 `textual-debugger` (the package) provides `tdb` (the command-line tool and module),
 a full-featured terminal-based debugger for Python and other languages
 with a Debug Adapter Protocol (DAP) implementation. C and C++ support (via
-`lldb-dap` or `gdb`) is built in.
+`gdb` or `lldb-dap`) is built in.
 
 `tdb` is built with [textual](https://github.com/Textualize/textual) and speaks
 DAP to a pluggable debug adapter: [debugpy](https://github.com/microsoft/debugpy)
 (the engine behind VS Code's Python debugger) for Python,
-[lldb-dap](https://lldb.llvm.org/resources/lldbdap.html) or
-[GDB's DAP mode](https://sourceware.org/gdb/current/onlinedocs/gdb.html/Debugger-Adapter-Protocol.html)
+[GDB's DAP mode](https://sourceware.org/gdb/current/onlinedocs/gdb.html/Debugger-Adapter-Protocol.html) or
+[lldb-dap](https://lldb.llvm.org/resources/lldbdap.html)
 for compiled code. It provides a rich interactive interface for stepping through
 code, inspecting variables, managing breakpoints, and evaluating expressions in
 complex programs.
@@ -24,7 +24,7 @@ MIT License.  Copyright 2026 by Al Danial.
 `tdb`:
 
 - debugs multiple languages through the Debug Adapter Protocol: Python (via `debugpy`,
-the richest feature set) and C/C++ (via `lldb-dap` or `gdb -i dap`), with the language
+the richest feature set) and C/C++ (via `gdb -i dap` or `lldb-dap`), with the language
 auto-detected from the target (ref. [Multi-Language Debugging](#multi-language-debugging)).
 
 - supports debugging of synchronous, asynchronous, multi-threaded, and multi-process Python code.
@@ -114,11 +114,11 @@ tdb my_program.py
 tdb my_program.py arg1 arg2
 
 # debug a C/C++ (or other native) executable built with -g.  The ELF/Mach-O/PE
-# binary is auto-detected and debugged through lldb-dap
+# binary is auto-detected and debugged through GDB's DAP mode (GDB >= 14)
 tdb ./myprog arg1 arg2
 
-# same, but using GDB's DAP implementation (GDB >= 14) instead of lldb-dap
-tdb --adapter gdb ./myprog
+# same, but using lldb-dap (LLVM >= 17) instead of gdb
+tdb --adapter lldb-dap ./myprog
 
 # force the language when auto-detection can't tell (e.g. an extensionless script)
 tdb --lang python ./mytool
@@ -172,7 +172,7 @@ languages are supported out of the box:
 | Language | Adapter(s) | How to get the adapter | Feature level |
 |----------|------------|------------------------|---------------|
 | Python | `debugpy` (default) | installed with `textual-debugger` | everything in this README |
-| C / C++ (any native binary) | `lldb-dap` (default), `gdb` (alternate) | `lldb-dap` ships with LLVM ≥ 17 (e.g. `apt install lldb`); `gdb -i dap` requires GDB ≥ 14 | core debugging: breakpoints, stepping, stack, variables, evaluate console |
+| C / C++ (any native binary) | `gdb` (default), `lldb-dap` (alternate) | `gdb -i dap` requires GDB ≥ 14; `lldb-dap` ships with LLVM ≥ 17 (e.g. `apt install lldb`) | core debugging: breakpoints, stepping, stack, variables, evaluate console |
 
 ### Language detection and selection
 
@@ -186,7 +186,7 @@ The language is auto-detected from the debug target:
 5. Anything else produces an error naming the `--lang` override.
 
 `--lang` forces the language; `--adapter` picks a non-default adapter within
-it (`tdb --lang cpp --adapter gdb ./myprog`).
+it (`tdb --lang cpp --adapter lldb-dap ./myprog`).
 
 > **Migration note:** extensionless Python scripts without a `python` shebang
 > were previously assumed to be Python; they now require `--lang python`.
@@ -201,7 +201,7 @@ non-standard location, or change a language's default adapter, add to
 ```json
 {
   "adapters": {"lldb-dap": "/opt/llvm/bin/lldb-dap"},
-  "default_adapters": {"cpp": "gdb"}
+  "default_adapters": {"cpp": "lldb-dap"}
 }
 ```
 
@@ -229,8 +229,9 @@ currently ignored for non-Python targets.
 - Stack frames pointing into system libraries often have no source on disk;
   the Code View shows a `<Could not read …>` placeholder while the stack,
   variables, and evaluate console remain fully usable.
-- `lldb-dap` debugs GCC-built binaries fine (DWARF is compiler-neutral), but
-  GDB's libstdc++ pretty-printing (via `--adapter gdb`) is more complete.
+- GDB (the default adapter) has the most complete libstdc++
+  pretty-printing. `lldb-dap` (via `--adapter lldb-dap`) also debugs
+  GCC-built binaries fine — DWARF is compiler-neutral.
 - **GDB evaluate-console quirk:** GDB's DAP treats REPL input as CLI
   commands, so evaluate expressions with an explicit `print`, e.g.
   `print x` rather than bare `x` (bare `x` collides with GDB's
@@ -415,6 +416,15 @@ interactive evaluation of expressions in the current scope:
 ```
 
 Variable values set here are reflected in the running code.
+
+### Cut / Paste
+
+Expression for the Evaluate Console are often copied from the Code View.
+Doing this in `tdb` differs from traditional terminal behavior, because `textual` applications
+capture mouse events for their own use.
+
+Instead, hold the `Shift` key while performing your conventional cut/paste keystrokes or mouse
+operation to get the expected behavior.
 
 ### Console Output
 
@@ -931,7 +941,7 @@ usage: tdb [-h] [-v] [-r [HOST:]PORT] [--cwd CWD] [--no-stop-on-entry]
 | `--python PATH` | Python interpreter for the debuggee (Python targets only) |
 | `--pv` | Shorthand for --python .venv/bin/python |
 | `--lang LANGUAGE` | Debuggee language (`python`, `cpp`); default: auto-detect from the target |
-| `--adapter ADAPTER` | Debug adapter within the language (e.g. `--lang cpp --adapter gdb`); default: the language's standard adapter |
+| `--adapter ADAPTER` | Debug adapter within the language (e.g. `--lang cpp --adapter lldb-dap`); default: the language's standard adapter |
 | `--no-just-my-code` | Step into stdlib/site-packages code instead of skipping it
   (default: skipped). On uncaught exceptions, the crash modal always shows the full traceback
   including library frames, regardless of this flag. |
@@ -957,7 +967,7 @@ On Windows, it uses `%APPDATA%\tdb\`.
 Adapter-related keys in `config.json`: `adapters` maps an adapter id to an
 executable path (`{"adapters": {"lldb-dap": "/opt/llvm/bin/lldb-dap"}}`), and
 `default_adapters` picks a language's default adapter
-(`{"default_adapters": {"cpp": "gdb"}}`).
+(`{"default_adapters": {"cpp": "lldb-dap"}}`).
 
 Breakpoints are saved on exit and restored when debugging a program in the same
 directory. Each project's breakpoints are independent.
@@ -979,7 +989,7 @@ fires as expected.
 
 - [textual](https://github.com/Textualize/textual) : TUI framework
 - [debugpy](https://github.com/microsoft/debugpy) : Debug Adapter Protocol implementation for Python
-- [lldb-dap](https://lldb.llvm.org/resources/lldbdap.html) / [gdb](https://sourceware.org/gdb/) : optional, user-installed DAP adapters for C/C++
+- [gdb](https://sourceware.org/gdb/) / [lldb-dap](https://lldb.llvm.org/resources/lldbdap.html) : optional, user-installed DAP adapters for C/C++
 - [pygments](https://pygments.org/) : Syntax highlighting
 - [FastAPI](https://fastapi.tiangolo.com/) + [uvicorn](https://www.uvicorn.org/) : JSON-RPC server
 

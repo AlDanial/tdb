@@ -61,15 +61,16 @@ def test_registry_detects_compiled_binary_as_cpp(cpp_binary):
 
 
 # --- live-session fixtures/helpers, copied+adapted from
-# --- test_dap_session.py: controller built with profile=build_cpp_profile(),
-# --- _launch() calls ctrl.start(program=binary, ...) with no python= kwarg.
+# --- test_dap_session.py: controller built with profile=build_cpp_profile(
+# --- adapter="lldb-dap"), _launch() calls ctrl.start(program=binary, ...)
+# --- with no python= kwarg.
 
 
 @pytest.fixture
 async def session():
     """(controller, handler) pair with guaranteed teardown."""
     handler = ServerEventHandler()
-    ctrl = DebugController(handler, profile=build_cpp_profile())
+    ctrl = DebugController(handler, profile=build_cpp_profile(adapter="lldb-dap"))
     yield ctrl, handler
     try:
         await asyncio.wait_for(ctrl.stop(), timeout=WAIT)
