@@ -1148,17 +1148,23 @@ class TdbApp(_AppMessageRoutes, App):
     async def on_evaluate_console_completion_requested(
         self, message: EvaluateConsole.CompletionRequested
     ) -> None:
+        eval_console = self.query_one("#eval-console", EvaluateConsole)
         try:
-            items = await self.controller.active_client.completions(
+            client = self.controller.active_client
+            # Same resolution as evaluate: current_frame_id may be synthetic
+            # (async-task navigation, traceback parse) and debugpy rejects
+            # unknown frame ids.
+            frame_id = await self.controller.resolve_evaluate_frame_id(client)
+            items = await client.completions(
                 text=message.text,
                 column=message.column,
-                frame_id=self.controller.state.current_frame_id,
+                frame_id=frame_id,
             )
             completions = [(item.label, item.text) for item in items]
-            eval_console = self.query_one("#eval-console", EvaluateConsole)
             eval_console.apply_completion(message.text, completions)
-        except Exception:
+        except Exception as e:
             log.exception("Error fetching completions")
+            eval_console.show_error(f"<completion failed: {e}>")
 
     # --- Menu handlers ---
 
