@@ -136,6 +136,74 @@ async def test_launch_failure_tears_down_session(tmp_path, monkeypatch):
     assert stop_calls == [True]
 
 
+async def test_setBreakpoints_translates_to_remote_and_keys_by_remote_path():
+    # Canonical keying: breakpoint_lines is keyed by REMOTE path (what
+    # perl5db itself reports back via location()/stack()), not the
+    # caller's local path.
+    class StubSession:
+        def __init__(self) -> None:
+            self.stopped = True
+            self.commands: list[str] = []
+
+        async def command(self, text, timeout=20.0):
+            self.commands.append(text)
+            return []
+
+        async def helper(self, expr, timeout=20.0):
+            raise PerlProtocolError("no breakable info")
+
+    reader = asyncio.StreamReader()
+    writer = SinkWriter()
+    server = PerlDapServer(reader, writer)
+    stub = StubSession()
+    server.session = stub
+    server._path_map = [("/local/src", "/srv/app")]
+
+    original_path = "/local/src/x.pl"
+    request = Request(
+        seq=1,
+        command="setBreakpoints",
+        arguments={
+            "source": {"path": original_path},
+            "breakpoints": [{"line": 10}],
+        },
+    )
+    await server._on_setBreakpoints(request)
+
+    assert "b /srv/app/x.pl:10" in stub.commands
+    # the incoming request's local path is left untouched
+    assert request.arguments["source"]["path"] == original_path
+
+    out = _messages(writer)
+    resp = [m for m in out if m.get("command") == "setBreakpoints"][0]
+    assert resp["success"] is True
+    assert resp["body"]["breakpoints"] == [{"verified": True, "line": 10}]
+    assert server.breakpoint_lines == {"/srv/app/x.pl": {10}}
+
+
+async def test_stackTrace_translates_remote_frame_paths_to_local():
+    class StubSession:
+        def __init__(self) -> None:
+            self.stopped = True
+
+        async def helper(self, expr, timeout=20.0):
+            return {"frames": [{"sub": "main", "file": "/srv/app/x.pl", "line": 5}]}
+
+    reader = asyncio.StreamReader()
+    writer = SinkWriter()
+    server = PerlDapServer(reader, writer)
+    server.session = StubSession()
+    server._path_map = [("/local/src", "/srv/app")]
+
+    request = Request(seq=1, command="stackTrace", arguments={})
+    await server._on_stackTrace(request)
+
+    out = _messages(writer)
+    resp = [m for m in out if m.get("command") == "stackTrace"][0]
+    assert resp["success"] is True
+    assert resp["body"]["stackFrames"][0]["source"]["path"] == "/local/src/x.pl"
+
+
 async def test_resume_rejected_while_classifying():
     class StubSession:
         def __init__(self) -> None:

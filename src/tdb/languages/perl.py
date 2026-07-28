@@ -65,7 +65,18 @@ class PerlAdapter(AdapterSpec):
     def attach_body(
         self, *, host: str, port: int, opts: dict[str, Any]
     ) -> dict[str, Any]:
-        return {"type": "perl", "request": "attach", "host": host, "port": port}
+        body: dict[str, Any] = {
+            "type": "perl",
+            "request": "attach",
+            "host": host,
+            "port": port,
+        }
+        if opts.get("path_mappings"):
+            body["pathMappings"] = [
+                {"localRoot": local, "remoteRoot": remote}
+                for local, remote in opts["path_mappings"]
+            ]
+        return body
 
     def pick_exception_filters(self, caps) -> list[str]:
         return []

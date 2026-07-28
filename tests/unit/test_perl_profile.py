@@ -68,6 +68,28 @@ def test_attach_body():
     assert body == {"type": "perl", "request": "attach", "host": "devbox", "port": 5678}
 
 
+def test_attach_body_with_path_mappings():
+    body = PerlAdapter().attach_body(
+        host="devbox",
+        port=5678,
+        opts={"path_mappings": [("/local/src", "/srv/app")]},
+    )
+    assert body == {
+        "type": "perl",
+        "request": "attach",
+        "host": "devbox",
+        "port": 5678,
+        "pathMappings": [{"localRoot": "/local/src", "remoteRoot": "/srv/app"}],
+    }
+
+
+def test_attach_body_omits_path_mappings_when_empty():
+    body = PerlAdapter().attach_body(
+        host="devbox", port=5678, opts={"path_mappings": []}
+    )
+    assert "pathMappings" not in body
+
+
 def test_adapter_paths_names_the_interpreter():
     p = build_perl_profile(adapter_paths={"perl": "/opt/bin/perl"})
     body = p.adapter.launch_body(

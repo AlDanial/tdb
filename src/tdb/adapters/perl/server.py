@@ -40,6 +40,13 @@ class PerlDapServer:
         self._stop_on_entry = True
         self._classifying = False
         self._pause_pending = False
+        # (local, remote) pairs, longest-prefix-first translation. Empty
+        # by default (no-op) unless attach carries pathMappings.
+        self._path_map: list[tuple[str, str]] = []
+        # Canonical keying: breakpoint_lines is keyed by REMOTE path --
+        # the same space perl5db itself reports in via location()/
+        # stack(), so _classify_and_emit_stop can compare loc["file"]
+        # against it directly with no further translation.
         self.breakpoint_lines: dict[str, set[int]] = {}
         self.refs = RefRegistry()
         self.handlers: dict[str, Callable[[Request], Awaitable[None]]] = {}
@@ -50,6 +57,28 @@ class PerlDapServer:
     def _next_seq(self) -> int:
         self._seq += 1
         return self._seq
+
+    def _to_remote(self, path: str) -> str:
+        """Local (caller-facing) path -> remote (perl5db-facing) path."""
+        return self._translate_path(path, self._path_map)
+
+    def _to_local(self, path: str) -> str:
+        """Remote (perl5db-facing) path -> local (caller-facing) path."""
+        return self._translate_path(path, [(r, l) for l, r in self._path_map])
+
+    @staticmethod
+    def _translate_path(path: str, mapping: list[tuple[str, str]]) -> str:
+        if not mapping:
+            return path
+        best: tuple[str, str] | None = None
+        for src, dst in mapping:
+            if path == src or path.startswith(src + "/") or path.startswith(src + "\\"):
+                if best is None or len(src) > len(best[0]):
+                    best = (src, dst)
+        if best is None:
+            return path
+        src, dst = best
+        return dst + path[len(src) :]
 
     def _write(self, msg: dict) -> None:
         self._writer.write(encode_message(msg))
@@ -168,6 +197,13 @@ class PerlDapServer:
     async def _on_attach(self, request: Request) -> None:
         host = request.arguments.get("host", "127.0.0.1")
         port = request.arguments.get("port", 0)
+        self._path_map = [
+            (
+                pm["localRoot"].rstrip("/\\"),
+                pm["remoteRoot"].rstrip("/\\"),
+            )
+            for pm in request.arguments.get("pathMappings") or []
+        ]
         try:
             reader, writer = await asyncio.wait_for(
                 asyncio.open_connection(host, port), 10.0
@@ -270,6 +306,10 @@ class PerlDapServer:
             self.current_stop = loc
             had_pause_pending = self._pause_pending
             self._pause_pending = False
+            # loc["file"] comes straight from perl5db's location() -- it's
+            # already in REMOTE-path space, the same space breakpoint_lines
+            # is keyed in (see __init__ comment), so no translation needed
+            # here.
             if loc.get("line") in self.breakpoint_lines.get(loc.get("file"), set()):
                 reason = "breakpoint"
             elif had_pause_pending:
@@ -332,8 +372,9 @@ class PerlDapServer:
 
     async def _on_source(self, request: Request) -> None:
         path = request.arguments.get("source", {}).get("path", "")
+        remote_path = self._to_remote(path)
         payload = await self.session.helper(
-            f"Devel::TdbHelper::source({self._perl_str(path)})"
+            f"Devel::TdbHelper::source({self._perl_str(remote_path)})"
         )
         if not payload.get("text"):
             self.send_error(request, f"no compiled source for {path}")
@@ -345,33 +386,36 @@ class PerlDapServer:
             self.send_error(request, "cannot set breakpoints while running")
             return
         path = request.arguments.get("source", {}).get("path", "")
+        remote_path = self._to_remote(path)
         wanted = request.arguments.get("breakpoints", [])
-        old_lines = self.breakpoint_lines.get(path, set())
+        # breakpoint_lines is keyed by REMOTE path (see __init__ comment).
+        old_lines = self.breakpoint_lines.get(remote_path, set())
         if old_lines:
             # `B <line>` is scoped to perl5db's CURRENT file, which is
             # whichever frame the debugger last stopped in -- not
-            # necessarily `path`. Switch to `path` first so deletions
-            # land in the right per-file breakpoint table. If perl5db
-            # never loaded `path` (nothing to delete -- no breakpoint
-            # could have been set there in the first place), `f` prints
-            # "No file matching '<path>' is loaded." and we skip the
-            # deletions rather than delete from whatever file `f` left
-            # current.
-            f_events = await self.session.command(f"f {path}")
+            # necessarily `remote_path`. Switch to `remote_path` first so
+            # deletions land in the right per-file breakpoint table. If
+            # perl5db never loaded `remote_path` (nothing to delete -- no
+            # breakpoint could have been set there in the first place),
+            # `f` prints "No file matching '<path>' is loaded." and we
+            # skip the deletions rather than delete from whatever file
+            # `f` left current.
+            f_events = await self.session.command(f"f {remote_path}")
             if not any(e[0] == "text" and "No file matching" in e[1] for e in f_events):
                 for old_line in old_lines:
                     await self.session.command(f"B {old_line}")
         try:
             # Devel::TdbHelper::breakable() guards internally against
             # files perl hasn't compiled yet (see helpers.pl) so this is
-            # safe to call speculatively even if `path` isn't loaded --
-            # it reports {"lines": [], "unloaded": 1} without touching
-            # perl5db's per-file line table, instead of the empty-set
-            # fallback below silently masking a real protocol error.
+            # safe to call speculatively even if `remote_path` isn't
+            # loaded -- it reports {"lines": [], "unloaded": 1} without
+            # touching perl5db's per-file line table, instead of the
+            # empty-set fallback below silently masking a real protocol
+            # error.
             breakable = set(
                 (
                     await self.session.helper(
-                        f"Devel::TdbHelper::breakable({self._perl_str(path)})"
+                        f"Devel::TdbHelper::breakable({self._perl_str(remote_path)})"
                     )
                 )["lines"]
             )
@@ -389,7 +433,7 @@ class PerlDapServer:
                 results.append({"verified": False, "line": line})
                 continue
             cond = bp.get("condition")
-            cmd = f"b {path}:{target}" + (f" {cond}" if cond else "")
+            cmd = f"b {remote_path}:{target}" + (f" {cond}" if cond else "")
             events = await self.session.command(cmd)
             failed = any(e[0] == "text" and "not breakable" in e[1] for e in events)
             if failed:
@@ -397,7 +441,7 @@ class PerlDapServer:
             else:
                 results.append({"verified": True, "line": target})
                 actual_lines.add(target)
-        self.breakpoint_lines[path] = actual_lines
+        self.breakpoint_lines[remote_path] = actual_lines
         self.send_response(request, {"breakpoints": results})
 
     @staticmethod
@@ -414,7 +458,7 @@ class PerlDapServer:
                     "name": f.get("sub") or "main",
                     "line": f["line"],
                     "column": 1,
-                    "source": {"path": f["file"]},
+                    "source": {"path": self._to_local(f["file"])},
                 }
             )
         self.send_response(request, {"stackFrames": frames, "totalFrames": len(frames)})
