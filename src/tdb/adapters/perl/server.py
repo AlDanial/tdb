@@ -39,6 +39,7 @@ class PerlDapServer:
         self._launch_request: Request | None = None
         self._stop_on_entry = True
         self._classifying = False
+        self._pause_pending = False
         self.breakpoint_lines: dict[str, set[int]] = {}
         self.refs = RefRegistry()
         self.handlers: dict[str, Callable[[Request], Awaitable[None]]] = {}
@@ -217,9 +218,14 @@ class PerlDapServer:
                 self.send_event("exited", {"exitCode": 0})
                 return
             self.current_stop = loc
-            reason = "step"
+            had_pause_pending = self._pause_pending
+            self._pause_pending = False
             if loc.get("line") in self.breakpoint_lines.get(loc.get("file"), set()):
                 reason = "breakpoint"
+            elif had_pause_pending:
+                reason = "pause"
+            else:
+                reason = "step"
             self.send_event(
                 "stopped",
                 {"reason": reason, "threadId": 1, "allThreadsStopped": True},
@@ -251,6 +257,29 @@ class PerlDapServer:
 
     async def _on_stepOut(self, request: Request) -> None:
         await self._resume(request, "r")
+
+    async def _on_pause(self, request: Request) -> None:
+        if self.session is None:
+            self.send_error(request, "no session")
+            return
+        if self.session.stopped:
+            self.send_response(request)
+            return
+        if not self.session.interrupt():
+            self.send_error(request, "pause is not available for this session")
+            return
+        self._pause_pending = True
+        self.send_response(request)
+
+    async def _on_source(self, request: Request) -> None:
+        path = request.arguments.get("source", {}).get("path", "")
+        payload = await self.session.helper(
+            f"Devel::TdbHelper::source({self._perl_str(path)})"
+        )
+        if not payload.get("text"):
+            self.send_error(request, f"no compiled source for {path}")
+            return
+        self.send_response(request, {"content": payload["text"]})
 
     async def _on_setBreakpoints(self, request: Request) -> None:
         if self.session is None or not self.session.stopped:
