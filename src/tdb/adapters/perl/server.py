@@ -254,8 +254,21 @@ class PerlDapServer:
             return
         path = request.arguments.get("source", {}).get("path", "")
         wanted = request.arguments.get("breakpoints", [])
-        for old_line in self.breakpoint_lines.get(path, set()):
-            await self.session.command(f"B {old_line}")
+        old_lines = self.breakpoint_lines.get(path, set())
+        if old_lines:
+            # `B <line>` is scoped to perl5db's CURRENT file, which is
+            # whichever frame the debugger last stopped in -- not
+            # necessarily `path`. Switch to `path` first so deletions
+            # land in the right per-file breakpoint table. If perl5db
+            # never loaded `path` (nothing to delete -- no breakpoint
+            # could have been set there in the first place), `f` prints
+            # "No file matching '<path>' is loaded." and we skip the
+            # deletions rather than delete from whatever file `f` left
+            # current.
+            f_events = await self.session.command(f"f {path}")
+            if not any(e[0] == "text" and "No file matching" in e[1] for e in f_events):
+                for old_line in old_lines:
+                    await self.session.command(f"B {old_line}")
         try:
             # Devel::TdbHelper::breakable() guards internally against
             # files perl hasn't compiled yet (see helpers.pl) so this is

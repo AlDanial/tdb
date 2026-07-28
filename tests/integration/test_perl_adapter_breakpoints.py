@@ -181,3 +181,83 @@ async def test_breakpoint_in_not_yet_loaded_module_still_fires(two_file_started)
     await c.request("continue")
     stopped2 = await c.wait_event("stopped")  # inside Second::greet
     assert stopped2["body"]["reason"] == "breakpoint"
+
+
+# --- Task 10: `B <line>` deletions must target perl5db's per-file table ---
+# for the requested `path`, not whatever file perl5db's debugger cursor
+# happens to be parked on. Reproduced with two files: set + then clear a
+# breakpoint in mod2.pl while stopped in main.pl -- the clear must not
+# silently no-op (leaving the stale mod2.pl breakpoint live).
+
+MOD2_FILE = """\
+package mod2;
+sub twice {
+    my $x = 1;
+    return $x * 2;
+}
+1;
+"""
+
+
+@pytest.fixture
+def cross_file_program(tmp_path):
+    mod2 = tmp_path / "mod2.pl"
+    mod2.write_text(MOD2_FILE)
+    main = tmp_path / "main.pl"
+    main.write_text(
+        "my $dummy = 0;\n"
+        f"require {str(mod2)!r};\n"
+        "mod2::twice();\n"
+        "mod2::twice();\n"
+        'print "done\\n";\n'
+    )
+    return str(main), str(mod2)
+
+
+@pytest.fixture
+async def cross_file_started(cross_file_program, tmp_path):
+    main, mod2 = cross_file_program
+    c = AdapterClient()
+    await c.start()
+    await c.request("initialize", {"adapterID": "perl-tdb"})
+    launch_fut = c.send(
+        "launch",
+        {"program": main, "args": [], "cwd": str(tmp_path), "stopOnEntry": True},
+    )
+    await c.wait_event("initialized")
+    yield c, main, mod2, launch_fut
+    await c.stop()
+
+
+async def test_replace_clears_old_breakpoints_in_other_file(cross_file_started):
+    c, main, mod2, launch_fut = cross_file_started
+
+    # Anchor on main.pl:3 (after the require, before either twice() call)
+    # so we end up stopped in main.pl with mod2.pl already loaded.
+    await c.request(
+        "setBreakpoints", {"source": {"path": main}, "breakpoints": [{"line": 3}]}
+    )
+    await c.request("configurationDone")
+    await asyncio.wait_for(launch_fut, 30)
+    await c.wait_event("stopped")  # entry
+    await c.request("continue")
+    stopped = await c.wait_event("stopped")  # main.pl:3
+    assert stopped["body"]["reason"] == "breakpoint"
+
+    # Set a breakpoint in mod2.pl (now loaded) while stopped in main.pl.
+    resp = await c.request(
+        "setBreakpoints",
+        {"source": {"path": mod2}, "breakpoints": [{"line": 3}]},
+    )
+    (bp,) = resp["body"]["breakpoints"]
+    assert bp["verified"] is True and bp["line"] == 3
+
+    # Replace with an empty set -- this must delete the mod2.pl
+    # breakpoint even though perl5db's debugger cursor is on main.pl.
+    await c.request("setBreakpoints", {"source": {"path": mod2}, "breakpoints": []})
+
+    # Clear main.pl's own breakpoint too so we run straight through.
+    await c.request("setBreakpoints", {"source": {"path": main}, "breakpoints": []})
+
+    await c.request("continue")
+    await c.wait_event("terminated", timeout=30)  # must NOT stop in mod2.pl
