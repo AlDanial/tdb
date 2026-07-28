@@ -87,6 +87,47 @@ async def test_program_output_reaches_callback(session):
     assert any("z=3" in t for t, c in outputs if c == "stdout")
 
 
+async def test_debuggee_disconnect_raises_not_succeeds(tmp_path):
+    # A compile error in the debuggee (e.g. `my $x = ;`) was expected to
+    # sever the perl5db connection, but real perl5db (5.40.1) does not
+    # disconnect on a compile error -- confirmed by probing: it drops
+    # into an interactive post-mortem "DB<1>" prompt and stays connected
+    # (launch() completes normally with stopped=True, helpers.pl still
+    # loads fine since the perl interpreter itself is alive). So a
+    # compile error cannot exercise the EOF path against real perl5db.
+    #
+    # Instead, use perl5db's own `q` command to force a genuine
+    # connection close -- this reliably reproduces the "child gone
+    # mid-command" condition Finding 1 is about, without relying on a
+    # scenario real perl5db doesn't actually produce.
+    from tdb.adapters.perl.session import PerlProtocolError
+
+    bad = tmp_path / "toy.pl"
+    bad.write_text(SCRIPT)
+    s = PerlSession(on_output=lambda text, cat: None, on_stop=lambda: None)
+    await asyncio.wait_for(
+        s.launch(program=str(bad), args=[], cwd=str(tmp_path), env=None), WAIT
+    )
+    try:
+        with pytest.raises(PerlProtocolError) as exc:
+            await asyncio.wait_for(s.command("q"), WAIT)
+        assert isinstance(exc.value.tail, str)
+        assert s.stopped is False
+    finally:
+        await s.stop()
+
+
+async def test_stop_is_clean_after_launch(session):
+    s, _, _ = session
+    await s.stop()
+    tasks = [t for t in [s._reader_task, *s._pump_tasks] if t is not None]
+    assert tasks, "expected reader/pump tasks to exist"
+    for t in tasks:
+        assert t.done()
+    # second stop must not raise
+    await s.stop()
+
+
 async def test_helper_timeout_raises_with_tail(session):
     s, _, _ = session
     from tdb.adapters.perl.session import PerlProtocolError

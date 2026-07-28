@@ -51,6 +51,7 @@ class PerlSession:
         self._prompt_evt = asyncio.Event()
         self._tail = b""
         self.stopped = False
+        self._eof = False
 
     @property
     def pid(self) -> int | None:
@@ -130,6 +131,7 @@ class PerlSession:
 
     def _on_stop_eof(self) -> None:
         self.stopped = False
+        self._eof = True
         self._prompt_evt.set()  # unblock any waiter; command() checks EOF
 
     def _dispatch(self, ev: tuple) -> None:
@@ -158,6 +160,11 @@ class PerlSession:
         finally:
             self._prompt_evt.clear()
             self._collect = None
+        if self._eof:
+            raise PerlProtocolError(
+                "perl5db connection closed",
+                tail=self._tail.decode("utf-8", errors="replace"),
+            )
 
     async def command(self, text: str, timeout: float = 20.0) -> list[tuple]:
         if self._writer is None:
@@ -177,6 +184,11 @@ class PerlSession:
             )
         events, self._collect = self._collect, None
         self._prompt_evt.clear()
+        if self._eof:
+            raise PerlProtocolError(
+                "perl5db connection closed",
+                tail=self._tail.decode("utf-8", errors="replace"),
+            )
         self.stopped = True
         return events
 
@@ -210,9 +222,11 @@ class PerlSession:
             return False
 
     async def stop(self) -> None:
-        for t in [self._reader_task, *self._pump_tasks]:
-            if t:
-                t.cancel()
+        tasks = [t for t in [self._reader_task, *self._pump_tasks] if t is not None]
+        for t in tasks:
+            t.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
         if self._writer is not None:
             self._writer.close()
         if self._process is not None:
