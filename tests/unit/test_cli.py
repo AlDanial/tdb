@@ -704,3 +704,14 @@ def test_cli_bps_merges_breakpoint_and_to_line_with_persist_flag(tmp_path):
         (str(prog.resolve()), 1, True),
         (str(prog.resolve()), 2, False),
     ]
+
+
+def test_remote_attach_allowed_for_perl():
+    args = parse_args(["--lang", "perl", "-r", "5678"])
+    assert args.profile.id == "perl"
+    assert args.attach_port == 5678
+
+
+def test_remote_attach_still_rejected_for_cpp():
+    with pytest.raises(SystemExit):
+        parse_args(["--lang", "cpp", "-r", "5678"])
