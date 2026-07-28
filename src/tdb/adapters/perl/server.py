@@ -10,10 +10,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from typing import Any, Awaitable, Callable
 
 from tdb.dap.messages import Event, Request, Response, parse_message
 from tdb.dap.protocol import encode_message, read_message
+
+from .session import PerlProtocolError, PerlSession
 
 log = logging.getLogger(__name__)
 
@@ -30,6 +33,12 @@ class PerlDapServer:
         self._writer = writer
         self._seq = 0
         self._done = asyncio.Event()
+        self.session: PerlSession | None = None
+        self.current_stop: dict | None = None
+        self._launch_request: Request | None = None
+        self._stop_on_entry = True
+        self._configured = asyncio.Event()
+        self.breakpoint_lines: dict[str, set[int]] = {}
         self.handlers: dict[str, Callable[[Request], Awaitable[None]]] = {}
         for name in dir(self):
             if name.startswith("_on_"):
@@ -92,9 +101,140 @@ class PerlDapServer:
         self.send_response(request, CAPABILITIES)
 
     async def _on_disconnect(self, request: Request) -> None:
+        if self.session is not None:
+            await self.session.stop()
+            self.session = None
         self.send_response(request)
         self._done.set()
 
     async def _on_terminate(self, request: Request) -> None:
+        if self.session is not None:
+            await self.session.stop()
+            self.session = None
         self.send_response(request)
         self._done.set()
+
+    async def _on_launch(self, request: Request) -> None:
+        args = request.arguments
+        perl = args.get("perl") or "perl"
+        preflight = await asyncio.create_subprocess_exec(
+            perl,
+            "-e",
+            "require v5.18",
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, err = await preflight.communicate()
+        if preflight.returncode != 0:
+            self.send_error(
+                request,
+                f"perl >= 5.18 not usable ({perl!r}): "
+                f"{err.decode(errors='replace').strip() or 'not found'} — "
+                'install perl or set {"adapters": {"perl": "/path/to/perl"}} '
+                "in tdb's config.json",
+            )
+            return
+        program = args.get("program", "")
+        if not os.path.isfile(program):
+            self.send_error(request, f"program not found: {program}")
+            return
+        self._stop_on_entry = bool(args.get("stopOnEntry", True))
+        self.session = PerlSession(
+            on_output=self._forward_output, on_stop=self._on_unsolicited_stop
+        )
+        try:
+            await self.session.launch(
+                program=program,
+                args=list(args.get("args") or []),
+                cwd=args.get("cwd") or os.getcwd(),
+                env=args.get("env"),
+                perl=perl,
+            )
+        except PerlProtocolError as e:
+            self.send_error(request, f"{e} [{e.tail}]")
+            return
+        self._launch_request = request
+        self.send_event("initialized")
+        # response is sent by _on_configurationDone (DAP ordering)
+
+    async def _on_configurationDone(self, request: Request) -> None:
+        self.send_response(request)
+        if self._launch_request is not None:
+            self.send_response(self._launch_request)
+            self._launch_request = None
+            if self._stop_on_entry:
+                await self._emit_stopped("entry")
+            else:
+                self.session.resume("c")
+
+    async def _emit_stopped(self, reason: str) -> None:
+        try:
+            self.current_stop = await self.session.helper(
+                "Devel::TdbHelper::location()"
+            )
+        except PerlProtocolError as e:
+            log.error("location() failed after stop: %s", e)
+            self.current_stop = None
+        self.send_event(
+            "stopped",
+            {"reason": reason, "threadId": 1, "allThreadsStopped": True},
+        )
+
+    def _forward_output(self, text: str, category: str) -> None:
+        if category == "__eof__":
+            self.send_event("terminated")
+            self.send_event("exited", {"exitCode": 0})
+            return
+        self.send_event("output", {"category": category, "output": text})
+
+    def _on_unsolicited_stop(self) -> None:
+        asyncio.ensure_future(self._classify_and_emit_stop())
+
+    async def _classify_and_emit_stop(self) -> None:
+        if self.session is None:
+            return
+        try:
+            loc = await self.session.helper("Devel::TdbHelper::location()")
+        except PerlProtocolError:
+            loc = None
+        if loc is None or loc.get("file") == "?":
+            # perl5db's "ended" state: the debuggee ran to completion and
+            # perl5db parked at a live prompt without closing the socket
+            # (no user frames left, so location() can't report one).
+            self.current_stop = None
+            self.send_event("terminated")
+            self.send_event("exited", {"exitCode": 0})
+            return
+        self.current_stop = loc
+        reason = "step"
+        if loc.get("line") in self.breakpoint_lines.get(loc.get("file"), set()):
+            reason = "breakpoint"
+        self.send_event(
+            "stopped",
+            {"reason": reason, "threadId": 1, "allThreadsStopped": True},
+        )
+        await self._writer.drain()
+
+    async def _on_threads(self, request: Request) -> None:
+        self.send_response(request, {"threads": [{"id": 1, "name": "main"}]})
+
+    async def _resume(self, request: Request, cmd: str) -> None:
+        if self.session is None or not self.session.stopped:
+            self.send_error(request, "debuggee is not stopped")
+            return
+        self.current_stop = None
+        self.send_response(request)
+        self.send_event("continued", {"threadId": 1, "allThreadsContinued": True})
+        self.session.resume(cmd)
+
+    async def _on_continue(self, request: Request) -> None:
+        await self._resume(request, "c")
+
+    async def _on_next(self, request: Request) -> None:
+        await self._resume(request, "n")
+
+    async def _on_stepIn(self, request: Request) -> None:
+        await self._resume(request, "s")
+
+    async def _on_stepOut(self, request: Request) -> None:
+        await self._resume(request, "r")

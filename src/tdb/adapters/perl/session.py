@@ -133,6 +133,11 @@ class PerlSession:
         self.stopped = False
         self._eof = True
         self._prompt_evt.set()  # unblock any waiter; command() checks EOF
+        # A real socket close (e.g. after `q`) — as opposed to perl5db's
+        # "Debugged program terminated" state, which parks at a live prompt
+        # without closing the socket. Route this through on_output so the
+        # server can translate it into terminated/exited events.
+        self._on_output("", "__eof__")
 
     def _dispatch(self, ev: tuple) -> None:
         kind = ev[0]
