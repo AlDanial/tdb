@@ -30,7 +30,7 @@ async def run_headless(
     python: str | None = None,
     port: int = 8150,
     host: str = "127.0.0.1",
-    cli_breakpoints: list[tuple[str, int]] | None = None,
+    cli_breakpoints: list[tuple[str, int, bool]] | None = None,
     attach_host: str | None = None,
     attach_port: int | None = None,
     path_mappings: list[tuple[str, str]] | None = None,
@@ -57,13 +57,7 @@ async def run_headless(
 
     # Apply CLI breakpoints
     if cli_breakpoints:
-        from tdb.dap.types import SourceBreakpoint
-
-        for bp_path, bp_line in cli_breakpoints:
-            bps = controller.state.breakpoints.get(bp_path, [])
-            if not any(bp.line == bp_line for bp in bps):
-                bps.append(SourceBreakpoint(line=bp_line))
-                controller.state.breakpoints[bp_path] = bps
+        controller.state.install_cli_breakpoints(cli_breakpoints)
 
     # Start the debug session
     if is_remote:

@@ -41,16 +41,18 @@ def _encode_bps(
 ) -> dict[str, list[dict]]:
     out = {}
     for source_path, bps in breakpoints.items():
-        if bps:
-            out[source_path] = [
-                {
-                    "line": bp.line,
-                    "condition": bp.condition,
-                    "hit_condition": bp.hit_condition,
-                    "enabled": bp.enabled,
-                }
-                for bp in bps
-            ]
+        encoded = [
+            {
+                "line": bp.line,
+                "condition": bp.condition,
+                "hit_condition": bp.hit_condition,
+                "enabled": bp.enabled,
+            }
+            for bp in bps
+            if bp.persist
+        ]
+        if encoded:
+            out[source_path] = encoded
     return out
 
 

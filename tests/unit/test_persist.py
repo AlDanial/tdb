@@ -198,3 +198,18 @@ def test_config_adapter_fields_round_trip(isolated_persist):
     TdbConfig = isolated_persist.TdbConfig
     cfg = TdbConfig(adapters={"gdb": "/usr/bin/gdb"})
     assert TdbConfig.from_dict(cfg.to_dict()).adapters == {"gdb": "/usr/bin/gdb"}
+
+
+def test_transient_breakpoints_not_saved(isolated_persist):
+    """-t breakpoints (persist=False) must never reach breakpoints.json."""
+    bps = {
+        "/abs/x.py": [
+            SourceBreakpoint(line=5),
+            SourceBreakpoint(line=9, persist=False),
+        ],
+        "/abs/only_transient.py": [SourceBreakpoint(line=1, persist=False)],
+    }
+    isolated_persist.save_breakpoints(bps, program="/abs/x.py")
+    loaded = isolated_persist.load_breakpoints(program="/abs/x.py")
+    assert [b.line for b in loaded["/abs/x.py"]] == [5]
+    assert "/abs/only_transient.py" not in loaded

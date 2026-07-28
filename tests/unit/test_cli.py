@@ -654,3 +654,53 @@ def test_breakpoint_relative_searches_local_roots_in_order(tmp_path):
         ]
     )
     assert args.breakpoint == [(str(src.resolve()), 5)]
+
+
+# --- -t / --to-line: like -k but not persisted -------------------------------
+
+
+def test_to_line_parsed_like_breakpoint(tmp_path):
+    prog = tmp_path / "x.py"
+    prog.write_text("a = 1\nb = 2\nc = 3\n")
+    args = parse_args([str(prog), "-t", f"{prog}:2", "-t", "3"])
+    assert args.to_line == [
+        (str(prog.resolve()), 2),
+        (str(prog.resolve()), 3),
+    ]
+    assert args.breakpoint == []
+
+
+def test_to_line_implies_no_stop_on_entry(tmp_path):
+    prog = tmp_path / "x.py"
+    prog.write_text("a = 1\n")
+    args = parse_args([str(prog), "-t", "1"])
+    assert args.stop_on_entry is False
+
+
+def test_to_line_snaps_to_statement_start(tmp_path, capsys):
+    prog = tmp_path / "x.py"
+    prog.write_text(
+        "a = 1\n"
+        "results = func(\n"  # line 2 (statement start)
+        "    1,\n"  # line 3 — sub-line
+        ")\n"
+    )
+    args = parse_args([str(prog), "-t", "3"])
+    assert args.to_line == [(str(prog.resolve()), 2)]
+    err = capsys.readouterr().err
+    assert "-t" in err and "moved to line 2" in err
+
+
+def test_to_line_bare_line_requires_program():
+    with pytest.raises(SystemExit):
+        parse_args(["--remote-attach", "5678", "-t", "10"])
+
+
+def test_cli_bps_merges_breakpoint_and_to_line_with_persist_flag(tmp_path):
+    prog = tmp_path / "x.py"
+    prog.write_text("a = 1\nb = 2\nc = 3\n")
+    args = parse_args([str(prog), "-k", "1", "-t", "2"])
+    assert args.cli_bps == [
+        (str(prog.resolve()), 1, True),
+        (str(prog.resolve()), 2, False),
+    ]
