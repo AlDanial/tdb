@@ -247,3 +247,54 @@ class PerlDapServer:
 
     async def _on_stepOut(self, request: Request) -> None:
         await self._resume(request, "r")
+
+    async def _on_setBreakpoints(self, request: Request) -> None:
+        if self.session is None or not self.session.stopped:
+            self.send_error(request, "cannot set breakpoints while running")
+            return
+        path = request.arguments.get("source", {}).get("path", "")
+        wanted = request.arguments.get("breakpoints", [])
+        for old_line in self.breakpoint_lines.get(path, set()):
+            await self.session.command(f"B {old_line}")
+        try:
+            # Devel::TdbHelper::breakable() guards internally against
+            # files perl hasn't compiled yet (see helpers.pl) so this is
+            # safe to call speculatively even if `path` isn't loaded --
+            # it reports {"lines": [], "unloaded": 1} without touching
+            # perl5db's per-file line table, instead of the empty-set
+            # fallback below silently masking a real protocol error.
+            breakable = set(
+                (
+                    await self.session.helper(
+                        f"Devel::TdbHelper::breakable({self._perl_str(path)})"
+                    )
+                )["lines"]
+            )
+        except PerlProtocolError:
+            breakable = set()
+        results = []
+        actual_lines: set[int] = set()
+        for bp in wanted:
+            line = bp["line"]
+            target = line
+            if breakable and line not in breakable:
+                later = sorted(n for n in breakable if n > line)
+                target = later[0] if later else None
+            if target is None:
+                results.append({"verified": False, "line": line})
+                continue
+            cond = bp.get("condition")
+            cmd = f"b {path}:{target}" + (f" {cond}" if cond else "")
+            events = await self.session.command(cmd)
+            failed = any(e[0] == "text" and "not breakable" in e[1] for e in events)
+            if failed:
+                results.append({"verified": False, "line": line})
+            else:
+                results.append({"verified": True, "line": target})
+                actual_lines.add(target)
+        self.breakpoint_lines[path] = actual_lines
+        self.send_response(request, {"breakpoints": results})
+
+    @staticmethod
+    def _perl_str(s: str) -> str:
+        return "'" + s.replace("\\", "\\\\").replace("'", "\\'") + "'"
