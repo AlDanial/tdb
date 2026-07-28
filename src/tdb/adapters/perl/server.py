@@ -268,6 +268,15 @@ class PerlDapServer:
         if not self.session.interrupt():
             self.send_error(request, "pause is not available for this session")
             return
+        # TOCTOU: between the not-stopped check above and interrupt()
+        # returning, a natural stop (e.g. a breakpoint) can land and start
+        # being classified. If so, that stop already satisfies the user's
+        # "be stopped" intent, so don't arm _pause_pending -- doing so would
+        # mislabel the *next* stop as a pause instead of the one that
+        # actually happened.
+        if self.session.stopped or self._classifying:
+            self.send_response(request)
+            return
         self._pause_pending = True
         self.send_response(request)
 

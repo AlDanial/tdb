@@ -159,3 +159,30 @@ async def test_resume_rejected_while_classifying():
     resp = [m for m in out if m.get("command") == "continue"][0]
     assert resp["success"] is False
     assert stub.resume_calls == []
+
+
+async def test_pause_does_not_arm_flag_when_stop_wins_race():
+    class StubSession:
+        def __init__(self) -> None:
+            self.stopped = False
+
+        def interrupt(self) -> bool:
+            # Simulate a natural stop (e.g. breakpoint) landing during the
+            # signal window between our not-stopped check and this call
+            # returning.
+            self.stopped = True
+            return True
+
+    reader = asyncio.StreamReader()
+    writer = SinkWriter()
+    server = PerlDapServer(reader, writer)
+    stub = StubSession()
+    server.session = stub
+
+    request = Request(seq=1, command="pause")
+    await server._on_pause(request)
+
+    out = _messages(writer)
+    resp = [m for m in out if m.get("command") == "pause"][0]
+    assert resp["success"] is True
+    assert server._pause_pending is False
