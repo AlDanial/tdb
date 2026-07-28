@@ -195,7 +195,7 @@ class TdbApp(_AppMessageRoutes, App):
         python: str | None = None,
         terminal: str | None = None,
         config: TdbConfig | None = None,
-        cli_breakpoints: list[tuple[str, int]] | None = None,
+        cli_breakpoints: list[tuple[str, int, bool]] | None = None,
         attach_host: str | None = None,
         attach_port: int | None = None,
         path_mappings: list[tuple[str, str]] | None = None,
@@ -341,13 +341,7 @@ class TdbApp(_AppMessageRoutes, App):
         if saved:
             self.controller.state.breakpoints = saved
         # Add CLI breakpoints (additive, won't duplicate)
-        for bp_path, bp_line in self._cli_breakpoints:
-            bps = self.controller.state.breakpoints.get(bp_path, [])
-            if not any(bp.line == bp_line for bp in bps):
-                from tdb.dap.types import SourceBreakpoint
-
-                bps.append(SourceBreakpoint(line=bp_line))
-                self.controller.state.breakpoints[bp_path] = bps
+        self.controller.state.install_cli_breakpoints(self._cli_breakpoints)
         # Update visuals
         if self.controller.state.breakpoints:
             all_bps = self.controller.state.breakpoints

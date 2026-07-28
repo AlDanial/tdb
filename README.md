@@ -128,6 +128,10 @@ tdb --lang python ./mytool
 # program runs to the first breakpoint)
 tdb -k 20 -k 35 -k module.py:14 my_program.py arg1 arg2
 
+# run straight to line 20 without saving the breakpoint for future
+# sessions (-t is -k minus the persistence)
+tdb -t 20 my_program.py
+
 # use a specific virtualenv
 tdb --python /path/to/venv/bin/python my_program.py
 
@@ -936,6 +940,7 @@ usage: tdb [-h] [-v] [-r [HOST:]PORT] [--cwd CWD] [--no-stop-on-entry]
 | `--local-root PATH` | Local directory containing a copy of remote code (repeat to mirror multiple trees). Pair with `--remote-root`; counts must match. Required when `-k` sets a breakpoint against a remote debuggee whose code lives at a different path. |
 | `--remote-root PATH` | Remote directory matched to `--local-root` (same CLI position via `zip()`). |
 | `-k`, `--breakpoint FILE:LINE|LINE` | Set a breakpoint (may be repeated). Passing `-k` implies `--no-stop-on-entry` so the program runs straight to the first breakpoint. |
+| `-t`, `--to-line FILE:LINE|LINE` | Like `-k`, but the breakpoint is not saved to the breakpoints file — it just takes you to that spot in the code for this session (may be repeated). |
 | `--no-stop-on-entry` | Do not pause at the first line (default: stop on entry; automatic when `-k` is given) |
 | `--cwd DIR` | Working directory for the debuggee |
 | `--python PATH` | Python interpreter for the debuggee (Python targets only) |
@@ -970,7 +975,9 @@ executable path (`{"adapters": {"lldb-dap": "/opt/llvm/bin/lldb-dap"}}`), and
 (`{"default_adapters": {"cpp": "lldb-dap"}}`).
 
 Breakpoints are saved on exit and restored when debugging a program in the same
-directory. Each project's breakpoints are independent.
+directory. Each project's breakpoints are independent. Breakpoints set with
+`-t`/`--to-line` are the exception: they behave like `-k` breakpoints during
+the session but are never saved.
 
 **Step mode** (`step_mode` in `config.json`) controls how `n` (step over) and `s` (step
 into) handle multi-line source statements:

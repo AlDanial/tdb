@@ -20,7 +20,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from tdb._timeouts import DAP_INITIALIZED, DAP_STOP_ON_ENTRY
-from tdb.dap.types import SourceBreakpoint
 from tdb.server.app import NO_LOCK_ACTIONS
 from tdb.server.event_handler import ServerEventHandler
 from tdb.server.handlers import ControllerRef, RpcHandlers
@@ -215,11 +214,9 @@ class McpSession:
     def _apply_cli_breakpoints(self, breakpoints: list[tuple[str, int]] | None) -> None:
         if not breakpoints or self._controller is None:
             return
-        for bp_path, bp_line in breakpoints:
-            bps = self._controller.state.breakpoints.get(bp_path, [])
-            if not any(bp.line == bp_line for bp in bps):
-                bps.append(SourceBreakpoint(line=bp_line))
-                self._controller.state.breakpoints[bp_path] = bps
+        self._controller.state.install_cli_breakpoints(
+            [(path, line, True) for path, line in breakpoints]
+        )
 
     async def _finish_initialize(
         self,

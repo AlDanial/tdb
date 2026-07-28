@@ -207,6 +207,21 @@ class DebugState:
 
     # --- Existing helper methods ---------------------------------------
 
+    def install_cli_breakpoints(self, cli_bps: list[tuple[str, int, bool]]) -> None:
+        """Add `-k` / `-t` CLI breakpoints to the session state.
+
+        Each entry is (abs_path, line, persist); `-t`/--to-line entries
+        carry persist=False so they never reach breakpoints.json. A
+        breakpoint already present at the same spot (e.g. restored from
+        a previous session) wins — it is neither duplicated nor
+        downgraded to transient.
+        """
+        for bp_path, bp_line, persist in cli_bps:
+            bps = self.breakpoints.get(bp_path, [])
+            if not any(bp.line == bp_line for bp in bps):
+                bps.append(SourceBreakpoint(line=bp_line, persist=persist))
+                self.breakpoints[bp_path] = bps
+
     def clear_frame_data(self) -> None:
         self.stack_frames.clear()
         self.scopes.clear()

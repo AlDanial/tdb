@@ -171,6 +171,16 @@ def build_parser() -> argparse.ArgumentParser:
         "at line 1.",
     )
     parser.add_argument(
+        "-t",
+        "--to-line",
+        action="append",
+        default=[],
+        metavar="FILE:LINE|LINE",
+        help="Like -k/--breakpoint, but the breakpoint is not saved to "
+        "the breakpoints file: it just takes you to that spot in the "
+        "code for this session (may be repeated).",
+    )
+    parser.add_argument(
         "--server-port",
         type=int,
         default=8150,
@@ -208,12 +218,12 @@ def _apply_flag_implications(args: argparse.Namespace) -> None:
     """Fill in derived flags from primary ones.
 
     - `stop_on_entry` is derived from `--no-stop-on-entry`.
-    - `-k` implies `--no-stop-on-entry`: a CLI breakpoint means "run
-       to here", not "pause at line 1".
+    - `-k` / `-t` imply `--no-stop-on-entry`: a CLI breakpoint means
+       "run to here", not "pause at line 1".
     - `--headless` implies `--server` (headless IS the server).
     """
     args.stop_on_entry = not args.no_stop_on_entry
-    if args.breakpoint:
+    if args.breakpoint or args.to_line:
         args.stop_on_entry = False
     if args.headless:
         args.server = True
@@ -393,45 +403,52 @@ def _parse_breakpoints(
     args: argparse.Namespace,
     parser: argparse.ArgumentParser,
 ) -> None:
-    """Parse `-k FILE:LINE | LINE` specs into `[(abs_path, line), ...]`.
+    """Parse `-k` / `-t` `FILE:LINE | LINE` specs into `[(abs_path, line), ...]`.
 
     A bare LINE targets `args.program` (rejected for remote-attach
     because there's no local program to anchor on). After parsing, the
-    list still needs `_snap_breakpoints` to align lines to logical
+    lists still need `_snap_breakpoints` to align lines to logical
     statement starts.
     """
-    parsed_bps: list[tuple[str, int]] = []
     local_roots = [local for local, _ in args.path_mappings]
-    for spec in args.breakpoint:
-        if ":" in spec:
-            file_part, line_part = spec.rsplit(":", 1)
-            try:
-                line = int(line_part)
-            except ValueError:
-                parser.error(f"Invalid line number in breakpoint: {spec}")
-            bp_path = _resolve_breakpoint_file(file_part, local_roots)
-            if bp_path is None:
-                if local_roots:
-                    roots_str = ", ".join(local_roots)
+
+    def parse_spec_list(specs: list[str], flag: str) -> list[tuple[str, int]]:
+        parsed_bps: list[tuple[str, int]] = []
+        for spec in specs:
+            if ":" in spec:
+                file_part, line_part = spec.rsplit(":", 1)
+                try:
+                    line = int(line_part)
+                except ValueError:
+                    parser.error(f"Invalid line number in breakpoint: {spec}")
+                bp_path = _resolve_breakpoint_file(file_part, local_roots)
+                if bp_path is None:
+                    if local_roots:
+                        roots_str = ", ".join(local_roots)
+                        parser.error(
+                            f"Breakpoint file not found: {file_part} "
+                            f"(searched: cwd, {roots_str})"
+                        )
+                    else:
+                        parser.error(f"Breakpoint file not found: {file_part}")
+                parsed_bps.append((str(bp_path), line))
+            else:
+                try:
+                    line = int(spec)
+                except ValueError:
                     parser.error(
-                        f"Breakpoint file not found: {file_part} "
-                        f"(searched: cwd, {roots_str})"
+                        f"Invalid breakpoint (expected FILE:LINE or LINE): {spec}"
                     )
-                else:
-                    parser.error(f"Breakpoint file not found: {file_part}")
-            parsed_bps.append((str(bp_path), line))
-        else:
-            try:
-                line = int(spec)
-            except ValueError:
-                parser.error(f"Invalid breakpoint (expected FILE:LINE or LINE): {spec}")
-            if not args.program:
-                parser.error(
-                    f"Bare-line breakpoint -k {spec} requires a program "
-                    "(not allowed with --remote-attach)"
-                )
-            parsed_bps.append((args.program, line))
-    args.breakpoint = parsed_bps
+                if not args.program:
+                    parser.error(
+                        f"Bare-line breakpoint {flag} {spec} requires a program "
+                        "(not allowed with --remote-attach)"
+                    )
+                parsed_bps.append((args.program, line))
+        return parsed_bps
+
+    args.breakpoint = parse_spec_list(args.breakpoint, "-k")
+    args.to_line = parse_spec_list(args.to_line, "-t")
 
 
 def _snap_breakpoints(args: argparse.Namespace) -> None:
@@ -446,24 +463,28 @@ def _snap_breakpoints(args: argparse.Namespace) -> None:
 
     from tdb.source_analysis import snap_breakpoint
 
-    snapped_bps: list[tuple[str, int]] = []
-    for bp_path, line in args.breakpoint:
-        snapped = snap_breakpoint(bp_path, line)
-        if snapped is None:
-            print(
-                f"warning: -k {bp_path}:{line} has no logical statement "
-                f"at or before that line; dropping breakpoint",
-                file=sys.stderr,
-            )
-            continue
-        if snapped != line:
-            print(
-                f"warning: -k {bp_path}:{line} is not the start of a "
-                f"logical statement; moved to line {snapped}",
-                file=sys.stderr,
-            )
-        snapped_bps.append((bp_path, snapped))
-    args.breakpoint = snapped_bps
+    def snap_list(bps: list[tuple[str, int]], flag: str) -> list[tuple[str, int]]:
+        snapped_bps: list[tuple[str, int]] = []
+        for bp_path, line in bps:
+            snapped = snap_breakpoint(bp_path, line)
+            if snapped is None:
+                print(
+                    f"warning: {flag} {bp_path}:{line} has no logical statement "
+                    f"at or before that line; dropping breakpoint",
+                    file=sys.stderr,
+                )
+                continue
+            if snapped != line:
+                print(
+                    f"warning: {flag} {bp_path}:{line} is not the start of a "
+                    f"logical statement; moved to line {snapped}",
+                    file=sys.stderr,
+                )
+            snapped_bps.append((bp_path, snapped))
+        return snapped_bps
+
+    args.breakpoint = snap_list(args.breakpoint, "-k")
+    args.to_line = snap_list(args.to_line, "-t")
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -486,6 +507,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     _resolve_language(args, parser)
     _parse_breakpoints(args, parser)
     _snap_breakpoints(args)
+    # Merged (path, line, persist) list consumed by the TUI and headless
+    # runner: -k breakpoints are saved on exit, -t ones are session-only.
+    args.cli_bps = [(p, ln, True) for p, ln in args.breakpoint] + [
+        (p, ln, False) for p, ln in args.to_line
+    ]
     return args
 
 
@@ -629,7 +655,7 @@ def _run_headless(args: argparse.Namespace) -> None:
             just_my_code=not args.no_just_my_code,
             python=args.python,
             port=args.server_port,
-            cli_breakpoints=args.breakpoint,
+            cli_breakpoints=args.cli_bps,
             attach_host=args.attach_host,
             attach_port=args.attach_port,
             path_mappings=args.path_mappings or None,
@@ -659,7 +685,7 @@ def _run_tui(args: argparse.Namespace) -> None:
         python=args.python,
         terminal=args.terminal,
         config=config,
-        cli_breakpoints=args.breakpoint,
+        cli_breakpoints=args.cli_bps,
         attach_host=args.attach_host,
         attach_port=args.attach_port,
         path_mappings=args.path_mappings,
