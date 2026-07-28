@@ -204,6 +204,54 @@ async def test_breakable_empty_before_require(two_file_program):
         await s.stop()
 
 
+@pytest.fixture
+def big_source_program(tmp_path):
+    # Regression for the split-marker bug: source() returns the whole
+    # compiled file as one TDB>>>...<<<TDB JSON payload. A file whose
+    # source contains '<' (real Perl filehandle-read syntax) and whose
+    # compiled text exceeds one 4096-byte socket read must still
+    # round-trip through the marker parser intact.
+    lines = [
+        "use strict;\n",
+        "use warnings;\n",
+        "\n",
+        "sub unused_reader {\n",
+        "    my ($fh) = @_;\n",
+        "    while (my $line = <$fh>) {\n",
+        "        print $line;\n",
+        "    }\n",
+        "    return;\n",
+        "}\n",
+        "\n",
+    ]
+    for i in range(80):
+        lines.append(
+            f"# pad {i:04d} while (my $line = <$fh>) {{ }} <STDIN> filler filler\n"
+        )
+    lines.append('print "main done\\n";\n')
+    text = "".join(lines)
+    assert len(text.encode("utf-8")) > 4096
+    p = tmp_path / "big.pl"
+    p.write_text(text)
+    return str(p), text
+
+
+async def test_source_of_large_file_with_angle_brackets_round_trips(
+    big_source_program,
+):
+    program, expected_text = big_source_program
+    s = PerlSession(on_output=lambda text, cat: None, on_stop=lambda: None)
+    await asyncio.wait_for(
+        s.launch(program=program, args=[], cwd=str(tmp_path_of(program)), env=None),
+        WAIT,
+    )
+    try:
+        payload = await s.helper(f"Devel::TdbHelper::source({program!r})")
+        assert payload["text"] == expected_text
+    finally:
+        await s.stop()
+
+
 async def test_breakable_populates_and_breakpoint_lands_after_require(
     two_file_program,
 ):

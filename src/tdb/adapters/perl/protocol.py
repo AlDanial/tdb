@@ -13,11 +13,16 @@ import re
 
 PROMPT_RE = re.compile(rb"\r?\n?\s*DB<+\d+>+ $")
 MARK_RE = re.compile(rb"TDB>>>(.*?)<<<TDB\r?\n?", re.DOTALL)
-# Longest prefix that could still grow into a marker or prompt; used to
-# hold back tail bytes instead of flushing them as text prematurely.
-_HOLD_RE = re.compile(
-    rb"(?:TDB>?>?>?[^<]*(?:<(?:<(?:TDB?)?)?)?|\r?\n?\s*DB<*\d*>*\x20?)$"
-)
+_MARK_OPEN = b"TDB>>>"
+# Proper prefixes of _MARK_OPEN, longest first, checked against the
+# buffer tail to detect a marker opener that's still arriving.
+_MARK_OPEN_PREFIXES = (b"TDB>>", b"TDB>", b"TDB", b"TD", b"T")
+# Longest prefix that could still grow into a prompt; used to hold back
+# tail bytes instead of flushing them as text prematurely. Partial
+# marker openers are handled separately (see feed()) since a marker's
+# JSON payload can legitimately contain '<' and so can't be represented
+# by a single regex hold.
+_HOLD_RE = re.compile(rb"\r?\n?\s*DB<*\d*>*\x20?$")
 
 Event = tuple[str, object]
 
@@ -41,6 +46,27 @@ class StreamParser:
             except (ValueError, UnicodeDecodeError):
                 events.append(("text", m.group(0).decode("utf-8", errors="replace")))
             self._buf = self._buf[m.end() :]
+
+        # An incomplete TDB>>>...<<<TDB marker may still be growing (a
+        # single helper payload can span multiple socket reads). Its
+        # payload can contain '<' (e.g. Perl's <$fh> / <STDIN> syntax),
+        # so once we know we're inside one we must hold the WHOLE
+        # remainder verbatim rather than scanning it for a prompt or
+        # flushing any of it as text -- the prompt always follows the
+        # marker's own trailing newline, never inside the held region.
+        idx = self._buf.find(_MARK_OPEN)
+        if idx == -1:
+            for prefix in _MARK_OPEN_PREFIXES:
+                if self._buf.endswith(prefix):
+                    idx = len(self._buf) - len(prefix)
+                    break
+        if idx != -1:
+            before = self._buf[:idx]
+            if before:
+                events.append(("text", before.decode("utf-8", errors="replace")))
+            self._buf = self._buf[idx:]
+            return self._coalesce(events)
+
         pm = PROMPT_RE.search(self._buf)
         if pm is not None:
             before = self._buf[: pm.start()]
