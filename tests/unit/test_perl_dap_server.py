@@ -229,6 +229,67 @@ async def test_resume_rejected_while_classifying():
     assert stub.resume_calls == []
 
 
+@pytest.mark.parametrize(
+    "command,arguments",
+    [
+        ("setBreakpoints", {"source": {"path": "/x.pl"}, "breakpoints": []}),
+        ("stackTrace", {}),
+        ("scopes", {"frameId": 0}),
+        ("variables", {"variablesReference": 1}),
+        ("evaluate", {"expression": "1"}),
+        ("source", {"source": {"path": "/x.pl"}}),
+    ],
+)
+async def test_data_requests_rejected_while_classifying(command, arguments):
+    class StubSession:
+        def __init__(self) -> None:
+            self.stopped = True
+
+        async def command(self, text, timeout=20.0):
+            raise AssertionError("should not reach the session while classifying")
+
+        async def helper(self, expr, timeout=20.0):
+            raise AssertionError("should not reach the session while classifying")
+
+    reader = asyncio.StreamReader()
+    writer = SinkWriter()
+    server = PerlDapServer(reader, writer)
+    server.session = StubSession()
+    server._classifying = True
+
+    request = Request(seq=1, command=command, arguments=arguments)
+    await server.handlers[command](request)
+
+    out = _messages(writer)
+    resp = [m for m in out if m.get("command") == command][0]
+    assert resp["success"] is False
+
+
+async def test_not_ready_reports_no_session():
+    reader = asyncio.StreamReader()
+    writer = SinkWriter()
+    server = PerlDapServer(reader, writer)
+    assert server._not_ready() is not None
+
+
+async def test_on_unsolicited_stop_keeps_strong_reference_to_classify_task():
+    reader = asyncio.StreamReader()
+    writer = SinkWriter()
+    server = PerlDapServer(reader, writer)
+
+    class StubSession:
+        stopped = True
+
+        async def helper(self, expr, timeout=20.0):
+            return {"file": "?", "line": 1}
+
+    server.session = StubSession()
+    server._on_unsolicited_stop()
+
+    assert server._classify_task is not None
+    assert not server._classify_task.done()
+
+
 async def test_pause_does_not_arm_flag_when_stop_wins_race():
     class StubSession:
         def __init__(self) -> None:

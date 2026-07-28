@@ -35,6 +35,7 @@ class PerlDapServer:
         self._seq = 0
         self._done = asyncio.Event()
         self.session: PerlSession | None = None
+        self._classify_task: asyncio.Future | None = None
         self.current_stop: dict | None = None
         self._start_request: Request | None = None
         self._stop_on_entry = True
@@ -284,7 +285,10 @@ class PerlDapServer:
 
     def _on_unsolicited_stop(self) -> None:
         self._classifying = True
-        asyncio.ensure_future(self._classify_and_emit_stop())
+        # Strong ref: asyncio only holds a weak reference to a bare
+        # ensure_future() task, so it can be garbage-collected mid-flight
+        # if nothing else keeps it alive (see repo pitfall notes).
+        self._classify_task = asyncio.ensure_future(self._classify_and_emit_stop())
 
     async def _classify_and_emit_stop(self) -> None:
         self.refs.reset()
@@ -327,9 +331,25 @@ class PerlDapServer:
     async def _on_threads(self, request: Request) -> None:
         self.send_response(request, {"threads": [{"id": 1, "name": "main"}]})
 
+    def _not_ready(self) -> str | None:
+        """Error string when data/control requests can't be safely served.
+
+        Covers three cases: no active session, debuggee still running, or a
+        stop that's mid-classification (self._classifying) -- during
+        classification perl5db is still being probed by
+        _classify_and_emit_stop, and issuing further DB commands
+        concurrently could race it. Returns None when it's safe to proceed.
+        """
+        if self.session is None:
+            return "no session"
+        if not self.session.stopped or self._classifying:
+            return "debuggee is not stopped"
+        return None
+
     async def _resume(self, request: Request, cmd: str) -> None:
-        if self.session is None or not self.session.stopped or self._classifying:
-            self.send_error(request, "debuggee is not stopped")
+        reason = self._not_ready()
+        if reason is not None:
+            self.send_error(request, reason)
             return
         self.current_stop = None
         self.send_response(request)
@@ -371,6 +391,10 @@ class PerlDapServer:
         self.send_response(request)
 
     async def _on_source(self, request: Request) -> None:
+        reason = self._not_ready()
+        if reason is not None:
+            self.send_error(request, reason)
+            return
         path = request.arguments.get("source", {}).get("path", "")
         remote_path = self._to_remote(path)
         payload = await self.session.helper(
@@ -382,8 +406,9 @@ class PerlDapServer:
         self.send_response(request, {"content": payload["text"]})
 
     async def _on_setBreakpoints(self, request: Request) -> None:
-        if self.session is None or not self.session.stopped:
-            self.send_error(request, "cannot set breakpoints while running")
+        reason = self._not_ready()
+        if reason is not None:
+            self.send_error(request, reason)
             return
         path = request.arguments.get("source", {}).get("path", "")
         remote_path = self._to_remote(path)
@@ -449,6 +474,10 @@ class PerlDapServer:
         return "'" + s.replace("\\", "\\\\").replace("'", "\\'") + "'"
 
     async def _on_stackTrace(self, request: Request) -> None:
+        reason = self._not_ready()
+        if reason is not None:
+            self.send_error(request, reason)
+            return
         payload = await self.session.helper("Devel::TdbHelper::stack()")
         frames = []
         for i, f in enumerate(payload["frames"]):
@@ -464,6 +493,10 @@ class PerlDapServer:
         self.send_response(request, {"stackFrames": frames, "totalFrames": len(frames)})
 
     async def _on_scopes(self, request: Request) -> None:
+        reason = self._not_ready()
+        if reason is not None:
+            self.send_error(request, reason)
+            return
         frame = request.arguments.get("frameId", 0)
         payload = await self.session.helper(f"Devel::TdbHelper::scopes({frame})")
         scopes = [
@@ -477,6 +510,10 @@ class PerlDapServer:
         self.send_response(request, {"scopes": scopes})
 
     async def _on_variables(self, request: Request) -> None:
+        reason = self._not_ready()
+        if reason is not None:
+            self.send_error(request, reason)
+            return
         ref = request.arguments.get("variablesReference", 0)
         entry = self.refs.get(ref)
         if entry is None:
@@ -513,6 +550,10 @@ class PerlDapServer:
         self.send_response(request, {"variables": variables})
 
     async def _on_evaluate(self, request: Request) -> None:
+        reason = self._not_ready()
+        if reason is not None:
+            self.send_error(request, reason)
+            return
         expr = request.arguments.get("expression", "").replace("\n", " ")
         # Leading `;` keeps this from being mistaken for perl5db's own
         # `{ command }` pre-prompt-action syntax (a bare leading `{` is
