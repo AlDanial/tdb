@@ -16,6 +16,7 @@ from typing import Any, Awaitable, Callable
 from tdb.dap.messages import Event, Request, Response, parse_message
 from tdb.dap.protocol import encode_message, read_message
 
+from .refs import RefRegistry
 from .session import PerlProtocolError, PerlSession
 
 log = logging.getLogger(__name__)
@@ -39,6 +40,7 @@ class PerlDapServer:
         self._stop_on_entry = True
         self._classifying = False
         self.breakpoint_lines: dict[str, set[int]] = {}
+        self.refs = RefRegistry()
         self.handlers: dict[str, Callable[[Request], Awaitable[None]]] = {}
         for name in dir(self):
             if name.startswith("_on_"):
@@ -173,6 +175,7 @@ class PerlDapServer:
                 self.session.resume("c")
 
     async def _emit_stopped(self, reason: str) -> None:
+        self.refs.reset()
         try:
             self.current_stop = await self.session.helper(
                 "Devel::TdbHelper::location()"
@@ -197,6 +200,7 @@ class PerlDapServer:
         asyncio.ensure_future(self._classify_and_emit_stop())
 
     async def _classify_and_emit_stop(self) -> None:
+        self.refs.reset()
         try:
             if self.session is None:
                 return
@@ -311,3 +315,93 @@ class PerlDapServer:
     @staticmethod
     def _perl_str(s: str) -> str:
         return "'" + s.replace("\\", "\\\\").replace("'", "\\'") + "'"
+
+    async def _on_stackTrace(self, request: Request) -> None:
+        payload = await self.session.helper("Devel::TdbHelper::stack()")
+        frames = []
+        for i, f in enumerate(payload["frames"]):
+            frames.append(
+                {
+                    "id": i,
+                    "name": f.get("sub") or "main",
+                    "line": f["line"],
+                    "column": 1,
+                    "source": {"path": f["file"]},
+                }
+            )
+        self.send_response(request, {"stackFrames": frames, "totalFrames": len(frames)})
+
+    async def _on_scopes(self, request: Request) -> None:
+        frame = request.arguments.get("frameId", 0)
+        payload = await self.session.helper(f"Devel::TdbHelper::scopes({frame})")
+        scopes = [
+            {
+                "name": s["name"],
+                "variablesReference": self.refs.add_scope(frame, s["kind"]),
+                "expensive": False,
+            }
+            for s in payload["scopes"]
+        ]
+        self.send_response(request, {"scopes": scopes})
+
+    async def _on_variables(self, request: Request) -> None:
+        ref = request.arguments.get("variablesReference", 0)
+        entry = self.refs.get(ref)
+        if entry is None:
+            self.send_error(request, f"stale variablesReference {ref}")
+            return
+        if entry["kind"] == "scope":
+            payload = await self.session.helper(
+                f"Devel::TdbHelper::vars({entry['frame']}, "
+                f"{self._perl_str(entry['scope'])})"
+            )
+        else:
+            payload = await self.session.helper(
+                f"Devel::TdbHelper::expand({entry['helper_id']})"
+            )
+        variables = []
+        if payload.get("degraded"):
+            variables.append(
+                {
+                    "name": "<lexicals>",
+                    "value": payload["degraded"],
+                    "variablesReference": 0,
+                }
+            )
+        for v in payload.get("vars", []):
+            variables.append(
+                {
+                    "name": v["name"],
+                    "value": v["value"],
+                    "variablesReference": (
+                        self.refs.add_object(v["id"]) if v["id"] else 0
+                    ),
+                }
+            )
+        self.send_response(request, {"variables": variables})
+
+    async def _on_evaluate(self, request: Request) -> None:
+        expr = request.arguments.get("expression", "").replace("\n", " ")
+        # Leading `;` keeps this from being mistaken for perl5db's own
+        # `{ command }` pre-prompt-action syntax (a bare leading `{` is
+        # captured by perl5db itself and deferred rather than eval'd now
+        # -- confirmed via manual perl5db probe, Task 11). The `;` is a
+        # no-op statement separator so the wrapped Perl is unaffected.
+        cmd = (
+            ";{ local $@; my $r = [ eval { " + expr + " } ]; "
+            "Devel::TdbHelper::emit_eval($r, $@) }"
+        )
+        try:
+            payload = await self.session.helper(cmd)
+        except PerlProtocolError as e:
+            self.send_error(request, str(e))
+            return
+        self.send_response(
+            request,
+            {
+                "result": payload["value"],
+                "variablesReference": (
+                    self.refs.add_object(payload["id"]) if payload.get("id") else 0
+                ),
+            },
+        )
