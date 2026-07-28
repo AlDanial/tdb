@@ -66,3 +66,50 @@ def test_breakable_and_source_read_perl_line_tables(tmp_path):
     assert 1 in lines_payload["lines"] and 3 in lines_payload["lines"]
     assert 2 not in lines_payload["lines"]  # blank line is not breakable
     assert "my $a = 1;" in source_payload["text"]
+
+
+def test_breakable_reports_unloaded_without_autovivifying(tmp_path):
+    # Task 10 guard: breakable() on a file perl hasn't compiled yet must
+    # report {"lines": [], "unloaded": 1} via `exists $main::{"_<$file"}`
+    # rather than dereferencing \@{"main::_<$file"} directly -- that
+    # dereference autovivifies the array as a side effect of merely
+    # reading it, which was found (Task 8) to permanently poison
+    # perl5db's own breakpoint machinery for that filename: `b
+    # <file>:<line>` is later accepted silently but the program runs
+    # straight through instead of stopping. This test only proves the
+    # {"lines": [], "unloaded": 1} contract; the no-poisoning claim
+    # (breakpoint still lands after the file loads) is proven at the
+    # integration level, where an interactive perl5db session exists --
+    # see test_perl_adapter_breakpoints.py::
+    # test_breakpoint_in_not_yet_loaded_module_still_fires and the
+    # standalone A/B probe in the Task 10 report.
+    import json
+    import os
+    import re
+    import subprocess
+
+    from .conftest import HELPERS
+
+    second = tmp_path / "second.pl"
+    second.write_text("package Second;\nsub greet { my $x = 1; return $x; }\n1;\n")
+    main = tmp_path / "main.pl"
+    main.write_text(
+        f"do {str(HELPERS)!r} or die $@ || $!;\n"
+        f"Devel::TdbHelper::breakable({str(second)!r});\n"
+        f"require {str(second)!r};\n"
+        f"Devel::TdbHelper::breakable({str(second)!r});\n"
+    )
+    proc = subprocess.run(
+        ["perl", "-d", str(main)],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env={**os.environ, "PERL5DB": "sub DB::DB {}"},
+    )
+    assert proc.returncode == 0, proc.stderr
+    before, after = [
+        json.loads(m) for m in re.findall(r"TDB>>>(.*?)<<<TDB", proc.stdout, re.S)
+    ]
+    assert before == {"lines": [], "unloaded": 1}
+    assert after.get("unloaded") is None
+    assert 2 in after["lines"]  # `sub greet { ... }` line is breakable

@@ -109,6 +109,19 @@ sub breakable {
     my ($file) = @_;
     eval {
         no strict 'refs';
+        # Merely dereferencing \@{"main::_<$file"} for a file perl has
+        # NOT yet compiled autovivifies that array, which silently
+        # poisons perl5db's own breakpoint machinery for that filename
+        # for the rest of the process (b <file>:<line> is later accepted
+        # but never fires). `exists $main::{"_<$file"}` checks whether
+        # perl's compiler has ever created the "_<$file" typeglob for
+        # this file WITHOUT dereferencing/autovivifying the array inside
+        # it, so it's safe to call speculatively on files that may not
+        # be loaded yet. Confirmed via A/B probe (Task 10 report).
+        unless ( exists $main::{"_<$file"} ) {
+            _emit( { lines => [], unloaded => 1 } );
+            return 1;
+        }
         my $src = \@{"main::_<$file"};
         my @lines;
         for my $n ( 1 .. $#{$src} ) {
