@@ -13,13 +13,31 @@ use Scalar::Util qw(blessed reftype);
 our $PROTOCOL = 1;
 my $JSON = JSON::PP->new->canonical->allow_unknown;
 
+# The debuggee's own STDOUT is block-buffered when it's a pipe (the
+# adapter's case). perl5db intercepts normal program exit and parks at
+# a prompt instead of truly _exit()-ing, so buffered output would sit
+# unflushed -- invisible to the adapter -- until a real process exit.
+# Force line-buffering-equivalent (full autoflush) on STDOUT so stdout
+# forwarding is live, without touching whatever filehandle happens to
+# be selected right now.
+{
+    my $prev = select(STDOUT);
+    $| = 1;
+    select($prev);
+}
+
 # Expandable-ref stash: id -> ref. Cleared at each stop (location()).
 our %REG;
 our $NEXT_ID = 1;
 
 sub _out {
     my ($line) = @_;
-    my $fh = ( defined fileno(*DB::OUT) ) ? \*DB::OUT : \*STDOUT;
+    # Under real perl5db, the RemotePort/console filehandle lives in the
+    # package scalar $DB::OUT (an IO::Socket/typeglob-ref), NOT the
+    # typeglob *DB::OUT -- that glob is never populated for RemotePort
+    # sessions. Writing here (rather than STDOUT) keeps our JSON marker
+    # interleaved with the prompt stream the adapter's parser reads.
+    my $fh = ( defined $DB::OUT && ref($DB::OUT) ) ? $DB::OUT : \*STDOUT;
     print {$fh} $line;
     return;
 }
