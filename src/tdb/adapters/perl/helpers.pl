@@ -294,6 +294,7 @@ sub vars {
             }
         }
         elsif ( $kind eq 'specials' ) {
+            push @out, _entry( '@_', [ @DB::args ] ) if @DB::args;
             push @out, _entry( '$_',    $_ );
             push @out, _entry( '$@',    $@ );
             push @out, _entry( '$!',    "$!" );
@@ -305,6 +306,32 @@ sub vars {
             push @out, _entry( '$\\',   $\ );
         }
         _emit( { vars => \@out } );
+        1;
+    } or _emit_error($@);
+    return;
+}
+
+sub emit_eval {
+    my ( $results, $err ) = @_;
+    eval {
+        if ($err) {
+            my $msg = "$err";
+            $msg =~ s/\s+\z//;
+            _emit( { error => $msg } );
+            return 1;
+        }
+        if ( @$results == 1 ) {
+            my ( $value, $id ) = _preview( $results->[0] );
+            _emit( { value => $value, id => $id } );
+        }
+        elsif ( @$results == 0 ) {
+            _emit( { value => '()', id => 0 } );
+        }
+        else {
+            my @parts = map { ( _preview($_) )[0] } @$results;
+            my ( undef, $id ) = _preview( [@$results] );
+            _emit( { value => '(' . join( ', ', @parts ) . ')', id => $id } );
+        }
         1;
     } or _emit_error($@);
     return;
