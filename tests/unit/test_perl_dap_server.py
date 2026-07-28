@@ -3,7 +3,10 @@ import json
 
 import pytest
 
+import tdb.adapters.perl.server as server_mod
 from tdb.adapters.perl.server import PerlDapServer
+from tdb.adapters.perl.session import PerlProtocolError
+from tdb.dap.messages import Request
 from tdb.dap.protocol import encode_message
 
 
@@ -95,3 +98,64 @@ async def test_handler_exception_becomes_error_response():
     await asyncio.wait_for(server.run(), timeout=5)
     init = [m for m in _messages(writer) if m.get("command") == "initialize"][0]
     assert init["success"] is False and "kaput" in init["message"]
+
+
+async def test_launch_failure_tears_down_session(tmp_path, monkeypatch):
+    program = tmp_path / "prog.pl"
+    program.write_text("1;\n")
+
+    stop_calls: list[bool] = []
+
+    class StubSession:
+        def __init__(self, on_output, on_stop) -> None:
+            self.stopped = False
+
+        async def launch(self, **kwargs):
+            raise PerlProtocolError("boom")
+
+        async def stop(self) -> None:
+            stop_calls.append(True)
+
+    monkeypatch.setattr(server_mod, "PerlSession", StubSession)
+
+    reader = asyncio.StreamReader()
+    writer = SinkWriter()
+    server = PerlDapServer(reader, writer)
+
+    request = Request(
+        seq=1,
+        command="launch",
+        arguments={"perl": "perl", "program": str(program)},
+    )
+    await server._on_launch(request)
+
+    out = _messages(writer)
+    launch_resp = [m for m in out if m.get("command") == "launch"][0]
+    assert launch_resp["success"] is False
+    assert server.session is None
+    assert stop_calls == [True]
+
+
+async def test_resume_rejected_while_classifying():
+    class StubSession:
+        def __init__(self) -> None:
+            self.stopped = True
+            self.resume_calls: list[str] = []
+
+        def resume(self, cmd: str) -> None:
+            self.resume_calls.append(cmd)
+
+    reader = asyncio.StreamReader()
+    writer = SinkWriter()
+    server = PerlDapServer(reader, writer)
+    stub = StubSession()
+    server.session = stub
+    server._classifying = True
+
+    request = Request(seq=1, command="continue")
+    await server._on_continue(request)
+
+    out = _messages(writer)
+    resp = [m for m in out if m.get("command") == "continue"][0]
+    assert resp["success"] is False
+    assert stub.resume_calls == []

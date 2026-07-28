@@ -37,7 +37,7 @@ class PerlDapServer:
         self.current_stop: dict | None = None
         self._launch_request: Request | None = None
         self._stop_on_entry = True
-        self._configured = asyncio.Event()
+        self._classifying = False
         self.breakpoint_lines: dict[str, set[int]] = {}
         self.handlers: dict[str, Callable[[Request], Awaitable[None]]] = {}
         for name in dir(self):
@@ -151,6 +151,11 @@ class PerlDapServer:
                 perl=perl,
             )
         except PerlProtocolError as e:
+            try:
+                await self.session.stop()
+            except Exception:
+                log.exception("session.stop() failed while tearing down failed launch")
+            self.session = None
             self.send_error(request, f"{e} [{e.tail}]")
             return
         self._launch_request = request
@@ -188,38 +193,42 @@ class PerlDapServer:
         self.send_event("output", {"category": category, "output": text})
 
     def _on_unsolicited_stop(self) -> None:
+        self._classifying = True
         asyncio.ensure_future(self._classify_and_emit_stop())
 
     async def _classify_and_emit_stop(self) -> None:
-        if self.session is None:
-            return
         try:
-            loc = await self.session.helper("Devel::TdbHelper::location()")
-        except PerlProtocolError:
-            loc = None
-        if loc is None or loc.get("file") == "?":
-            # perl5db's "ended" state: the debuggee ran to completion and
-            # perl5db parked at a live prompt without closing the socket
-            # (no user frames left, so location() can't report one).
-            self.current_stop = None
-            self.send_event("terminated")
-            self.send_event("exited", {"exitCode": 0})
-            return
-        self.current_stop = loc
-        reason = "step"
-        if loc.get("line") in self.breakpoint_lines.get(loc.get("file"), set()):
-            reason = "breakpoint"
-        self.send_event(
-            "stopped",
-            {"reason": reason, "threadId": 1, "allThreadsStopped": True},
-        )
-        await self._writer.drain()
+            if self.session is None:
+                return
+            try:
+                loc = await self.session.helper("Devel::TdbHelper::location()")
+            except PerlProtocolError:
+                loc = None
+            if loc is None or loc.get("file") == "?":
+                # perl5db's "ended" state: the debuggee ran to completion and
+                # perl5db parked at a live prompt without closing the socket
+                # (no user frames left, so location() can't report one).
+                self.current_stop = None
+                self.send_event("terminated")
+                self.send_event("exited", {"exitCode": 0})
+                return
+            self.current_stop = loc
+            reason = "step"
+            if loc.get("line") in self.breakpoint_lines.get(loc.get("file"), set()):
+                reason = "breakpoint"
+            self.send_event(
+                "stopped",
+                {"reason": reason, "threadId": 1, "allThreadsStopped": True},
+            )
+            await self._writer.drain()
+        finally:
+            self._classifying = False
 
     async def _on_threads(self, request: Request) -> None:
         self.send_response(request, {"threads": [{"id": 1, "name": "main"}]})
 
     async def _resume(self, request: Request, cmd: str) -> None:
-        if self.session is None or not self.session.stopped:
+        if self.session is None or not self.session.stopped or self._classifying:
             self.send_error(request, "debuggee is not stopped")
             return
         self.current_stop = None
