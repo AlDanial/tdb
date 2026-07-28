@@ -57,7 +57,7 @@
   where = ["src"]
 
   [tool.setuptools.package-data]
-  tdb = ["README.md"]
+  tdb = ["README.md", "adapters/perl/helpers.pl", "adapters/perl/Devel/TdbRemote.pm"]
 
   [tool.pytest.ini_options]
   testpaths = ["tests"]

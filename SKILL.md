@@ -1,11 +1,12 @@
-# Skill: Interactive Debugging with tdb (Python, C/C++)
+# Skill: Interactive Debugging with tdb (Python, C/C++, Perl)
 
 Use this skill when you need to understand runtime behavior of code -- variable values, control flow, why a condition is or isn't met, what a function actually returns, or why an exception occurs. This is faster and more reliable than inserting print/logging statements.
 
-`tdb` debugs Python (via debugpy, full feature set) and C/C++ or any native
+`tdb` debugs Python (via debugpy, full feature set), C/C++ or any native
 binary built with `-g` (via `gdb -i dap`, or `lldb-dap` with
-`adapter="lldb-dap"`). The language is auto-detected from the target: `.py` →
-Python, ELF/Mach-O/PE executable → C/C++.
+`adapter="lldb-dap"`), and Perl (via a bundled adapter driving `perl5db`,
+perl ≥ 5.18). The language is auto-detected from the target: `.py` →
+Python, ELF/Mach-O/PE executable → C/C++, `.pl`/`.pm`/`.t` → Perl.
 
 ## When to use this
 
@@ -47,10 +48,15 @@ The server owns the debug session — do not also start `tdb --headless`.
 Multi-language notes:
 - `debug_launch` auto-detects the language from `program` — pass a compiled
   binary directly (`debug_launch(program="/abs/path/prog")` debugs it via
-  GDB's DAP mode). `lang="cpp"` forces it; `adapter="lldb-dap"` selects
-  lldb-dap instead. The `python` param is only valid for Python debuggees
-  (errors otherwise).
-- `tasks`, `processes`, and `wait_graph` are Python-only; for other
+  GDB's DAP mode); `.pl`/`.pm`/`.t` auto-detects Perl. `lang="cpp"` /
+  `lang="perl"` forces it; `adapter="lldb-dap"` selects lldb-dap instead of
+  GDB. The `python` param is only valid for Python debuggees (errors
+  otherwise).
+- `debug_attach` works for Perl debuggees too, not just Python — the Perl
+  program must be prepared with `Devel::TdbRemote` (`use Devel::TdbRemote;`
+  first line, `listen()` + `wait_for_client()`) in place of
+  `debugpy.listen()`/`wait_for_client()`. C/C++ has no attach mode.
+- `tasks`, `processes`, and `wait_graph` remain Python-only; for other
   languages they return a structured "not supported" error. `threads`
   works everywhere.
 - **GDB (the default C/C++ adapter):** `inspect`/`evaluate` expressions
