@@ -104,3 +104,44 @@ def test_encode_message_framing():
     assert declared == len(body)
     parsed = json.loads(body.decode("utf-8"))
     assert parsed["command"] == "x"
+
+
+def test_response_to_dict_round_trips():
+    resp = Response(
+        seq=3,
+        request_seq=1,
+        command="initialize",
+        success=True,
+        body={"supportsConfigurationDoneRequest": True},
+    )
+    d = resp.to_dict()
+    assert d == {
+        "seq": 3,
+        "type": "response",
+        "request_seq": 1,
+        "command": "initialize",
+        "success": True,
+        "body": {"supportsConfigurationDoneRequest": True},
+    }
+    assert Response.from_dict(d) == resp
+
+
+def test_response_to_dict_error_message():
+    resp = Response(
+        seq=4, request_seq=2, command="launch", success=False, message="perl not found"
+    )
+    d = resp.to_dict()
+    assert d["message"] == "perl not found"
+    assert "body" not in d
+
+
+def test_event_to_dict_round_trips():
+    ev = Event(seq=5, event="stopped", body={"reason": "step", "threadId": 1})
+    d = ev.to_dict()
+    assert d == {
+        "seq": 5,
+        "type": "event",
+        "event": "stopped",
+        "body": {"reason": "step", "threadId": 1},
+    }
+    assert Event.from_dict(d) == ev
