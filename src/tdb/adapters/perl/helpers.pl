@@ -66,7 +66,7 @@ sub _user_frames {
     while ( my @c = caller($i) ) {
         my ( $pkg, $file, $line ) = @c[ 0, 1, 2 ];
         $i++;
-        next if $pkg =~ /\A(?:DB\b|Devel::TdbHelper)/;
+        next if $pkg =~ /\A(?:DB\b|Devel::TdbHelper|Devel::TdbRemote)/;
         next if $file =~ /\(eval \d+\)/;
         my $sub = ( caller($i) )[3];    # sub that contains this frame
         push @frames, [ $file, $line, $sub ];

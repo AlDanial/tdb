@@ -36,7 +36,7 @@ class PerlDapServer:
         self._done = asyncio.Event()
         self.session: PerlSession | None = None
         self.current_stop: dict | None = None
-        self._launch_request: Request | None = None
+        self._start_request: Request | None = None
         self._stop_on_entry = True
         self._classifying = False
         self._pause_pending = False
@@ -161,15 +161,65 @@ class PerlDapServer:
             self.session = None
             self.send_error(request, f"{e} [{e.tail}]")
             return
-        self._launch_request = request
+        self._start_request = request
         self.send_event("initialized")
         # response is sent by _on_configurationDone (DAP ordering)
 
+    async def _on_attach(self, request: Request) -> None:
+        host = request.arguments.get("host", "127.0.0.1")
+        port = request.arguments.get("port", 0)
+        try:
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_connection(host, port), 10.0
+            )
+        except (OSError, asyncio.TimeoutError) as e:
+            self.send_error(
+                request,
+                f"cannot connect to {host}:{port} ({e}) — has the program "
+                "called Devel::TdbRemote::listen() and wait_for_client(), "
+                "and is the port reachable?",
+            )
+            return
+        self.session = PerlSession(
+            on_output=self._forward_output, on_stop=self._on_unsolicited_stop
+        )
+        try:
+            await self.session.attach_socket(reader, writer)
+            loc = await self.session.helper("Devel::TdbHelper::location()")
+        except PerlProtocolError as e:
+            self.send_error(request, f"attach handshake failed: {e} [{e.tail}]")
+            return
+        if loc.get("version") != 1:
+            self.send_error(
+                request,
+                f"protocol mismatch (debuggee helpers v{loc.get('version')}, "
+                "adapter expects v1) — update Devel/TdbRemote.pm and "
+                "helpers.pl on the remote host",
+            )
+            return
+        # TdbRemote::wait_for_client() arms $DB::single right before its
+        # own `return;` statement, so the very first trap DB::DB hits is
+        # literally that `return;` line -- still inside
+        # Devel::TdbRemote, not yet back in the caller. Step once more
+        # (blocking, via the command queue so it can't race an
+        # unsolicited-stop classification) so the entry stop we report
+        # below lands on genuine user code, one statement past
+        # wait_for_client() -- the same auto-step-out-to-caller pattern
+        # used by the live breakpoint hook.
+        try:
+            await self.session.command("n")
+        except PerlProtocolError as e:
+            self.send_error(request, f"attach step-out failed: {e} [{e.tail}]")
+            return
+        self._stop_on_entry = True
+        self._start_request = request
+        self.send_event("initialized")
+
     async def _on_configurationDone(self, request: Request) -> None:
         self.send_response(request)
-        if self._launch_request is not None:
-            self.send_response(self._launch_request)
-            self._launch_request = None
+        if self._start_request is not None:
+            self.send_response(self._start_request)
+            self._start_request = None
             if self._stop_on_entry:
                 await self._emit_stopped("entry")
             else:

@@ -281,7 +281,10 @@ class DebugController:
         self._launch_params = {}
         self._is_remote_attach = True
 
-        await self.client.connect(host, port)
+        if self.profile.adapter.quirks.attach_via_adapter:
+            await self.client.start()
+        else:
+            await self.client.connect(host, port)
         await self.client.initialize()
 
         self._launch_future = await self.client.attach(

@@ -50,6 +50,11 @@ class AdapterQuirks:
     # every adapter.)
     pre_arm_pause_on_attach: bool = False
 
+    # True -> tdb spawns the adapter subprocess for attach too and sends
+    # the DAP attach request through it (the adapter dials the debuggee).
+    # False (debugpy) -> tdb connects straight to the remote DAP server.
+    attach_via_adapter: bool = False
+
 
 class AdapterSpec:
     """How to spawn and speak to one debug adapter. Subclass per adapter.
