@@ -19,6 +19,7 @@ async def app_cap(monkeypatch):
     app = TdbApp(program="", config=TdbConfig(), recorder=cap)
     async with app.run_test() as pilot:
         await pilot.pause()
+        cap.records.clear()  # drop the session-start breakpoint/continue dump
         for name in ("continue_", "step_over", "step_in", "step_out"):
             monkeypatch.setattr(app.controller, name, _noop)
         yield app, cap, pilot

@@ -350,6 +350,26 @@ class TdbApp(_AppMessageRoutes, App):
             self.controller.state.breakpoints = saved
         # Add CLI breakpoints (additive, won't duplicate)
         self.controller.state.install_cli_breakpoints(self._cli_breakpoints)
+        # Recording: dump every effective breakpoint (persisted + CLI) so
+        # the recording is self-contained, then — for a session that will
+        # NOT stop on entry (-k/-t/--no-stop-on-entry) — an explicit
+        # `continue`: replay always launches stopped-at-entry so the
+        # dumped breakpoints can be installed before the program runs.
+        for _path, _bps in self.controller.state.breakpoints.items():
+            for _bp in _bps:
+                if _bp.condition or _bp.hit_condition:
+                    self.recorder.record(
+                        "set_breakpoint",
+                        [
+                            f"{_path}:{_bp.line}",
+                            _bp.condition or "",
+                            _bp.hit_condition or "",
+                        ],
+                    )
+                else:
+                    self.recorder.record("set_breakpoint", [f"{_path}:{_bp.line}"])
+        if not self._stop_on_entry and self._attach_host is None:
+            self.recorder.record("continue", [])
         # Update visuals
         if self.controller.state.breakpoints:
             all_bps = self.controller.state.breakpoints
@@ -768,6 +788,14 @@ class TdbApp(_AppMessageRoutes, App):
             return
         try:
             await self.controller.toggle_breakpoint(message.source_path, message.line)
+            now_set = any(
+                bp.line == message.line
+                for bp in self.controller.state.breakpoints.get(message.source_path, [])
+            )
+            self.recorder.record(
+                "set_breakpoint" if now_set else "remove_breakpoint",
+                [f"{message.source_path}:{message.line}"],
+            )
             self.post_message(self.BreakpointsChanged())
         except Exception:
             log.exception("Error toggling breakpoint")
@@ -826,6 +854,14 @@ class TdbApp(_AppMessageRoutes, App):
                 message.line,
                 message.condition,
                 message.hit_condition,
+            )
+            self.recorder.record(
+                "set_breakpoint",
+                [
+                    f"{message.source_path}:{message.line}",
+                    message.condition or "",
+                    message.hit_condition or "",
+                ],
             )
             self.post_message(self.BreakpointsChanged())
         except Exception:
@@ -972,6 +1008,19 @@ class TdbApp(_AppMessageRoutes, App):
 
     async def on_code_view_run_to_cursor(self, message: CodeView.RunToCursor) -> None:
         try:
+            had_bp = any(
+                bp.line == message.line
+                for bp in self.controller.state.breakpoints.get(message.source_path, [])
+            )
+            if not had_bp:
+                self.recorder.record(
+                    "set_breakpoint", [f"{message.source_path}:{message.line}"]
+                )
+            self.recorder.record("continue", [])
+            if not had_bp:
+                self.recorder.record(
+                    "remove_breakpoint", [f"{message.source_path}:{message.line}"]
+                )
             await self.controller.run_to_cursor(message.source_path, message.line)
             self._update_ui_state()
         except Exception:
@@ -1046,6 +1095,9 @@ class TdbApp(_AppMessageRoutes, App):
         message: BreakpointView.ClearAllRequested,
     ) -> None:
         try:
+            for path, bps in self.controller.state.breakpoints.items():
+                for bp in bps:
+                    self.recorder.record("remove_breakpoint", [f"{path}:{bp.line}"])
             await self.controller.clear_all_breakpoints()
             self.post_message(self.BreakpointsChanged())
         except Exception:
@@ -1057,6 +1109,9 @@ class TdbApp(_AppMessageRoutes, App):
     ) -> None:
         try:
             await self.controller.remove_breakpoint(message.source_path, message.line)
+            self.recorder.record(
+                "remove_breakpoint", [f"{message.source_path}:{message.line}"]
+            )
             self.post_message(self.BreakpointsChanged())
         except Exception:
             log.exception("Error deleting breakpoint")
