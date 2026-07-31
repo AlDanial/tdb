@@ -1029,6 +1029,21 @@ class TdbApp(_AppMessageRoutes, App):
     async def on_stack_view_frame_selected(
         self, message: StackView.FrameSelected
     ) -> None:
+        state = self.controller.state
+        if not state.displayed_frames_are_synthetic:
+            frames = state.stack_frames
+            old_idx = next(
+                (i for i, f in enumerate(frames) if f.id == state.current_frame_id),
+                None,
+            )
+            new_idx = next(
+                (i for i, f in enumerate(frames) if f.id == message.frame_id),
+                None,
+            )
+            if old_idx is not None and new_idx is not None and new_idx != old_idx:
+                step = "stack_up" if new_idx > old_idx else "stack_down"
+                for _ in range(abs(new_idx - old_idx)):
+                    self.recorder.record(step, [])
         await self.controller.select_frame(message.frame_id)
         if message.source_path:
             code_view = self.query_one("#code-view", CodeView)
@@ -1173,6 +1188,23 @@ class TdbApp(_AppMessageRoutes, App):
             source.load_children(message.node, variables)
             return
 
+        # Recording: a main-view expansion is a user gesture; replay it as
+        # `inspect` of the variable's evaluatable expression when the
+        # adapter provided one (DAP evaluateName). Modal expansions and
+        # evaluate_name-less variables (e.g. the perl adapter) are skipped.
+        if source is None:
+            expanded = next(
+                (
+                    v
+                    for vars_ in self.controller.state.variables.values()
+                    for v in vars_
+                    if v.variables_reference == message.variables_reference
+                ),
+                None,
+            )
+            if expanded is not None and expanded.evaluate_name:
+                self.recorder.record("inspect", [expanded.evaluate_name])
+
         try:
             variables = await self.controller.active_client.variables(
                 message.variables_reference
@@ -1188,6 +1220,7 @@ class TdbApp(_AppMessageRoutes, App):
     async def on_evaluate_console_evaluate_requested(
         self, message: EvaluateConsole.EvaluateRequested
     ) -> None:
+        self.recorder.record("evaluate", [message.expression])
         result = await self.controller.evaluate(message.expression)
         eval_console = self.query_one("#eval-console", EvaluateConsole)
         eval_console.show_result(result)
