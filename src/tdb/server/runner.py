@@ -21,26 +21,24 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
-async def run_headless(
+async def setup_headless_session(
     program: str | None,
     args: list[str] | None = None,
     cwd: str | None = None,
     stop_on_entry: bool = False,
     just_my_code: bool = True,
     python: str | None = None,
-    port: int = 8150,
-    host: str = "127.0.0.1",
     cli_breakpoints: list[tuple[str, int, bool]] | None = None,
     attach_host: str | None = None,
     attach_port: int | None = None,
     path_mappings: list[tuple[str, str]] | None = None,
     profile: "LanguageProfile | None" = None,
-) -> None:
-    """Run the debug server in headless mode (no TUI).
+    step_mode: str | None = None,
+) -> tuple[DebugController, ServerEventHandler]:
+    """Set up a headless debug session (no TUI, no server).
 
-    Starts the debugpy session and the FastAPI server on the same event loop.
-
-    When `attach_host` + `attach_port` are set, attaches to a remote debugpy
+    Starts the debugpy session and waits for it to be ready. When
+    `attach_host` + `attach_port` are set, attaches to a remote debugpy
     server instead of launching `program` locally. `path_mappings` is
     forwarded to debugpy for bidirectional path translation — see
     `dap/client.py::attach`.
@@ -53,7 +51,9 @@ async def run_headless(
     controller = DebugController(handler, profile=profile)
     from tdb.persist import load_config
 
-    controller.step_mode = load_config().step_mode
+    controller.step_mode = (
+        step_mode if step_mode is not None else load_config().step_mode
+    )
 
     # Apply CLI breakpoints
     if cli_breakpoints:
@@ -114,6 +114,47 @@ async def run_headless(
 
     log.info("Debug session ready (headless)")
 
+    return controller, handler
+
+
+async def run_headless(
+    program: str | None,
+    args: list[str] | None = None,
+    cwd: str | None = None,
+    stop_on_entry: bool = False,
+    just_my_code: bool = True,
+    python: str | None = None,
+    port: int = 8150,
+    host: str = "127.0.0.1",
+    cli_breakpoints: list[tuple[str, int, bool]] | None = None,
+    attach_host: str | None = None,
+    attach_port: int | None = None,
+    path_mappings: list[tuple[str, str]] | None = None,
+    profile: "LanguageProfile | None" = None,
+) -> None:
+    """Run the debug server in headless mode (no TUI).
+
+    Starts the debugpy session and the FastAPI server on the same event loop.
+
+    When `attach_host` + `attach_port` are set, attaches to a remote debugpy
+    server instead of launching `program` locally. `path_mappings` is
+    forwarded to debugpy for bidirectional path translation — see
+    `dap/client.py::attach`.
+    """
+    controller, handler = await setup_headless_session(
+        program,
+        args=args,
+        cwd=cwd,
+        stop_on_entry=stop_on_entry,
+        just_my_code=just_my_code,
+        python=python,
+        cli_breakpoints=cli_breakpoints,
+        attach_host=attach_host,
+        attach_port=attach_port,
+        path_mappings=path_mappings,
+        profile=profile,
+    )
+
     # Create and start the FastAPI server
     handlers = RpcHandlers(ControllerRef(controller), handler)
     fastapi_app = create_app(handlers)
@@ -126,7 +167,7 @@ async def run_headless(
     server = uvicorn.Server(config)
 
     print(f"tdb debug server listening on http://{host}:{port}/rpc")
-    if is_remote:
+    if attach_host is not None and attach_port is not None:
         print(f"Debugging: remote {attach_host}:{attach_port}")
     else:
         print(f"Debugging: {program}")
