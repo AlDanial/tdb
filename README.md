@@ -900,6 +900,40 @@ curl -N http://127.0.0.1:8150/events
 Events: `initialized`, `stopped`, `continued`, `terminated`, `exited`, `output`.
 Each is JSON with `event`, `data`, and `timestamp` fields.
 
+## Recording and replaying sessions
+
+`tdb --record session.jsonl prog.py` runs a normal TUI session and captures
+your debugging actions — breakpoints (including `-k`/`-t` and persisted
+ones), stepping, continue/pause, Evaluate-console entries, stack-frame
+navigation, variable expansion, restart, quit — to `session.jsonl` as
+JSON-RPC commands. Works with launch mode (any language) and `-r`
+remote attach.
+
+Replay it two ways:
+
+- `tdb --replay session.jsonl` — one command: launches the recorded
+  program headless, feeds every recorded command through the same RPC
+  dispatch `tdb --server` uses, and prints a transcript (recorded time,
+  command, verbatim result, interleaved program output). Exit code 0 iff
+  every command succeeded. Add `--timing` to reproduce the original
+  pacing, `--replay-timeout S` to bound each stop-wait (default 30 s).
+- Against a live server: start `tdb --server prog.py`, then feed line 2
+  onward of the file to `POST /rpc` — each line is already a valid
+  request body:
+
+      tail -n +2 session.jsonl | while read line; do
+          curl -s -X POST -H 'Content-Type: application/json' \
+               -d "$line" http://127.0.0.1:8150/rpc
+      done
+
+  (On Windows, an equivalent loop in Python: read the file, skip the
+  first line, `requests.post` each remaining line.)
+
+Not captured: pure viewing (scrolling, search, modals, thread/task
+lists), breakpoint enable/disable toggles, variable expansions when the
+adapter reports no `evaluateName` (currently the Perl adapter), and
+File > Open program switches.
+
 ## MCP Integration
 
 tdb ships a Model Context Protocol (MCP) server (`tdb-mcp`) that exposes
