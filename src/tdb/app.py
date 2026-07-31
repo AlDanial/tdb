@@ -203,6 +203,7 @@ class TdbApp(_AppMessageRoutes, App):
         server_port: int | None = None,
         post_mortem_snapshot: dict | None = None,
         profile: "LanguageProfile | None" = None,
+        recorder: object | None = None,
     ) -> None:
         super().__init__()
         self._program = program
@@ -224,6 +225,13 @@ class TdbApp(_AppMessageRoutes, App):
         self._server_port = server_port
         self._post_mortem_snapshot = post_mortem_snapshot
         self._profile = profile
+
+        from tdb.session.recorder import NullRecorder
+
+        self.recorder = recorder if recorder is not None else NullRecorder()
+        self.recorder.on_error = lambda msg: self.notify(
+            msg, title="Recording", severity="error"
+        )
 
         self._textual_handler = TextualEventHandler(self)
         if server_port is not None:
@@ -342,6 +350,26 @@ class TdbApp(_AppMessageRoutes, App):
             self.controller.state.breakpoints = saved
         # Add CLI breakpoints (additive, won't duplicate)
         self.controller.state.install_cli_breakpoints(self._cli_breakpoints)
+        # Recording: dump every effective breakpoint (persisted + CLI) so
+        # the recording is self-contained, then — for a session that will
+        # NOT stop on entry (-k/-t/--no-stop-on-entry) — an explicit
+        # `continue`: replay always launches stopped-at-entry so the
+        # dumped breakpoints can be installed before the program runs.
+        for _path, _bps in self.controller.state.breakpoints.items():
+            for _bp in _bps:
+                if _bp.condition or _bp.hit_condition:
+                    self.recorder.record(
+                        "set_breakpoint",
+                        [
+                            f"{_path}:{_bp.line}",
+                            _bp.condition or "",
+                            _bp.hit_condition or "",
+                        ],
+                    )
+                else:
+                    self.recorder.record("set_breakpoint", [f"{_path}:{_bp.line}"])
+        if self._should_auto_continue():
+            self.recorder.record("continue", [])
         # Update visuals
         if self.controller.state.breakpoints:
             all_bps = self.controller.state.breakpoints
@@ -518,6 +546,23 @@ class TdbApp(_AppMessageRoutes, App):
         log.info("Starting debug server on port %d", self._server_port)
         await self._uvicorn_server.serve()
 
+    def _should_auto_continue(self) -> bool:
+        """True when a recorded session should auto-continue past its
+        entry stop.
+
+        Replay always launches parked at entry (see replay.py), so any
+        session that was originally NOT going to stop on entry (-k/-t/
+        --no-stop-on-entry) needs an explicit recorded `continue` to
+        reproduce that. Attach sessions never stop on entry either way
+        (debugpy ignores stopOnEntry for attach), so they're excluded
+        here to avoid recording a spurious continue.
+
+        Used at both recording sites (startup in on_mount and after a
+        restart in _restart_session) via this single helper so the two
+        can't drift out of sync.
+        """
+        return not self._stop_on_entry and self._attach_host is None
+
     @work(exclusive=True)
     async def _restart_session(
         self,
@@ -538,13 +583,33 @@ class TdbApp(_AppMessageRoutes, App):
         # Restart in remote-attach mode (incl. tdb.breakpoint() sessions)
         # has no debuggee to relaunch — _program is empty and the original
         # debugpy server is gone. Drop the request rather than tearing
-        # down the controller and trying to start nothing.
+        # down the controller and trying to start nothing. This guard
+        # runs BEFORE any recording below so an unsupported restart is
+        # never recorded — a replay of such a recording would otherwise
+        # crash trying to relaunch an attach controller with no
+        # launch params (see replay.py's action_restart dispatch).
         if new_program is None and not self.controller.supports_restart:
             self.notify(
                 "Restart is not available in remote-attach / tdb.breakpoint() mode.",
                 severity="warning",
             )
             return
+
+        if new_program is None:
+            self.recorder.record("restart", [])
+            # Replay always relaunches parked at entry (see replay.py);
+            # reproduce a non-entry-stop session by recording the same
+            # explicit continue used at startup — same predicate, same
+            # helper, so the two recording sites can't drift.
+            if self._should_auto_continue():
+                self.recorder.record("continue", [])
+        elif self.recorder.active:
+            self.notify(
+                "File > Open is not captured in the recording; a replay "
+                "will use the originally recorded program",
+                title="Recording",
+                severity="warning",
+            )
 
         if new_program:
             log.info("Switching debug session to: %s", new_program)
@@ -750,6 +815,14 @@ class TdbApp(_AppMessageRoutes, App):
             return
         try:
             await self.controller.toggle_breakpoint(message.source_path, message.line)
+            now_set = any(
+                bp.line == message.line
+                for bp in self.controller.state.breakpoints.get(message.source_path, [])
+            )
+            self.recorder.record(
+                "set_breakpoint" if now_set else "remove_breakpoint",
+                [f"{message.source_path}:{message.line}"],
+            )
             self.post_message(self.BreakpointsChanged())
         except Exception:
             log.exception("Error toggling breakpoint")
@@ -809,6 +882,14 @@ class TdbApp(_AppMessageRoutes, App):
                 message.condition,
                 message.hit_condition,
             )
+            self.recorder.record(
+                "set_breakpoint",
+                [
+                    f"{message.source_path}:{message.line}",
+                    message.condition or "",
+                    message.hit_condition or "",
+                ],
+            )
             self.post_message(self.BreakpointsChanged())
         except Exception:
             log.exception("Error setting breakpoint condition")
@@ -855,6 +936,7 @@ class TdbApp(_AppMessageRoutes, App):
                 # asyncio program (no Python frames running, debugpy
                 # has nowhere to deliver the pause). Surface that in
                 # a modal so the keypress isn't silently ignored.
+                self.recorder.record("pause", [])
                 paused = await self.controller.pause()
                 if not paused and not self.controller.state.is_terminated:
                     self.push_screen(_PauseFailedModal())
@@ -867,6 +949,15 @@ class TdbApp(_AppMessageRoutes, App):
                 "step_out": self.controller.step_out,
             }.get(message.action)
             if handler:
+                self.recorder.record(
+                    {
+                        "continue_": "continue",
+                        "step_over": "next",
+                        "step_in": "step_in",
+                        "step_out": "step_out",
+                    }[message.action],
+                    [],
+                )
                 await handler()
                 self._update_ui_state()
         except Exception:
@@ -875,7 +966,9 @@ class TdbApp(_AppMessageRoutes, App):
     async def _navigate_stack(self, up: bool) -> None:
         """Move to the next/previous frame in the call stack."""
         try:
-            await self.controller.navigate_stack(up)
+            moved = await self.controller.navigate_stack(up)
+            if moved:
+                self.recorder.record("stack_up" if up else "stack_down", [])
         except Exception:
             log.exception("Error navigating stack")
         self._update_ui_state()
@@ -942,6 +1035,19 @@ class TdbApp(_AppMessageRoutes, App):
 
     async def on_code_view_run_to_cursor(self, message: CodeView.RunToCursor) -> None:
         try:
+            had_bp = any(
+                bp.line == message.line
+                for bp in self.controller.state.breakpoints.get(message.source_path, [])
+            )
+            if not had_bp:
+                self.recorder.record(
+                    "set_breakpoint", [f"{message.source_path}:{message.line}"]
+                )
+            self.recorder.record("continue", [])
+            if not had_bp:
+                self.recorder.record(
+                    "remove_breakpoint", [f"{message.source_path}:{message.line}"]
+                )
             await self.controller.run_to_cursor(message.source_path, message.line)
             self._update_ui_state()
         except Exception:
@@ -950,6 +1056,21 @@ class TdbApp(_AppMessageRoutes, App):
     async def on_stack_view_frame_selected(
         self, message: StackView.FrameSelected
     ) -> None:
+        state = self.controller.state
+        if not state.displayed_frames_are_synthetic:
+            frames = state.stack_frames
+            old_idx = next(
+                (i for i, f in enumerate(frames) if f.id == state.current_frame_id),
+                None,
+            )
+            new_idx = next(
+                (i for i, f in enumerate(frames) if f.id == message.frame_id),
+                None,
+            )
+            if old_idx is not None and new_idx is not None and new_idx != old_idx:
+                step = "stack_up" if new_idx > old_idx else "stack_down"
+                for _ in range(abs(new_idx - old_idx)):
+                    self.recorder.record(step, [])
         await self.controller.select_frame(message.frame_id)
         if message.source_path:
             code_view = self.query_one("#code-view", CodeView)
@@ -1016,6 +1137,9 @@ class TdbApp(_AppMessageRoutes, App):
         message: BreakpointView.ClearAllRequested,
     ) -> None:
         try:
+            for path, bps in self.controller.state.breakpoints.items():
+                for bp in bps:
+                    self.recorder.record("remove_breakpoint", [f"{path}:{bp.line}"])
             await self.controller.clear_all_breakpoints()
             self.post_message(self.BreakpointsChanged())
         except Exception:
@@ -1027,6 +1151,9 @@ class TdbApp(_AppMessageRoutes, App):
     ) -> None:
         try:
             await self.controller.remove_breakpoint(message.source_path, message.line)
+            self.recorder.record(
+                "remove_breakpoint", [f"{message.source_path}:{message.line}"]
+            )
             self.post_message(self.BreakpointsChanged())
         except Exception:
             log.exception("Error deleting breakpoint")
@@ -1088,10 +1215,35 @@ class TdbApp(_AppMessageRoutes, App):
             source.load_children(message.node, variables)
             return
 
+        # Recording: a main-view expansion is a user gesture; replay it as
+        # `inspect` of the variable's evaluatable expression when the
+        # adapter provided one (DAP evaluateName). Modal expansions and
+        # evaluate_name-less variables (e.g. the perl adapter) are skipped.
+        if source is None:
+            expanded = next(
+                (
+                    v
+                    for vars_ in self.controller.state.variables.values()
+                    for v in vars_
+                    if v.variables_reference == message.variables_reference
+                ),
+                None,
+            )
+            if expanded is not None and expanded.evaluate_name:
+                self.recorder.record("inspect", [expanded.evaluate_name])
+
         try:
             variables = await self.controller.active_client.variables(
                 message.variables_reference
             )
+            if source is None:
+                # Cache the fetched children (mirroring inspection.py's
+                # load_full_variable / bfs_load_full cache_writer) so a
+                # SECOND-level expansion can find them when it searches
+                # controller.state.variables for the recording hook above
+                # — without this, nested expansions silently record
+                # nothing despite having an evaluateName.
+                self.controller.state.variables[message.variables_reference] = variables
             var_view = self.query_one("#variable-view", VariableView)
             var_view.load_children(message.node, variables)
         except Exception:
@@ -1103,6 +1255,7 @@ class TdbApp(_AppMessageRoutes, App):
     async def on_evaluate_console_evaluate_requested(
         self, message: EvaluateConsole.EvaluateRequested
     ) -> None:
+        self.recorder.record("evaluate", [message.expression])
         result = await self.controller.evaluate(message.expression)
         eval_console = self.query_one("#eval-console", EvaluateConsole)
         eval_console.show_result(result)
@@ -1358,6 +1511,7 @@ class TdbApp(_AppMessageRoutes, App):
         if self._is_quitting:
             return
         self._is_quitting = True
+        self.recorder.record("quit", [])
         # Save this program's breakpoints under its own key, preserving
         # breakpoints saved for other programs.
         if self._program:

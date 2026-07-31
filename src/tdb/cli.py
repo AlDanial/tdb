@@ -152,6 +152,34 @@ def build_parser() -> argparse.ArgumentParser:
         help="Run as a headless JSON-RPC debug server (no TUI)",
     )
     parser.add_argument(
+        "--record",
+        metavar="FILE",
+        default=None,
+        help="Record debugging actions (breakpoints, stepping, evaluate, "
+        "stack/variable inspection) to FILE as JSON-RPC commands "
+        "replayable with --replay or against `tdb --server`.",
+    )
+    parser.add_argument(
+        "--replay",
+        metavar="FILE",
+        default=None,
+        help="Replay a --record session headless (no TUI): launches the "
+        "recorded program and feeds each recorded command through the "
+        "RPC dispatch, printing a transcript.",
+    )
+    parser.add_argument(
+        "--timing",
+        action="store_true",
+        help="With --replay: reproduce the recorded pacing between commands.",
+    )
+    parser.add_argument(
+        "--replay-timeout",
+        type=float,
+        default=30.0,
+        metavar="S",
+        help="With --replay: per-command stop-wait timeout (default 30).",
+    )
+    parser.add_argument(
         "--mcp",
         action="store_true",
         help="Run as a Model Context Protocol (MCP) server over stdio. "
@@ -501,6 +529,30 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     args = parser.parse_args(argv)
     _apply_flag_implications(args)
 
+    if args.record and (args.headless or args.server or args.post_mortem or args.mcp):
+        parser.error(
+            "--record captures an interactive TUI session; it cannot be "
+            "combined with --server, --headless, --post-mortem, or --mcp"
+        )
+
+    if args.replay:
+        if getattr(args, "program", None):
+            parser.error(
+                "--replay takes no program argument (the recording "
+                "header supplies the program)"
+            )
+        if args.record or args.headless or args.server or args.post_mortem or args.mcp:
+            parser.error(
+                "--replay cannot be combined with --record, "
+                "--server, --headless, --post-mortem, or --mcp"
+            )
+        return args
+
+    if args.timing:
+        parser.error("--timing has no effect without --replay")
+    if args.replay_timeout != 30.0:
+        parser.error("--replay-timeout has no effect without --replay")
+
     if args.doc or args.doc_text or args.post_mortem or args.mcp:
         return args
 
@@ -553,6 +605,10 @@ def main(argv: list[str] | None = None) -> None:
         _run_post_mortem(args)
     elif args.mcp:
         _run_mcp()
+    elif args.replay:
+        from tdb.replay import replay_main
+
+        replay_main(args.replay, timing=args.timing, replay_timeout=args.replay_timeout)
     elif args.headless:
         _run_headless(args)
     else:
@@ -672,6 +728,7 @@ def _run_tui(args: argparse.Namespace) -> None:
     """Run with the TUI (optionally with the server alongside)."""
     from tdb.app import TdbApp
     from tdb.persist import load_config, save_config
+    from tdb.session.recorder import NullRecorder, SessionRecorder, build_header
 
     config = load_config()
     # --keybindings overrides saved value and writes it back so the next
@@ -679,6 +736,15 @@ def _run_tui(args: argparse.Namespace) -> None:
     if args.keybindings is not None:
         config.keybindings = args.keybindings
         save_config(config)
+
+    if args.record:
+        try:
+            recorder = SessionRecorder(args.record, build_header(args, config))
+        except OSError as e:
+            print(f"tdb: cannot write recording to {args.record}: {e}", file=sys.stderr)
+            sys.exit(2)
+    else:
+        recorder = NullRecorder()
 
     app = TdbApp(
         program=args.program or "",
@@ -696,8 +762,12 @@ def _run_tui(args: argparse.Namespace) -> None:
         sub_process=not args.no_subprocess,
         server_port=args.server_port if args.server else None,
         profile=args.profile,
+        recorder=recorder,
     )
-    app.run()
+    try:
+        app.run()
+    finally:
+        recorder.close()
     # Fatal startup error (e.g. remote-attach connection refused). The
     # TUI has already torn down; surface the reason on stderr so the
     # user doesn't just see a blank terminal and a non-zero exit code.

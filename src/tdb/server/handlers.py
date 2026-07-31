@@ -519,10 +519,23 @@ class RpcHandlers:
         )
 
         # Wait for initialized then configure
-        from tdb._timeouts import DAP_INITIALIZED
+        from tdb._timeouts import DAP_INITIALIZED, DAP_STOP_ON_ENTRY
 
         await asyncio.wait_for(eh.initialized_event.wait(), timeout=DAP_INITIALIZED)
         await ctrl.do_configure()
+
+        # Mirror setup_headless_session: when the relaunched session stops
+        # on entry, wait for that stop and sync stack/scope state before
+        # returning — otherwise state.phase never leaves RUNNING and the
+        # very next `continue` in a replay fails with "Program is already
+        # running" even though the debuggee is, in fact, parked at entry.
+        if p["stop_on_entry"]:
+            stopped = await eh.wait_for_stop(timeout=DAP_STOP_ON_ENTRY)
+            if not stopped:
+                return RpcResponse.error(
+                    f"Timed out waiting for stop-on-entry after restart ({DAP_STOP_ON_ENTRY:.0f}s)"
+                )
+            await ctrl.fetch_stop_info()
         return RpcResponse.ok("Session restarted")
 
     async def action_status(self, params: list[Any]) -> RpcResponse:
