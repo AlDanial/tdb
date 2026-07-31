@@ -73,8 +73,9 @@ Header, launch mode:
  "step_mode": "statement", "no_just_my_code": false}
 ```
 
-Header, remote attach: `"mode": "remote-attach"` with `"host"` and
-`"port"` in place of `program`/`args`/`cwd`/`python`.
+Header, remote attach: `"mode": "remote-attach"` with `"host"`, `"port"`,
+and `"path_mappings"` (list of `[local, remote]` pairs) in place of
+`program`/`args`/`cwd`/`python`.
 
 Command records:
 

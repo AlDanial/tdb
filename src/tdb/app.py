@@ -203,6 +203,7 @@ class TdbApp(_AppMessageRoutes, App):
         server_port: int | None = None,
         post_mortem_snapshot: dict | None = None,
         profile: "LanguageProfile | None" = None,
+        recorder: object | None = None,
     ) -> None:
         super().__init__()
         self._program = program
@@ -224,6 +225,13 @@ class TdbApp(_AppMessageRoutes, App):
         self._server_port = server_port
         self._post_mortem_snapshot = post_mortem_snapshot
         self._profile = profile
+
+        from tdb.session.recorder import NullRecorder
+
+        self.recorder = recorder if recorder is not None else NullRecorder()
+        self.recorder.on_error = lambda msg: self.notify(
+            msg, title="Recording", severity="error"
+        )
 
         self._textual_handler = TextualEventHandler(self)
         if server_port is not None:

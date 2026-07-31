@@ -152,6 +152,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Run as a headless JSON-RPC debug server (no TUI)",
     )
     parser.add_argument(
+        "--record",
+        metavar="FILE",
+        default=None,
+        help="Record debugging actions (breakpoints, stepping, evaluate, "
+        "stack/variable inspection) to FILE as JSON-RPC commands "
+        "replayable with --replay or against `tdb --server`.",
+    )
+    parser.add_argument(
         "--mcp",
         action="store_true",
         help="Run as a Model Context Protocol (MCP) server over stdio. "
@@ -501,6 +509,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     args = parser.parse_args(argv)
     _apply_flag_implications(args)
 
+    if args.record and (args.headless or args.server or args.post_mortem or args.mcp):
+        parser.error(
+            "--record captures an interactive TUI session; it cannot be "
+            "combined with --server, --headless, --post-mortem, or --mcp"
+        )
+
     if args.doc or args.doc_text or args.post_mortem or args.mcp:
         return args
 
@@ -672,6 +686,7 @@ def _run_tui(args: argparse.Namespace) -> None:
     """Run with the TUI (optionally with the server alongside)."""
     from tdb.app import TdbApp
     from tdb.persist import load_config, save_config
+    from tdb.session.recorder import NullRecorder, SessionRecorder, build_header
 
     config = load_config()
     # --keybindings overrides saved value and writes it back so the next
@@ -679,6 +694,15 @@ def _run_tui(args: argparse.Namespace) -> None:
     if args.keybindings is not None:
         config.keybindings = args.keybindings
         save_config(config)
+
+    if args.record:
+        try:
+            recorder = SessionRecorder(args.record, build_header(args, config))
+        except OSError as e:
+            print(f"tdb: cannot write recording to {args.record}: {e}", file=sys.stderr)
+            sys.exit(2)
+    else:
+        recorder = NullRecorder()
 
     app = TdbApp(
         program=args.program or "",
@@ -696,8 +720,10 @@ def _run_tui(args: argparse.Namespace) -> None:
         sub_process=not args.no_subprocess,
         server_port=args.server_port if args.server else None,
         profile=args.profile,
+        recorder=recorder,
     )
     app.run()
+    recorder.close()
     # Fatal startup error (e.g. remote-attach connection refused). The
     # TUI has already torn down; surface the reason on stderr so the
     # user doesn't just see a blank terminal and a non-zero exit code.
