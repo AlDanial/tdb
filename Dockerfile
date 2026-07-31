@@ -3,6 +3,9 @@
 # docker run -it --rm tdb [args]
 
 FROM ghcr.io/astral-sh/uv:python3.14-alpine AS base
+# perl powers the Perl DAP adapter; without it the perl test suite
+# silently skips in CI (and one launch-preflight test used to fail).
+RUN apk add --no-cache perl
 RUN adduser -D appuser
 ENV PATH="/app/.venv/bin:$PATH"
 
