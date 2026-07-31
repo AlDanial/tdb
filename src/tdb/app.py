@@ -543,6 +543,16 @@ class TdbApp(_AppMessageRoutes, App):
         recreate controller, load file, restore breakpoints) but do NOT
         launch the debuggee — wait for the user to press `r` or `c`.
         """
+        if new_program is None:
+            self.recorder.record("restart", [])
+        elif self.recorder.active:
+            self.notify(
+                "File > Open is not captured in the recording; a replay "
+                "will use the originally recorded program",
+                title="Recording",
+                severity="warning",
+            )
+
         # Restart in remote-attach mode (incl. tdb.breakpoint() sessions)
         # has no debuggee to relaunch — _program is empty and the original
         # debugpy server is gone. Drop the request rather than tearing
@@ -863,6 +873,7 @@ class TdbApp(_AppMessageRoutes, App):
                 # asyncio program (no Python frames running, debugpy
                 # has nowhere to deliver the pause). Surface that in
                 # a modal so the keypress isn't silently ignored.
+                self.recorder.record("pause", [])
                 paused = await self.controller.pause()
                 if not paused and not self.controller.state.is_terminated:
                     self.push_screen(_PauseFailedModal())
@@ -875,6 +886,15 @@ class TdbApp(_AppMessageRoutes, App):
                 "step_out": self.controller.step_out,
             }.get(message.action)
             if handler:
+                self.recorder.record(
+                    {
+                        "continue_": "continue",
+                        "step_over": "next",
+                        "step_in": "step_in",
+                        "step_out": "step_out",
+                    }[message.action],
+                    [],
+                )
                 await handler()
                 self._update_ui_state()
         except Exception:
@@ -883,7 +903,9 @@ class TdbApp(_AppMessageRoutes, App):
     async def _navigate_stack(self, up: bool) -> None:
         """Move to the next/previous frame in the call stack."""
         try:
-            await self.controller.navigate_stack(up)
+            moved = await self.controller.navigate_stack(up)
+            if moved:
+                self.recorder.record("stack_up" if up else "stack_down", [])
         except Exception:
             log.exception("Error navigating stack")
         self._update_ui_state()
@@ -1366,6 +1388,7 @@ class TdbApp(_AppMessageRoutes, App):
         if self._is_quitting:
             return
         self._is_quitting = True
+        self.recorder.record("quit", [])
         # Save this program's breakpoints under its own key, preserving
         # breakpoints saved for other programs.
         if self._program:
