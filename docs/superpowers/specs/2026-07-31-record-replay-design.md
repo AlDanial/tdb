@@ -170,6 +170,59 @@ New unit `src/tdb/replay.py`:
    useful than a truncated one, and a failing `evaluate` can be a
    legitimate part of the recorded session.
 
+## Replay output
+
+Replay prints a line-oriented, diff-stable transcript to stdout: one
+block per command, in order. The block's first line shows the recorded
+`t`, the action, and its params; the result follows indented, prefixed
+`ok:` or `ERROR:`. The result text is the RPC action's response string
+**verbatim** — replay adds no reformatting — so `tdb --replay` shows
+exactly what an external client POSTing to `tdb --server` would
+receive. Concretely, using today's RPC response strings:
+
+- `evaluate` prints the expression's value as the Evaluate view would
+  show it (e.g. `ok: 42`, or the exception text on an evaluation
+  error).
+- `inspect` (a recorded variable expansion) prints `expr = value`
+  lines, one per inspected expression.
+- Stepping / `continue` results print the new stop location
+  (`file:line`); `stack_up` / `stack_down` print the newly selected
+  frame's `file:line`.
+- Multi-line result values are indented as a block under their `ok:` /
+  `ERROR:` line.
+
+After each command, any debuggee stdout/stderr buffered since the
+previous command is drained and printed as a clearly delimited block,
+so the transcript interleaves program output roughly where the user
+saw it during recording.
+
+Example:
+
+```
+[  0.000] set_breakpoint ["/abs/prog.py:14"]
+          ok: Breakpoint set at /abs/prog.py:14
+[  1.608] continue []
+          ok: /abs/prog.py:14
+          --- program output ---
+          reading config...
+          ----------------------
+[  9.771] evaluate ["len(data)"]
+          ok: 42
+[ 10.412] inspect ["data['x']"]
+          ok: data['x'] = [1, 2, 3]
+[ 11.030] quit []
+          ok:
+2 commands, 0 errors
+```
+
+Diff-stability rules: the printed `t` values are the *recorded* ones
+(identical across replays of the same file); the RPC layer's
+wall-clock response timestamps are not printed. Variability in the
+transcript can then come only from the debuggee itself (its output and
+values), which is exactly the signal regression testing wants. The
+final summary line (`N commands, M errors`) matches the exit code
+(0 iff `M == 0`).
+
 ## Error handling
 
 - **Recording:** a mid-session write failure (disk full, permission
