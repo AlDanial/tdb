@@ -118,6 +118,22 @@ async def test_launch_failure_tears_down_session(tmp_path, monkeypatch):
 
     monkeypatch.setattr(server_mod, "PerlSession", StubSession)
 
+    # The failure under test is session.launch() raising AFTER the
+    # perl-version preflight passed. Stub the preflight subprocess so
+    # the test doesn't require a system perl (CI images may not have
+    # one) -- without this, a perl-less machine takes the "perl not
+    # usable" early-error path and the teardown never runs.
+    class StubPreflight:
+        returncode = 0
+
+        async def communicate(self):
+            return b"", b""
+
+    async def fake_exec(*args, **kwargs):
+        return StubPreflight()
+
+    monkeypatch.setattr(server_mod.asyncio, "create_subprocess_exec", fake_exec)
+
     reader = asyncio.StreamReader()
     writer = SinkWriter()
     server = PerlDapServer(reader, writer)
