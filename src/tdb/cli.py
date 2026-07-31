@@ -160,6 +160,26 @@ def build_parser() -> argparse.ArgumentParser:
         "replayable with --replay or against `tdb --server`.",
     )
     parser.add_argument(
+        "--replay",
+        metavar="FILE",
+        default=None,
+        help="Replay a --record session headless (no TUI): launches the "
+        "recorded program and feeds each recorded command through the "
+        "RPC dispatch, printing a transcript.",
+    )
+    parser.add_argument(
+        "--timing",
+        action="store_true",
+        help="With --replay: reproduce the recorded pacing between commands.",
+    )
+    parser.add_argument(
+        "--replay-timeout",
+        type=float,
+        default=30.0,
+        metavar="S",
+        help="With --replay: per-command stop-wait timeout (default 30).",
+    )
+    parser.add_argument(
         "--mcp",
         action="store_true",
         help="Run as a Model Context Protocol (MCP) server over stdio. "
@@ -515,6 +535,19 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "combined with --server, --headless, --post-mortem, or --mcp"
         )
 
+    if args.replay:
+        if getattr(args, "program", None):
+            parser.error(
+                "--replay takes no program argument (the recording "
+                "header supplies the program)"
+            )
+        if args.record or args.headless or args.server or args.post_mortem:
+            parser.error(
+                "--replay cannot be combined with --record, "
+                "--server, --headless, or --post-mortem"
+            )
+        return args
+
     if args.doc or args.doc_text or args.post_mortem or args.mcp:
         return args
 
@@ -567,6 +600,10 @@ def main(argv: list[str] | None = None) -> None:
         _run_post_mortem(args)
     elif args.mcp:
         _run_mcp()
+    elif args.replay:
+        from tdb.replay import replay_main
+
+        replay_main(args.replay, timing=args.timing, replay_timeout=args.replay_timeout)
     elif args.headless:
         _run_headless(args)
     else:

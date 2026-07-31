@@ -7,7 +7,9 @@ The file format is JSONL: line 1 is the header, every other line is one
 
 from __future__ import annotations
 
+import asyncio
 import json
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -73,3 +75,112 @@ def load_recording(path: str) -> Recording:
             raise RecordingError(f"{path}:{lineno}: 'params' must be a list")
         records.append(rec)
     return Recording(header=header, records=records)
+
+
+BLOCKING_ACTIONS = {"next", "step_in", "step_out", "continue", "wait_for_stop"}
+
+
+def _profile_from_header(header: dict):
+    from tdb.languages import registry
+    from tdb.persist import load_config
+
+    config = load_config()
+    lang = header.get("language") or "python"
+    adapter = header.get("adapter") or config.default_adapters.get(lang)
+    return registry.resolve(lang, adapter=adapter, adapter_paths=config.adapters)
+
+
+def _print_command(echo, rec: dict, success: bool, value: str) -> None:
+    echo(f"[{rec['t']:8.3f}] {rec['action']} {json.dumps(rec['params'])}")
+    prefix = "ok:" if success else "ERROR:"
+    lines = (value or "").splitlines() or [""]
+    echo(f"          {prefix} {lines[0]}".rstrip())
+    for line in lines[1:]:
+        echo(f"          {line}")
+
+
+def _print_program_output(echo, text: str) -> None:
+    echo("          --- program output ---")
+    for line in text.splitlines():
+        echo(f"          {line}")
+    echo("          ----------------------")
+
+
+async def run_replay(
+    recording: Recording,
+    timing: bool = False,
+    replay_timeout: float = 30.0,
+    echo=print,
+) -> int:
+    """Feed every record through the RPC dispatch table. Returns the
+    number of failed commands (0 == clean replay)."""
+    from tdb.server.handlers import ControllerRef, RpcHandlers
+    from tdb.server.runner import setup_headless_session
+
+    h = recording.header
+    if h["mode"] == "launch":
+        controller, handler = await setup_headless_session(
+            program=h["program"],
+            args=list(h.get("args") or []),
+            cwd=h["cwd"],
+            # Always park at entry: the recording's own records install
+            # breakpoints and (for originally non-entry-stop sessions)
+            # carry the explicit `continue` that starts the program.
+            stop_on_entry=True,
+            just_my_code=not h.get("no_just_my_code", False),
+            python=h.get("python"),
+            profile=_profile_from_header(h),
+            step_mode=h.get("step_mode"),
+        )
+    else:
+        controller, handler = await setup_headless_session(
+            program=None,
+            attach_host=h["host"],
+            attach_port=h["port"],
+            path_mappings=[tuple(pm) for pm in (h.get("path_mappings") or [])] or None,
+            profile=_profile_from_header(h),
+            step_mode=h.get("step_mode"),
+        )
+
+    handlers = RpcHandlers(ControllerRef(controller), handler)
+    table = handlers.dispatch_table()
+    errors = 0
+    prev_t = 0.0
+    saw_quit = False
+    try:
+        for rec in recording.records:
+            if timing and rec["t"] > prev_t:
+                await asyncio.sleep(rec["t"] - prev_t)
+            prev_t = rec["t"]
+            params = list(rec["params"])
+            if rec["action"] in BLOCKING_ACTIONS and not params:
+                params = [replay_timeout]
+            resp = await table[rec["action"]](params)
+            _print_command(echo, rec, resp.success, resp.value)
+            if not resp.success:
+                errors += 1
+            if rec["action"] == "quit":
+                saw_quit = True
+            pending = handler.drain_output()
+            if pending:
+                _print_program_output(echo, pending)
+    finally:
+        if not saw_quit:
+            try:
+                await controller.stop()
+            except Exception:
+                pass
+    echo(f"{len(recording.records)} commands, {errors} errors")
+    return errors
+
+
+def replay_main(path: str, timing: bool, replay_timeout: float) -> None:
+    try:
+        recording = load_recording(path)
+    except (OSError, RecordingError) as e:
+        print(f"tdb: {e}", file=sys.stderr)
+        sys.exit(2)
+    errors = asyncio.run(
+        run_replay(recording, timing=timing, replay_timeout=replay_timeout)
+    )
+    sys.exit(0 if errors == 0 else 1)
