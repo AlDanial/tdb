@@ -368,7 +368,7 @@ class TdbApp(_AppMessageRoutes, App):
                     )
                 else:
                     self.recorder.record("set_breakpoint", [f"{_path}:{_bp.line}"])
-        if not self._stop_on_entry and self._attach_host is None:
+        if self._should_auto_continue():
             self.recorder.record("continue", [])
         # Update visuals
         if self.controller.state.breakpoints:
@@ -546,6 +546,23 @@ class TdbApp(_AppMessageRoutes, App):
         log.info("Starting debug server on port %d", self._server_port)
         await self._uvicorn_server.serve()
 
+    def _should_auto_continue(self) -> bool:
+        """True when a recorded session should auto-continue past its
+        entry stop.
+
+        Replay always launches parked at entry (see replay.py), so any
+        session that was originally NOT going to stop on entry (-k/-t/
+        --no-stop-on-entry) needs an explicit recorded `continue` to
+        reproduce that. Attach sessions never stop on entry either way
+        (debugpy ignores stopOnEntry for attach), so they're excluded
+        here to avoid recording a spurious continue.
+
+        Used at both recording sites (startup in on_mount and after a
+        restart in _restart_session) via this single helper so the two
+        can't drift out of sync.
+        """
+        return not self._stop_on_entry and self._attach_host is None
+
     @work(exclusive=True)
     async def _restart_session(
         self,
@@ -563,8 +580,29 @@ class TdbApp(_AppMessageRoutes, App):
         recreate controller, load file, restore breakpoints) but do NOT
         launch the debuggee — wait for the user to press `r` or `c`.
         """
+        # Restart in remote-attach mode (incl. tdb.breakpoint() sessions)
+        # has no debuggee to relaunch — _program is empty and the original
+        # debugpy server is gone. Drop the request rather than tearing
+        # down the controller and trying to start nothing. This guard
+        # runs BEFORE any recording below so an unsupported restart is
+        # never recorded — a replay of such a recording would otherwise
+        # crash trying to relaunch an attach controller with no
+        # launch params (see replay.py's action_restart dispatch).
+        if new_program is None and not self.controller.supports_restart:
+            self.notify(
+                "Restart is not available in remote-attach / tdb.breakpoint() mode.",
+                severity="warning",
+            )
+            return
+
         if new_program is None:
             self.recorder.record("restart", [])
+            # Replay always relaunches parked at entry (see replay.py);
+            # reproduce a non-entry-stop session by recording the same
+            # explicit continue used at startup — same predicate, same
+            # helper, so the two recording sites can't drift.
+            if self._should_auto_continue():
+                self.recorder.record("continue", [])
         elif self.recorder.active:
             self.notify(
                 "File > Open is not captured in the recording; a replay "
@@ -572,17 +610,6 @@ class TdbApp(_AppMessageRoutes, App):
                 title="Recording",
                 severity="warning",
             )
-
-        # Restart in remote-attach mode (incl. tdb.breakpoint() sessions)
-        # has no debuggee to relaunch — _program is empty and the original
-        # debugpy server is gone. Drop the request rather than tearing
-        # down the controller and trying to start nothing.
-        if new_program is None and not self.controller.supports_restart:
-            self.notify(
-                "Restart is not available in remote-attach / tdb.breakpoint() mode.",
-                severity="warning",
-            )
-            return
 
         if new_program:
             log.info("Switching debug session to: %s", new_program)
@@ -1209,6 +1236,14 @@ class TdbApp(_AppMessageRoutes, App):
             variables = await self.controller.active_client.variables(
                 message.variables_reference
             )
+            if source is None:
+                # Cache the fetched children (mirroring inspection.py's
+                # load_full_variable / bfs_load_full cache_writer) so a
+                # SECOND-level expansion can find them when it searches
+                # controller.state.variables for the recording hook above
+                # — without this, nested expansions silently record
+                # nothing despite having an evaluateName.
+                self.controller.state.variables[message.variables_reference] = variables
             var_view = self.query_one("#variable-view", VariableView)
             var_view.load_children(message.node, variables)
         except Exception:

@@ -115,6 +115,7 @@ async def run_replay(
     """Feed every record through the RPC dispatch table. Returns the
     number of failed commands (0 == clean replay)."""
     from tdb.server.handlers import ControllerRef, RpcHandlers
+    from tdb.server.rpc_types import RpcResponse
     from tdb.server.runner import setup_headless_session
 
     h = recording.header
@@ -155,12 +156,27 @@ async def run_replay(
             params = list(rec["params"])
             if rec["action"] in BLOCKING_ACTIONS and not params:
                 params = [replay_timeout]
-            resp = await table[rec["action"]](params)
+            try:
+                resp = await table[rec["action"]](params)
+            except Exception as e:
+                # A handler exception (e.g. action_restart hitting an
+                # attach controller's empty _launch_params) must not abort
+                # the whole replay — convert it into a failed-command
+                # transcript block so the spec's "execution continues past
+                # failed commands" + summary line + exit-code contract
+                # holds for internal errors too, not just RpcResponse.error
+                # results.
+                resp = RpcResponse.error(f"internal error: {e!r}")
             _print_command(echo, rec, resp.success, resp.value)
             if not resp.success:
                 errors += 1
             if rec["action"] == "quit":
                 saw_quit = True
+            # Any debuggee output emitted between this drain and process
+            # exit/replay end (e.g. right after `quit`, or after the loop's
+            # final command) is never drained again — accepted: replay's
+            # transcript is a record of commands, not a guarantee of
+            # capturing every last byte of program output.
             pending = handler.drain_output()
             if pending:
                 _print_program_output(echo, pending)

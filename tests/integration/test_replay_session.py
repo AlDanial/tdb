@@ -14,7 +14,7 @@ print("z =", z)
 """
 
 
-def make_recording(tmp_path, records, *, stop_on_entry_continue=False):
+def make_recording(tmp_path, records):
     prog = tmp_path / "toy.py"
     prog.write_text(TOY)
     header = {
@@ -102,6 +102,30 @@ async def test_replay_timing_sleeps_recorded_deltas(tmp_path):
     assert time.monotonic() - t0 >= 0.5
 
 
+async def test_replay_restart_reinstalls_breakpoints(tmp_path):
+    """Important #1/#2 coverage: `restart` had zero replay-side coverage.
+    action_restart preserves ctrl.state.breakpoints across the
+    stop/reinit/start cycle and re-sends them in do_configure, so a
+    breakpoint set before the restart must still bind and be hit again
+    after it — the program stops at :3 TWICE."""
+    path, prog = make_recording(
+        tmp_path,
+        [
+            ("set_breakpoint", [f"{tmp_path}/toy.py:3"]),
+            ("continue", []),
+            ("restart", []),
+            ("continue", []),
+            ("quit", []),
+        ],
+    )
+    out: list[str] = []
+    errors = await run_replay(load_recording(path), echo=out.append)
+    text = "\n".join(out)
+    assert errors == 0
+    stop_lines = [line for line in out if ":3" in line and "ok:" in line]
+    assert len(stop_lines) == 2
+
+
 async def test_condition_reset_updates_in_place(tmp_path):
     """Spec § limitations: re-recording a breakpoint with a condition
     (the condition-modal gesture) must yield ONE breakpoint on replay —
@@ -182,3 +206,29 @@ def test_replay_rejects_program_argument(capsys):
     with pytest.raises(SystemExit):
         parse_args(["--replay", "s.jsonl", "prog.py"])
     assert "--replay" in capsys.readouterr().err
+
+
+def test_replay_rejects_mcp(capsys):
+    """Minor #4: `--replay f --mcp` used to silently run the MCP server
+    instead of replaying — --mcp was missing from the --replay conflict
+    check (unlike --record's, which already listed it)."""
+    from tdb.cli import parse_args
+
+    with pytest.raises(SystemExit):
+        parse_args(["--replay", "s.jsonl", "--mcp"])
+    assert "--replay" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "flag,value",
+    [("--timing", None), ("--replay-timeout", "5")],
+)
+def test_replay_only_flags_rejected_without_replay(capsys, flag, value):
+    """Minor #6: `--timing`/`--replay-timeout` without `--replay` used to
+    be silently ignored instead of erroring."""
+    from tdb.cli import parse_args
+
+    argv = [flag] if value is None else [flag, value]
+    with pytest.raises(SystemExit):
+        parse_args(argv)
+    assert flag in capsys.readouterr().err

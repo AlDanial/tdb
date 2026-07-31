@@ -541,12 +541,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                 "--replay takes no program argument (the recording "
                 "header supplies the program)"
             )
-        if args.record or args.headless or args.server or args.post_mortem:
+        if args.record or args.headless or args.server or args.post_mortem or args.mcp:
             parser.error(
                 "--replay cannot be combined with --record, "
-                "--server, --headless, or --post-mortem"
+                "--server, --headless, --post-mortem, or --mcp"
             )
         return args
+
+    if args.timing:
+        parser.error("--timing has no effect without --replay")
+    if args.replay_timeout != 30.0:
+        parser.error("--replay-timeout has no effect without --replay")
 
     if args.doc or args.doc_text or args.post_mortem or args.mcp:
         return args

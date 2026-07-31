@@ -53,4 +53,4 @@ async def test_perl_recording_replays(tmp_path):
     errors = await run_replay(load_recording(str(path)), echo=out.append)
     text = "\n".join(out)
     assert errors == 0
-    assert "3" in text  # $x + $y evaluated through perl5db
+    assert "ok: 3" in text  # $x + $y evaluated through perl5db

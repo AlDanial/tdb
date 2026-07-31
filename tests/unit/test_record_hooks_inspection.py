@@ -100,6 +100,44 @@ async def test_variable_expand_records_inspect_with_evaluate_name(app_cap, monke
     assert cap.records == [("inspect", ["data['x']"])]
 
 
+async def test_nested_variable_expand_records_second_inspect(app_cap, monkeypatch):
+    # Important #3 regression: children fetched for a first-level expansion
+    # must be cached into controller.state.variables so a SECOND expansion
+    # (of one of those children) can find them and record its own inspect.
+    app, cap, _ = app_cap
+    app.controller.state.variables = {
+        5: [
+            Variable(
+                name="data",
+                value="{...}",
+                variables_reference=7,
+                evaluate_name="data",
+            )
+        ]
+    }
+    child = Variable(
+        name="x",
+        value="1",
+        variables_reference=9,
+        evaluate_name="data['x']",
+    )
+
+    class FakeClient:
+        async def variables(self, ref):
+            return [child] if ref == 7 else []
+
+    monkeypatch.setattr(
+        type(app.controller), "active_client", property(lambda self: FakeClient())
+    )
+    var_view = app.query_one("#variable-view", VariableView)
+    await app.on_tdb_app_lazy_load_variables(app.LazyLoadVariables(7, var_view.root))
+    await app.on_tdb_app_lazy_load_variables(app.LazyLoadVariables(9, var_view.root))
+    assert cap.records == [
+        ("inspect", ["data"]),
+        ("inspect", ["data['x']"]),
+    ]
+
+
 async def test_variable_expand_without_evaluate_name_records_nothing(
     app_cap, monkeypatch
 ):

@@ -68,11 +68,44 @@ async def test_restart_gesture_records(app_cap, monkeypatch):
     app, cap, _ = app_cap
     # Run the REAL _restart_session (the hook lives at the top of it) but
     # stub the controller-heavy remainder so no session actually starts.
+    # app_cap's TdbApp defaults to stop_on_entry=False (a non-entry-stop
+    # session), so restart must ALSO record the auto-continue that
+    # reproduces "replay always relaunches parked at entry" — same
+    # predicate as on_mount's startup dump, via _should_auto_continue.
     monkeypatch.setattr(app.controller, "stop", _noop)
     monkeypatch.setattr(app, "_start_session", lambda: None)
     worker = app._restart_session()
     await worker.wait()
-    assert ("restart", []) in cap.records
+    assert cap.records == [("restart", []), ("continue", [])]
+
+
+async def test_restart_on_stop_on_entry_app_records_only_restart(monkeypatch):
+    cap = CaptureRecorder()
+    app = TdbApp(program="", config=TdbConfig(), stop_on_entry=True, recorder=cap)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        cap.records.clear()  # drop the session-start breakpoint dump
+        monkeypatch.setattr(app.controller, "stop", _noop)
+        monkeypatch.setattr(app, "_start_session", lambda: None)
+        worker = app._restart_session()
+        await worker.wait()
+        assert cap.records == [("restart", [])]
+
+
+async def test_restart_unsupported_records_nothing(app_cap, monkeypatch):
+    app, cap, _ = app_cap
+    # Remote-attach / tdb.breakpoint() sessions can't restart; the guard
+    # in _restart_session must run BEFORE any recording so a replay never
+    # sees a `restart` it can't execute (action_restart would KeyError on
+    # an attach controller's empty _launch_params).
+    monkeypatch.setattr(
+        type(app.controller), "supports_restart", property(lambda self: False)
+    )
+    monkeypatch.setattr(app.controller, "stop", _noop)
+    monkeypatch.setattr(app, "_start_session", lambda: None)
+    worker = app._restart_session()
+    await worker.wait()
+    assert cap.records == []
 
 
 async def test_file_open_restart_not_recorded_but_notifies(
