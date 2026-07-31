@@ -75,3 +75,10 @@ def test_adapter_not_found_error_carries_hint():
     err = AdapterNotFoundError("install LLVM")
     assert err.hint == "install LLVM"
     assert "install LLVM" in str(err)
+
+
+def test_adapter_quirks_attach_via_adapter_defaults_false():
+    from tdb.languages.base import AdapterQuirks
+
+    assert AdapterQuirks().attach_via_adapter is False
+    assert AdapterQuirks(attach_via_adapter=True).attach_via_adapter is True

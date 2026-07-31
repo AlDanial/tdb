@@ -49,7 +49,14 @@ def resolve(
     return builder(adapter=adapter, adapter_paths=adapter_paths)
 
 
-_EXTENSION_MAP = {".py": "python", ".pyw": "python", ".go": "go"}
+_EXTENSION_MAP = {
+    ".py": "python",
+    ".pyw": "python",
+    ".go": "go",
+    ".pl": "perl",
+    ".pm": "perl",
+    ".t": "perl",
+}
 
 # Source files for compiled languages: debugging the source is a user
 # error — you debug the built executable.
@@ -93,6 +100,8 @@ def detect(program: str | None) -> str:
             return lang_id
     if head.startswith(b"#!") and b"python" in head.splitlines()[0]:
         return "python"
+    if head.startswith(b"#!") and b"perl" in head.splitlines()[0]:
+        return "perl"
     raise LanguageNotSupportedError(
         f"cannot determine the language of {program!r} — pass --lang "
         f"(supported: {', '.join(known_languages())})"
@@ -104,3 +113,7 @@ register("python", build_python_profile)
 from tdb.languages.cpp import build_cpp_profile  # noqa: E402
 
 register("cpp", build_cpp_profile)
+
+from tdb.languages.perl import build_perl_profile  # noqa: E402
+
+register("perl", build_perl_profile)

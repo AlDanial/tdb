@@ -177,14 +177,15 @@ languages are supported out of the box:
 |----------|------------|------------------------|---------------|
 | Python | `debugpy` (default) | installed with `textual-debugger` | everything in this README |
 | C / C++ (any native binary) | `gdb` (default), `lldb-dap` (alternate) | `gdb -i dap` requires GDB ≥ 14; `lldb-dap` ships with LLVM ≥ 17 (e.g. `apt install lldb`) | core debugging: breakpoints, stepping, stack, variables, evaluate console |
+| Perl | perl-tdb (bundled) | needs perl ≥ 5.18 on PATH (or `{"adapters": {"perl": ...}}`) | core debugging + remote attach |
 
 ### Language detection and selection
 
 The language is auto-detected from the debug target:
 
-1. File extension: `.py` → Python.
+1. File extension: `.py` → Python; `.pl` / `.pm` / `.t` → Perl.
 2. Native executables (ELF, Mach-O, PE magic bytes) → C/C++.
-3. A `#!...python` shebang → Python.
+3. A `#!...python` or `#!...perl` shebang → Python / Perl respectively.
 4. C/C++/Rust *source* files (`.c`, `.cpp`, `.rs`, …) produce an error with a
    hint: compile with debug info (`g++ -g -O0`) and debug the binary.
 5. Anything else produces an error naming the `--lang` override.
@@ -220,9 +221,11 @@ Python-specific features are hidden or return a clear "not supported for this
 language" message when debugging other languages: statement-granularity
 stepping (non-Python languages always step per line), the async task /
 process inspectors and wait graph, the evaluate console's trailing-`?` help,
-remote attach (`-r`), `--python`/`--pv`, `--no-subprocess`,
-automatic child-process attachment, and the post-mortem / `tdb.breakpoint()`
-hooks (those hooks live inside Python programs by nature). `--terminal` is
+`--python`/`--pv`, `--no-subprocess`, automatic child-process attachment, and
+the post-mortem / `tdb.breakpoint()` hooks (those hooks live inside Python
+programs by nature). Remote attach (`-r`) also works for Perl (see
+[Perl](#perl) — `Devel::TdbRemote` in place of `debugpy.listen()`), but not
+for C/C++. `--terminal` is
 currently ignored for non-Python targets.
 
 ### C/C++ tips
@@ -240,6 +243,72 @@ currently ignored for non-Python targets.
   commands, so evaluate expressions with an explicit `print`, e.g.
   `print x` rather than bare `x` (bare `x` collides with GDB's
   examine-memory command). `lldb-dap` evaluates bare expressions directly.
+
+### Perl
+
+`tdb` bundles its own Perl adapter (`perl-tdb`) — no separate adapter install
+needed, just a `perl` ≥ 5.18 on `PATH`. It drives stock `perl5db` under the
+hood, so it works with any Perl already on the system.
+
+**Launching a script:**
+
+```bash
+tdb script.pl
+```
+
+**Remote attach:** useful when the Perl process is already running (a long-
+lived service, a process started by something other than `tdb`) or lives on
+another host/container. Add three lines to the target program, with the
+`use` line first so the debugger is armed before any of your code compiles:
+
+```perl
+use Devel::TdbRemote;                 # FIRST line of your program
+...
+Devel::TdbRemote::listen(5678);       # non-blocking
+Devel::TdbRemote::wait_for_client();  # blocks until tdb connects
+```
+
+Then attach from `tdb`, forcing the language since there's no local `program`
+argument for `tdb` to detect it from:
+
+```bash
+tdb --lang perl -r host:5678
+```
+
+**Arming caveat:** only code *compiled after* the debugger is armed can be
+stepped into or breakpointed. That's why `use Devel::TdbRemote;` must be the
+first line of the program. If you can't edit the first line (e.g. a wrapper
+script controls startup), arm it before Perl even parses your file instead:
+`perl -d:TdbRemote prog.pl`, or set `PERL5OPT=-d:TdbRemote` in the
+environment that launches the debuggee.
+
+**Copying the adapter to a remote host:** `Devel::TdbRemote` and its helper
+script are plain files, not a CPAN install — copy both onto the remote
+machine and point `PERL5LIB` at the directory that contains them:
+
+```bash
+# From a checkout or an installed wheel's site-packages/tdb/adapters/perl:
+scp -r Devel/TdbRemote.pm helpers.pl remote-host:/opt/tdb-perl/
+# On the remote host:
+export PERL5LIB=/opt/tdb-perl:$PERL5LIB
+```
+
+(`Devel/TdbRemote.pm` locates `helpers.pl` next to itself at runtime, so keep
+the two files in the same relative layout shown above — `helpers.pl` is a
+sibling of the `Devel/` directory, not inside it.)
+
+**PadWalker (optional but recommended):** inspecting lexical (`my`)
+variables in the *current* frame always works. Lexicals in outer/caller
+frames need the `PadWalker` module installed on the debuggee's Perl; without
+it, tdb falls back to a read-only pad walk that can't reach fully into
+enclosing scopes, and outer-frame variable listings degrade accordingly.
+Install with `cpanm PadWalker` (or your distro's package) for full fidelity.
+
+**Pause is unavailable in attach mode.** Launch-mode sessions (`tdb
+script.pl`) support pausing a running program at any time. Remote-attach
+sessions don't — debugpy-style asynchronous pause needs a control channel
+`Devel::TdbRemote` doesn't implement yet; `pause` in attach mode returns a
+clear "not available" error instead of hanging.
 
 ## Layout
 
@@ -945,7 +1014,7 @@ usage: tdb [-h] [-v] [-r [HOST:]PORT] [--cwd CWD] [--no-stop-on-entry]
 | `--cwd DIR` | Working directory for the debuggee |
 | `--python PATH` | Python interpreter for the debuggee (Python targets only) |
 | `--pv` | Shorthand for --python .venv/bin/python |
-| `--lang LANGUAGE` | Debuggee language (`python`, `cpp`); default: auto-detect from the target |
+| `--lang LANGUAGE` | Debuggee language (`python`, `cpp`, `perl`); default: auto-detect from the target |
 | `--adapter ADAPTER` | Debug adapter within the language (e.g. `--lang cpp --adapter lldb-dap`); default: the language's standard adapter |
 | `--no-just-my-code` | Step into stdlib/site-packages code instead of skipping it
   (default: skipped). On uncaught exceptions, the crash modal always shows the full traceback
@@ -973,6 +1042,13 @@ Adapter-related keys in `config.json`: `adapters` maps an adapter id to an
 executable path (`{"adapters": {"lldb-dap": "/opt/llvm/bin/lldb-dap"}}`), and
 `default_adapters` picks a language's default adapter
 (`{"default_adapters": {"cpp": "lldb-dap"}}`).
+
+**Perl is a special case:** `perl-tdb` is tdb's own bundled adapter (always
+found — it's Python code, not an external executable), so
+`adapters.perl` doesn't select an adapter binary. Instead it names the
+*Perl interpreter* tdb should spawn to run the debuggee:
+`{"adapters": {"perl": "/path/to/perl"}}`. Use this when the `perl` on
+`PATH` is too old (< 5.18) or you need a specific `perlbrew`/`plenv` version.
 
 Breakpoints are saved on exit and restored when debugging a program in the same
 directory. Each project's breakpoints are independent. Breakpoints set with

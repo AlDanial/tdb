@@ -65,3 +65,20 @@ def test_resolve_unknown_language_lists_known():
 def test_resolve_passes_adapter_through():
     with pytest.raises(LanguageNotSupportedError, match="gdb"):
         registry.resolve("python", adapter="gdb")
+
+
+def test_detect_perl_extensions(tmp_path):
+    from tdb.languages import registry
+
+    for ext in (".pl", ".pm", ".t"):
+        f = tmp_path / f"x{ext}"
+        f.write_text("print 1;\n")
+        assert registry.detect(str(f)) == "perl"
+
+
+def test_detect_perl_shebang(tmp_path):
+    from tdb.languages import registry
+
+    f = tmp_path / "tool"
+    f.write_text("#!/usr/bin/perl\nprint 1;\n")
+    assert registry.detect(str(f)) == "perl"

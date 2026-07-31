@@ -32,6 +32,20 @@ class Response:
     body: dict[str, Any] = field(default_factory=dict)
     message: str | None = None
 
+    def to_dict(self) -> dict[str, Any]:
+        d: dict[str, Any] = {
+            "seq": self.seq,
+            "type": "response",
+            "request_seq": self.request_seq,
+            "command": self.command,
+            "success": self.success,
+        }
+        if self.body:
+            d["body"] = self.body
+        if self.message is not None:
+            d["message"] = self.message
+        return d
+
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Response:
         return cls(
@@ -49,6 +63,12 @@ class Event:
     seq: int
     event: str
     body: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        d: dict[str, Any] = {"seq": self.seq, "type": "event", "event": self.event}
+        if self.body:
+            d["body"] = self.body
+        return d
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Event:

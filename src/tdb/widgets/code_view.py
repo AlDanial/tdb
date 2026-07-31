@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from rich.cells import cell_len
 from rich.style import Style
 from rich.syntax import Syntax
 from rich.text import Text
@@ -17,7 +18,9 @@ from textual.events import Click, Key  # Click used by _CodeContent
 from textual.message import Message
 from textual.reactive import reactive
 from textual.screen import ModalScreen
-from textual.widgets import Input, Label, Static
+from textual.strip import Strip
+from textual.widget import Widget
+from textual.widgets import Input, Label
 
 from tdb.keybindings import KeybindingConfig, Mode
 
@@ -189,11 +192,15 @@ class _BreakpointConditionModal(ModalScreen[tuple[str | None, str | None] | None
 # ---------------------------------------------------------------------------
 
 
-class _CodeContent(Static):
-    """Inner static widget that renders the actual source code.
+class _CodeContent(Widget):
+    """Inner widget that renders the source via Textual's line API.
 
-    Uses width:auto so long lines expand the widget rather than wrapping.
-    This keeps 1 source line = 1 display row for reliable scroll positioning.
+    Renders one line at a time (`render_line`), so only the visible
+    window is ever materialized — rebuilding a Text for the whole file
+    on every current-line change made stepping through large files
+    unusably slow. Width comes from the widest source line so long
+    lines expand the widget rather than wrapping; this keeps 1 source
+    line = 1 display row for reliable scroll positioning.
     """
 
     # Textual's base Widget._on_click triggers `text_select_all` on
@@ -208,6 +215,7 @@ class _CodeContent(Static):
     DEFAULT_CSS = """
     _CodeContent {
         width: auto;
+        height: auto;
     }
     """
 
@@ -223,10 +231,22 @@ class _CodeContent(Static):
             self.y = y
             super().__init__()
 
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
+    def __init__(self, view: CodeView) -> None:
+        super().__init__()
+        self._view = view
         self._last_click_time: float = 0.0
         self._last_click_y: int = -1
+
+    def get_content_width(self, container, viewport) -> int:
+        return self._view._content_width()
+
+    def get_content_height(self, container, viewport, width) -> int:
+        return len(self._view._lines)
+
+    def render_line(self, y: int) -> Strip:
+        if y >= len(self._view._lines):
+            return Strip.blank(0)
+        return Strip(self._view._line_text(y).render(self.app.console))
 
     def on_click(self, event: Click) -> None:
         event.stop()
@@ -378,6 +398,9 @@ class CodeView(ScrollableContainer, can_focus=True):
         self._breakpoints_disabled: bool = False
         self._content: _CodeContent | None = None
         self._highlighted: list[Text] | None = None
+        # Cell width of the widest source line; feeds _CodeContent's
+        # auto width. Computed once per load, not per render.
+        self._max_line_width: int = 0
 
         # Mode & keybindings
         self.mode = Mode.DEBUG
@@ -401,7 +424,7 @@ class CodeView(ScrollableContainer, can_focus=True):
         self._suppress_next_click: bool = False
 
     def compose(self):
-        self._content = _CodeContent("")
+        self._content = _CodeContent(self)
         yield self._content
 
     # ---- Key handling with mode + count prefix ----
@@ -685,7 +708,8 @@ class CodeView(ScrollableContainer, can_focus=True):
         self._step_units = compute_step_units(text, filename=path)
         self._valid_bp_lines = {u[0] for u in self._step_units}
         self._highlighted = self._highlight_source(text)
-        self._render_code()
+        self._max_line_width = max((cell_len(line) for line in self._lines), default=0)
+        self._render_code(layout=True)
 
     def set_breakpoints(self, breakpoints: list[SourceBreakpoint]) -> None:
         self._breakpoint_lines = {bp.line for bp in breakpoints}
@@ -762,56 +786,69 @@ class CodeView(ScrollableContainer, can_focus=True):
         result.stylize(Style(bgcolor=bgcolor))
         return result
 
-    def _render_code(self) -> None:
-        if self._content is None:
-            return
+    def _line_text(self, index: int) -> Text:
+        """Build the display Text for the 0-based source line `index`:
+        breakpoint gutter + line number + syntax-highlighted source.
 
-        highlighted = self._highlighted or [Text(line) for line in self._lines]
+        Called from _CodeContent.render_line for visible lines only —
+        keep it per-line so a state change never costs more than the
+        viewport, regardless of file size.
+        """
+        line_num = index + 1
+        is_current = self.current_line is not None and line_num == self.current_line
+        is_cursor = line_num == self.cursor_line
 
         output = Text()
-        for i, line_text in enumerate(self._lines):
-            line_num = i + 1
-            is_current = self.current_line is not None and line_num == self.current_line
-            is_cursor = line_num == self.cursor_line
-
-            # Breakpoint marker
-            if line_num in self._breakpoint_lines:
-                if self._breakpoints_disabled or line_num in self._disabled_bp_lines:
-                    output.append("● ", style="bold blue")
-                elif line_num in self._conditional_bp_lines:
-                    output.append("● ", style="bold yellow")
-                else:
-                    output.append("● ", style="bold red")
+        # Breakpoint marker
+        if line_num in self._breakpoint_lines:
+            if self._breakpoints_disabled or line_num in self._disabled_bp_lines:
+                output.append("● ", style="bold blue")
+            elif line_num in self._conditional_bp_lines:
+                output.append("● ", style="bold yellow")
             else:
-                output.append("  ")
+                output.append("● ", style="bold red")
+        else:
+            output.append("  ")
 
-            # Line number
-            if is_current:
-                output.append(
-                    f"{line_num:>4} ", style="bright_white on rgb(120,100,30)"
-                )
-            elif is_cursor:
-                output.append(f"{line_num:>4} ", style="bright_white on rgb(60,60,80)")
-            else:
-                output.append(f"{line_num:>4} ", style="bright_black")
+        # Line number
+        if is_current:
+            output.append(f"{line_num:>4} ", style="bright_white on rgb(120,100,30)")
+        elif is_cursor:
+            output.append(f"{line_num:>4} ", style="bright_white on rgb(60,60,80)")
+        else:
+            output.append(f"{line_num:>4} ", style="bright_black")
 
-            # Syntax-highlighted source line
-            if i < len(highlighted):
-                hl_line = highlighted[i]
-            else:
-                hl_line = Text(line_text)
+        # Syntax-highlighted source line
+        if self._highlighted is not None and index < len(self._highlighted):
+            hl_line = self._highlighted[index]
+        else:
+            hl_line = Text(self._lines[index])
 
-            if is_current:
-                hl_line = self._apply_line_bg(hl_line, "rgb(120,100,30)")
-            elif is_cursor:
-                hl_line = self._apply_line_bg(hl_line, "rgb(60,60,80)")
-            else:
-                hl_line = hl_line.copy()
+        if is_current:
+            hl_line = self._apply_line_bg(hl_line, "rgb(120,100,30)")
+        elif is_cursor:
+            hl_line = self._apply_line_bg(hl_line, "rgb(60,60,80)")
+        else:
+            hl_line = hl_line.copy()
 
-            output.append_text(hl_line)
-            output.append("\n")
+        output.append_text(hl_line)
+        return output
 
-        self._content.update(output)
+    def _content_width(self) -> int:
+        """Content cell width: 2 (gutter) + 5 (line number) + widest line."""
+        return 7 + self._max_line_width
+
+    def _render_code(self, layout: bool = False) -> None:
+        """Invalidate the code pane so visible lines repaint.
+
+        Rendering itself is per-line and on-demand (_line_text via
+        _CodeContent.render_line), so this is cheap to call on every
+        state change. Pass layout=True when the source text changed
+        (line count / max width drive the scrollable size).
+        """
+        if self._content is None:
+            return
+        self._content.refresh(layout=layout)
 
     def on_blur(self) -> None:
         """Arm suppression: the next click that gives us focus shouldn't toggle a breakpoint."""

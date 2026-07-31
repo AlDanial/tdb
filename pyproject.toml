@@ -25,7 +25,7 @@
       "pygments>=2.17.0",
       "fastapi>=0.115.0",
       "uvicorn>=0.30.0",
-      "mcp>=1.28.0",
+      "mcp>=1.28.0,<2.0.0",
 ]
 
   # extras needed to run the examples and tests
@@ -57,7 +57,7 @@
   where = ["src"]
 
   [tool.setuptools.package-data]
-  tdb = ["README.md"]
+  tdb = ["README.md", "adapters/perl/helpers.pl", "adapters/perl/Devel/TdbRemote.pm"]
 
   [tool.pytest.ini_options]
   testpaths = ["tests"]

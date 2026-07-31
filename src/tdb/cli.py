@@ -375,8 +375,12 @@ def _resolve_language(
             parser.error(
                 f"--no-subprocess is debugpy-specific (detected language: {profile.id})"
             )
-        if args.remote_attach:
-            parser.error("--remote-attach currently supports Python debuggees only")
+
+    if args.remote_attach and profile.id not in ("python", "perl"):
+        parser.error(
+            f"--remote-attach supports Python and Perl debuggees only "
+            f"(detected language: {profile.id})"
+        )
 
 
 def _resolve_breakpoint_file(file_part: str, local_roots: list[str]) -> Path | None:
