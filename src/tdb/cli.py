@@ -764,8 +764,10 @@ def _run_tui(args: argparse.Namespace) -> None:
         profile=args.profile,
         recorder=recorder,
     )
-    app.run()
-    recorder.close()
+    try:
+        app.run()
+    finally:
+        recorder.close()
     # Fatal startup error (e.g. remote-attach connection refused). The
     # TUI has already torn down; surface the reason on stderr so the
     # user doesn't just see a blank terminal and a non-zero exit code.
