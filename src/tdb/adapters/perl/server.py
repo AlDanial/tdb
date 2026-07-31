@@ -150,13 +150,22 @@ class PerlDapServer:
     async def _on_launch(self, request: Request) -> None:
         args = request.arguments
         perl = args.get("perl") or "perl"
-        preflight = await asyncio.create_subprocess_exec(
-            perl,
-            "-e",
-            "require v5.18",
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.PIPE,
-        )
+        try:
+            preflight = await asyncio.create_subprocess_exec(
+                perl,
+                "-e",
+                "require v5.18",
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.PIPE,
+            )
+        except OSError as e:
+            self.send_error(
+                request,
+                f"perl >= 5.18 not usable ({perl!r}): {e} — "
+                'install perl or set {"adapters": {"perl": "/path/to/perl"}} '
+                "in tdb's config.json",
+            )
+            return
         _, err = await preflight.communicate()
         if preflight.returncode != 0:
             self.send_error(
