@@ -1,6 +1,7 @@
 """PerlSession against real perl -d — no DAP involved."""
 
 import asyncio
+import re
 import shutil
 import subprocess
 
@@ -85,6 +86,38 @@ async def test_program_output_reaches_callback(session):
             break
         await asyncio.sleep(0.1)
     assert any("z=3" in t for t, c in outputs if c == "stdout")
+
+
+async def test_perl5db_chatter_not_forwarded_as_output(session):
+    """perl5db echoes the current source line at every stop
+    (`main::(file:line): code`). That is debugger chatter, not program
+    output -- it must never surface through on_output."""
+    s, outputs, stops = session
+    await s.command("b 4")
+    s.resume("c")
+    for _ in range(200):
+        if stops:
+            break
+        await asyncio.sleep(0.1)
+    assert stops, "breakpoint stop never surfaced"
+    console = [t for t, c in outputs if c == "console"]
+    assert console == [], f"perl5db chatter leaked as output: {console!r}"
+
+
+async def test_socket_has_nagle_disabled_after_helper_injection(session):
+    """Without TCP_NODELAY on the RemotePort socket, every perl5db round
+    trip stalls ~40ms in Nagle + delayed-ACK. helpers.pl must disable
+    Nagle at load time (covers launch and TdbRemote attach alike)."""
+    s, _, _ = session
+    events = await s.command(
+        ';{ use Socket; print {$DB::OUT} "nodelay=",'
+        ' unpack("i", getsockopt($DB::OUT, Socket::IPPROTO_TCP(),'
+        ' Socket::TCP_NODELAY())), "\\n" }'
+    )
+    text = "".join(e[1] for e in events if e[0] == "text")
+    m = re.search(r"nodelay=(\d+)", text)
+    assert m, f"probe produced no nodelay value: {text!r}"
+    assert int(m.group(1)) != 0, "Nagle still enabled on perl5db socket"
 
 
 async def test_debuggee_disconnect_raises_not_succeeds(tmp_path):

@@ -26,6 +26,19 @@ my $JSON = JSON::PP->new->canonical->allow_unknown;
     select($prev);
 }
 
+# perl5db prints a command's response and the following prompt as
+# separate small writes. With Nagle enabled the second write sits in
+# the kernel until the first is ACKed -- Linux's delayed ACK makes that
+# ~40ms, taxing every debugger round trip (a single tdb step is ~8
+# round trips). Disable Nagle on the RemotePort socket. $DB::OUT holds
+# the socket in both modes: launch (helpers loaded via `do` right after
+# connect) and attach (Devel::TdbRemote assigns it before loading us).
+eval {
+    require Socket;
+    setsockopt( $DB::OUT, Socket::IPPROTO_TCP(), Socket::TCP_NODELAY(), 1 )
+      if defined $DB::OUT && ref($DB::OUT);
+};
+
 # Expandable-ref stash: id -> ref. Cleared at each stop (location()).
 our %REG;
 our $NEXT_ID = 1;

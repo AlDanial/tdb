@@ -150,8 +150,13 @@ class PerlSession:
         elif self._collect is not None:
             self._collect.append(ev)
         elif kind == "text":
-            # perl5db chatter while running (line info etc.)
-            self._on_output(ev[1], "console")
+            # perl5db chatter while running (the source-line echo it
+            # prints at every stop, termination notices). The socket is
+            # a control channel -- program output arrives via the
+            # stdout/stderr pipes -- so never surface this as output:
+            # forwarding it put the debugged source lines in the
+            # Console view.
+            log.debug("perl5db chatter: %r", ev[1])
 
     async def _await_prompt(self, timeout: float) -> None:
         self._collect = []
