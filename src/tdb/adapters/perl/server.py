@@ -224,6 +224,10 @@ class PerlDapServer:
             await self.session.attach_socket(reader, writer)
             loc = await self.session.helper("Devel::TdbHelper::location()")
         except PerlProtocolError as e:
+            try:
+                await self.session.stop()
+            finally:
+                self.session = None
             self.send_error(request, f"attach handshake failed: {e} [{e.tail}]")
             return
         if loc.get("version") != 1:
