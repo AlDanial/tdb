@@ -232,17 +232,12 @@ class DapEventCoordinator:
             # `current_frame_id` via `resolve_evaluate_frame_id`.
             state.set_stack(synthetic_frames, synthetic=True)
 
-        # Modal body: one "File ..." line per frame, outermost first
-        # (matches ParsedError.frames order).
-        frame_lines = [
-            f'  File "{frame.path}", line {frame.line}, in {frame.func}'
-            if frame.func
-            else f'  File "{frame.path}", line {frame.line}'
-            for frame in parsed.frames
-        ]
-        frames_text = (
-            "\n".join(frame_lines) if frame_lines else "  <no frames available>"
-        )
+        # Modal body: the parser's raw detail text (verbatim source
+        # snippets / chained-exception separator text for Python; the die
+        # message + call-frame lines for Perl) -- NOT rebuilt from
+        # `parsed.frames`, which only carries structured File/line/func
+        # data for the synthetic StackFrames above.
+        frames_text = parsed.detail
 
         def on_dismiss(result: str | None) -> None:
             if result == "restart":

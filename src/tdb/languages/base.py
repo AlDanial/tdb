@@ -123,6 +123,14 @@ class ParsedError:
     header: str  # modal's first line, e.g. "Traceback (most recent call last):"
     message: str  # e.g. "ZeroDivisionError: division by zero"
     frames: list[ErrorFrame]  # OUTERMOST-first (source order), same as Python prints
+    # Raw display text for the modal body (below the header line): the
+    # language's own error text, verbatim where possible, so source
+    # snippets / chained-exception separator sentences / etc. aren't
+    # lost. NOT reconstructed from `frames` -- built directly off the
+    # original stderr text by the parser. `frames` stays the
+    # structured data `_check_stderr_traceback` uses to build synthetic
+    # DAP StackFrames.
+    detail: str
 
 
 @dataclass(frozen=True)

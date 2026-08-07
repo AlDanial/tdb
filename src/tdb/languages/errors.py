@@ -73,10 +73,22 @@ def parse_python_error(stderr: str) -> ParsedError | None:
         for m in matches
     ]
 
+    # detail: everything after the FIRST header line, verbatim, to the
+    # end of stderr -- preserves source-snippet lines and, for chained
+    # exceptions, the "The above exception was the direct cause..." /
+    # "During handling of the above exception..." separator sentences
+    # and the repeated inner header line. This is intentionally NOT
+    # rebuilt from `frames` (which only carries structured File/line/func
+    # data from the LAST block) -- it is the same raw-text slice the
+    # pre-refactor inline code used for the modal body.
+    first_header_end = tb_text.index("\n") + 1 if "\n" in tb_text else len(tb_text)
+    detail = tb_text[first_header_end:].rstrip()
+
     return ParsedError(
         header=tb_header,
         message=exception_text,
         frames=frames,
+        detail=detail,
     )
 
 
@@ -149,6 +161,10 @@ def parse_perl_error(stderr: str) -> ParsedError | None:
     non_empty_rest = [ln for ln in rest if ln.strip()]
 
     call_frames: list[ErrorFrame] = []
+    # Raw call-frame lines (verbatim, in the order perl printed them --
+    # innermost-caller-first), for `detail`. Excludes perl's own `eval
+    # {...} called at` scaffolding, same as `call_frames`.
+    detail_frame_lines: list[str] = []
     has_terminator = False
     for ln in rest:
         frame_match = _PERL_FRAME_RE.match(ln)
@@ -164,6 +180,7 @@ def parse_perl_error(stderr: str) -> ParsedError | None:
                     func=func,
                 )
             )
+            detail_frame_lines.append(ln)
             continue
         if _PERL_TERMINATOR_RE.match(ln):
             has_terminator = True
@@ -180,4 +197,10 @@ def parse_perl_error(stderr: str) -> ParsedError | None:
         ErrorFrame(path=inner_path, line=inner_line, func="")
     ]
 
-    return ParsedError(header="Perl error:", message=message, frames=frames)
+    # detail: the die message plus its raw `\t... called at ...` frame
+    # lines (verbatim, scaffolding excluded), for the modal body.
+    detail = "\n".join([lines[0], *detail_frame_lines])
+
+    return ParsedError(
+        header="Perl error:", message=message, frames=frames, detail=detail
+    )
