@@ -381,16 +381,25 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 
 ---
 
-### Task 4: Report the debuggee's real exit code
+### Task 4: Report the debuggee's real exit code, and gate fatality on it
 
 **Files:**
 - Modify: `src/tdb/adapters/perl/server.py` (`_classify_and_emit_stop`'s `"?"` branch ~315-322; `_forward_output`'s `__eof__` branch ~292-296)
 - Modify: `src/tdb/adapters/perl/session.py` (expose the child's exit status)
-- Test: `tests/integration/test_perl_exit_code.py`
+- Modify: `src/tdb/languages/base.py`, `src/tdb/languages/errors.py`, `src/tdb/app_handlers/dap_events.py` (the exit-code gate below)
+- Test: `tests/integration/test_perl_exit_code.py`, `tests/unit/test_error_parsers.py` (extend)
 
-Today both termination routes hardcode `{"exitCode": 0}`, so a program that died is indistinguishable from a clean exit. Add a way to read the owned child's return code (launch mode only; attach has no owned child — keep `0` there) and report it.
+**Part 1 — real exit codes.** Today both termination routes hardcode `{"exitCode": 0}`, so a program that died is indistinguishable from a clean exit. Add a way to read the owned child's return code (launch mode only; attach has no owned child — keep `0` there) and report it.
 
 Note the child may not have reaped yet when perl5db parks at its "terminated" prompt: perl5db stays alive at a live prompt after the program ends. Wait for the process with a short bounded timeout (~2 s) and fall back to `0` rather than blocking the event loop.
+
+**Part 2 — replace Task 2's warning denylist with an exit-code gate.** Task 2 had to distinguish a fatal `die` from a non-fatal `warn` on a lone `... at FILE line N.` stderr line, and (with the plan's blessing) used a hardcoded denylist of five known warning prefixes. Both the implementer and the task reviewer flagged this as fragile: common warnings that are NOT on that list (`Deep recursion on subroutine`, `Subroutine x redefined`, `Name "main::x" used only once`, `Wide character in print`, and any bare user `warn "..."` call) would be misclassified as fatal, popping a spurious error modal on a clean run. Now that real exit codes exist, replace it with a deterministic signal:
+
+- Widen the seam to `parse_error(stderr: str, exit_code: int | None) -> ParsedError | None` on `Presentation`. Update `parse_python_error` to accept and ignore `exit_code` (its sentinel is unambiguous — do NOT gate the Python path on exit code; a program can print a caught traceback and still exit 0, and changing that is out of scope).
+- `parse_perl_error`: when `exit_code` is a non-`None` integer, fatality is exactly `exit_code != 0` — delete the prefix denylist from that path entirely. Keep the existing heuristic ONLY as the `exit_code is None` fallback (attach mode, or an exit code that never arrived), and say so in a comment.
+- `_check_stderr_traceback` must pass the exit code through. Find where the `exited` event's code is recorded (`on_exited` in `dap_events.py`; check whether `controller.state` or the event handler retains it) and thread it; if nothing retains it today, store it when `exited` arrives. Beware ordering: `terminated` and `exited` are separate events and `_check_stderr_traceback` runs on `terminated` — verify empirically which arrives first for both debugpy and the Perl adapter, and if `exited` can arrive later, wait for it the same bounded way `_wait_for_stderr_quiescent` already waits, or pass `None` and accept the fallback. State what you found in your report.
+
+Add unit tests pinning: a lone unlisted warning (`Deep recursion on subroutine "main::f" at /w/x.pl line 3.`) with `exit_code=0` returns `None`; the same text with `exit_code=255` parses as fatal; a real die with `exit_code=None` still parses via the fallback.
 
 - [ ] **Step 1: Write the failing test**
 
