@@ -108,11 +108,33 @@ class AdapterSpec:
 
 
 @dataclass(frozen=True)
+class ErrorFrame:
+    """One stack frame parsed out of a language's fatal-error output."""
+
+    path: str
+    line: int
+    func: str  # "" when the language doesn't name one
+
+
+@dataclass(frozen=True)
+class ParsedError:
+    """A language's fatal-error text, parsed into modal-ready pieces."""
+
+    header: str  # modal's first line, e.g. "Traceback (most recent call last):"
+    message: str  # e.g. "ZeroDivisionError: division by zero"
+    frames: list[ErrorFrame]  # OUTERMOST-first (source order), same as Python prints
+
+
+@dataclass(frozen=True)
 class Presentation:
     """Language-specific display knobs, consumed by widgets."""
 
     # Rich/pygments lexer name for the Code View.
     lexer: str = "text"
+
+    # Parse a language's raw stderr into a ParsedError, or None if no
+    # fatal error is present. None -> language has no parser (yet).
+    parse_error: Callable[[str], "ParsedError | None"] | None = None
 
 
 @dataclass(frozen=True)
