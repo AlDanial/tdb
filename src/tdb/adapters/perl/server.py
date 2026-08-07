@@ -36,6 +36,14 @@ class PerlDapServer:
         self._done = asyncio.Event()
         self.session: PerlSession | None = None
         self._classify_task: asyncio.Future | None = None
+        # Strong ref for the same reason as _classify_task: asyncio only
+        # holds a weak reference to a bare ensure_future() task.
+        self._eof_task: asyncio.Future | None = None
+        # Set just before _classify_and_emit_stop's "?" branch sends `q` to
+        # force a real child exit -- tells _forward_output's "__eof__"
+        # branch that the resulting socket close is expected, not a fresh
+        # unsolicited termination (see both call sites for detail).
+        self._eof_terminated = False
         self.current_stop: dict | None = None
         self._start_request: Request | None = None
         self._stop_on_entry = True
@@ -291,10 +299,27 @@ class PerlDapServer:
 
     def _forward_output(self, text: str, category: str) -> None:
         if category == "__eof__":
-            self.send_event("terminated")
-            self.send_event("exited", {"exitCode": 0})
+            if self._eof_terminated:
+                # _classify_and_emit_stop's "?" branch already force-quit
+                # perl5db (via `q`) and emitted terminated/exited itself --
+                # THIS eof is that quit closing the socket, not a fresh
+                # unsolicited termination. Emitting again would double-fire
+                # both events.
+                self._eof_terminated = False
+                return
+            # Capture the session reference now: this is an unsolicited
+            # socket close (e.g. the debuggee hard-crashed), so nothing
+            # guarantees `self.session` is still set by the time the
+            # spawned task below actually runs.
+            session = self.session
+            self._eof_task = asyncio.ensure_future(self._emit_termination(session))
             return
         self.send_event("output", {"category": category, "output": text})
+
+    async def _emit_termination(self, session: PerlSession | None) -> None:
+        exit_code = await session.wait_exit_code() if session is not None else 0
+        self.send_event("terminated")
+        self.send_event("exited", {"exitCode": exit_code})
 
     def _on_unsolicited_stop(self) -> None:
         self._classifying = True
@@ -315,10 +340,34 @@ class PerlDapServer:
             if loc is None or loc.get("file") == "?":
                 # perl5db's "ended" state: the debuggee ran to completion and
                 # perl5db parked at a live prompt without closing the socket
-                # (no user frames left, so location() can't report one).
+                # (no user frames left, so location() can't report one). The
+                # underlying child process is genuinely still ALIVE here,
+                # blocked at that prompt (confirmed by probing real
+                # perl5db: `o inhibit_exit` defaults to on) -- it needs an
+                # explicit `q` before it actually exits and a real return
+                # code becomes available.
                 self.current_stop = None
+                session = self.session
+                if session.pid is not None:
+                    # Owned child (launch mode). `q` closes the debug
+                    # socket, which the read loop will also observe as EOF
+                    # and route through _forward_output's "__eof__" branch
+                    # -- set _eof_terminated first (before any await lets
+                    # that run) so it's a no-op there instead of a second
+                    # terminated/exited pair.
+                    self._eof_terminated = True
+                    try:
+                        await session.command("q")
+                    except PerlProtocolError:
+                        pass  # expected: the connection closes, no prompt follows
+                    exit_code = await session.wait_exit_code()
+                else:
+                    # Attach mode: no owned child, and forcing `q` would
+                    # kill the user's live remote process out from under
+                    # them -- never do that here.
+                    exit_code = 0
                 self.send_event("terminated")
-                self.send_event("exited", {"exitCode": 0})
+                self.send_event("exited", {"exitCode": exit_code})
                 return
             self.current_stop = loc
             had_pause_pending = self._pause_pending

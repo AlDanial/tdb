@@ -169,7 +169,8 @@ class DapEventCoordinator:
                 # the buffer to stabilize before parsing, otherwise the modal
                 # shows a partial traceback.
                 await self._wait_for_stderr_quiescent()
-                self._check_stderr_traceback()
+                exit_code = await self._wait_for_exit_code()
+                self._check_stderr_traceback(exit_code)
             self.app._update_ui_state()
         except Exception:
             log.exception("Error handling terminated event")
@@ -195,10 +196,40 @@ class DapEventCoordinator:
             if now >= deadline:
                 return
 
-    def _check_stderr_traceback(self) -> None:
+    async def _wait_for_exit_code(
+        self,
+        max_wait: float = 0.3,
+    ) -> int | None:
+        """Bounded wait for `state.last_exit_code` to be populated.
+
+        `terminated` and `exited` are separate DAP events and this coordinator
+        runs on `terminated`. Measured empirically (see task report): debugpy
+        emits `exited` BEFORE `terminated`, so `last_exit_code` is already set
+        by the time this runs. The perl adapter emits them in the opposite
+        order (`terminated` then `exited`, written back-to-back with no
+        `await` between them), so `exited` can still be in flight -- poll
+        briefly rather than assume. Falls back to whatever is present (often
+        still None) once `max_wait` elapses, e.g. if the adapter never sends
+        `exited` at all (either event is independently sufficient -- see
+        DebugController._on_terminated/_on_exited).
+        """
+        state = self.app.controller.state
+        deadline = asyncio.get_event_loop().time() + max_wait
+        while state.last_exit_code is None:
+            if asyncio.get_event_loop().time() >= deadline:
+                break
+            await asyncio.sleep(0.02)
+        return state.last_exit_code
+
+    def _check_stderr_traceback(self, exit_code: int | None = None) -> None:
         """If stderr contains a fatal error the active profile's parser
         recognizes, show it in a modal, build synthetic stack frames,
-        and navigate Code View to the deepest frame."""
+        and navigate Code View to the deepest frame.
+
+        `exit_code` is the debuggee's real DAP `exited` code if known by
+        the time this runs (see `_wait_for_exit_code`); passed straight
+        through to the profile's parser, which may ignore it (python) or
+        use it to gate fatality (perl)."""
         from tdb.dap.types import Source, StackFrame
 
         parse_error = self.app.controller.profile.presentation.parse_error
@@ -206,7 +237,7 @@ class DapEventCoordinator:
             return
 
         stderr = "".join(self.app._stderr_buffer)
-        parsed = parse_error(stderr)
+        parsed = parse_error(stderr, exit_code)
         if parsed is None:
             return
 

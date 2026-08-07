@@ -20,7 +20,7 @@ _TB_FILE_RE = re.compile(
 )
 
 
-def parse_python_error(stderr: str) -> ParsedError | None:
+def parse_python_error(stderr: str, exit_code: int | None = None) -> ParsedError | None:
     """Parse a Python traceback out of raw stderr text.
 
     Bails (returns None) unless the standard traceback header is
@@ -29,6 +29,14 @@ def parse_python_error(stderr: str) -> ParsedError | None:
     split into blocks; the LAST block is used, since that is the
     exception that actually terminated the process (Python prints
     cause/context first, final exception last).
+
+    ``exit_code`` is accepted for signature parity with
+    ``Presentation.parse_error`` (and with ``parse_perl_error``, which
+    DOES consult it) but is intentionally IGNORED here: the traceback
+    header is already an unambiguous fatal-error signal, and a program
+    can legitimately print a caught traceback (e.g. via
+    ``traceback.print_exc()``) and still exit 0 -- gating on exit code
+    would misclassify that as "no error".
     """
     tb_header = "Traceback (most recent call last):"
     if tb_header not in stderr:
@@ -110,9 +118,12 @@ _PERL_TERMINATOR_RE = re.compile(
     r"^(BEGIN failed--compilation aborted|Compilation failed in require)\b"
 )
 
-# Known non-fatal perl warning openers. Only consulted for a "lone" first
-# line (nothing else follows) -- see the module-level note in
-# parse_perl_error for why that case is ambiguous.
+# Known non-fatal perl warning openers. Fragile by nature (any warning
+# opener not on this list is misclassified as fatal) -- only used as the
+# LAST-RESORT fallback in parse_perl_error when the real exit code isn't
+# available (exit_code is None: attach mode, or the `exited` DAP event
+# never arrived). When exit_code IS available, fatality is decided
+# directly from it instead and this list is not consulted at all.
 _PERL_WARNING_PREFIXES = (
     "Use of uninitialized value",
     "Use of each",
@@ -122,14 +133,21 @@ _PERL_WARNING_PREFIXES = (
 )
 
 
-def parse_perl_error(stderr: str) -> ParsedError | None:
+def parse_perl_error(stderr: str, exit_code: int | None = None) -> ParsedError | None:
     """Parse a fatal perl die/error out of raw stderr text.
 
     A lone `... at FILE line N.` line is structurally identical whether
     perl is reporting a fatal die or a non-fatal warning (e.g. "Use of
     uninitialized value ... at x.pl line 10."), so a bare regex match on
-    the first line is not enough to call it fatal. This function treats
-    stderr as fatal when it finds a "died"-shaped terminator:
+    the first line is not enough to call it fatal on its own.
+
+    The primary fatality signal is the real process exit code: when
+    ``exit_code`` is not None, stderr shaped like a perl error/warning is
+    fatal exactly when ``exit_code != 0`` -- perl warnings never set a
+    non-zero exit code, so this is deterministic and needs no text
+    heuristics. When ``exit_code`` is None (attach mode has no owned
+    child to report one for, or the `exited` DAP event hasn't arrived by
+    parse time), fall back to the old shape-based heuristic:
 
       - the first line is the ONLY content (no frames, no scaffolding)
         and its message does not open with a known warning phrase, or
@@ -185,9 +203,17 @@ def parse_perl_error(stderr: str) -> ParsedError | None:
         if _PERL_TERMINATOR_RE.match(ln):
             has_terminator = True
 
-    if non_empty_rest:
+    if exit_code is not None:
+        # Deterministic: perl warnings never produce a non-zero exit, so
+        # the real exit code alone settles fatality -- no text heuristics
+        # needed, and none of the fragile-prefix false negatives from the
+        # old denylist are possible.
+        fatal = exit_code != 0
+    elif non_empty_rest:
         fatal = has_terminator or bool(call_frames)
     else:
+        # exit_code is None: last-resort fallback (see _PERL_WARNING_PREFIXES
+        # comment above).
         fatal = not message.startswith(_PERL_WARNING_PREFIXES)
 
     if not fatal:

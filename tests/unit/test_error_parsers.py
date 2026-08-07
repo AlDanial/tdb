@@ -46,6 +46,16 @@ def test_chained_traceback_uses_last_block():
     assert [f.path for f in p.frames] == ["/app/b.py"]
 
 
+def test_python_error_ignores_exit_code():
+    # A caught traceback (traceback.print_exc()) can print alongside a
+    # clean exit(0) -- gating on exit code would be a regression, so the
+    # python parser must return the identical result regardless of it.
+    assert parse_python_error(SIMPLE, exit_code=0) == parse_python_error(
+        SIMPLE, exit_code=None
+    )
+    assert parse_python_error(SIMPLE, exit_code=0) is not None
+
+
 def test_presentation_exposes_parser_for_python():
     from tdb.languages import registry
 
@@ -112,6 +122,41 @@ def test_perl_nested_call_frames_outermost_first():
 def test_perl_warning_alone_is_not_fatal():
     warn = "Use of uninitialized value in division (/) at /w/x.pl line 10.\n"
     assert parse_perl_error(warn) is None
+
+
+# --- exit-code gate (Task 4) ---------------------------------------------
+# Replaces the fragile prefix denylist: a warning opener NOT on
+# _PERL_WARNING_PREFIXES (e.g. "Deep recursion on subroutine") used to be
+# misclassified as fatal. With a real exit code available, fatality is
+# exactly `exit_code != 0` regardless of the message's wording.
+
+UNLISTED_WARNING = 'Deep recursion on subroutine "main::f" at /w/x.pl line 3.\n'
+
+
+def test_perl_gate_unlisted_warning_with_clean_exit_is_not_fatal():
+    # Not on the old denylist -- would have been misclassified as fatal
+    # before the exit-code gate.
+    assert parse_perl_error(UNLISTED_WARNING, exit_code=0) is None
+
+
+def test_perl_gate_unlisted_warning_with_nonzero_exit_is_fatal():
+    p = parse_perl_error(UNLISTED_WARNING, exit_code=255)
+    assert p is not None
+    assert p.message == 'Deep recursion on subroutine "main::f"'
+
+
+def test_perl_gate_real_die_with_none_exit_code_uses_shape_fallback():
+    # exit_code=None (attach mode, or the `exited` DAP event hasn't arrived
+    # yet): falls back to the old shape-based heuristic, which still
+    # correctly classifies a genuine die as fatal.
+    p = parse_perl_error(PERL_RUNTIME, exit_code=None)
+    assert p is not None
+    assert p.message == "Illegal division by zero"
+
+
+def test_perl_gate_listed_warning_with_none_exit_code_uses_shape_fallback():
+    warn = "Use of uninitialized value in division (/) at /w/x.pl line 10.\n"
+    assert parse_perl_error(warn, exit_code=None) is None
 
 
 def test_presentation_exposes_parser_for_perl():

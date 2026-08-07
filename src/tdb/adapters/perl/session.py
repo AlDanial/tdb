@@ -57,6 +57,27 @@ class PerlSession:
     def pid(self) -> int | None:
         return self._process.pid if self._process else None
 
+    async def wait_exit_code(self, timeout: float = 2.0) -> int:
+        """Best-effort real exit code of the owned child (launch mode only).
+
+        Attach mode has no owned child (`self._process` is None) -- always
+        0 there. In launch mode, perl5db parks at a live "?" prompt (or the
+        debug socket can close on a hard crash) slightly before the OS has
+        actually reaped the child, so this waits briefly rather than
+        assuming `returncode` is already populated. Bounded so a child that,
+        for whatever reason, never exits can't block the event loop
+        indefinitely -- falls back to 0 in that case.
+        """
+        if self._process is None:
+            return 0
+        if self._process.returncode is not None:
+            return self._process.returncode
+        try:
+            await asyncio.wait_for(self._process.wait(), timeout)
+        except asyncio.TimeoutError:
+            return 0
+        return self._process.returncode if self._process.returncode is not None else 0
+
     async def launch(
         self,
         program: str,

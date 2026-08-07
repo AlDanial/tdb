@@ -295,6 +295,7 @@ async def test_on_unsolicited_stop_keeps_strong_reference_to_classify_task():
 
     class StubSession:
         stopped = True
+        pid = None  # attach-like: "?" branch must not try to send `q`
 
         async def helper(self, expr, timeout=20.0):
             return {"file": "?", "line": 1}
@@ -304,6 +305,134 @@ async def test_on_unsolicited_stop_keeps_strong_reference_to_classify_task():
 
     assert server._classify_task is not None
     assert not server._classify_task.done()
+
+
+async def test_ended_location_in_launch_mode_sends_q_and_reports_real_exit_code():
+    """launch mode (owned child, `pid` set): the "?" branch must force a
+    real exit via `q` and report the resulting code, not hardcode 0."""
+
+    class StubSession:
+        stopped = True
+        pid = 4242
+
+        def __init__(self) -> None:
+            self.commands: list[str] = []
+
+        async def helper(self, expr, timeout=20.0):
+            return {"file": "?", "line": 0}
+
+        async def command(self, text, timeout=20.0):
+            self.commands.append(text)
+            raise PerlProtocolError("perl5db connection closed")
+
+        async def wait_exit_code(self) -> int:
+            return 7
+
+    reader = asyncio.StreamReader()
+    writer = SinkWriter()
+    server = PerlDapServer(reader, writer)
+    stub = StubSession()
+    server.session = stub
+    server._on_unsolicited_stop()
+    await server._classify_task
+
+    assert stub.commands == ["q"]
+    out = _messages(writer)
+    exited = [m for m in out if m.get("event") == "exited"][0]
+    assert exited["body"]["exitCode"] == 7
+    assert any(m.get("event") == "terminated" for m in out)
+    # Exactly one terminated/exited pair -- no duplicate from the `q`-
+    # triggered EOF this scenario simulates being guarded against.
+    assert len([m for m in out if m.get("event") == "terminated"]) == 1
+    assert len([m for m in out if m.get("event") == "exited"]) == 1
+
+
+async def test_ended_location_in_launch_mode_dedupes_against_forwarded_eof():
+    """The `q` sent by the "?" branch closes the socket, which in the real
+    adapter also drives `_forward_output("__eof__")` via the read loop.
+    _eof_terminated must make that a no-op instead of a second
+    terminated/exited pair."""
+
+    class StubSession:
+        stopped = True
+        pid = 4242
+
+        async def helper(self, expr, timeout=20.0):
+            return {"file": "?", "line": 0}
+
+        async def command(self, text, timeout=20.0):
+            raise PerlProtocolError("perl5db connection closed")
+
+        async def wait_exit_code(self) -> int:
+            return 3
+
+    reader = asyncio.StreamReader()
+    writer = SinkWriter()
+    server = PerlDapServer(reader, writer)
+    server.session = StubSession()
+    server._on_unsolicited_stop()
+    await server._classify_task
+    # Simulate the read loop observing the socket close the `q` caused.
+    server._forward_output("", "__eof__")
+
+    out = _messages(writer)
+    assert len([m for m in out if m.get("event") == "terminated"]) == 1
+    assert len([m for m in out if m.get("event") == "exited"]) == 1
+    assert server._eof_terminated is False  # consumed, ready for next time
+
+
+async def test_ended_location_in_attach_mode_reports_zero_without_sending_q():
+    """attach mode (no owned child, `pid` is None): must never send `q`
+    (that would kill the user's live remote process) and always reports 0,
+    matching the pre-existing attach contract."""
+
+    class StubSession:
+        stopped = True
+        pid = None
+
+        def __init__(self) -> None:
+            self.commands: list[str] = []
+
+        async def helper(self, expr, timeout=20.0):
+            return {"file": "?", "line": 0}
+
+        async def command(self, text, timeout=20.0):
+            self.commands.append(text)
+            raise AssertionError("attach mode must never send a command here")
+
+    reader = asyncio.StreamReader()
+    writer = SinkWriter()
+    server = PerlDapServer(reader, writer)
+    stub = StubSession()
+    server.session = stub
+    server._on_unsolicited_stop()
+    await server._classify_task
+
+    assert stub.commands == []
+    out = _messages(writer)
+    exited = [m for m in out if m.get("event") == "exited"][0]
+    assert exited["body"]["exitCode"] == 0
+
+
+async def test_eof_without_prior_q_reports_real_exit_code():
+    """A genuinely unsolicited socket close (e.g. the debuggee hard-
+    crashed) must still report the child's real exit code, not 0."""
+
+    class StubSession:
+        async def wait_exit_code(self) -> int:
+            return 42
+
+    reader = asyncio.StreamReader()
+    writer = SinkWriter()
+    server = PerlDapServer(reader, writer)
+    server.session = StubSession()
+    server._forward_output("", "__eof__")
+    await server._eof_task
+
+    out = _messages(writer)
+    exited = [m for m in out if m.get("event") == "exited"][0]
+    assert exited["body"]["exitCode"] == 42
+    assert any(m.get("event") == "terminated" for m in out)
 
 
 async def test_pause_does_not_arm_flag_when_stop_wins_race():

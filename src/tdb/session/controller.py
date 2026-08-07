@@ -942,6 +942,7 @@ class DebugController:
         # disconnects). Transition to TERMINATED on both so the guards
         # engage no matter which event we get.
         self.state.transition_to(SessionPhase.TERMINATED)
+        self.state.last_exit_code = exit_code
         self._stopped_event.set()
         self.event_handler.on_exited(exit_code)
 

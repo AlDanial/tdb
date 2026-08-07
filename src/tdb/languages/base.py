@@ -141,8 +141,15 @@ class Presentation:
     lexer: str = "text"
 
     # Parse a language's raw stderr into a ParsedError, or None if no
-    # fatal error is present. None -> language has no parser (yet).
-    parse_error: Callable[[str], "ParsedError | None"] | None = None
+    # fatal error is present. `exit_code` is the debuggee's real DAP
+    # `exited` code when it's available by the time parsing runs (None
+    # if it hasn't arrived yet, or the language has no owned child to
+    # report one for, e.g. attach mode) -- consulted only by parsers
+    # that need it to disambiguate fatal-vs-non-fatal output (perl);
+    # parsers with an unambiguous signal of their own (python's
+    # traceback header) accept and ignore it. None -> language has no
+    # parser (yet).
+    parse_error: Callable[[str, "int | None"], "ParsedError | None"] | None = None
 
 
 @dataclass(frozen=True)
