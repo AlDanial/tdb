@@ -314,6 +314,7 @@ async def test_ended_location_in_launch_mode_sends_q_and_reports_real_exit_code(
     class StubSession:
         stopped = True
         pid = 4242
+        eof = True  # `q` genuinely closed the connection
 
         def __init__(self) -> None:
             self.commands: list[str] = []
@@ -356,6 +357,7 @@ async def test_ended_location_in_launch_mode_dedupes_against_forwarded_eof():
     class StubSession:
         stopped = True
         pid = 4242
+        eof = True  # `q` genuinely closed the connection
 
         async def helper(self, expr, timeout=20.0):
             return {"file": "?", "line": 0}
@@ -379,6 +381,90 @@ async def test_ended_location_in_launch_mode_dedupes_against_forwarded_eof():
     assert len([m for m in out if m.get("event") == "terminated"]) == 1
     assert len([m for m in out if m.get("event") == "exited"]) == 1
     assert server._eof_terminated is False  # consumed, ready for next time
+
+
+async def test_location_error_in_launch_mode_does_not_send_q():
+    """Finding 1 (task-4 review): `location()` raising PerlProtocolError
+    (loc is None) covers timeouts / malformed JSON / mid-flight EOF -- NOT
+    only genuine termination. The debuggee could still be legitimately
+    stopped at a real breakpoint or pause, so this must NOT force-quit it
+    via `q`. It must still report termination (unchanged pre-existing
+    behavior for this branch) with exit code 0 (inconclusive)."""
+
+    class StubSession:
+        stopped = True
+        pid = 4242
+        eof = False
+
+        def __init__(self) -> None:
+            self.commands: list[str] = []
+
+        async def helper(self, expr, timeout=20.0):
+            raise PerlProtocolError("timed out waiting for prompt")
+
+        async def command(self, text, timeout=20.0):
+            self.commands.append(text)
+            raise AssertionError("must not send a command when loc is None")
+
+        async def wait_exit_code(self) -> int:
+            raise AssertionError("must not be consulted when loc is None")
+
+    reader = asyncio.StreamReader()
+    writer = SinkWriter()
+    server = PerlDapServer(reader, writer)
+    stub = StubSession()
+    server.session = stub
+    server._on_unsolicited_stop()
+    await server._classify_task
+
+    assert stub.commands == [], "loc is None must never trigger `q`"
+    out = _messages(writer)
+    assert len([m for m in out if m.get("event") == "terminated"]) == 1
+    exited = [m for m in out if m.get("event") == "exited"]
+    assert len(exited) == 1
+    assert exited[0]["body"]["exitCode"] == 0
+
+
+async def test_q_without_eof_does_not_leave_eof_terminated_dangling():
+    """Finding 2 (task-4 review): if `command("q")` doesn't actually close
+    the connection (times out waiting for a prompt, or perl5db replies
+    without dying -- `session.eof` stays False either way), no `__eof__`
+    is coming to consume `_eof_terminated`. Leaving it set would silently
+    swallow the NEXT, genuinely unrelated `__eof__` termination (a
+    zero-emission failure). It must self-heal so that later `__eof__`
+    still emits exactly one terminated/exited pair."""
+
+    class StubSession:
+        stopped = True
+        pid = 4242
+        eof = False  # `q` never actually closed the connection
+
+        async def helper(self, expr, timeout=20.0):
+            return {"file": "?", "line": 0}
+
+        async def command(self, text, timeout=20.0):
+            raise PerlProtocolError("no prompt after command 'q'")  # timed out, no EOF
+
+        async def wait_exit_code(self) -> int:
+            return 0
+
+    reader = asyncio.StreamReader()
+    writer = SinkWriter()
+    server = PerlDapServer(reader, writer)
+    server.session = StubSession()
+    server._on_unsolicited_stop()
+    await server._classify_task
+
+    assert server._eof_terminated is False, "flag must not dangle after a non-EOF `q`"
+
+    # A later, genuinely unrelated EOF must still be reported -- not
+    # silently swallowed by a stale _eof_terminated flag.
+    server._forward_output("", "__eof__")
+    await server._eof_task
+
+    out = _messages(writer)
+    assert len([m for m in out if m.get("event") == "terminated"]) == 2
+    assert len([m for m in out if m.get("event") == "exited"]) == 2
 
 
 async def test_ended_location_in_attach_mode_reports_zero_without_sending_q():

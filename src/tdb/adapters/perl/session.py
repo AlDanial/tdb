@@ -57,6 +57,15 @@ class PerlSession:
     def pid(self) -> int | None:
         return self._process.pid if self._process else None
 
+    @property
+    def eof(self) -> bool:
+        """True once the debug socket has genuinely closed (read loop hit
+        EOF). Lets callers that force a `command("q")` to try to end the
+        session distinguish "it actually closed the connection" from "it
+        timed out / replied without dying" -- the two need different
+        follow-up handling (see server.py's `_eof_terminated` guard)."""
+        return self._eof
+
     async def wait_exit_code(self, timeout: float = 2.0) -> int:
         """Best-effort real exit code of the owned child (launch mode only).
 

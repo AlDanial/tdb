@@ -207,7 +207,10 @@ def parse_perl_error(stderr: str, exit_code: int | None = None) -> ParsedError |
         # Deterministic: perl warnings never produce a non-zero exit, so
         # the real exit code alone settles fatality -- no text heuristics
         # needed, and none of the fragile-prefix false negatives from the
-        # old denylist are possible.
+        # old denylist are possible. Note the `loc_match` check above still
+        # gates everything: a nonzero exit with stderr that doesn't even
+        # look like a perl error/warning line correctly returns None here
+        # rather than fabricating a message from unrelated text.
         fatal = exit_code != 0
     elif non_empty_rest:
         fatal = has_terminator or bool(call_frames)

@@ -348,18 +348,40 @@ class PerlDapServer:
                 # code becomes available.
                 self.current_stop = None
                 session = self.session
-                if session.pid is not None:
-                    # Owned child (launch mode). `q` closes the debug
-                    # socket, which the read loop will also observe as EOF
-                    # and route through _forward_output's "__eof__" branch
-                    # -- set _eof_terminated first (before any await lets
-                    # that run) so it's a no-op there instead of a second
+                # Finding 1 (task-4 review): `loc is None` means location()
+                # RAISED (timeout, malformed/missing JSON, mid-flight EOF)
+                # -- an inconclusive/error state, not proof the debuggee
+                # ended. It can just as easily mean the debuggee is
+                # legitimately stopped at a real breakpoint/pause, so it
+                # must NOT trigger `q` (that would kill a live session).
+                # Only a CONFIRMED "?" location does. `loc is None` keeps
+                # reporting termination (unchanged pre-existing behavior)
+                # with exit code 0 -- we genuinely don't know it.
+                #
+                # NOTE for a later task: any future compile-phase stop must
+                # report a real file from location(), never "?" -- otherwise
+                # it would trip this same "ended" branch.
+                if loc is not None and session.pid is not None:
+                    # Owned child (launch mode) AND a confirmed "?" location.
+                    # `q` closes the debug socket, which the read loop will
+                    # also observe as EOF and route through
+                    # _forward_output's "__eof__" branch -- set
+                    # _eof_terminated first (before any await lets that
+                    # run) so it's a no-op there instead of a second
                     # terminated/exited pair.
                     self._eof_terminated = True
                     try:
                         await session.command("q")
                     except PerlProtocolError:
                         pass  # expected: the connection closes, no prompt follows
+                    if not session.eof:
+                        # Finding 2 (task-4 review): `q` did NOT actually
+                        # close the connection (timed out waiting for a
+                        # prompt, or perl5db replied without dying) -- no
+                        # __eof__ is coming to consume the flag. Clear it
+                        # now so it can't dangle and silently swallow the
+                        # NEXT, genuinely unrelated __eof__ termination.
+                        self._eof_terminated = False
                     exit_code = await session.wait_exit_code()
                 else:
                     # Attach mode: no owned child, and forcing `q` would
