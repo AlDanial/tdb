@@ -25,6 +25,7 @@ from tdb.languages.base import (
     Presentation,
     ProfileCapabilities,
 )
+from tdb.languages.errors import parse_perl_error
 
 
 class PerlAdapter(AdapterSpec):
@@ -93,6 +94,6 @@ def build_perl_profile(
         id="perl",
         display_name="Perl",
         adapter=PerlAdapter(perl_executable=(adapter_paths or {}).get("perl")),
-        presentation=Presentation(lexer="perl"),
+        presentation=Presentation(lexer="perl", parse_error=parse_perl_error),
         capabilities=ProfileCapabilities(),
     )

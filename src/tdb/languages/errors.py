@@ -78,3 +78,106 @@ def parse_python_error(stderr: str) -> ParsedError | None:
         message=exception_text,
         frames=frames,
     )
+
+
+# First line of a fatal perl die/error, e.g.
+#   "Illegal division by zero at /w/has_begin.pl line 10."
+# Also matches plain warnings, which have the identical trailing-location
+# shape (see _PERL_WARNING_PREFIXES below for how those are told apart).
+_PERL_LOC_RE = re.compile(r"^(.*) at (\S+) line (\d+)\.\s*$")
+
+# A `\t<SUB>() called at <FILE> line <N>` call-frame line, printed by perl
+# when a die/error propagates out of nested subs or a BEGIN block. No
+# trailing period (unlike the message's own location line).
+_PERL_FRAME_RE = re.compile(r"^\t(.+?) called at (\S+) line (\d+)\s*$")
+
+# perl's own compile-phase terminators: printed after a BEGIN block or a
+# `require`d module dies at compile time. Their presence is unambiguous
+# proof the process is dying, even when frame lines are also present.
+_PERL_TERMINATOR_RE = re.compile(
+    r"^(BEGIN failed--compilation aborted|Compilation failed in require)\b"
+)
+
+# Known non-fatal perl warning openers. Only consulted for a "lone" first
+# line (nothing else follows) -- see the module-level note in
+# parse_perl_error for why that case is ambiguous.
+_PERL_WARNING_PREFIXES = (
+    "Use of uninitialized value",
+    "Use of each",
+    'Argument "',
+    "Possible unintended interpolation",
+    "Odd number of elements",
+)
+
+
+def parse_perl_error(stderr: str) -> ParsedError | None:
+    """Parse a fatal perl die/error out of raw stderr text.
+
+    A lone `... at FILE line N.` line is structurally identical whether
+    perl is reporting a fatal die or a non-fatal warning (e.g. "Use of
+    uninitialized value ... at x.pl line 10."), so a bare regex match on
+    the first line is not enough to call it fatal. This function treats
+    stderr as fatal when it finds a "died"-shaped terminator:
+
+      - the first line is the ONLY content (no frames, no scaffolding)
+        and its message does not open with a known warning phrase, or
+      - a `\\t<SUB> called at ...` call-frame line follows (die
+        propagated out of a sub/BEGIN block), or
+      - a `BEGIN failed--compilation aborted` / `Compilation failed in
+        require` terminator line is present.
+
+    Frames are built from every call-frame line (skipping perl's own
+    `eval {...} called at` compile scaffolding) plus the innermost
+    location from the first line, reordered to OUTERMOST-first to match
+    Python's convention: perl prints call frames innermost-caller-first,
+    so they are reversed, then the innermost/failing frame is appended
+    last.
+    """
+    lines = stderr.splitlines()
+    if not lines:
+        return None
+
+    loc_match = _PERL_LOC_RE.match(lines[0])
+    if not loc_match:
+        return None
+
+    message = loc_match.group(1)
+    inner_path = loc_match.group(2)
+    inner_line = int(loc_match.group(3))
+
+    rest = lines[1:]
+    non_empty_rest = [ln for ln in rest if ln.strip()]
+
+    call_frames: list[ErrorFrame] = []
+    has_terminator = False
+    for ln in rest:
+        frame_match = _PERL_FRAME_RE.match(ln)
+        if frame_match:
+            func_raw = frame_match.group(1)
+            if func_raw == "eval {...}" or func_raw.startswith("eval "):
+                continue
+            func = func_raw[:-2] if func_raw.endswith("()") else func_raw
+            call_frames.append(
+                ErrorFrame(
+                    path=frame_match.group(2),
+                    line=int(frame_match.group(3)),
+                    func=func,
+                )
+            )
+            continue
+        if _PERL_TERMINATOR_RE.match(ln):
+            has_terminator = True
+
+    if non_empty_rest:
+        fatal = has_terminator or bool(call_frames)
+    else:
+        fatal = not message.startswith(_PERL_WARNING_PREFIXES)
+
+    if not fatal:
+        return None
+
+    frames = list(reversed(call_frames)) + [
+        ErrorFrame(path=inner_path, line=inner_line, func="")
+    ]
+
+    return ParsedError(header="Perl error:", message=message, frames=frames)
