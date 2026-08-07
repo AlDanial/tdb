@@ -339,6 +339,13 @@ class _OpenFileModal(ModalScreen[str | None]):
         self.dismiss(None)
 
 
+# Default modal header, used when a call site doesn't supply one (the
+# live DAP "stopped: exception" path, which is Python/debugpy-only
+# today) and as the fallback for `_TracebackModal.__init__`'s `header`
+# parameter.
+DEFAULT_TRACEBACK_HEADER = "Traceback (most recent call last):"
+
+
 class _TracebackModal(ModalScreen[str | None]):
     """Scrollable modal showing a full exception traceback."""
 
@@ -368,21 +375,24 @@ class _TracebackModal(ModalScreen[str | None]):
         exception_text: str,
         frames_text: str,
         can_restart: bool = True,
+        header: str = DEFAULT_TRACEBACK_HEADER,
     ) -> None:
         super().__init__()
         self._exception_text = exception_text
         self._frames_text = frames_text
         self._can_restart = can_restart
+        self._header = header
 
     def compose(self):
         # Escape bare '[' so exception messages like "list[int]" or
         # chained-traceback separator text don't get parsed as Rich markup.
         exc_safe = self._exception_text.replace("[", r"\[")
         frames_safe = self._frames_text.replace("[", r"\[")
+        header_safe = self._header.replace("[", r"\[")
         lines = []
         lines.append(f"[bold red]{exc_safe}[/bold red]")
         lines.append("")
-        lines.append("[bold]Traceback (most recent call last):[/bold]")
+        lines.append(f"[bold]{header_safe}[/bold]")
         lines.append(frames_safe)
         lines.append("")
         if self._can_restart:

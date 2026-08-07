@@ -50,6 +50,7 @@ class UIPanels:
     last_exception_text: str | None = None
     last_frames_text: str | None = None
     last_can_restart: bool = False
+    last_header: str | None = None
 
     def clear(self) -> None:
         """Drop all modal refs and reset transient flags. Called on
@@ -61,3 +62,4 @@ class UIPanels:
         self.last_exception_text = None
         self.last_frames_text = None
         self.last_can_restart = False
+        self.last_header = None

@@ -12,25 +12,16 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-import re
 from typing import TYPE_CHECKING
 
 from tdb.session.messages import DapOutput, DapStopped
 from tdb.widgets.console_view import ConsoleView
-from tdb.widgets.modals import _TracebackModal
+from tdb.widgets.modals import DEFAULT_TRACEBACK_HEADER, _TracebackModal
 
 if TYPE_CHECKING:
     from tdb.app import TdbApp
 
 log = logging.getLogger(__name__)
-
-
-# Pre-compiled at module level so repeated traceback parses don't
-# re-build the regex each time.
-_TB_FILE_RE = re.compile(
-    r'^\s*File "(.+)", line (\d+)(?:, in (.+))?',
-    re.MULTILINE,
-)
 
 
 class DapEventCoordinator:
@@ -140,6 +131,7 @@ class DapEventCoordinator:
         self.app.panels.last_exception_text = exception_text
         self.app.panels.last_frames_text = frames_text
         self.app.panels.last_can_restart = can_restart
+        self.app.panels.last_header = DEFAULT_TRACEBACK_HEADER
         self.app.push_screen(
             _TracebackModal(
                 exception_text,
@@ -204,63 +196,32 @@ class DapEventCoordinator:
                 return
 
     def _check_stderr_traceback(self) -> None:
-        """If stderr contains a Python traceback, show it in a modal,
-        build synthetic stack frames, and navigate Code View to the
-        deepest frame."""
+        """If stderr contains a fatal error the active profile's parser
+        recognizes, show it in a modal, build synthetic stack frames,
+        and navigate Code View to the deepest frame."""
         from tdb.dap.types import Source, StackFrame
 
-        stderr = "".join(self.app._stderr_buffer)
-        tb_header = "Traceback (most recent call last):"
-        if tb_header not in stderr:
+        parse_error = self.app.controller.profile.presentation.parse_error
+        if parse_error is None:
             return
 
-        # Capture from the FIRST traceback header to the end, so chained
-        # exceptions ("The above exception was the direct cause..." /
-        # "During handling of the above exception...") are preserved in full.
-        tb_start = stderr.find(tb_header)
-        tb_text = stderr[tb_start:].rstrip()
+        stderr = "".join(self.app._stderr_buffer)
+        parsed = parse_error(stderr)
+        if parsed is None:
+            return
 
-        # Split into individual traceback blocks (one per chained exception).
-        block_starts = [m.start() for m in re.finditer(re.escape(tb_header), tb_text)]
-        blocks: list[str] = []
-        for i, s in enumerate(block_starts):
-            e = block_starts[i + 1] if i + 1 < len(block_starts) else len(tb_text)
-            blocks.append(tb_text[s:e].rstrip())
-
-        # Synthetic stack frames come from the LAST block — that is the
-        # exception that actually terminated the process (Python prints
-        # cause/context first, final exception last).
-        final_block = blocks[-1] if blocks else tb_text
-        matches = list(_TB_FILE_RE.finditer(final_block))
-
-        # The exception line is the last non-empty, non-indented line of the
-        # final block (Python prints it after all "File" frames).
-        lines = final_block.split("\n")
-        exception_text = ""
-        for line in reversed(lines):
-            stripped = line.strip()
-            if not stripped:
-                continue
-            if stripped.startswith("File ") or stripped.startswith("Traceback "):
-                break
-            if line.startswith("    ") or line.startswith("\t"):
-                continue
-            exception_text = stripped
-            break
-
-        # Build synthetic stack frames (reversed: deepest = index 0, like DAP)
+        # Build synthetic stack frames (reversed: deepest = index 0, like
+        # DAP). ParsedError.frames is OUTERMOST-first (source order); the
+        # parser does not do this inversion, so it happens here.
         state = self.app.controller.state
         synthetic_frames: list[StackFrame] = []
-        for i, m in enumerate(reversed(matches)):
-            path = m.group(1)
-            line = int(m.group(2))
-            func = m.group(3) or "<module>"
+        for i, frame in enumerate(reversed(parsed.frames)):
             synthetic_frames.append(
                 StackFrame(
                     id=i,
-                    name=func,
-                    source=Source(path=path, name=os.path.basename(path)),
-                    line=line,
+                    name=frame.func or "<module>",
+                    source=Source(path=frame.path, name=os.path.basename(frame.path)),
+                    line=frame.line,
                 )
             )
 
@@ -271,25 +232,34 @@ class DapEventCoordinator:
             # `current_frame_id` via `resolve_evaluate_frame_id`.
             state.set_stack(synthetic_frames, synthetic=True)
 
-        # Modal body: show every block's body (after its header line) so
-        # chained exception separator text is preserved.
-        first_header_end = tb_text.index("\n") + 1 if "\n" in tb_text else len(tb_text)
-        frames_text = tb_text[first_header_end:].rstrip()
+        # Modal body: one "File ..." line per frame, outermost first
+        # (matches ParsedError.frames order).
+        frame_lines = [
+            f'  File "{frame.path}", line {frame.line}, in {frame.func}'
+            if frame.func
+            else f'  File "{frame.path}", line {frame.line}'
+            for frame in parsed.frames
+        ]
+        frames_text = (
+            "\n".join(frame_lines) if frame_lines else "  <no frames available>"
+        )
 
         def on_dismiss(result: str | None) -> None:
             if result == "restart":
                 self.app._restart_session()
 
-        exc_label = exception_text or "Program crashed"
+        exc_label = parsed.message or "Program crashed"
         can_restart = self.app.controller.supports_restart
         self.app.panels.last_exception_text = exc_label
         self.app.panels.last_frames_text = frames_text
         self.app.panels.last_can_restart = can_restart
+        self.app.panels.last_header = parsed.header
         self.app.push_screen(
             _TracebackModal(
                 exc_label,
                 frames_text,
                 can_restart=can_restart,
+                header=parsed.header,
             ),
             callback=on_dismiss,
         )
