@@ -299,3 +299,21 @@ class BashSession:
         if self._tmpdir is not None:
             self._tmpdir.cleanup()
             self._tmpdir = None
+
+    def _bp_line(self, path: str, line: int, condition: str) -> str:
+        return f"setbp {b64(canonical(path, self.launch_cwd))} {line} {b64(condition)}"
+
+    async def set_breakpoint(self, path: str, line: int, condition: str = "") -> None:
+        await self.request(self._bp_line(path, line, condition))
+
+    def set_breakpoint_nowait(self, path: str, line: int, condition: str = "") -> None:
+        self.send_async(self._bp_line(path, line, condition))
+
+    async def clear_breakpoints(self) -> None:
+        await self.request("clearall")
+
+    def clear_breakpoints_nowait(self) -> None:
+        self.send_async("clearall")
+
+    def pause(self) -> None:
+        self.send_async("pause")

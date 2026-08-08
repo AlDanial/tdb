@@ -333,3 +333,86 @@ async def test_no_statement_skipped_under_stepping():
     assert "hello from bash" in rec.stdout()
     assert "x is 1" in rec.stdout()
     assert rec.exit_code == 7
+
+
+# --- Task 6: breakpoints — set/clear, conditions, live edits, pause ------
+
+
+@pytest.mark.asyncio
+async def test_breakpoint_hits_and_reports_line():
+    rec = Recorder()
+    fixture = FIXTURES / "bash_loop.sh"
+    session = await _launch(fixture, rec)
+    await session.set_breakpoint(str(fixture), 5)  # echo "total=$total"
+    session.resume("continue")
+    reason, path, line = await rec.wait_stop()
+    assert (reason, line) == ("breakpoint", 5)
+    assert path.endswith("bash_loop.sh")
+    assert "total=" not in rec.stdout()  # stopped BEFORE the echo
+    session.resume("continue")
+    await asyncio.wait_for(rec.exit_event.wait(), 15)
+    assert "total=15" in rec.stdout()
+    await session.stop()
+
+
+@pytest.mark.asyncio
+async def test_conditional_breakpoint_stops_when_condition_exits_zero():
+    rec = Recorder()
+    fixture = FIXTURES / "bash_loop.sh"
+    session = await _launch(fixture, rec)
+    await session.set_breakpoint(str(fixture), 3, "(( i == 4 ))")
+    session.resume("continue")
+    reason, _, line = await rec.wait_stop()
+    assert (reason, line) == ("breakpoint", 3)
+    # the condition saw the loop variable: i is 4 right now
+    payload = await session.request("eval " + b64('echo "i=$i"'))
+    assert "i=4" in payload
+    session.resume("continue")
+    # i never equals 4 again -> runs to completion
+    await asyncio.wait_for(rec.exit_event.wait(), 15)
+    await session.stop()
+
+
+@pytest.mark.asyncio
+async def test_clear_breakpoints_while_stopped():
+    rec = Recorder()
+    fixture = FIXTURES / "bash_loop.sh"
+    session = await _launch(fixture, rec)
+    await session.set_breakpoint(str(fixture), 3)
+    session.resume("continue")
+    await rec.wait_stop()
+    await session.clear_breakpoints()
+    session.resume("continue")
+    await asyncio.wait_for(rec.exit_event.wait(), 15)  # no further stops
+    await session.stop()
+
+
+@pytest.mark.asyncio
+async def test_live_breakpoint_add_while_running():
+    """The drain path: a bp set while bash is running (slow loop) is honored."""
+    rec = Recorder()
+    fixture = FIXTURES / "bash_loop.sh"
+    session = await _launch(fixture, rec)
+    session.resume("continue")  # no breakpoints; enters slow loop
+    await asyncio.sleep(0.3)
+    session.set_breakpoint_nowait(str(fixture), 11)  # echo "slept"
+    reason, _, line = await rec.wait_stop()
+    assert (reason, line) == ("breakpoint", 11)
+    session.resume("continue")
+    await asyncio.wait_for(rec.exit_event.wait(), 15)
+    await session.stop()
+
+
+@pytest.mark.asyncio
+async def test_pause_while_running():
+    rec = Recorder()
+    session = await _launch(FIXTURES / "bash_loop.sh", rec)
+    session.resume("continue")
+    await asyncio.sleep(0.3)  # inside the slow loop
+    session.pause()
+    reason, path, line = await rec.wait_stop()
+    assert reason == "pause"
+    assert path.endswith("bash_loop.sh")
+    session.resume("continue")
+    await asyncio.wait_for(rec.exit_event.wait(), 15)
+    await session.stop()
