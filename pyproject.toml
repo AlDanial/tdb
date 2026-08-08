@@ -1,7 +1,7 @@
   [project]
   name = "textual-debugger"
   dynamic = ["version"]
-  description = "A TUI Python debugger based on textual and debugpy"
+  description = "A TUI debugger for Python, Perl, and other languages.  Based on textual."
   readme = "README.md"
   requires-python = ">=3.10"
   license = {file = "LICENSE"}
@@ -17,6 +17,9 @@
       "Programming Language :: Python :: 3.10",
       "Programming Language :: Python :: 3.11",
       "Programming Language :: Python :: 3.12",
+      "Programming Language :: Python :: 3.13",
+      "Programming Language :: Python :: 3.14",
+      "Programming Language :: Python :: 3.15",
       "Topic :: Software Development :: Debuggers",
   ]
   dependencies = [
