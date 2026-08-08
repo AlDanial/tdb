@@ -56,6 +56,8 @@ _EXTENSION_MAP = {
     ".pl": "perl",
     ".pm": "perl",
     ".t": "perl",
+    ".sh": "bash",
+    ".bash": "bash",
 }
 
 # Source files for compiled languages: debugging the source is a user
@@ -102,6 +104,8 @@ def detect(program: str | None) -> str:
         return "python"
     if head.startswith(b"#!") and b"perl" in head.splitlines()[0]:
         return "perl"
+    if head.startswith(b"#!") and b"bash" in head.splitlines()[0]:
+        return "bash"
     raise LanguageNotSupportedError(
         f"cannot determine the language of {program!r} — pass --lang "
         f"(supported: {', '.join(known_languages())})"
