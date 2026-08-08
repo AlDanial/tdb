@@ -135,6 +135,13 @@ Responses are framed as `ok <b64>` / `err <b64>` lines.
   `set -euo pipefail`: every fallible construct guarded. A
   `set -euo pipefail` fixture script must debug identically to the
   same script without it.
+- The stopped loop's `locals` and `eval` handling must execute
+  **inline in the trap body**, not inside a harness helper function:
+  calling a function pushes a new scope, so `local -p` would report
+  the helper's locals and `eval` would resolve `local` declarations
+  against the wrong frame. Helper functions are fine for anything
+  that doesn't read the debuggee's scope (framing, base64, stack
+  walking).
 
 ## Python adapter (`tdb.adapters.bash`)
 
