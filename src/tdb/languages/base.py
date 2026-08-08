@@ -108,11 +108,57 @@ class AdapterSpec:
 
 
 @dataclass(frozen=True)
+class ErrorFrame:
+    """One stack frame parsed out of a language's fatal-error output."""
+
+    path: str
+    line: int
+    func: str  # "" when the language doesn't name one
+
+
+@dataclass(frozen=True)
+class ParsedError:
+    """A language's fatal-error text, parsed into modal-ready pieces."""
+
+    header: str  # modal's first line, e.g. "Traceback (most recent call last):"
+    message: str  # e.g. "ZeroDivisionError: division by zero"
+    frames: list[ErrorFrame]  # OUTERMOST-first (source order), same as Python prints
+    # Raw display text for the modal body (below the header line): the
+    # language's own error text, verbatim where possible, so source
+    # snippets / chained-exception separator sentences / etc. aren't
+    # lost. NOT reconstructed from `frames` -- built directly off the
+    # original stderr text by the parser. `frames` stays the
+    # structured data `_check_stderr_traceback` uses to build synthetic
+    # DAP StackFrames.
+    detail: str
+
+
+@dataclass(frozen=True)
 class Presentation:
     """Language-specific display knobs, consumed by widgets."""
 
     # Rich/pygments lexer name for the Code View.
     lexer: str = "text"
+
+    # Parse a language's raw stderr into a ParsedError, or None if no
+    # fatal error is present. `exit_code` is the debuggee's real DAP
+    # `exited` code when it's available by the time parsing runs (None
+    # if it hasn't arrived yet, or the language has no owned child to
+    # report one for, e.g. attach mode) -- consulted only by parsers
+    # that need it to disambiguate fatal-vs-non-fatal output (perl);
+    # parsers with an unambiguous signal of their own (python's
+    # traceback header) accept and ignore it. None -> language has no
+    # parser (yet).
+    parse_error: Callable[[str, int | None], ParsedError | None] | None = None
+
+    # Synthetic-stack-frame display name for an ErrorFrame whose `func`
+    # is "" (the language doesn't name a function for that frame, e.g.
+    # top-level/compile-time code). Python's fatal-error frames use this
+    # historical convention for module-level code; other languages have
+    # their own (perl's live stackTrace already falls back to "main" --
+    # see adapters/perl/server.py -- so its error-modal synthetic frames
+    # match that instead of showing Python's "<module>").
+    frame_placeholder: str = "<module>"
 
 
 @dataclass(frozen=True)

@@ -141,6 +141,60 @@ def test_check_stderr_traceback_parses_simple_tb():
     assert top.name == "main"
 
 
+# --- exit-code gate threading (Task 4) ----------------------------------
+
+
+def _perl_coord() -> tuple[DapEventCoordinator, _StubApp]:
+    from tdb.languages import registry
+
+    co, app = _coord()
+    app.controller.profile = registry.resolve("perl")
+    return co, app
+
+
+def test_check_stderr_traceback_perl_unlisted_warning_clean_exit_no_modal():
+    co, app = _perl_coord()
+    app._stderr_buffer = ['Deep recursion on subroutine "main::f" at /w/x.pl line 3.\n']
+    co._check_stderr_traceback(exit_code=0)
+    assert app.pushed_screens == []
+
+
+def test_check_stderr_traceback_perl_unlisted_warning_nonzero_exit_shows_modal():
+    co, app = _perl_coord()
+    app._stderr_buffer = ['Deep recursion on subroutine "main::f" at /w/x.pl line 3.\n']
+    co._check_stderr_traceback(exit_code=255)
+    assert len(app.pushed_screens) == 1
+
+
+def test_check_stderr_traceback_perl_innermost_frame_uses_main_not_module():
+    """Final-review Minor #5: perl's innermost error frame always has
+    func="" (top-level/BEGIN code, no named sub -- see
+    languages/errors.py's parse_perl_error), and must not borrow
+    Python's "<module>" placeholder for it. It should match perl's own
+    live stackTrace convention instead (adapters/perl/server.py's
+    `f.get("sub") or "main"`)."""
+    co, app = _perl_coord()
+    app._stderr_buffer = ["Illegal division by zero at /w/x.pl line 10.\n"]
+    co._check_stderr_traceback(exit_code=255)
+    assert app.controller.state.stack_frames
+    top = app.controller.state.stack_frames[0]
+    assert top.name == "main"
+
+
+async def test_wait_for_exit_code_returns_immediately_when_already_set():
+    co, app = _coord()
+    app.controller.state.last_exit_code = 5
+    result = await co._wait_for_exit_code(max_wait=5.0)
+    assert result == 5
+
+
+async def test_wait_for_exit_code_falls_back_to_none_after_bound():
+    co, app = _coord()
+    assert app.controller.state.last_exit_code is None
+    result = await co._wait_for_exit_code(max_wait=0.05)
+    assert result is None
+
+
 def test_check_stderr_traceback_chained_uses_final_block_for_frames():
     """When multiple traceback blocks chain, synthetic frames come from
     the LAST block (the exception that actually killed the program)."""

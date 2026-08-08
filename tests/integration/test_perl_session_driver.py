@@ -17,6 +17,25 @@ pytestmark = pytest.mark.skipif(
 
 WAIT = 20.0
 
+
+async def _settle_to_run_phase(s: PerlSession) -> None:
+    """Step a session that may still be inside perl's compile phase
+    (Task 5 / Background 8) forward to the START->RUN transition.
+
+    Mirrors server.py's own `_settle_to_run_phase`, at the raw-session
+    level these tests operate at: while phase is 'START' the target
+    file may be only partially compiled, so `b file:line` on a
+    not-yet-parsed line answers "not breakable" and source()/
+    breakable() see a partial line table. Bounded the same way the
+    product code is, so a pathological compile phase can't hang a test.
+    """
+    for _ in range(1000):
+        phase = await s.helper("Devel::TdbHelper::phase()")
+        if phase["phase"] != "START":
+            return
+        await s.command("n")
+
+
 SCRIPT = """\
 my $x = 1;
 my $y = 2;
@@ -66,7 +85,14 @@ async def test_launch_stops_at_entry_with_helpers_injected(session, script):
 
 async def test_breakpoint_continue_and_unsolicited_stop(session, script):
     s, _, stops = session
-    events = await s.command(f"b 4")
+    # File-qualified: a bare `b 4` targets perl5db's own notion of the
+    # "current file" for unqualified breakpoint commands, which -- now
+    # that Devel::TdbCompile (this adapter's compile-phase shim, always
+    # loaded in launch mode) is a second file in the process -- is no
+    # longer reliably `script` even once execution is back in it. The
+    # real adapter (server.py) never issues a bare `b LINE` for exactly
+    # this reason; it always qualifies with the file.
+    events = await s.command(f"b {script}:4")
     assert not any(e[0] == "json" for e in events)
     s.resume("c")
     for _ in range(200):
@@ -88,12 +114,14 @@ async def test_program_output_reaches_callback(session):
     assert any("z=3" in t for t, c in outputs if c == "stdout")
 
 
-async def test_perl5db_chatter_not_forwarded_as_output(session):
+async def test_perl5db_chatter_not_forwarded_as_output(session, script):
     """perl5db echoes the current source line at every stop
     (`main::(file:line): code`). That is debugger chatter, not program
     output -- it must never surface through on_output."""
     s, outputs, stops = session
-    await s.command("b 4")
+    # File-qualified for the same reason as test_breakpoint_continue_
+    # and_unsolicited_stop above -- see that test's comment.
+    await s.command(f"b {script}:4")
     s.resume("c")
     for _ in range(200):
         if stops:
@@ -279,6 +307,16 @@ async def test_source_of_large_file_with_angle_brackets_round_trips(
         WAIT,
     )
     try:
+        # `program` opens with `use strict;`/`use warnings;`, so (Task 5)
+        # launch() now stops there mid-compile-phase, with only the file
+        # parsed so far in perl5db's line table -- source() legitimately
+        # returns a partial file at that point (see helpers.pl's own
+        # breakable()/source() comments and Background 8 in the plan).
+        # Settle to the RUN-phase transition, the same way server.py's
+        # _settle_to_run_phase does, before asserting the full text
+        # round-trips -- this test is about the marker-splitting bug,
+        # not about compile-phase partial compilation.
+        await _settle_to_run_phase(s)
         payload = await s.helper(f"Devel::TdbHelper::source({program!r})")
         assert payload["text"] == expected_text
     finally:
@@ -297,8 +335,19 @@ async def test_breakable_populates_and_breakpoint_lands_after_require(
         s.launch(program=main, args=[], cwd=str(tmp_path_of(main)), env=None), WAIT
     )
     try:
+        # main.pl opens with `use strict; use warnings;` (line 1), a
+        # compile-time statement, so (Task 5) the entry stop lands
+        # there mid-compile-phase, with the rest of the file not yet
+        # parsed -- `b main:3` would answer "not breakable" (Background
+        # 8) if issued now. Settle past the compile phase first, the
+        # same way server.py defers real breakpoint application until
+        # phase() reports RUN.
+        await _settle_to_run_phase(s)
         # Stop right after the require (main.pl line 3 is the call site).
-        await s.command("b 3")
+        # File-qualified -- see test_breakpoint_continue_and_unsolicited_
+        # stop's comment: a bare `b LINE` no longer reliably targets
+        # `main` now that Devel::TdbCompile is always loaded alongside it.
+        await s.command(f"b {main}:3")
         s.resume("c")
         for _ in range(200):
             if stops:

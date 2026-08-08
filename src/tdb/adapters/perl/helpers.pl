@@ -79,7 +79,7 @@ sub _user_frames {
     while ( my @c = caller($i) ) {
         my ( $pkg, $file, $line ) = @c[ 0, 1, 2 ];
         $i++;
-        next if $pkg =~ /\A(?:DB\b|Devel::TdbHelper|Devel::TdbRemote)/;
+        next if $pkg =~ /\A(?:DB\b|Devel::TdbHelper|Devel::TdbRemote|Devel::TdbCompile)/;
         next if $file =~ /\(eval \d+\)/;
         my $sub = ( caller($i) )[3];    # sub that contains this frame
         push @frames, [ $file, $line, $sub ];
@@ -101,6 +101,23 @@ sub location {
                 sub     => $top->[2],
             }
         );
+        1;
+    } or _emit_error($@);
+    return;
+}
+
+
+# ${^GLOBAL_PHASE} is 'START' for perl's ENTIRE initial compile of the
+# top-level program (every `use`/BEGIN block, in every file) and flips
+# to 'RUN' exactly once, right as mainline execution begins -- by
+# which point the whole top-level file has finished compiling, even
+# the parts execution hasn't reached yet. The Perl adapter's
+# server.py uses this to decide when it's finally safe to call
+# breakable()/b for a file whose compile-phase stop it caught (see
+# breakable()'s own comment on the partial-line-table hazard).
+sub phase {
+    eval {
+        _emit( { phase => "${^GLOBAL_PHASE}" } );
         1;
     } or _emit_error($@);
     return;
@@ -350,6 +367,30 @@ sub vars {
             push @out, _entry( '$\\',   $\ );
         }
         _emit( { vars => \@out } );
+        1;
+    } or _emit_error($@);
+    return;
+}
+
+sub cond_result {
+    my ( $ok, $err ) = @_;
+    eval {
+        if ($err) {
+            my $msg = "$err";
+            $msg =~ s/\s+\z//;
+            # fail-CLOSED, matching perl5db's own conditional-breakpoint
+            # semantics (_DB__determine_if_we_should_break's
+            # `$DB::signal |= 1 if do {$stop}` -- a condition that dies
+            # aborts the `if` before the assignment runs, so a real
+            # runtime conditional breakpoint with an erroring condition
+            # never fires either; confirmed empirically). server.py's
+            # _eval_condition treats the presence of "error" as false
+            # regardless of "ok", so this exact value doesn't matter, but
+            # keep it false for clarity if ever inspected directly.
+            _emit( { ok => JSON::PP::false, error => $msg } );
+            return 1;
+        }
+        _emit( { ok => ( $ok ? JSON::PP::true : JSON::PP::false ) } );
         1;
     } or _emit_error($@);
     return;

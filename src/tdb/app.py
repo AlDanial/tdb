@@ -36,6 +36,7 @@ from tdb.widgets.console_view import ConsoleView
 from tdb.widgets.evaluate_console import EvaluateConsole
 from tdb.widgets.menu_bar import MenuBar, _MenuDropdown
 from tdb.widgets.modals import (
+    DEFAULT_TRACEBACK_HEADER,
     _AboutModal,
     _DocumentationModal,
     _KeybindingsModal,
@@ -996,6 +997,7 @@ class TdbApp(_AppMessageRoutes, App):
                 exc,
                 self.panels.last_frames_text or "",
                 can_restart=self.panels.last_can_restart,
+                header=self.panels.last_header or DEFAULT_TRACEBACK_HEADER,
             ),
             callback=on_dismiss,
         )

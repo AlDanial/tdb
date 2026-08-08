@@ -31,6 +31,11 @@ def helpers_path() -> str:
     return str(ref)
 
 
+def compile_shim_path() -> str:
+    ref = importlib.resources.files("tdb.adapters.perl") / "Devel" / "TdbCompile.pm"
+    return str(ref)
+
+
 class PerlSession:
     def __init__(
         self,
@@ -57,6 +62,36 @@ class PerlSession:
     def pid(self) -> int | None:
         return self._process.pid if self._process else None
 
+    @property
+    def eof(self) -> bool:
+        """True once the debug socket has genuinely closed (read loop hit
+        EOF). Lets callers that force a `command("q")` to try to end the
+        session distinguish "it actually closed the connection" from "it
+        timed out / replied without dying" -- the two need different
+        follow-up handling (see server.py's `_eof_terminated` guard)."""
+        return self._eof
+
+    async def wait_exit_code(self, timeout: float = 2.0) -> int:
+        """Best-effort real exit code of the owned child (launch mode only).
+
+        Attach mode has no owned child (`self._process` is None) -- always
+        0 there. In launch mode, perl5db parks at a live "?" prompt (or the
+        debug socket can close on a hard crash) slightly before the OS has
+        actually reaped the child, so this waits briefly rather than
+        assuming `returncode` is already populated. Bounded so a child that,
+        for whatever reason, never exits can't block the event loop
+        indefinitely -- falls back to 0 in that case.
+        """
+        if self._process is None:
+            return 0
+        if self._process.returncode is not None:
+            return self._process.returncode
+        try:
+            await asyncio.wait_for(self._process.wait(), timeout)
+        except asyncio.TimeoutError:
+            return 0
+        return self._process.returncode if self._process.returncode is not None else 0
+
     async def launch(
         self,
         program: str,
@@ -75,11 +110,46 @@ class PerlSession:
         port = server.sockets[0].getsockname()[1]
         child_env = dict(env or os.environ)
         child_env["PERLDB_OPTS"] = f"RemotePort=127.0.0.1:{port}"
+        # Devel::TdbCompile (this adapter's own compile-phase shim --
+        # see that module's header) arms perl5db to trap during
+        # perl's compile phase, so BEGIN blocks become steppable. It
+        # only traps statements belonging to `program`, filtered by
+        # comparing against exactly the string perl reports in
+        # `caller` for it -- which is argv's program path VERBATIM,
+        # not resolved/canonicalized (confirmed empirically against
+        # perl 5.40.1). This MUST match `program` below exactly, or
+        # the filter silently never matches and the whole feature is
+        # a no-op.
+        #
+        # Defensive existence check: as of this writing pyproject.toml's
+        # package-data does NOT list Devel/TdbCompile.pm (only
+        # helpers.pl and TdbRemote.pm), so a built wheel installed
+        # non-editable ships without this file. Passing -MDevel::TdbCompile
+        # unconditionally in that case makes perl abort at startup
+        # ("Can't locate Devel/TdbCompile.pm in @INC ... BEGIN failed") --
+        # launch mode would be entirely broken, not merely missing
+        # BEGIN-block stepping. Omit the -I/-M pair and degrade to a
+        # normal launch instead. The packaging fix (adding the file to
+        # pyproject.toml's package-data) is still required for the
+        # feature to actually work out of a wheel -- this only prevents
+        # a missing file from taking the whole adapter down.
+        adapters_dir = os.path.dirname(helpers_path())
+        shim_path = compile_shim_path()
+        compile_shim_available = os.path.isfile(shim_path)
+        argv = [perl, "-d"]
+        if compile_shim_available:
+            child_env["TDB_COMPILE_FILE"] = program
+            argv += [f"-I{adapters_dir}", "-MDevel::TdbCompile"]
+        else:
+            log.warning(
+                "Devel::TdbCompile shim not found at %s -- compile-phase "
+                "(BEGIN-block) debugging is unavailable for this launch; "
+                "continuing with a normal launch.",
+                shim_path,
+            )
+        argv += [program, *args]
         self._process = await asyncio.create_subprocess_exec(
-            perl,
-            "-d",
-            program,
-            *args,
+            *argv,
             cwd=cwd,
             env=child_env,
             stdin=asyncio.subprocess.DEVNULL,

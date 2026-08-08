@@ -12,25 +12,16 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-import re
 from typing import TYPE_CHECKING
 
 from tdb.session.messages import DapOutput, DapStopped
 from tdb.widgets.console_view import ConsoleView
-from tdb.widgets.modals import _TracebackModal
+from tdb.widgets.modals import DEFAULT_TRACEBACK_HEADER, _TracebackModal
 
 if TYPE_CHECKING:
     from tdb.app import TdbApp
 
 log = logging.getLogger(__name__)
-
-
-# Pre-compiled at module level so repeated traceback parses don't
-# re-build the regex each time.
-_TB_FILE_RE = re.compile(
-    r'^\s*File "(.+)", line (\d+)(?:, in (.+))?',
-    re.MULTILINE,
-)
 
 
 class DapEventCoordinator:
@@ -140,6 +131,7 @@ class DapEventCoordinator:
         self.app.panels.last_exception_text = exception_text
         self.app.panels.last_frames_text = frames_text
         self.app.panels.last_can_restart = can_restart
+        self.app.panels.last_header = DEFAULT_TRACEBACK_HEADER
         self.app.push_screen(
             _TracebackModal(
                 exception_text,
@@ -177,7 +169,8 @@ class DapEventCoordinator:
                 # the buffer to stabilize before parsing, otherwise the modal
                 # shows a partial traceback.
                 await self._wait_for_stderr_quiescent()
-                self._check_stderr_traceback()
+                exit_code = await self._wait_for_exit_code()
+                self._check_stderr_traceback(exit_code)
             self.app._update_ui_state()
         except Exception:
             log.exception("Error handling terminated event")
@@ -203,64 +196,64 @@ class DapEventCoordinator:
             if now >= deadline:
                 return
 
-    def _check_stderr_traceback(self) -> None:
-        """If stderr contains a Python traceback, show it in a modal,
-        build synthetic stack frames, and navigate Code View to the
-        deepest frame."""
+    async def _wait_for_exit_code(
+        self,
+        max_wait: float = 0.3,
+    ) -> int | None:
+        """Bounded wait for `state.last_exit_code` to be populated.
+
+        `terminated` and `exited` are separate DAP events and this coordinator
+        runs on `terminated`. Measured empirically (see task report): debugpy
+        emits `exited` BEFORE `terminated`, so `last_exit_code` is already set
+        by the time this runs. The perl adapter emits them in the opposite
+        order (`terminated` then `exited`, written back-to-back with no
+        `await` between them), so `exited` can still be in flight -- poll
+        briefly rather than assume. Falls back to whatever is present (often
+        still None) once `max_wait` elapses, e.g. if the adapter never sends
+        `exited` at all (either event is independently sufficient -- see
+        DebugController._on_terminated/_on_exited).
+        """
+        state = self.app.controller.state
+        deadline = asyncio.get_event_loop().time() + max_wait
+        while state.last_exit_code is None:
+            if asyncio.get_event_loop().time() >= deadline:
+                break
+            await asyncio.sleep(0.02)
+        return state.last_exit_code
+
+    def _check_stderr_traceback(self, exit_code: int | None = None) -> None:
+        """If stderr contains a fatal error the active profile's parser
+        recognizes, show it in a modal, build synthetic stack frames,
+        and navigate Code View to the deepest frame.
+
+        `exit_code` is the debuggee's real DAP `exited` code if known by
+        the time this runs (see `_wait_for_exit_code`); passed straight
+        through to the profile's parser, which may ignore it (python) or
+        use it to gate fatality (perl)."""
         from tdb.dap.types import Source, StackFrame
 
-        stderr = "".join(self.app._stderr_buffer)
-        tb_header = "Traceback (most recent call last):"
-        if tb_header not in stderr:
+        parse_error = self.app.controller.profile.presentation.parse_error
+        if parse_error is None:
             return
 
-        # Capture from the FIRST traceback header to the end, so chained
-        # exceptions ("The above exception was the direct cause..." /
-        # "During handling of the above exception...") are preserved in full.
-        tb_start = stderr.find(tb_header)
-        tb_text = stderr[tb_start:].rstrip()
+        stderr = "".join(self.app._stderr_buffer)
+        parsed = parse_error(stderr, exit_code)
+        if parsed is None:
+            return
 
-        # Split into individual traceback blocks (one per chained exception).
-        block_starts = [m.start() for m in re.finditer(re.escape(tb_header), tb_text)]
-        blocks: list[str] = []
-        for i, s in enumerate(block_starts):
-            e = block_starts[i + 1] if i + 1 < len(block_starts) else len(tb_text)
-            blocks.append(tb_text[s:e].rstrip())
-
-        # Synthetic stack frames come from the LAST block — that is the
-        # exception that actually terminated the process (Python prints
-        # cause/context first, final exception last).
-        final_block = blocks[-1] if blocks else tb_text
-        matches = list(_TB_FILE_RE.finditer(final_block))
-
-        # The exception line is the last non-empty, non-indented line of the
-        # final block (Python prints it after all "File" frames).
-        lines = final_block.split("\n")
-        exception_text = ""
-        for line in reversed(lines):
-            stripped = line.strip()
-            if not stripped:
-                continue
-            if stripped.startswith("File ") or stripped.startswith("Traceback "):
-                break
-            if line.startswith("    ") or line.startswith("\t"):
-                continue
-            exception_text = stripped
-            break
-
-        # Build synthetic stack frames (reversed: deepest = index 0, like DAP)
+        # Build synthetic stack frames (reversed: deepest = index 0, like
+        # DAP). ParsedError.frames is OUTERMOST-first (source order); the
+        # parser does not do this inversion, so it happens here.
         state = self.app.controller.state
+        placeholder = self.app.controller.profile.presentation.frame_placeholder
         synthetic_frames: list[StackFrame] = []
-        for i, m in enumerate(reversed(matches)):
-            path = m.group(1)
-            line = int(m.group(2))
-            func = m.group(3) or "<module>"
+        for i, frame in enumerate(reversed(parsed.frames)):
             synthetic_frames.append(
                 StackFrame(
                     id=i,
-                    name=func,
-                    source=Source(path=path, name=os.path.basename(path)),
-                    line=line,
+                    name=frame.func or placeholder,
+                    source=Source(path=frame.path, name=os.path.basename(frame.path)),
+                    line=frame.line,
                 )
             )
 
@@ -271,25 +264,29 @@ class DapEventCoordinator:
             # `current_frame_id` via `resolve_evaluate_frame_id`.
             state.set_stack(synthetic_frames, synthetic=True)
 
-        # Modal body: show every block's body (after its header line) so
-        # chained exception separator text is preserved.
-        first_header_end = tb_text.index("\n") + 1 if "\n" in tb_text else len(tb_text)
-        frames_text = tb_text[first_header_end:].rstrip()
+        # Modal body: the parser's raw detail text (verbatim source
+        # snippets / chained-exception separator text for Python; the die
+        # message + call-frame lines for Perl) -- NOT rebuilt from
+        # `parsed.frames`, which only carries structured File/line/func
+        # data for the synthetic StackFrames above.
+        frames_text = parsed.detail
 
         def on_dismiss(result: str | None) -> None:
             if result == "restart":
                 self.app._restart_session()
 
-        exc_label = exception_text or "Program crashed"
+        exc_label = parsed.message or "Program crashed"
         can_restart = self.app.controller.supports_restart
         self.app.panels.last_exception_text = exc_label
         self.app.panels.last_frames_text = frames_text
         self.app.panels.last_can_restart = can_restart
+        self.app.panels.last_header = parsed.header
         self.app.push_screen(
             _TracebackModal(
                 exc_label,
                 frames_text,
                 can_restart=can_restart,
+                header=parsed.header,
             ),
             callback=on_dismiss,
         )

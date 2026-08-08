@@ -67,6 +67,13 @@ class DebugState:
     # Reason for the last stop (breakpoint / step / exception / pause / etc.).
     stop_reason: str | None = None
 
+    # The debuggee's real exit code, set by the DAP `exited` event. None
+    # until `exited` arrives (it may never arrive at all -- `terminated`
+    # and `exited` are independent events, see DebugController._on_*).
+    # Consulted by DapEventCoordinator._check_stderr_traceback to gate
+    # the perl fatal-error parser.
+    last_exit_code: int | None = None
+
     # Per-frame scope lists, keyed by frame.id. Populated only in post-mortem.
     frame_scopes: dict[int, list[Scope]] = field(default_factory=dict)
 

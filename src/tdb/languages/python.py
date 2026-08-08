@@ -14,6 +14,7 @@ from tdb.languages.base import (
     Presentation,
     ProfileCapabilities,
 )
+from tdb.languages.errors import parse_python_error
 
 
 class DebugpyAdapter(AdapterSpec):
@@ -104,7 +105,7 @@ def build_python_profile(
         id="python",
         display_name="Python",
         adapter=DebugpyAdapter(),
-        presentation=Presentation(lexer="python"),
+        presentation=Presentation(lexer="python", parse_error=parse_python_error),
         capabilities=ProfileCapabilities(
             compute_step_units=compute_step_units,
             child_process_strategy="debugpy",
