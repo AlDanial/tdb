@@ -121,3 +121,7 @@ register("cpp", build_cpp_profile)
 from tdb.languages.perl import build_perl_profile  # noqa: E402
 
 register("perl", build_perl_profile)
+
+from tdb.languages.bash import build_bash_profile  # noqa: E402
+
+register("bash", build_bash_profile)
