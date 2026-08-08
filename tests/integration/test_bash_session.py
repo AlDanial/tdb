@@ -200,3 +200,136 @@ async def test_exit_reported_promptly_despite_background_grandchild():
     assert rec.exit_code == 3
     assert "started" in rec.stdout()
     await session.stop()
+
+
+# --- Task 5: stepping semantics + trap-correctness regressions -----------
+
+
+async def _stop_lines(session, rec, mode, count):
+    """Resume with `mode` `count` times, collecting (path-tail, line)."""
+    hits = []
+    for _ in range(count):
+        session.resume(mode)
+        reason, path, line = await rec.wait_stop()
+        hits.append((path.rsplit("/", 1)[-1], line))
+    return hits
+
+
+@pytest.mark.asyncio
+async def test_step_in_descends_into_function():
+    rec = Recorder()
+    session = await _launch(FIXTURES / "bash_functions.sh", rec)
+    session.resume("step")
+    await rec.wait_stop()  # entry: line 9 (`outer` call — see next test's note)
+    # keep stepping; we must eventually stop on the `local iv=99` line (2)
+    lines = [l for _, l in await _stop_lines(session, rec, "step", 6)]
+    assert 2 in lines  # inside inner()
+    await session.stop()
+
+
+@pytest.mark.asyncio
+async def test_next_steps_over_call():
+    """DEVIATION from the brief: the brief's version looped `next` waiting
+    for an intermediate stop at line 9 before checking the "step over"
+    landing. Empirically (confirmed against a vanilla `bash -o functrace`
+    trap, independent of the harness) the DEBUG trap never fires on a bare
+    function-definition line — only on the first *executable* statement.
+    bash_functions.sh's lines 1-8 are function definitions, so the very
+    first trap firing (our stopOnEntry `step`) already lands on line 9,
+    the `outer` call itself. The brief's while-loop therefore never saw a
+    second line==9 stop and hung until timeout. This is a fixture/trap-
+    semantics miscount, not a harness defect: a single `next` from the
+    call line must land clean on line 10 without ever stopping inside
+    outer()/inner() (depth 1/2), which is the actual "step over" invariant
+    this test protects.
+    """
+    rec = Recorder()
+    session = await _launch(FIXTURES / "bash_functions.sh", rec)
+    session.resume("step")
+    reason, path, line = await rec.wait_stop()
+    assert reason == "entry"
+    assert line == 9  # the `outer` call: first executable line in the file
+    session.resume("next")
+    _, _, line = await rec.wait_stop()
+    assert line == 10  # stepped clean over outer()'s (and inner()'s) body
+    await session.stop()
+
+
+@pytest.mark.asyncio
+async def test_finish_returns_to_caller():
+    rec = Recorder()
+    session = await _launch(FIXTURES / "bash_functions.sh", rec)
+    session.resume("step")
+    await rec.wait_stop()
+    # step until inside inner() (line 2)
+    for _ in range(20):
+        session.resume("step")
+        _, _, line = await rec.wait_stop()
+        if line == 2:
+            break
+    else:
+        raise AssertionError("never reached inner()")
+    session.resume("finish")
+    _, _, line = await rec.wait_stop()
+    assert line == 7  # back in outer(): echo line
+    await session.stop()
+
+
+@pytest.mark.asyncio
+async def test_step_follows_sourced_file():
+    rec = Recorder()
+    session = await _launch(FIXTURES / "bash_sourced_main.sh", rec)
+    session.resume("step")
+    await rec.wait_stop()
+    files = set()
+    for _ in range(10):
+        session.resume("step")
+        _, path, _ = await rec.wait_stop()
+        files.add(path.rsplit("/", 1)[-1])
+        if "bash_sourced_lib.sh" in files:
+            break
+    assert "bash_sourced_lib.sh" in files
+    await session.stop()
+
+
+@pytest.mark.asyncio
+async def test_dollar_question_survives_a_stop():
+    """REGRESSION (spec): the trap must not clobber $? nor skip commands.
+
+    Stops on every line via step mode; rc=1 must still be printed."""
+    rec = Recorder()
+    session = await _launch(FIXTURES / "bash_status.sh", rec)
+    session.resume("step")
+    await rec.wait_stop()
+    for _ in range(10):
+        if rec.exit_event.is_set():
+            break
+        session.resume("step")
+        try:
+            await asyncio.wait_for(rec.stop_event.wait(), 5)
+            rec.stop_event.clear()
+        except asyncio.TimeoutError:
+            break
+    await asyncio.wait_for(rec.exit_event.wait(), 5)
+    assert "rc=1" in rec.stdout()
+
+
+@pytest.mark.asyncio
+async def test_no_statement_skipped_under_stepping():
+    """REGRESSION (spec): extdebug + nonzero trap status skips commands.
+
+    All three echo lines of bash_hello.sh must run when stepping through."""
+    rec = Recorder()
+    session = await _launch(FIXTURES / "bash_hello.sh", rec)
+    session.resume("step")
+    await rec.wait_stop()
+    while not rec.exit_event.is_set():
+        session.resume("step")
+        try:
+            await asyncio.wait_for(rec.stop_event.wait(), 5)
+            rec.stop_event.clear()
+        except asyncio.TimeoutError:
+            break
+    assert "hello from bash" in rec.stdout()
+    assert "x is 1" in rec.stdout()
+    assert rec.exit_code == 7
