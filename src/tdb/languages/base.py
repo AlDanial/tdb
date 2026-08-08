@@ -149,7 +149,7 @@ class Presentation:
     # parsers with an unambiguous signal of their own (python's
     # traceback header) accept and ignore it. None -> language has no
     # parser (yet).
-    parse_error: Callable[[str, "int | None"], "ParsedError | None"] | None = None
+    parse_error: Callable[[str, int | None], ParsedError | None] | None = None
 
     # Synthetic-stack-frame display name for an ErrorFrame whose `func`
     # is "" (the language doesn't name a function for that frame, e.g.
