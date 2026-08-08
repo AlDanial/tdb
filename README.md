@@ -2,8 +2,10 @@
 
 `textual-debugger` (the package) provides `tdb` (the command-line tool and module),
 a full-featured terminal-based debugger for Python and other languages
-with a Debug Adapter Protocol (DAP) implementation. C and C++ support (via
-`gdb` or `lldb-dap`) is built in.
+with a Debug Adapter Protocol (DAP) implementation.  In addition to Python,
+`tdb` comes with built-in support for
+- C and C++ (via `gdb` or `lldb-dap`)
+- Perl (via `perl -d`)
 
 `tdb` is built with [textual](https://github.com/Textualize/textual) and speaks
 DAP to a pluggable debug adapter: [debugpy](https://github.com/microsoft/debugpy)
@@ -255,6 +257,43 @@ hood, so it works with any Perl already on the system.
 ```bash
 tdb script.pl
 ```
+
+**Compile-time code (`BEGIN` blocks):** Perl runs `BEGIN` blocks — and the
+`use` statements that are themselves `BEGIN` blocks — while it is still
+*compiling* your program, before stock `perl5db` ever stops. `tdb` arms the
+debugger ahead of compilation so that code is debuggable too, which means the
+first stop is the first **compile-time** statement of your file (typically
+`use strict;` near the top) rather than the first runtime statement. Step from
+there and you land inside your `BEGIN` blocks, with the stack, variable and
+evaluate views working normally; the `Stack` view shows the frame as
+`main::BEGIN`. Stepping through a `use` line takes a few steps — the pragma's
+own compile-time work happens in between — but you are never dragged into
+another module's internals.
+
+Two consequences worth knowing:
+
+- **Breakpoints are deferred while your program compiles.** During the compile
+  phase Perl has only parsed part of your file, so its line table is
+  incomplete and a breakpoint can't be verified yet. `tdb` holds such requests
+  and applies them once compilation finishes. A breakpoint placed *inside* a
+  `BEGIN` block may therefore not fire on the first run — step into the block
+  from the initial stop instead.
+- **Startup is slower for large dependency graphs**, because the debugger is
+  active throughout compilation. A script with a big `use` tree takes
+  noticeably longer to reach its first stop under `tdb`.
+
+**`END` blocks** are entered with **step-in** (`s`). `next` and `continue` run
+straight past them to program termination, which is standard `perl5db`
+behavior, not a `tdb` limitation.
+
+**When your program dies:** an uncaught Perl error (`die`, or a fatal runtime
+error such as division by zero) opens the same error modal Python tracebacks
+get — the message, the call stack parsed from Perl's `at FILE line N.` /
+`... called at FILE line N` output, and Code View navigated to the failing
+line. This works for compile-time failures too, including a `die` inside a
+`BEGIN` block that aborts compilation. Press `e` in Code View to re-summon the
+last error. `tdb` also reports the debuggee's real exit status rather than
+assuming success.
 
 **Remote attach:** useful when the Perl process is already running (a long-
 lived service, a process started by something other than `tdb`) or lives on

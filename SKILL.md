@@ -56,6 +56,15 @@ Multi-language notes:
   program must be prepared with `Devel::TdbRemote` (`use Devel::TdbRemote;`
   first line, `listen()` + `wait_for_client()`) in place of
   `debugpy.listen()`/`wait_for_client()`. C/C++ has no attach mode.
+- **Perl stops during compilation.** A launched Perl debuggee's first stop is
+  the first *compile-time* statement of the program (usually `use strict;`
+  near the top), not the first runtime statement — this is what makes `BEGIN`
+  blocks steppable. Stepping from there enters them (`stack` reports the frame
+  as `main::BEGIN`). Two implications when scripting: a `set_breakpoint` issued
+  before compilation finishes is held and applied afterwards, so it comes back
+  unverified and a breakpoint *inside* a `BEGIN` block may not fire on the
+  first run (step into the block instead); and reaching your program's runtime
+  entry point takes a few extra `next`/`step_in` calls.
 - `tasks`, `processes`, and `wait_graph` remain Python-only; for other
   languages they return a structured "not supported" error. `threads`
   works everywhere.
