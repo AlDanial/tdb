@@ -245,12 +245,13 @@ class DapEventCoordinator:
         # DAP). ParsedError.frames is OUTERMOST-first (source order); the
         # parser does not do this inversion, so it happens here.
         state = self.app.controller.state
+        placeholder = self.app.controller.profile.presentation.frame_placeholder
         synthetic_frames: list[StackFrame] = []
         for i, frame in enumerate(reversed(parsed.frames)):
             synthetic_frames.append(
                 StackFrame(
                     id=i,
-                    name=frame.func or "<module>",
+                    name=frame.func or placeholder,
                     source=Source(path=frame.path, name=os.path.basename(frame.path)),
                     line=frame.line,
                 )

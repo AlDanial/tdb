@@ -15,6 +15,7 @@ from typing import Any, Awaitable, Callable
 
 from tdb.dap.messages import Event, Request, Response, parse_message
 from tdb.dap.protocol import encode_message, read_message
+from tdb.dap.types import DEFERRED_VERIFICATION_MESSAGE
 
 from .refs import RefRegistry
 from .session import PerlProtocolError, PerlSession
@@ -308,16 +309,21 @@ class PerlDapServer:
         """`Devel::TdbHelper::location()`, auto-stepping past any stop
         that lands inside our own compile-phase shim.
 
-        Requirement: no stop may ever surface inside TdbCompile.pm --
-        it wraps DB::DB for the debuggee's whole lifetime (see that
-        module's own header comment on why it stays installed), and as
-        a defense-in-depth belt-and-suspenders on top of that module's
-        own fix, if a stray trap ever DOES land there, auto-step past
-        it (the same auto-step-out-to-caller pattern _on_attach already
-        uses for Devel::TdbRemote) rather than surfacing it as a user
-        stop. Bounded so a persistent leak can't hang tdb -- it would
-        instead fall through to the pre-existing "location() gave us
-        nothing usable" handling.
+        TdbCompile.pm's DB::DB wrapper self-uninstalls the instant
+        ${^GLOBAL_PHASE} leaves 'START' (see that module's own header
+        comment: leaving it installed with a `goto`-passthrough for the
+        rest of the process's life was tried and reliably OOM'd perl).
+        Self-uninstalling leaks exactly one stop at the
+        reassignment/goto line, inside TdbCompile.pm itself, during
+        that START->RUN transition. That stop is normally hidden by
+        `_user_frames` in helpers.pl (which skips frames whose package
+        is Devel::TdbCompile); this is the belt-and-suspenders backstop
+        on the adapter side -- if a stray trap ever DOES surface here
+        regardless, auto-step past it (the same auto-step-out-to-caller
+        pattern _on_attach already uses for Devel::TdbRemote) rather
+        than showing it as a user stop. Bounded so a persistent leak
+        can't hang tdb -- it would instead fall through to the
+        pre-existing "location() gave us nothing usable" handling.
         """
         loc = None
         for _ in range(5):
@@ -627,7 +633,20 @@ class PerlDapServer:
         # attaches), so this is a no-op there.
         if await self._current_phase() == "START":
             self._pending_breakpoints[remote_path] = (path, wanted)
-            results = [{"verified": False, "line": bp["line"]} for bp in wanted]
+            # DEFERRED_VERIFICATION_MESSAGE tells controller.py's
+            # _warn_unbound_breakpoints this verified:false is a deferral,
+            # not a genuine bind failure, so it doesn't fire its
+            # missing-debug-info warning here; _flush_pending_if_run sends
+            # the real answer as a `breakpoint` "changed" event once the
+            # compile phase settles (see requirement 5).
+            results = [
+                {
+                    "verified": False,
+                    "line": bp["line"],
+                    "message": DEFERRED_VERIFICATION_MESSAGE,
+                }
+                for bp in wanted
+            ]
             self.send_response(request, {"breakpoints": results})
             return
         # A later, non-deferred request for this same file supersedes

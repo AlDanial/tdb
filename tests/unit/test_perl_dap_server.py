@@ -197,6 +197,58 @@ async def test_setBreakpoints_translates_to_remote_and_keys_by_remote_path():
     assert server.breakpoint_lines == {"/srv/app/x.pl": {10}}
 
 
+async def test_setBreakpoints_defers_during_compile_phase():
+    """Background 8 / requirement 5: a setBreakpoints request that
+    arrives while the debuggee is still compiling (phase START) must
+    defer -- never call b/breakable() on a partially-compiled file --
+    and answer verified:false with DEFERRED_VERIFICATION_MESSAGE so
+    controller.py's _warn_unbound_breakpoints knows this is a deferral,
+    not a genuine bind failure (see final-review Important #2)."""
+
+    class StubSession:
+        def __init__(self) -> None:
+            self.stopped = True
+            self.commands: list[str] = []
+
+        async def command(self, text, timeout=20.0):
+            self.commands.append(text)
+            return []
+
+        async def helper(self, expr, timeout=20.0):
+            assert "phase()" in expr
+            return {"phase": "START"}
+
+    reader = asyncio.StreamReader()
+    writer = SinkWriter()
+    server = PerlDapServer(reader, writer)
+    stub = StubSession()
+    server.session = stub
+
+    request = Request(
+        seq=1,
+        command="setBreakpoints",
+        arguments={
+            "source": {"path": "/local/src/x.pl"},
+            "breakpoints": [{"line": 10}],
+        },
+    )
+    await server._on_setBreakpoints(request)
+
+    # No `b`/breakable command was issued against the still-compiling file.
+    assert stub.commands == []
+    assert "/local/src/x.pl" in server._pending_breakpoints
+    out = _messages(writer)
+    resp = [m for m in out if m.get("command") == "setBreakpoints"][0]
+    assert resp["success"] is True
+    assert resp["body"]["breakpoints"] == [
+        {
+            "verified": False,
+            "line": 10,
+            "message": server_mod.DEFERRED_VERIFICATION_MESSAGE,
+        }
+    ]
+
+
 async def test_stackTrace_translates_remote_frame_paths_to_local():
     class StubSession:
         def __init__(self) -> None:

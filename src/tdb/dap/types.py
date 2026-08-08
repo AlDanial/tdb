@@ -21,6 +21,17 @@ class Source:
         )
 
 
+# A setBreakpoints response Breakpoint carries this exact message when an
+# adapter has deferred real verification to a later point instead of
+# reporting a genuine bind failure (perl's compile-phase breakpoint
+# deferral -- see adapters/perl/server.py's _on_setBreakpoints -- is the
+# only current producer). Breakpoints carrying it are always followed by
+# a `breakpoint` "changed" event once resolved; controller.py's
+# _warn_unbound_breakpoints treats its presence as "the adapter already
+# explained itself" and skips its own missing-debug-info guess-warning.
+DEFERRED_VERIFICATION_MESSAGE = "not yet verified: still compiling"
+
+
 @dataclass
 class Breakpoint:
     id: int = 0
@@ -51,6 +62,14 @@ class SourceBreakpoint:
     # tdb-local flag; not part of DAP wire format. False for -t/--to-line
     # breakpoints, which are excluded from breakpoints.json on save.
     persist: bool = True
+    # tdb-local flag; not part of DAP wire format. Mirrors the adapter's
+    # last-reported verified state for this line -- True until told
+    # otherwise so most (synchronously-verifying) adapters never touch
+    # it. Kept current by controller.py's setBreakpoints response
+    # handling and its `breakpoint` "changed" event handler (the latter
+    # is how an adapter that defers verification, e.g. perl's
+    # compile-phase breakpoint deferral, corrects it after the fact).
+    verified: bool = True
 
     def to_dict(self) -> dict[str, Any]:
         d: dict[str, Any] = {"line": self.line}

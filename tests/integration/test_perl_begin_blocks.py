@@ -191,6 +191,10 @@ async def test_compile_phase_location_never_reports_unknown(tmp_path):
         await session.stop()
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="resource.RLIMIT_AS / preexec_fn are POSIX-only (no Windows equivalent)",
+)
 async def test_compile_phase_shim_does_not_exhaust_memory(tmp_path):
     """Regression guard for the OOM bug fixed in TdbCompile.pm.
 

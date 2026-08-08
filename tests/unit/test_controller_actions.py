@@ -20,6 +20,7 @@ from tdb.session.controller import DebugController
 from tdb.session.event_bus import DebugEventHandler
 from tdb.session.state import SessionPhase
 from tdb.dap.types import (
+    DEFERRED_VERIFICATION_MESSAGE,
     Breakpoint,
     Capabilities,
     Scope,
@@ -432,6 +433,92 @@ async def test_partially_bound_breakpoints_do_not_warn():
         {"verified": False, "line": 5},
     ]
     await ctrl.set_breakpoint_condition("/f.py", 3, "x > 1")
+    assert not [o for o in handler.outputs if "debug info" in o[0]]
+
+
+async def test_deferred_breakpoints_do_not_warn():
+    """Requirement 5 / final-review Important #2: a setBreakpoints answer
+    carrying DEFERRED_VERIFICATION_MESSAGE (perl's compile-phase
+    deferral) means "verification postponed", not "no debug info" —
+    the missing-debug-info guess-warning must stay silent for it."""
+    ctrl, fake, handler = _make()
+    fake.breakpoint_results = [
+        {"verified": False, "line": 3, "message": DEFERRED_VERIFICATION_MESSAGE}
+    ]
+    await ctrl.add_breakpoint("/x/prog.pl", 3)
+    assert not [o for o in handler.outputs if "debug info" in o[0]]
+
+
+async def test_breakpoint_changed_event_updates_verified_state():
+    """The adapter's `breakpoint` "changed" event (sent when a deferred
+    perl breakpoint is finally applied for real) must correct the
+    stored verified flag — this is plan requirement 5's UI half,
+    previously unimplemented (final-review Important #2)."""
+    ctrl, fake, handler = _make()
+    ctrl.state.breakpoints["/x/prog.pl"] = [SourceBreakpoint(line=3, verified=False)]
+    ctrl._on_breakpoint_event(
+        Event(
+            seq=1,
+            event="breakpoint",
+            body={
+                "reason": "changed",
+                "breakpoint": {
+                    "verified": True,
+                    "line": 3,
+                    "source": {"path": "/x/prog.pl"},
+                },
+            },
+        )
+    )
+    (bp,) = ctrl.state.breakpoints["/x/prog.pl"]
+    assert bp.verified is True
+    assert not [o for o in handler.outputs if "debug info" in o[0]]
+
+
+async def test_breakpoint_changed_event_warns_when_genuinely_unbound():
+    """Once the deferred breakpoint is actually resolved (no more
+    DEFERRED_VERIFICATION_MESSAGE excuse), a real all-unverified
+    outcome should still surface the missing-debug-info hint."""
+    ctrl, fake, handler = _make()
+    ctrl.state.breakpoints["/x/prog.pl"] = [SourceBreakpoint(line=3, verified=False)]
+    ctrl._on_breakpoint_event(
+        Event(
+            seq=1,
+            event="breakpoint",
+            body={
+                "reason": "changed",
+                "breakpoint": {
+                    "verified": False,
+                    "line": 3,
+                    "source": {"path": "/x/prog.pl"},
+                },
+            },
+        )
+    )
+    (bp,) = ctrl.state.breakpoints["/x/prog.pl"]
+    assert bp.verified is False
+    assert [o for o in handler.outputs if "debug info" in o[0]]
+
+
+async def test_breakpoint_changed_event_ignores_unknown_line():
+    ctrl, fake, handler = _make()
+    ctrl.state.breakpoints["/x/prog.pl"] = [SourceBreakpoint(line=3, verified=False)]
+    ctrl._on_breakpoint_event(
+        Event(
+            seq=1,
+            event="breakpoint",
+            body={
+                "reason": "changed",
+                "breakpoint": {
+                    "verified": True,
+                    "line": 99,
+                    "source": {"path": "/x/prog.pl"},
+                },
+            },
+        )
+    )
+    (bp,) = ctrl.state.breakpoints["/x/prog.pl"]
+    assert bp.verified is False  # untouched — no matching line
     assert not [o for o in handler.outputs if "debug info" in o[0]]
 
 

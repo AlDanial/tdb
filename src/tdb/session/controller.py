@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 from tdb.dap.client import DAPClient
 from tdb.dap.messages import Event
-from tdb.dap.types import Breakpoint, SourceBreakpoint
+from tdb.dap.types import DEFERRED_VERIFICATION_MESSAGE, Breakpoint, SourceBreakpoint
 from .event_bus import DebugEventHandler
 from .state import DebugState, SessionPhase
 
@@ -157,13 +157,28 @@ class DebugController:
         Deliberately a no-op when `result` is empty (e.g. sending an
         empty breakpoint list to disable/clear) — there's nothing to
         warn about when no breakpoints were requested at all.
+
+        Also a no-op when an unverified breakpoint carries
+        DEFERRED_VERIFICATION_MESSAGE: the adapter has already explained
+        that verification is merely deferred (e.g. perl's compile-phase
+        breakpoint deferral), not failed, and will correct the state via
+        a `breakpoint` "changed" event once it settles (see
+        _on_breakpoint_event) — guessing "-g?" on top of that would be
+        wrong.
         """
-        if result and all(not bp.verified for bp in result):
-            self.event_handler.on_output(
-                f"warning: no breakpoints bound in {source_path} — "
-                f"was the program compiled with debug info (-g)?\n",
-                "console",
-            )
+        if not result:
+            return
+        if any(bp.message == DEFERRED_VERIFICATION_MESSAGE for bp in result):
+            return
+        if all(not bp.verified for bp in result):
+            self._emit_unbound_warning(source_path)
+
+    def _emit_unbound_warning(self, source_path: str) -> None:
+        self.event_handler.on_output(
+            f"warning: no breakpoints bound in {source_path} — "
+            f"was the program compiled with debug info (-g)?\n",
+            "console",
+        )
 
     async def _send_breakpoints(
         self, source_path: str, bps: list[SourceBreakpoint]
@@ -185,6 +200,7 @@ class DebugController:
         self.client.on_event("exited", self._on_exited)
         self.client.on_event("output", self._on_output)
         self.client.on_event("initialized", self._on_initialized)
+        self.client.on_event("breakpoint", self._on_breakpoint_event)
         # Child process debugging: ChildProcessManager registers its
         # own debugpyAttach handler that fires _spawn_bg(_attach(...)).
         # This is a debugpy-proprietary mechanism (the `debugpyAttach`
@@ -957,6 +973,38 @@ class DebugController:
         if self._terminal is not None and category in ("stdout", "stderr"):
             return
         self.event_handler.on_output(text, category)
+
+    def _on_breakpoint_event(self, event: Event) -> None:
+        """Corrects a breakpoint's stored verified state after an adapter
+        deferred it at setBreakpoints time (plan requirement 5's UI
+        half). perl's compile-phase breakpoint deferral is the only
+        current producer: it answers verified:false with
+        DEFERRED_VERIFICATION_MESSAGE at setBreakpoints time (see
+        _warn_unbound_breakpoints), then emits this "changed" event with
+        the real, resolved verified state once the compile phase
+        settles. Without this handler that correction was silently
+        dropped and stale unverified state could never be told apart
+        from a genuine bind failure after the fact.
+        """
+        body = event.body or {}
+        if body.get("reason") != "changed":
+            return
+        bp = body.get("breakpoint", {})
+        source_path = bp.get("source", {}).get("path")
+        line = bp.get("line")
+        if source_path is None or line is None:
+            return
+        bps = self.state.breakpoints.get(source_path)
+        if not bps:
+            return
+        matched = [sbp for sbp in bps if sbp.line == line]
+        if not matched:
+            return
+        for sbp in matched:
+            sbp.verified = bool(bp.get("verified", False))
+        enabled = self._enabled_bps(bps)
+        if enabled and all(not sbp.verified for sbp in enabled):
+            self._emit_unbound_warning(source_path)
 
     # --- Child process debugging ---
     # Per-child DAPClient lifecycle (attach, stopped-event handling,

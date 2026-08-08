@@ -166,6 +166,21 @@ def test_check_stderr_traceback_perl_unlisted_warning_nonzero_exit_shows_modal()
     assert len(app.pushed_screens) == 1
 
 
+def test_check_stderr_traceback_perl_innermost_frame_uses_main_not_module():
+    """Final-review Minor #5: perl's innermost error frame always has
+    func="" (top-level/BEGIN code, no named sub -- see
+    languages/errors.py's parse_perl_error), and must not borrow
+    Python's "<module>" placeholder for it. It should match perl's own
+    live stackTrace convention instead (adapters/perl/server.py's
+    `f.get("sub") or "main"`)."""
+    co, app = _perl_coord()
+    app._stderr_buffer = ["Illegal division by zero at /w/x.pl line 10.\n"]
+    co._check_stderr_traceback(exit_code=255)
+    assert app.controller.state.stack_frames
+    top = app.controller.state.stack_frames[0]
+    assert top.name == "main"
+
+
 async def test_wait_for_exit_code_returns_immediately_when_already_set():
     co, app = _coord()
     app.controller.state.last_exit_code = 5

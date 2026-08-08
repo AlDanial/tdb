@@ -264,9 +264,10 @@ tdb script.pl
 debugger ahead of compilation so that code is debuggable too, which means the
 first stop is the first **compile-time** statement of your file (typically
 `use strict;` near the top) rather than the first runtime statement. Step from
-there and you land inside your `BEGIN` blocks, with the stack, variable and
-evaluate views working normally; the `Stack` view shows the frame as
-`main::BEGIN`. Stepping through a `use` line takes a few steps — the pragma's
+there and you land inside your `BEGIN` blocks, with the stack and evaluate
+views working normally (local variable listing is limited at a compile-time
+stop); the `Stack` view shows the frame as `main::BEGIN`. Stepping through a
+`use` line takes a few steps — the pragma's
 own compile-time work happens in between — but you are never dragged into
 another module's internals.
 

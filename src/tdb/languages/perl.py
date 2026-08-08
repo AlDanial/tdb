@@ -94,6 +94,8 @@ def build_perl_profile(
         id="perl",
         display_name="Perl",
         adapter=PerlAdapter(perl_executable=(adapter_paths or {}).get("perl")),
-        presentation=Presentation(lexer="perl", parse_error=parse_perl_error),
+        presentation=Presentation(
+            lexer="perl", parse_error=parse_perl_error, frame_placeholder="main"
+        ),
         capabilities=ProfileCapabilities(),
     )

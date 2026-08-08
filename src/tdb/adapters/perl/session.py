@@ -31,6 +31,11 @@ def helpers_path() -> str:
     return str(ref)
 
 
+def compile_shim_path() -> str:
+    ref = importlib.resources.files("tdb.adapters.perl") / "Devel" / "TdbCompile.pm"
+    return str(ref)
+
+
 class PerlSession:
     def __init__(
         self,
@@ -115,15 +120,36 @@ class PerlSession:
         # perl 5.40.1). This MUST match `program` below exactly, or
         # the filter silently never matches and the whole feature is
         # a no-op.
-        child_env["TDB_COMPILE_FILE"] = program
+        #
+        # Defensive existence check: as of this writing pyproject.toml's
+        # package-data does NOT list Devel/TdbCompile.pm (only
+        # helpers.pl and TdbRemote.pm), so a built wheel installed
+        # non-editable ships without this file. Passing -MDevel::TdbCompile
+        # unconditionally in that case makes perl abort at startup
+        # ("Can't locate Devel/TdbCompile.pm in @INC ... BEGIN failed") --
+        # launch mode would be entirely broken, not merely missing
+        # BEGIN-block stepping. Omit the -I/-M pair and degrade to a
+        # normal launch instead. The packaging fix (adding the file to
+        # pyproject.toml's package-data) is still required for the
+        # feature to actually work out of a wheel -- this only prevents
+        # a missing file from taking the whole adapter down.
         adapters_dir = os.path.dirname(helpers_path())
+        shim_path = compile_shim_path()
+        compile_shim_available = os.path.isfile(shim_path)
+        argv = [perl, "-d"]
+        if compile_shim_available:
+            child_env["TDB_COMPILE_FILE"] = program
+            argv += [f"-I{adapters_dir}", "-MDevel::TdbCompile"]
+        else:
+            log.warning(
+                "Devel::TdbCompile shim not found at %s -- compile-phase "
+                "(BEGIN-block) debugging is unavailable for this launch; "
+                "continuing with a normal launch.",
+                shim_path,
+            )
+        argv += [program, *args]
         self._process = await asyncio.create_subprocess_exec(
-            perl,
-            "-d",
-            f"-I{adapters_dir}",
-            "-MDevel::TdbCompile",
-            program,
-            *args,
+            *argv,
             cwd=cwd,
             env=child_env,
             stdin=asyncio.subprocess.DEVNULL,

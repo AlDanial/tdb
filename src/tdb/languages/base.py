@@ -151,6 +151,15 @@ class Presentation:
     # parser (yet).
     parse_error: Callable[[str, "int | None"], "ParsedError | None"] | None = None
 
+    # Synthetic-stack-frame display name for an ErrorFrame whose `func`
+    # is "" (the language doesn't name a function for that frame, e.g.
+    # top-level/compile-time code). Python's fatal-error frames use this
+    # historical convention for module-level code; other languages have
+    # their own (perl's live stackTrace already falls back to "main" --
+    # see adapters/perl/server.py -- so its error-modal synthetic frames
+    # match that instead of showing Python's "<module>").
+    frame_placeholder: str = "<module>"
+
 
 @dataclass(frozen=True)
 class ProfileCapabilities:
