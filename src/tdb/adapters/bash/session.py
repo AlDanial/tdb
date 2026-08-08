@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import binascii
 import logging
 import os
 import shutil
@@ -15,15 +16,29 @@ log = logging.getLogger(__name__)
 
 HARNESS = os.path.join(os.path.dirname(__file__), "tdb_harness.sh")
 
+# Large `globals`/`eval`/`locals` payloads (base64-encoded) can comfortably
+# exceed asyncio.StreamReader's default 64KiB readline limit; give the
+# harness response channel plenty of headroom.
+_RESP_LIMIT = 8 * 1024 * 1024
+
 
 class BashProtocolError(Exception):
     pass
 
 
-def canonical(path: str) -> str:
-    """MUST match the harness: realpath of the directory + raw basename."""
+def canonical(path: str, base: str | None = None) -> str:
+    """MUST match the harness: realpath of the directory + raw basename.
+
+    `base` is the debuggee's launch cwd (BashSession.launch_cwd) — relative
+    `path`s are joined against it, matching how the harness resolves
+    relative source paths against its own (the debuggee's) cwd. Falls back
+    to the current process's cwd when `base` is omitted, for callers that
+    don't have a session handy (e.g. plain unit tests).
+    """
+    if not os.path.isabs(path):
+        path = os.path.join(base or os.getcwd(), path)
     return os.path.join(
-        os.path.realpath(os.path.dirname(os.path.abspath(path))),
+        os.path.realpath(os.path.dirname(path)),
         os.path.basename(path),
     )
 
@@ -52,6 +67,7 @@ class BashSession:
         self._on_exit = on_exit
         self.stopped = False
         self.exit_code: int | None = None
+        self.launch_cwd: str | None = None  # for canonical(path, base=launch_cwd)
         self._process: asyncio.subprocess.Process | None = None
         self._cmd_w: int | None = None
         self._resp_reader: asyncio.StreamReader | None = None
@@ -89,6 +105,7 @@ class BashSession:
             )
         loop = asyncio.get_running_loop()
         self._ready = loop.create_future()
+        self.launch_cwd = os.path.abspath(cwd)
         self._tmpdir = tempfile.TemporaryDirectory(prefix="tdb-bash-")
         cmd_r, cmd_w = os.pipe()  # adapter writes, bash reads
         resp_r, resp_w = os.pipe()  # bash writes, adapter reads
@@ -114,7 +131,7 @@ class BashSession:
         os.close(cmd_r)
         os.close(resp_w)
         self._cmd_w = cmd_w
-        self._resp_reader = asyncio.StreamReader()
+        self._resp_reader = asyncio.StreamReader(limit=_RESP_LIMIT)
         transport, _ = await loop.connect_read_pipe(
             lambda: asyncio.StreamReaderProtocol(self._resp_reader),
             os.fdopen(resp_r, "rb"),
@@ -147,10 +164,38 @@ class BashSession:
             self._on_output(text, category)
 
     async def _reap(self) -> None:
-        code = await self._process.wait()
+        # asyncio.subprocess.Process.wait() does NOT resolve on process exit
+        # alone: internally (base_subprocess._try_finish) it's also gated on
+        # every stdio pipe transport reporting "disconnected". A backgrounded
+        # grandchild (`cmd &`) that inherited stdout/stderr keeps those
+        # pipes' write ends open long after the direct child (bash) has
+        # actually exited, which hangs wait() — and therefore on_exit —
+        # indefinitely. `Process.returncode` is set by asyncio's own
+        # child-watcher callback (_process_exited) the moment the OS reports
+        # the direct child's exit, independent of pipe state, so fall back
+        # to polling that (still fully watcher-driven, no competing
+        # os.waitpid) if wait() doesn't resolve promptly.
+        try:
+            code = await asyncio.wait_for(self._process.wait(), timeout=2.0)
+        except asyncio.TimeoutError:
+            while self._process.returncode is None:
+                await asyncio.sleep(0.02)
+            code = self._process.returncode
         self.exit_code = code
-        # let output pumps flush before reporting exit
-        await asyncio.gather(*self._tasks[1:3], return_exceptions=True)
+        # Let the output pumps flush whatever's already buffered, but don't
+        # block on their EOF for the same reason. Bounded wait, then move
+        # on — the pump tasks get cancelled here (via wait_for's
+        # timeout->cancel, which asyncio.gather propagates to its children)
+        # or later by stop(); any output written by a lingering grandchild
+        # after that point is not captured, which matches "the debug
+        # session ended".
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(*self._tasks[1:3], return_exceptions=True),
+                timeout=1.0,
+            )
+        except asyncio.TimeoutError:
+            pass
         if self._ready and not self._ready.done():
             # died before the handshake: fail launch() fast with the real
             # reason (e.g. the harness's "bash >= 4.4 required" line)
@@ -171,28 +216,38 @@ class BashSession:
             line = await self._resp_reader.readline()
             if not line:
                 return
-            fields = line.decode(errors="replace").split()
-            if not fields:
+            try:
+                fields = line.decode(errors="replace").split()
+                if not fields:
+                    continue
+                kind = fields[0]
+                if kind == "ready":
+                    if self._ready and not self._ready.done():
+                        self._ready.set_result(None)
+                elif kind == "stopped":
+                    self.stopped = True
+                    self._on_stop(fields[1], unb64(fields[2]), int(fields[3]))
+                elif kind in ("ok", "err"):
+                    fut, self._pending = self._pending, None
+                    if fut and not fut.done():
+                        if kind == "ok":
+                            fut.set_result(unb64(fields[1]) if len(fields) > 1 else "")
+                        else:
+                            fut.set_exception(BashProtocolError(unb64(fields[1])))
+            except (IndexError, ValueError, binascii.Error) as e:
+                # A malformed frame must not kill this task — that would
+                # silently wedge the whole session (no more stop/ok/err
+                # notifications ever arrive again).
+                log.warning("malformed harness frame %r: %s", line, e)
                 continue
-            kind = fields[0]
-            if kind == "ready":
-                if self._ready and not self._ready.done():
-                    self._ready.set_result(None)
-            elif kind == "stopped":
-                self.stopped = True
-                self._on_stop(fields[1], unb64(fields[2]), int(fields[3]))
-            elif kind in ("ok", "err"):
-                fut, self._pending = self._pending, None
-                if fut and not fut.done():
-                    if kind == "ok":
-                        fut.set_result(unb64(fields[1]) if len(fields) > 1 else "")
-                    else:
-                        fut.set_exception(BashProtocolError(unb64(fields[1])))
 
     def _write_line(self, line: str) -> None:
         if self._cmd_w is None:
             raise BashProtocolError("no session")
-        os.write(self._cmd_w, (line + "\n").encode())
+        try:
+            os.write(self._cmd_w, (line + "\n").encode())
+        except OSError as e:
+            raise BashProtocolError(f"failed to write to bash harness: {e}") from e
 
     def send_async(self, line: str) -> None:
         """Fire-and-forget while the debuggee is running (bp edits, pause)."""
@@ -204,22 +259,37 @@ class BashSession:
             raise BashProtocolError("another request is in flight")
         self._pending = asyncio.get_running_loop().create_future()
         self._write_line(line)
-        return await asyncio.wait_for(self._pending, 15.0)
+        try:
+            return await asyncio.wait_for(self._pending, 15.0)
+        finally:
+            self._pending = None
 
     def resume(self, mode: str) -> None:
-        assert mode in ("step", "next", "finish", "continue")
+        if mode not in ("step", "next", "finish", "continue"):
+            raise ValueError(f"invalid resume mode: {mode!r}")
         self.stopped = False
         self._write_line(mode)
 
     async def stop(self) -> None:
         for t in self._tasks:
             t.cancel()
-        if self._process is not None and self._process.returncode is None:
+        if self._process is not None:
+            # Always try to kill the whole process group, even if bash
+            # itself has already exited (self._process.returncode is set):
+            # _reap() can observe bash's exit — via polling
+            # Process.returncode, see _reap()'s comment — well before a
+            # backgrounded grandchild (`cmd &`) that's still alive in the
+            # same process group has been reaped, and skipping this here
+            # would leak it. launch() uses start_new_session=True (setsid),
+            # so the pgid equals bash's own pid by construction; use that
+            # directly rather than os.getpgid(pid), which raises
+            # ProcessLookupError once bash's pid has already been reaped.
             try:
-                os.killpg(os.getpgid(self._process.pid), signal.SIGKILL)
+                os.killpg(self._process.pid, signal.SIGKILL)
             except (ProcessLookupError, PermissionError):
                 pass
-            await self._process.wait()
+            if self._process.returncode is None:
+                await self._process.wait()
         if self._cmd_w is not None:
             try:
                 os.close(self._cmd_w)

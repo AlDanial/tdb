@@ -8,8 +8,13 @@
 #  - everything must survive set -euo pipefail in the debuggee
 #  - locals/eval run INLINE in the trap string (scope!)
 
-# Child bash processes inherit exported vars until we unset BASH_ENV,
-# but never the pipe FDs; refuse to arm without them.
+# BASH_ENV, and the __TDB_* env vars with it, keep being inherited (and
+# this file keeps being re-sourced) by every child bash the debuggee
+# spawns; fds are not close-on-exec by default so children also inherit
+# the pipe FDs. `unset BASH_ENV` below is what actually stops the chain
+# (a grandchild bash no longer has BASH_ENV set, so it never re-sources
+# this file). This check just refuses to arm if something sourced this
+# file without going through BashSession at all (no FDs/tmp dir set).
 [[ -n ${__TDB_CMD_FD:-} && -n ${__TDB_RESP_FD:-} && -n ${__TDB_TMP:-} ]] || return 0
 
 if (( BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 4) )); then
@@ -19,8 +24,14 @@ if (( BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 4) ))
 fi
 
 unset BASH_ENV
-shopt -s extdebug
 set -o functrace
+# NOTE: `shopt -s extdebug` is deliberately NOT set here. Enabling it from
+# a BASH_ENV startup file makes bash try to load its bashdb debugger
+# profile ("cannot start debugger; debugging mode disabled" on stderr),
+# which leaves extdebug OFF for the rest of the run. Instead it's armed
+# from inside the DEBUG trap itself (see below), once startup-file
+# processing has finished; `shopt -s extdebug` is idempotent so re-running
+# it on every trap invocation is harmless.
 
 declare -A __tdb_bp=()      # "canonical:line" -> condition ("" = always)
 declare -A __tdb_canon=()   # raw source path -> canonical path
@@ -47,6 +58,7 @@ __tdb_unb64() { # decodes $1 into __tdb_dec
 
 __tdb_canonical() {  # canonicalize $1 -> __tdb_cpath (cached; realpath(dir)+basename)
     local __tdb_p=$1 __tdb_d
+    if [[ -z $__tdb_p ]]; then __tdb_cpath=; return 0; fi
     if [[ -n ${__tdb_canon[$__tdb_p]:-} ]]; then
         __tdb_cpath=${__tdb_canon[$__tdb_p]}; return 0
     fi
@@ -59,7 +71,10 @@ __tdb_canonical() {  # canonicalize $1 -> __tdb_cpath (cached; realpath(dir)+bas
 }
 
 __tdb_read_cmd() {  # blocks; fills __tdb_cmd/__tdb_a1/__tdb_a2/__tdb_a3
-    local __tdb_line
+    # IFS is local to this function so a debuggee-modified global IFS
+    # (e.g. `IFS=,`) can't break the field-split below and hang the
+    # stopped/config-phase read loop.
+    local __tdb_line IFS=$' \t\n'
     IFS= read -r -u "$__TDB_CMD_FD" __tdb_line || return 1
     __tdb_a1= __tdb_a2= __tdb_a3=
     read -r __tdb_cmd __tdb_a1 __tdb_a2 __tdb_a3 <<< "$__tdb_line"
@@ -114,8 +129,14 @@ __tdb_dispatch() {  # scope-independent commands, acked (stopped/config phase)
     return 0
 }
 
-__tdb_should_stop() {  # args: file line depth; 0 = stop (fills __tdb_cur_*/__tdb_reason)
-    local __tdb_f=$1 __tdb_l=$2 __tdb_d=$3
+__tdb_should_stop() {  # args: file line; 0 = stop (fills __tdb_cur_*/__tdb_reason)
+    # Depth is computed here, not passed in from the trap string: at top
+    # level (no debuggee function on the stack) FUNCNAME is unset, and
+    # "${#FUNCNAME[@]}" as a trap argument is an unbound-variable error
+    # under `set -u`. Inside this function FUNCNAME always has at least
+    # our own frame, so "${#FUNCNAME[@]} - 1" is safe under -u and equals
+    # the caller's depth (0 at top level, matching the old trap-arg value).
+    local __tdb_f=$1 __tdb_l=$2 __tdb_d=$(( ${#FUNCNAME[@]} - 1 ))
     (( BASH_SUBSHELL )) && return 1
     __tdb_drain
     if (( __tdb_pause )); then
@@ -163,7 +184,14 @@ done
 # ---- the DEBUG trap. locals/eval are INLINE here on purpose: a helper
 # function would push its own scope and local -p / eval would see the
 # wrong frame. The trailing `:` forces trap status 0 (extdebug!).
-trap '__tdb_should_stop "${BASH_SOURCE[0]:-$0}" "$LINENO" "${#FUNCNAME[@]}" && {
+# `shopt -s extdebug` is armed here (not at startup, see above) and is
+# idempotent, so re-running it on every trap firing is harmless.
+# NOTE: `shopt -s extdebug` MUST stay on the same physical line as the
+# `$LINENO` reference below (semicolon, not a newline): empirically,
+# bash's $LINENO inside a DEBUG trap is offset by however many newlines
+# precede it *within the trap string itself* — putting `shopt -s extdebug`
+# on its own line before `$LINENO` made every reported line 1 too high.
+trap 'shopt -s extdebug; __tdb_should_stop "${BASH_SOURCE[0]:-$0}" "$LINENO" && {
     __tdb_notify
     while __tdb_read_cmd; do
         case $__tdb_cmd in
