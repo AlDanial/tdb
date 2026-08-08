@@ -105,9 +105,23 @@ class PerlSession:
         port = server.sockets[0].getsockname()[1]
         child_env = dict(env or os.environ)
         child_env["PERLDB_OPTS"] = f"RemotePort=127.0.0.1:{port}"
+        # Devel::TdbCompile (this adapter's own compile-phase shim --
+        # see that module's header) arms perl5db to trap during
+        # perl's compile phase, so BEGIN blocks become steppable. It
+        # only traps statements belonging to `program`, filtered by
+        # comparing against exactly the string perl reports in
+        # `caller` for it -- which is argv's program path VERBATIM,
+        # not resolved/canonicalized (confirmed empirically against
+        # perl 5.40.1). This MUST match `program` below exactly, or
+        # the filter silently never matches and the whole feature is
+        # a no-op.
+        child_env["TDB_COMPILE_FILE"] = program
+        adapters_dir = os.path.dirname(helpers_path())
         self._process = await asyncio.create_subprocess_exec(
             perl,
             "-d",
+            f"-I{adapters_dir}",
+            "-MDevel::TdbCompile",
             program,
             *args,
             cwd=cwd,

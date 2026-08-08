@@ -57,6 +57,11 @@ class PerlDapServer:
         # stack(), so _classify_and_emit_stop can compare loc["file"]
         # against it directly with no further translation.
         self.breakpoint_lines: dict[str, set[int]] = {}
+        # setBreakpoints requests deferred because perl was still
+        # compiling `remote_path` when they arrived (see
+        # _on_setBreakpoints and Background 8 in the plan): remote_path
+        # -> (local_path, wanted). Flushed once phase() reports 'RUN'.
+        self._pending_breakpoints: dict[str, tuple[str, list[dict]]] = {}
         self.refs = RefRegistry()
         self.handlers: dict[str, Callable[[Request], Awaitable[None]]] = {}
         for name in dir(self):
@@ -281,21 +286,120 @@ class PerlDapServer:
             if self._stop_on_entry:
                 await self._emit_stopped("entry")
             else:
+                # Mirrors _on_continue's guard: a bare "c" here races past
+                # any breakpoints deferred (Background 8) while still
+                # stopped at the entry prompt, the same way an explicit
+                # continue request would.
+                if self._pending_breakpoints:
+                    await self._settle_to_run_phase()
                 self.session.resume("c")
 
     async def _emit_stopped(self, reason: str) -> None:
         self.refs.reset()
-        try:
-            self.current_stop = await self.session.helper(
-                "Devel::TdbHelper::location()"
-            )
-        except PerlProtocolError as e:
-            log.error("location() failed after stop: %s", e)
-            self.current_stop = None
+        self.current_stop = await self._location_after_settling()
+        if self._pending_breakpoints:
+            await self._flush_pending_if_run()
         self.send_event(
             "stopped",
             {"reason": reason, "threadId": 1, "allThreadsStopped": True},
         )
+
+    async def _location_after_settling(self) -> dict | None:
+        """`Devel::TdbHelper::location()`, auto-stepping past any stop
+        that lands inside our own compile-phase shim.
+
+        Requirement: no stop may ever surface inside TdbCompile.pm --
+        it wraps DB::DB for the debuggee's whole lifetime (see that
+        module's own header comment on why it stays installed), and as
+        a defense-in-depth belt-and-suspenders on top of that module's
+        own fix, if a stray trap ever DOES land there, auto-step past
+        it (the same auto-step-out-to-caller pattern _on_attach already
+        uses for Devel::TdbRemote) rather than surfacing it as a user
+        stop. Bounded so a persistent leak can't hang tdb -- it would
+        instead fall through to the pre-existing "location() gave us
+        nothing usable" handling.
+        """
+        loc = None
+        for _ in range(5):
+            try:
+                loc = await self.session.helper("Devel::TdbHelper::location()")
+            except PerlProtocolError as e:
+                log.error("location() failed after stop: %s", e)
+                return None
+            file = loc.get("file") or ""
+            if "TdbCompile.pm" not in file:
+                return loc
+            log.warning("stray stop inside TdbCompile.pm; stepping past it")
+            try:
+                await self.session.command("n")
+            except PerlProtocolError as e:
+                log.error("step-past-shim failed: %s", e)
+                return None
+        return loc
+
+    async def _current_phase(self) -> str | None:
+        """`${^GLOBAL_PHASE}` at the debuggee's current stop, or None if
+        it can't be determined (e.g. an older debuggee-side helpers.pl
+        without phase() -- degrade to "don't defer", matching
+        pre-compile-phase behavior)."""
+        if self.session is None:
+            return None
+        try:
+            return (await self.session.helper("Devel::TdbHelper::phase()"))["phase"]
+        except PerlProtocolError:
+            return None
+
+    async def _settle_to_run_phase(self) -> None:
+        """Advance a debuggee that's still in perl's compile phase up to
+        the RUN-phase transition before letting a real `c` (continue)
+        run, then flush breakpoints deferred while compiling (Background
+        8). A bare `c` clears perl5db's single-step flag; with no real
+        breakpoint armed yet in the target file (that's the whole point
+        of the deferral -- calling `b`/breakable() on a partially
+        compiled file risks poisoning its line table, see helpers.pl's
+        breakable()), it would run straight to program completion,
+        racing past wherever those breakpoints should have fired.
+        Single-stepping (`n`) instead keeps landing on the shim's own
+        traps (compile-time statements in the target file, then the
+        RUN-phase transition itself) without that risk. ${^GLOBAL_PHASE}
+        flips to RUN only once the WHOLE top-level file has finished
+        compiling -- even the parts execution hasn't reached yet -- so
+        by the time this loop exits it's safe to apply the deferred
+        breakpoints for real. Bounded so a pathological compile phase
+        can't hang tdb.
+        """
+        for _ in range(1000):
+            phase = await self._current_phase()
+            if phase != "START":
+                break
+            try:
+                await self.session.command("n")
+            except PerlProtocolError as e:
+                log.error("compile-phase settle step failed: %s", e)
+                break
+        await self._flush_pending_if_run()
+
+    async def _flush_pending_if_run(self) -> None:
+        if not self._pending_breakpoints or self.session is None:
+            return
+        phase = await self._current_phase()
+        if phase == "START":
+            return
+        pending, self._pending_breakpoints = self._pending_breakpoints, {}
+        for remote_path, (local_path, wanted) in pending.items():
+            results = await self._apply_breakpoints(remote_path, wanted)
+            for r in results:
+                self.send_event(
+                    "breakpoint",
+                    {
+                        "reason": "changed",
+                        "breakpoint": {
+                            "verified": r["verified"],
+                            "line": r["line"],
+                            "source": {"path": local_path},
+                        },
+                    },
+                )
 
     def _forward_output(self, text: str, category: str) -> None:
         if category == "__eof__":
@@ -333,10 +437,7 @@ class PerlDapServer:
         try:
             if self.session is None:
                 return
-            try:
-                loc = await self.session.helper("Devel::TdbHelper::location()")
-            except PerlProtocolError:
-                loc = None
+            loc = await self._location_after_settling()
             if loc is None or loc.get("file") == "?":
                 # perl5db's "ended" state: the debuggee ran to completion and
                 # perl5db parked at a live prompt without closing the socket
@@ -392,6 +493,8 @@ class PerlDapServer:
                 self.send_event("exited", {"exitCode": exit_code})
                 return
             self.current_stop = loc
+            if self._pending_breakpoints:
+                await self._flush_pending_if_run()
             had_pause_pending = self._pause_pending
             self._pause_pending = False
             # loc["file"] comes straight from perl5db's location() -- it's
@@ -441,6 +544,16 @@ class PerlDapServer:
         self.session.resume(cmd)
 
     async def _on_continue(self, request: Request) -> None:
+        # Only `continue` needs the settle-past-compile-phase guard
+        # (_settle_to_run_phase): it's the one resume command with no
+        # bound on how far it runs, so it's the one that can race past
+        # breakpoints deferred while perl was still compiling (Background
+        # 8). next/stepIn/stepOut always land on the very next statement
+        # -- they can't skip over the deferred file's own later lines --
+        # so a stop reaching RUN phase there is caught by
+        # _classify_and_emit_stop's reactive flush instead.
+        if self._pending_breakpoints and self._not_ready() is None:
+            await self._settle_to_run_phase()
         await self._resume(request, "c")
 
     async def _on_next(self, request: Request) -> None:
@@ -497,6 +610,38 @@ class PerlDapServer:
         path = request.arguments.get("source", {}).get("path", "")
         remote_path = self._to_remote(path)
         wanted = request.arguments.get("breakpoints", [])
+        # Background 8 / requirement 5: while perl is still compiling
+        # `remote_path` (phase 'START'), its line table is only
+        # partially populated -- breakable() would report a partial
+        # table and `b file:line` answers "not breakable" for lines
+        # after wherever compilation has reached so far, AND calling
+        # breakable() on a not-yet-fully-compiled file risks the
+        # line-table-poisoning hazard documented on that helper (merely
+        # dereferencing its perl line-table array autovivifies it).
+        # Defer instead of ever calling either: store the request,
+        # answer unverified now, and apply for real once
+        # phase() reports 'RUN' (the whole top-level file has finished
+        # compiling by then, even lines execution hasn't reached yet --
+        # see _settle_to_run_phase). Attach mode never sees phase
+        # 'START' here (the debuggee is already running by the time tdb
+        # attaches), so this is a no-op there.
+        if await self._current_phase() == "START":
+            self._pending_breakpoints[remote_path] = (path, wanted)
+            results = [{"verified": False, "line": bp["line"]} for bp in wanted]
+            self.send_response(request, {"breakpoints": results})
+            return
+        # A later, non-deferred request for this same file supersedes
+        # any earlier deferred one still waiting to be flushed.
+        self._pending_breakpoints.pop(remote_path, None)
+        results = await self._apply_breakpoints(remote_path, wanted)
+        self.send_response(request, {"breakpoints": results})
+
+    async def _apply_breakpoints(
+        self, remote_path: str, wanted: list[dict]
+    ) -> list[dict]:
+        """The real `b`/`B` exchange with perl5db -- safe only once
+        `remote_path` is known to be fully compiled (see
+        _on_setBreakpoints and _flush_pending_if_run, its two callers)."""
         # breakpoint_lines is keyed by REMOTE path (see __init__ comment).
         old_lines = self.breakpoint_lines.get(remote_path, set())
         if old_lines:
@@ -551,7 +696,7 @@ class PerlDapServer:
                 results.append({"verified": True, "line": target})
                 actual_lines.add(target)
         self.breakpoint_lines[remote_path] = actual_lines
-        self.send_response(request, {"breakpoints": results})
+        return results
 
     @staticmethod
     def _perl_str(s: str) -> str:
