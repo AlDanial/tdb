@@ -276,9 +276,16 @@ Two consequences worth knowing:
 - **Breakpoints are deferred while your program compiles.** During the compile
   phase Perl has only parsed part of your file, so its line table is
   incomplete and a breakpoint can't be verified yet. `tdb` holds such requests
-  and applies them once compilation finishes. A breakpoint placed *inside* a
-  `BEGIN` block may therefore not fire on the first run — step into the block
-  from the initial stop instead.
+  and, while it single-steps through the rest of compilation, checks each
+  compile-time statement it lands on against them — so a breakpoint placed
+  *inside* a `BEGIN` block fires there directly, on the first run, without
+  needing to be stepped into by hand. Conditional breakpoints work the same
+  way at compile time; a condition that itself errors behaves exactly like a
+  bad condition at runtime — it does not fire. Two residual caveats: a
+  breakpoint on a non-statement line (the `BEGIN {` line itself, or a blank
+  line) never fires during the compile phase, since it's never actually
+  trapped as a statement; and `hitCondition` (break on the Nth hit) isn't
+  honored for a compile-time stop, only a plain `condition`.
 - **Startup is slower for large dependency graphs**, because the debugger is
   active throughout compilation. A script with a big `use` tree takes
   noticeably longer to reach its first stop under `tdb`.

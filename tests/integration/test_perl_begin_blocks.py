@@ -154,6 +154,127 @@ async def test_end_block_still_steppable(tmp_path):
         await c.stop()
 
 
+async def test_breakpoint_inside_begin_block_fires(tmp_path):
+    """The bug this file exists to fix: a breakpoint on a statement
+    inside a BEGIN block must actually stop there (not be silently
+    skipped, and not merely apply once RUN phase arrives -- by then the
+    BEGIN block has already finished executing)."""
+    c, prog = await _launch(tmp_path, WITH_BEGIN)
+    try:
+        resp = await c.request(
+            "setBreakpoints",
+            {"source": {"path": prog}, "breakpoints": [{"line": 5}]},
+        )
+        (bp,) = resp["body"]["breakpoints"]
+        assert bp["verified"] is False  # deferred: still compiling
+        await c.request("continue", {"threadId": 1})
+        stopped = await c.wait_event("stopped", timeout=30)
+        assert stopped["body"]["reason"] == "breakpoint"
+        path, line, name = await _where(c)
+        assert (path, line) == (prog, 5)
+        assert name == "main::BEGIN"
+    finally:
+        await c.stop()
+
+
+async def test_conditional_breakpoint_inside_begin_fires_when_true(tmp_path):
+    c, prog = await _launch(tmp_path, WITH_BEGIN)
+    try:
+        await c.request(
+            "setBreakpoints",
+            {
+                "source": {"path": prog},
+                "breakpoints": [{"line": 6, "condition": "$x == 10"}],
+            },
+        )
+        await c.request("continue", {"threadId": 1})
+        stopped = await c.wait_event("stopped", timeout=30)
+        assert stopped["body"]["reason"] == "breakpoint"
+        path, line, name = await _where(c)
+        assert (path, line) == (prog, 6)
+        assert name == "main::BEGIN"
+    finally:
+        await c.stop()
+
+
+async def test_conditional_breakpoint_inside_begin_skipped_when_false(tmp_path):
+    c, prog = await _launch(tmp_path, WITH_BEGIN)
+    try:
+        await c.request(
+            "setBreakpoints",
+            {
+                "source": {"path": prog},
+                "breakpoints": [{"line": 6, "condition": "$x == 99"}],
+            },
+        )
+        await c.request("continue", {"threadId": 1})
+        # Condition never true: no compile-phase stop, no runtime
+        # breakpoint left behind either -- runs to completion.
+        await c.wait_event("terminated", timeout=30)
+    finally:
+        await c.stop()
+
+
+async def test_begin_breakpoint_does_not_refire_on_next_continue(tmp_path):
+    """Regression: after the compile-phase breakpoint fires, a further
+    `continue` must proceed past it (never re-fire on the same line)."""
+    c, prog = await _launch(tmp_path, WITH_BEGIN)
+    try:
+        await c.request(
+            "setBreakpoints",
+            {"source": {"path": prog}, "breakpoints": [{"line": 5}, {"line": 10}]},
+        )
+        await c.request("continue", {"threadId": 1})
+        stopped = await c.wait_event("stopped", timeout=30)
+        assert stopped["body"]["reason"] == "breakpoint"
+        path, line, _ = await _where(c)
+        assert (path, line) == (prog, 5)
+
+        await c.request("continue", {"threadId": 1})
+        stopped2 = await c.wait_event("stopped", timeout=30)
+        assert stopped2["body"]["reason"] == "breakpoint"
+        path2, line2, _ = await _where(c)
+        assert (path2, line2) == (prog, 10), "re-fired on the same BEGIN line"
+    finally:
+        await c.stop()
+
+
+RUNTIME_LINE_BEFORE_LATER_BEGIN = """use strict;
+use warnings;
+
+my $b = 20;
+print STDERR "before begin $b\\n";
+
+BEGIN {
+    my $x = 1;
+}
+
+print STDERR "after begin\\n";
+"""
+
+
+async def test_runtime_breakpoint_not_falsely_fired_by_later_begin_block(tmp_path):
+    """Regression: a breakpoint on a RUNTIME line must fire at that exact
+    runtime line, not during the compile phase merely because a
+    compile-time statement (the BEGIN block) appears later in the file.
+    Snap-forward matching would get this wrong; exact line equality
+    must not."""
+    c, prog = await _launch(tmp_path, RUNTIME_LINE_BEFORE_LATER_BEGIN, name="q.pl")
+    try:
+        await c.request(
+            "setBreakpoints",
+            {"source": {"path": prog}, "breakpoints": [{"line": 4}]},
+        )
+        await c.request("continue", {"threadId": 1})
+        stopped = await c.wait_event("stopped", timeout=30)
+        assert stopped["body"]["reason"] == "breakpoint"
+        path, line, name = await _where(c)
+        assert (path, line) == (prog, 4)
+        assert name != "main::BEGIN"
+    finally:
+        await c.stop()
+
+
 async def test_compile_phase_location_never_reports_unknown(tmp_path):
     """Pins the task-4 kill hazard: _classify_and_emit_stop treats a
     location() of file "?" as proof the debuggee ran to completion, and

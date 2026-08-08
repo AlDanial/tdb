@@ -372,6 +372,30 @@ sub vars {
     return;
 }
 
+sub cond_result {
+    my ( $ok, $err ) = @_;
+    eval {
+        if ($err) {
+            my $msg = "$err";
+            $msg =~ s/\s+\z//;
+            # fail-CLOSED, matching perl5db's own conditional-breakpoint
+            # semantics (_DB__determine_if_we_should_break's
+            # `$DB::signal |= 1 if do {$stop}` -- a condition that dies
+            # aborts the `if` before the assignment runs, so a real
+            # runtime conditional breakpoint with an erroring condition
+            # never fires either; confirmed empirically). server.py's
+            # _eval_condition treats the presence of "error" as false
+            # regardless of "ok", so this exact value doesn't matter, but
+            # keep it false for clarity if ever inspected directly.
+            _emit( { ok => JSON::PP::false, error => $msg } );
+            return 1;
+        }
+        _emit( { ok => ( $ok ? JSON::PP::true : JSON::PP::false ) } );
+        1;
+    } or _emit_error($@);
+    return;
+}
+
 sub emit_eval {
     my ( $results, $err ) = @_;
     eval {

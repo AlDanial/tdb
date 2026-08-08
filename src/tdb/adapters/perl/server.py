@@ -292,7 +292,10 @@ class PerlDapServer:
                 # stopped at the entry prompt, the same way an explicit
                 # continue request would.
                 if self._pending_breakpoints:
-                    await self._settle_to_run_phase()
+                    hit = await self._settle_to_run_phase()
+                    if hit is not None:
+                        await self._report_pending_hit(hit)
+                        return
                 self.session.resume("c")
 
     async def _emit_stopped(self, reason: str) -> None:
@@ -355,7 +358,7 @@ class PerlDapServer:
         except PerlProtocolError:
             return None
 
-    async def _settle_to_run_phase(self) -> None:
+    async def _settle_to_run_phase(self) -> dict | None:
         """Advance a debuggee that's still in perl's compile phase up to
         the RUN-phase transition before letting a real `c` (continue)
         run, then flush breakpoints deferred while compiling (Background
@@ -373,6 +376,20 @@ class PerlDapServer:
         by the time this loop exits it's safe to apply the deferred
         breakpoints for real. Bounded so a pathological compile phase
         can't hang tdb.
+
+        A pending breakpoint that lands on a compile-time statement (a
+        line inside a BEGIN block, for instance) will never be revisited
+        once RUN phase applies it for real -- that BEGIN block has
+        already finished executing by then. So this loop also checks
+        each new position it steps to against the pending breakpoints
+        for that file and stops early on a match, returning a dict
+        describing the hit (None if it settles into RUN phase without
+        one). Order matters: each iteration steps FIRST and only THEN
+        checks the new location -- on re-entry after a hit the debuggee
+        is still sitting on the line that fired, so checking before
+        stepping would re-fire the same line forever. The position the
+        loop starts from (whatever line the caller was already stopped
+        at) is therefore never itself tested.
         """
         for _ in range(1000):
             phase = await self._current_phase()
@@ -383,7 +400,101 @@ class PerlDapServer:
             except PerlProtocolError as e:
                 log.error("compile-phase settle step failed: %s", e)
                 break
+            hit = await self._check_compile_phase_hit()
+            if hit is not None:
+                return hit
         await self._flush_pending_if_run()
+        return None
+
+    async def _check_compile_phase_hit(self) -> dict | None:
+        """After a compile-phase settle step, check whether the debuggee's
+        new location exactly matches a pending breakpoint's line in the
+        same file. EXACT line equality only -- no snap-forward ("first
+        statement at or after the requested line"): a compile-time
+        statement appearing LATER in the file (e.g. a BEGIN block near
+        the bottom) must never falsely fire a breakpoint meant for an
+        earlier runtime line. `hitCondition` is not supported here (only
+        `condition`, evaluated fail-closed on error -- see
+        _eval_condition); a plain miss (wrong line, or a condition that
+        isn't true) returns None so the settle loop keeps stepping.
+        """
+        loc = await self._location_after_settling()
+        if loc is None:
+            return None
+        remote_path = loc.get("file")
+        entry = self._pending_breakpoints.get(remote_path)
+        if entry is None:
+            return None
+        local_path, wanted = entry
+        line = loc.get("line")
+        for bp in wanted:
+            if bp.get("line") != line:
+                continue
+            cond = bp.get("condition")
+            if cond and not await self._eval_condition(cond):
+                continue
+            return {
+                "loc": loc,
+                "remote_path": remote_path,
+                "local_path": local_path,
+                "bp": bp,
+            }
+        return None
+
+    async def _eval_condition(self, cond: str) -> bool:
+        """Evaluate a pending breakpoint's condition at the debuggee's
+        current compile-phase stop. Mirrors perl5db's own conditional-
+        breakpoint semantics (_DB__determine_if_we_should_break's
+        `$DB::signal |= 1 if do {$stop}`): a condition that dies aborts
+        the `if` before the assignment runs, so the breakpoint does NOT
+        fire -- fail-CLOSED. Confirmed empirically against a live
+        session: a real runtime `b file:line die 'x'` breakpoint never
+        fires and the debuggee runs to completion. helper() raises
+        PerlProtocolError on any payload carrying an "error" key
+        (cond_result always includes one when the eval died), so that
+        exception is exactly the die-during-condition case -- treat it
+        the same as a false condition.
+        """
+        cmd = (
+            ";{ local $@; my $r = eval { (" + cond + ") ? 1 : 0 }; "
+            "Devel::TdbHelper::cond_result($r, $@) }"
+        )
+        try:
+            payload = await self.session.helper(cmd)
+        except PerlProtocolError:
+            return False
+        return bool(payload.get("ok"))
+
+    async def _report_pending_hit(self, hit: dict) -> None:
+        """Report an early stop from _settle_to_run_phase the same way a
+        real breakpoint stop is reported: a `breakpoint` "changed" event
+        (verified:true, same shape _flush_pending_if_run already sends)
+        followed by a `stopped` event. Mirrors _emit_stopped's
+        refs/current_stop handling so the stack/variables views work at
+        this compile-phase stop. The pending entry is deliberately left
+        in self._pending_breakpoints (requirement 7): a BEGIN line never
+        executes again, so the eventual RUN-phase flush applying it for
+        real is harmless (it just arms a breakpoint that can never hit)
+        and _on_breakpoint_event's verified-state update is idempotent.
+        """
+        self.refs.reset()
+        self.current_stop = hit["loc"]
+        bp = hit["bp"]
+        self.send_event(
+            "breakpoint",
+            {
+                "reason": "changed",
+                "breakpoint": {
+                    "verified": True,
+                    "line": bp["line"],
+                    "source": {"path": hit["local_path"]},
+                },
+            },
+        )
+        self.send_event(
+            "stopped",
+            {"reason": "breakpoint", "threadId": 1, "allThreadsStopped": True},
+        )
 
     async def _flush_pending_if_run(self) -> None:
         if not self._pending_breakpoints or self.session is None:
@@ -559,7 +670,15 @@ class PerlDapServer:
         # so a stop reaching RUN phase there is caught by
         # _classify_and_emit_stop's reactive flush instead.
         if self._pending_breakpoints and self._not_ready() is None:
-            await self._settle_to_run_phase()
+            hit = await self._settle_to_run_phase()
+            if hit is not None:
+                self.current_stop = None
+                self.send_response(request)
+                self.send_event(
+                    "continued", {"threadId": 1, "allThreadsContinued": True}
+                )
+                await self._report_pending_hit(hit)
+                return
         await self._resume(request, "c")
 
     async def _on_next(self, request: Request) -> None:

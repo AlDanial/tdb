@@ -61,10 +61,14 @@ Multi-language notes:
   near the top), not the first runtime statement — this is what makes `BEGIN`
   blocks steppable. Stepping from there enters them (`stack` reports the frame
   as `main::BEGIN`). Two implications when scripting: a `set_breakpoint` issued
-  before compilation finishes is held and applied afterwards, so it comes back
-  unverified and a breakpoint *inside* a `BEGIN` block may not fire on the
-  first run (step into the block instead); and reaching your program's runtime
-  entry point takes a few extra `next`/`step_in` calls.
+  before compilation finishes is held and comes back unverified, but a
+  breakpoint *inside* a `BEGIN` block still fires on the first run — it's
+  checked against each compile-time statement as compilation proceeds, no
+  manual stepping needed (a condition on it that errors behaves like a bad
+  condition at runtime and does not fire; `hitCondition` isn't honored at
+  compile time; and a breakpoint on a non-statement line such as the
+  `BEGIN {` line itself never fires during the compile phase); and reaching
+  your program's runtime entry point takes a few extra `next`/`step_in` calls.
 - `tasks`, `processes`, and `wait_graph` remain Python-only; for other
   languages they return a structured "not supported" error. `threads`
   works everywhere.
