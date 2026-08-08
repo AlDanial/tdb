@@ -7,6 +7,7 @@ import base64
 import binascii
 import logging
 import os
+import re
 import shutil
 import signal
 import tempfile
@@ -53,6 +54,17 @@ def unb64(field: str) -> str:
     if field == "-":
         return ""
     return base64.b64decode(field).decode(errors="replace")
+
+
+# variables the debuggee didn't create: bash specials + harness state.
+# BASH_REMATCH/PIPESTATUS etc. change under the harness's own feet, so
+# showing them would mislead; users can still `eval echo $PIPESTATUS`.
+_INTERNAL_VARS = re.compile(
+    r"^(__tdb_|__TDB_|BASH|SHELL|IFS$|PS4$|EPOCH|EUID$|UID$|PPID$|RANDOM$|"
+    r"SECONDS$|SRANDOM$|LINENO$|FUNCNAME$|GROUPS$|DIRSTACK$|PIPESTATUS$|"
+    r"COMP_|HIST|HOSTNAME$|HOSTTYPE$|MACHTYPE$|OSTYPE$|OLDPWD$|OPTERR$|"
+    r"OPTIND$|PATH$|PWD$|SHLVL$|TERM$|_$)"
+)
 
 
 class BashSession:
@@ -317,3 +329,31 @@ class BashSession:
 
     def pause(self) -> None:
         self.send_async("pause")
+
+    async def stack(self) -> list[dict]:
+        payload = await self.request("stack")
+        frames = []
+        for line in payload.splitlines():
+            func, file, lineno = line.rsplit("|", 2)
+            frames.append({"func": func, "file": file, "line": int(lineno)})
+        return frames
+
+    async def locals(self) -> list:
+        from tdb.adapters.bash.declares import parse_declares
+
+        return parse_declares(await self.request("locals"))
+
+    async def globals_vars(self) -> list:
+        from tdb.adapters.bash.declares import parse_declares
+
+        return [
+            v
+            for v in parse_declares(await self.request("globals"))
+            if not _INTERNAL_VARS.match(v.name)
+        ]
+
+    async def evaluate(self, expr: str) -> tuple[int, str]:
+        payload = await self.request("eval " + b64(expr))
+        first, _, rest = payload.partition("\n")
+        rc = int(first.removeprefix("rc=") or 0)
+        return rc, rest

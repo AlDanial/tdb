@@ -416,3 +416,87 @@ async def test_pause_while_running():
     session.resume("continue")
     await asyncio.wait_for(rec.exit_event.wait(), 15)
     await session.stop()
+
+
+# --- Task 7: inspection — stack, locals, globals, evaluate ----------------
+
+
+@pytest.mark.asyncio
+async def test_stack_inside_nested_call():
+    rec = Recorder()
+    fixture = FIXTURES / "bash_functions.sh"
+    session = await _launch(fixture, rec)
+    await session.set_breakpoint(str(fixture), 3)  # echo "inner"
+    session.resume("continue")
+    await rec.wait_stop()
+    frames = await session.stack()
+    names = [f["func"] for f in frames]
+    assert names[0] == "inner"
+    assert "outer" in names
+    assert names[-1] == "main"
+    assert frames[0]["line"] == 3
+    assert all(f["file"].endswith(".sh") for f in frames)
+    await session.stop()
+
+
+@pytest.mark.asyncio
+async def test_locals_visible_in_innermost_frame():
+    rec = Recorder()
+    fixture = FIXTURES / "bash_functions.sh"
+    session = await _launch(fixture, rec)
+    await session.set_breakpoint(str(fixture), 3)  # after `local iv=99`
+    session.resume("continue")
+    await rec.wait_stop()
+    lv = {v.name: v for v in await session.locals()}
+    assert "iv" in lv
+    assert "99" in lv["iv"].value
+    await session.stop()
+
+
+@pytest.mark.asyncio
+async def test_locals_empty_at_top_level():
+    rec = Recorder()
+    fixture = FIXTURES / "bash_hello.sh"
+    session = await _launch(fixture, rec)
+    await session.set_breakpoint(str(fixture), 3)
+    session.resume("continue")
+    await rec.wait_stop()
+    assert await session.locals() == []  # local -p fails outside a function
+    await session.stop()
+
+
+@pytest.mark.asyncio
+async def test_globals_include_arrays_and_filter_internals():
+    rec = Recorder()
+    fixture = FIXTURES / "bash_arrays.sh"
+    session = await _launch(fixture, rec)
+    await session.set_breakpoint(str(fixture), 4)
+    session.resume("continue")
+    await rec.wait_stop()
+    gv = {v.name: v for v in await session.globals_vars()}
+    assert gv["fruits"].value == "array[3]"
+    assert ("1", '"banana"') in gv["fruits"].children
+    assert gv["prices"].value == "assoc[2]"
+    assert "greeting" in gv
+    assert not any(n.startswith("__tdb_") for n in gv)
+    assert "BASH_VERSINFO" not in gv
+    await session.stop()
+
+
+@pytest.mark.asyncio
+async def test_eval_side_effects_persist_and_rc_reported():
+    rec = Recorder()
+    fixture = FIXTURES / "bash_hello.sh"
+    session = await _launch(fixture, rec)
+    await session.set_breakpoint(str(fixture), 3)  # before echo "x is $x"
+    session.resume("continue")
+    await rec.wait_stop()
+    rc, out = await session.evaluate("x=42")  # mutate the debuggee
+    assert rc == 0
+    rc, out = await session.evaluate("echo x=$x; test -f /nonexistent")
+    assert rc != 0
+    assert "x=42" in out
+    session.resume("continue")
+    await asyncio.wait_for(rec.exit_event.wait(), 10)
+    assert "x is 42" in rec.stdout()  # the mutation persisted
+    await session.stop()
