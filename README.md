@@ -554,8 +554,10 @@ Breakpoints persist across session restarts.
 
 ### Variable Inspection
 
-The Variable View shows a tree of scopes (Locals, Globals) with all variables in the current
-frame. Expand nodes to drill into complex objects.  Children are loaded lazily on demand.
+The Variable View shows a tree of scopes with all variables in the current frame. The scopes
+themselves are language-dependent — Locals, Globals, plus Environment for bash; Lexicals,
+Globals, Specials for Perl (see the [Bash](#bash) and [Perl](#perl) sections above for
+details). Expand nodes to drill into complex objects.  Children are loaded lazily on demand.
 Variable values can be changed in the Evaluate Console.
 
 Double-click a variable, or highlight the variable with the text cursor in
