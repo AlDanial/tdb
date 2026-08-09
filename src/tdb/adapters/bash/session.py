@@ -58,6 +58,8 @@ def unb64(field: str) -> str:
     return base64.b64decode(field).decode(errors="replace")
 
 
+_HARNESS_PREFIXES = ("__tdb_", "__TDB_")  # tdb's own control-channel vars
+
 # variables the debuggee didn't create: bash specials + harness state.
 # BASH_REMATCH/PIPESTATUS etc. change under the harness's own feet, so
 # showing them would mislead; users can still `eval echo $PIPESTATUS`.
@@ -68,6 +70,9 @@ def unb64(field: str) -> str:
 # An unanchored prefix here silently hides real user variables (HISTORY,
 # EPOCH_START, SHELLCHECK_OPTS all collided with the old HIST/EPOCH/SHELL
 # prefixes).
+#
+# The __tdb_/__TDB_ alternatives below duplicate _HARNESS_PREFIXES (this
+# regex needs them inlined) — add any new harness prefix to both.
 _INTERNAL_VARS = re.compile(
     r"^(__tdb_|__TDB_|BASH|SHELL$|SHELLOPTS$|IFS$|PS4$|"
     r"EPOCHREALTIME$|EPOCHSECONDS$|EUID$|UID$|PPID$|RANDOM$|"
@@ -400,7 +405,7 @@ class BashSession:
         return [
             v
             for v in parse_declares(await self.request("globals"))
-            if v.exported and not v.name.startswith(("__tdb_", "__TDB_"))
+            if v.exported and not v.name.startswith(_HARNESS_PREFIXES)
         ]
 
     async def evaluate(self, expr: str) -> tuple[int, str]:
