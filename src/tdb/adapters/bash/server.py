@@ -306,6 +306,13 @@ class BashDapServer:
                 "variablesReference": self._add_ref(("scope", "globals")),
             }
         )
+        scopes.append(
+            {
+                "name": "Environment",
+                "expensive": False,
+                "variablesReference": self._add_ref(("scope", "environment")),
+            }
+        )
         self.send_response(request, {"scopes": scopes})
 
     def _var_to_dap(self, v: BashVar) -> dict:
@@ -324,11 +331,12 @@ class BashDapServer:
             self.send_error(request, "stale variablesReference")
             return
         if entry[0] == "scope":
-            vars_ = (
-                await self.session.locals()
-                if entry[1] == "locals"
-                else await self.session.globals_vars()
-            )
+            if entry[1] == "locals":
+                vars_ = await self.session.locals()
+            elif entry[1] == "environment":
+                vars_ = await self.session.environment_vars()
+            else:
+                vars_ = await self.session.globals_vars()
             body = [self._var_to_dap(v) for v in vars_]
         else:
             body = [

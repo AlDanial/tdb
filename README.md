@@ -407,6 +407,10 @@ pipeline segments, child bash processes run uninstrumented, and only the
 innermost frame's locals are inspectable. There is no remote-attach mode for
 Bash.
 
+The Variables view shows three scopes for bash: Locals (innermost frame
+only), Globals (unexported shell variables), and Environment (exported
+variables — inherited and script-`export`ed alike).
+
 ## Layout
 
 ```

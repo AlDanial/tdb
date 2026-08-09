@@ -34,7 +34,7 @@ async def test_scopes_and_variables_with_array_children():
         assert frames[0]["name"] == "main"
         scopes = (await client.request("scopes", {"frameId": 0}))["body"]["scopes"]
         names = [s["name"] for s in scopes]
-        assert names == ["Locals", "Globals"]
+        assert names == ["Locals", "Globals", "Environment"]
         globals_ref = scopes[1]["variablesReference"]
         gvars = (
             await client.request("variables", {"variablesReference": globals_ref})
@@ -56,7 +56,7 @@ async def test_scopes_and_variables_with_array_children():
 
 
 @pytest.mark.asyncio
-async def test_outer_frame_scopes_are_globals_only():
+async def test_scopes_per_frame():
     client = await start_bash_adapter()
     try:
         program = str(FIXTURES / "bash_functions.sh")
@@ -65,9 +65,9 @@ async def test_outer_frame_scopes_are_globals_only():
         )
         await client.wait_event("stopped")
         scopes0 = (await client.request("scopes", {"frameId": 0}))["body"]["scopes"]
-        assert [s["name"] for s in scopes0] == ["Locals", "Globals"]
+        assert [s["name"] for s in scopes0] == ["Locals", "Globals", "Environment"]
         scopes1 = (await client.request("scopes", {"frameId": 1}))["body"]["scopes"]
-        assert [s["name"] for s in scopes1] == ["Globals"]
+        assert [s["name"] for s in scopes1] == ["Globals", "Environment"]
         await client.request("continue", {"threadId": 1})
         await client.wait_event("exited")
     finally:
@@ -112,6 +112,43 @@ async def test_evaluate_mutates_debuggee():
             )
         )["body"]["result"]
         assert "x=42" in result
+        await client.request("continue", {"threadId": 1})
+        await client.wait_event("exited")
+    finally:
+        await client.stop()
+
+
+@pytest.mark.asyncio
+async def test_environment_scope_listed_and_populated():
+    client = await start_bash_adapter()
+    try:
+        program = str(FIXTURES / "bash_env_scopes.sh")
+        await launch_stopped(
+            client, program, breakpoints=[{"line": 3}], stop_on_entry=False
+        )
+        await client.wait_event("stopped")
+        await client.request("stackTrace", {"threadId": 1})
+        scopes = (await client.request("scopes", {"frameId": 0}))["body"]["scopes"]
+        assert [s["name"] for s in scopes] == ["Locals", "Globals", "Environment"]
+        env_ref = scopes[2]["variablesReference"]
+        env = {
+            v["name"]: v
+            for v in (
+                await client.request("variables", {"variablesReference": env_ref})
+            )["body"]["variables"]
+        }
+        assert "exported_var" in env
+        assert "PATH" in env
+        assert "plain_var" not in env
+        globals_ref = scopes[1]["variablesReference"]
+        gvars = {
+            v["name"]
+            for v in (
+                await client.request("variables", {"variablesReference": globals_ref})
+            )["body"]["variables"]
+        }
+        assert "plain_var" in gvars
+        assert "exported_var" not in gvars
         await client.request("continue", {"threadId": 1})
         await client.wait_event("exited")
     finally:
