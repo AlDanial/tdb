@@ -124,7 +124,7 @@ async def test_environment_scope_listed_and_populated():
     try:
         program = str(FIXTURES / "bash_env_scopes.sh")
         await launch_stopped(
-            client, program, breakpoints=[{"line": 3}], stop_on_entry=False
+            client, program, breakpoints=[{"line": 4}], stop_on_entry=False
         )
         await client.wait_event("stopped")
         await client.request("stackTrace", {"threadId": 1})
@@ -140,6 +140,17 @@ async def test_environment_scope_listed_and_populated():
         assert "exported_var" in env
         assert "PATH" in env
         assert "plain_var" not in env
+        # exported array: Environment path (finding 2) -- touched marker,
+        # ref > 0, children round-trip
+        assert env["exp_arr"]["value"] == "* array[3]"
+        assert env["exp_arr"]["variablesReference"] > 0
+        arr_children = (
+            await client.request(
+                "variables",
+                {"variablesReference": env["exp_arr"]["variablesReference"]},
+            )
+        )["body"]["variables"]
+        assert {"name": "1", "value": '"b"', "variablesReference": 0} in arr_children
         globals_ref = scopes[1]["variablesReference"]
         gvars = {
             v["name"]
@@ -149,6 +160,7 @@ async def test_environment_scope_listed_and_populated():
         }
         assert "plain_var" in gvars
         assert "exported_var" not in gvars
+        assert "exp_arr" not in gvars
         await client.request("continue", {"threadId": 1})
         await client.wait_event("exited")
     finally:
