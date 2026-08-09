@@ -12,11 +12,11 @@ class AdapterClient:
         self.events: list[dict] = []
         self._responses: dict[int, asyncio.Future] = {}
 
-    async def start(self):
+    async def start(self, module: str = "tdb.adapters.perl"):
         self.proc = await asyncio.create_subprocess_exec(
             sys.executable,
             "-m",
-            "tdb.adapters.perl",
+            module,
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,

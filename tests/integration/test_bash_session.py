@@ -1,31 +1,17 @@
 """BashSession <-> tdb_harness.sh, no DAP layer involved."""
 
 import asyncio
-import shutil
-import subprocess
 from pathlib import Path
 
 import pytest
 
 from tdb.adapters.bash.session import BashSession, b64, canonical
+from tests.integration.bash_adapter_harness import bash_ok
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
-def _bash_ok() -> bool:
-    bash = shutil.which("bash")
-    if not bash:
-        return False
-    out = subprocess.run(
-        [bash, "-c", 'echo "${BASH_VERSINFO[0]}.${BASH_VERSINFO[1]}"'],
-        capture_output=True,
-        text=True,
-    ).stdout.strip()
-    major, minor = (int(p) for p in out.split("."))
-    return (major, minor) >= (4, 4)
-
-
-pytestmark = pytest.mark.skipif(not _bash_ok(), reason="needs bash >= 4.4")
+pytestmark = pytest.mark.skipif(not bash_ok(), reason="needs bash >= 4.4")
 
 
 class Recorder:
