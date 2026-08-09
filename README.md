@@ -27,7 +27,8 @@ MIT License.  Copyright 2026 by Al Danial.
 `tdb`:
 
 - debugs multiple languages through the Debug Adapter Protocol: Python (via `debugpy`,
-the richest feature set) and C/C++ (via `gdb -i dap` or `lldb-dap`), with the language
+the richest feature set), C/C++ (via `gdb -i dap` or `lldb-dap`), Perl (via `perl -d`),
+and Bash (via bash's own `DEBUG` trap), with the language
 auto-detected from the target (ref. [Multi-Language Debugging](#multi-language-debugging)).
 
 - supports debugging of synchronous, asynchronous, multi-threaded, and multi-process Python code.
@@ -249,6 +250,10 @@ has a smaller feature envelope than Python/Perl:
 - The `DEBUG` trap never fires on a function-definition line, so a
   breakpoint on a `func() {` line never hits; entry and step-in stops land
   on the first executable line of the function body instead.
+- The debug control channel occupies two inherited file descriptors
+  (typically high-numbered). A script that execs redirections onto those
+  exact fds (e.g. `exec 63>&-` or reusing them for its own I/O) will
+  silently break debugging.
 
 See [Bash](#bash) below for launch details.
 
