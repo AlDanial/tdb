@@ -82,6 +82,14 @@ clear stderr line and exit; `shopt -s extdebug`; `set -o functrace`;
 install the `DEBUG` trap; `unset BASH_ENV`. Every identifier is
 prefixed `__tdb_` to stay out of the debuggee's namespace.
 
+**(revised during implementation):** `shopt -s extdebug` is armed
+*inside the trap string itself*, not here at harness setup. Enabling it
+directly from a `BASH_ENV` startup file makes bash try to load its
+bashdb debugger profile ("cannot start debugger; debugging mode
+disabled" on stderr), leaving extdebug OFF for the rest of the run.
+`shopt -s extdebug` is idempotent, so re-running it on every trap firing
+(after startup-file processing has finished) is harmless.
+
 ### Fast path (per-command cost)
 
 The `DEBUG` trap fires before every simple command. It returns
@@ -90,6 +98,11 @@ immediately — with **zero IPC and zero forks** — unless one of:
 1. Pending data on the command pipe, checked with
    `read -t 0 -u $__TDB_CMD_FD` (a builtin). If pending, drain and
    apply (breakpoint edits, `pause`).
+   **(revised during implementation):** applying a queued breakpoint
+   edit on this drain path still base64-decodes its path/condition
+   fields (a `base64 -d` fork), same as the stopped loop — the "zero
+   forks" guarantee only holds for the no-pending-data fast path itself,
+   not for an edit actually being drained.
 2. Stop-check matches:
    - Subshells never stop: `(( BASH_SUBSHELL > 0 ))` → return.
    - Step state: `step` always stops; `next` stops when
@@ -170,6 +183,12 @@ Same split as the Perl adapter:
     leaves, indexed and associative arrays as expandable nodes.
   - EOF on the response pipe → `exited` (real exit code) +
     `terminated` events.
+    **(revised during implementation):** exit detection is actually by
+    process reap (`Process.wait()`/`returncode`), not response-pipe EOF —
+    a backgrounded grandchild that inherited the response pipe's write
+    end keeps it open long after bash itself has exited, which would
+    hang EOF-based detection indefinitely. `_reap()` bounds how long it
+    waits for the output pumps to flush before reporting `on_exit`.
 
 ### Frame semantics
 
