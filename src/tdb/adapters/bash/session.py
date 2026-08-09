@@ -78,6 +78,35 @@ _INTERNAL_VARS = re.compile(
     r"OPTIND$|PATH$|PWD$|SHLVL$|TERM$|_$)"
 )
 
+_ESCAPED = '"\\$`'  # characters declare -p backslash-escapes inside "..."
+
+
+def _unquote_declare_scalar(value: str) -> str | None:
+    """Reverse `declare -p`'s double-quoted rendering of a scalar value.
+
+    `declare -p`/`local -p` render scalar values as a double-quoted string
+    with `"`, `\\`, `$`, and backtick backslash-escaped. Returns None (the
+    caller should then treat the value as "not equal", i.e. keep/show the
+    variable) for anything that isn't a plain double-quoted scalar -- an
+    imperfect match errs on the side of SHOWING the variable, per I2.
+    """
+    if len(value) < 2 or value[0] != '"' or value[-1] != '"':
+        return None
+    body = value[1:-1]
+    out: list[str] = []
+    i = 0
+    while i < len(body):
+        c = body[i]
+        if c == "\\" and i + 1 < len(body) and body[i + 1] in _ESCAPED:
+            out.append(body[i + 1])
+            i += 2
+            continue
+        if c == "\\":
+            return None  # an escape we don't recognize -- don't guess
+        out.append(c)
+        i += 1
+    return "".join(out)
+
 
 class BashSession:
     def __init__(
@@ -102,6 +131,7 @@ class BashSession:
         self._tasks: list[asyncio.Task] = []
         self._tmpdir: tempfile.TemporaryDirectory | None = None
         self._stderr_tail = ""  # last stderr bytes, for pre-ready failures
+        self._launch_env_snapshot: dict[str, str] = {}  # I2: for globals filtering
 
     async def launch(
         self,
@@ -142,6 +172,10 @@ class BashSession:
         child_env["__TDB_CMD_FD"] = str(cmd_r)
         child_env["__TDB_RESP_FD"] = str(resp_w)
         child_env["__TDB_TMP"] = self._tmpdir.name
+        # I2: snapshot the exact env passed to the subprocess so
+        # globals_vars() can drop untouched inherited noise later. The
+        # harness/__TDB_* keys are harmless here -- unset/filtered anyway.
+        self._launch_env_snapshot = dict(child_env)
         self._process = await asyncio.create_subprocess_exec(
             bash_path,
             program,
@@ -378,11 +412,23 @@ class BashSession:
         return parse_declares(await self.request("locals"))
 
     async def globals_vars(self) -> list[BashVar]:
-        return [
-            v
-            for v in parse_declares(await self.request("globals"))
-            if not _INTERNAL_VARS.match(v.name)
-        ]
+        # I2: besides the bash-internal/harness filter, drop variables that
+        # are byte-for-byte unchanged from the exact env launch() passed to
+        # the subprocess -- inherited noise (CLAUDE_*/XDG_*/LC_* and the
+        # like) the script never touched. A var the script itself sets,
+        # exports, or modifies (including PATH) still has a snapshot
+        # mismatch (or no snapshot entry at all) and is shown.
+        snapshot = self._launch_env_snapshot
+        out = []
+        for v in parse_declares(await self.request("globals")):
+            if _INTERNAL_VARS.match(v.name):
+                continue
+            if v.name in snapshot:
+                raw = _unquote_declare_scalar(v.value)
+                if raw is not None and raw == snapshot[v.name]:
+                    continue
+            out.append(v)
+        return out
 
     async def evaluate(self, expr: str) -> tuple[int, str]:
         payload = await self.request("eval " + b64(expr))

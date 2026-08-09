@@ -1,6 +1,7 @@
 """BashSession <-> tdb_harness.sh, no DAP layer involved."""
 
 import asyncio
+import os
 from pathlib import Path
 
 import pytest
@@ -535,6 +536,33 @@ async def test_resp_loop_err_without_payload_does_not_hang():
     assert fut.done()
     with pytest.raises(BashProtocolError):
         fut.result()
+
+
+@pytest.mark.asyncio
+async def test_globals_hide_untouched_inherited_env_but_show_script_vars():
+    """I2 regression: BashSession.globals_vars() used to include every
+    inherited env var the debuggee never touched (measured: 79 globals,
+    73 of them inherited noise like CLAUDE_*/XDG_*/LC_*). The fix
+    snapshots the exact env launch() passes to the subprocess and drops
+    name+value-unchanged matches; a variable the script itself sets
+    still shows (it's either absent from the snapshot or its value now
+    differs).
+    """
+    rec = Recorder()
+    fixture = FIXTURES / "bash_arrays.sh"
+    env = dict(os.environ)
+    env["TDB_TEST_SENTINEL"] = "untouched_value"  # launch(env=...) REPLACES
+    session = BashSession(rec.on_output, rec.on_stop, rec.on_exit)
+    await session.launch(
+        program=str(fixture), args=[], cwd=str(fixture.parent), env=env
+    )
+    await session.set_breakpoint(str(fixture), 8)  # final echo line
+    session.resume("continue")
+    await rec.wait_stop()
+    gv = {v.name: v for v in await session.globals_vars()}
+    assert "TDB_TEST_SENTINEL" not in gv  # untouched inherited noise
+    assert "greeting" in gv  # the script's own variable
+    await session.stop()
 
 
 @pytest.mark.asyncio
