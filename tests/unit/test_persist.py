@@ -5,7 +5,6 @@ from __future__ import annotations
 import importlib
 import json
 import sys
-from pathlib import Path
 
 import pytest
 
@@ -123,7 +122,6 @@ def test_legacy_last_run_json_is_migrated(isolated_persist):
 
 
 def test_save_config_round_trip(isolated_persist):
-    TdbConfig = isolated_persist.TdbConfig
     cfg = isolated_persist.load_config()
     cfg.keybindings = "emacs"
     isolated_persist.save_config(cfg)

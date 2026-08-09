@@ -3,12 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 from collections import deque
 from datetime import datetime, timezone
-
-from tdb.session.event_bus import DebugEventHandler
 
 log = logging.getLogger(__name__)
 

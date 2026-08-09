@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
 from pathlib import Path
@@ -14,22 +13,14 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.message import Message
-from textual.widgets import Footer, Header, Label, OptionList, Static
+from textual.widgets import Footer, Header, OptionList
 from textual.widgets._tree import TreeNode
 
+from tdb.app_handlers.routing import _AppMessageRoutes
 from tdb.languages.base import AdapterNotFoundError
 from tdb.session.controller import DebugController
-from tdb.session.messages import (
-    DapInitialized,
-    DapStopped,
-    DapContinued,
-    DapTerminated,
-    DapExited,
-    DapExternalTerminalStarted,
-    DapOutput,
-)
 from tdb.session.textual_handler import TextualEventHandler
-from tdb.keybindings import KeybindingConfig, Mode
+from tdb.keybindings import KeybindingConfig
 from tdb.widgets.breakpoint_view import BreakpointView
 from tdb.widgets.code_view import CodeView, _BreakpointConditionModal
 from tdb.widgets.console_view import ConsoleView
@@ -53,13 +44,9 @@ from tdb.app_helpers import find_readme, unquote_dap_string
 from tdb.persist import (
     TdbConfig,
     load_breakpoints,
-    load_config,
     save_breakpoints,
     save_config,
 )
-from tdb.widgets.async_tasks_modal import AsyncTasksModal
-from tdb.widgets.processes_modal import ProcessesModal
-from tdb.widgets.threads_modal import ThreadsModal
 from tdb.widgets.variable_view import VariableView
 from tdb import __version__ as tdb_version
 
@@ -67,9 +54,6 @@ if TYPE_CHECKING:
     from tdb.languages.base import LanguageProfile
 
 log = logging.getLogger(__name__)
-
-
-from tdb.app_handlers.routing import _AppMessageRoutes
 
 
 class TdbApp(_AppMessageRoutes, App):

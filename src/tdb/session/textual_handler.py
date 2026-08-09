@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from .event_bus import DebugEventHandler
 from .messages import (
     DapContinued,
     DapExited,

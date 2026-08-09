@@ -1,5 +1,3 @@
-import pytest
-
 from .conftest import pytestmark_skip
 
 pytestmark = pytestmark_skip

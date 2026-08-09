@@ -7,7 +7,7 @@ import subprocess
 
 import pytest
 
-from tdb.adapters.perl.session import PerlSession, helpers_path
+from tdb.adapters.perl.session import PerlSession
 
 pytestmark = pytest.mark.skipif(
     shutil.which("perl") is None

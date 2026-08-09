@@ -6,6 +6,7 @@ with a Debug Adapter Protocol (DAP) implementation.  In addition to Python,
 `tdb` comes with built-in support for
 - C and C++ (via `gdb` or `lldb-dap`)
 - Perl (via `perl -d`)
+- Bash (via bash's own `DEBUG` trap; bash ≥ 4.4)
 
 `tdb` is built with [textual](https://github.com/Textualize/textual) and speaks
 DAP to a pluggable debug adapter: [debugpy](https://github.com/microsoft/debugpy)
@@ -26,7 +27,8 @@ MIT License.  Copyright 2026 by Al Danial.
 `tdb`:
 
 - debugs multiple languages through the Debug Adapter Protocol: Python (via `debugpy`,
-the richest feature set) and C/C++ (via `gdb -i dap` or `lldb-dap`), with the language
+the richest feature set), C/C++ (via `gdb -i dap` or `lldb-dap`), Perl (via `perl -d`),
+and Bash (via bash's own `DEBUG` trap), with the language
 auto-detected from the target (ref. [Multi-Language Debugging](#multi-language-debugging)).
 
 - supports debugging of synchronous, asynchronous, multi-threaded, and multi-process Python code.
@@ -172,7 +174,7 @@ python -m tdb my_program.py
 
 ## Multi-Language Debugging
 
-`tdb` debugs any language that has a Debug Adapter Protocol backend. Two
+`tdb` debugs any language that has a Debug Adapter Protocol backend. Four
 languages are supported out of the box:
 
 | Language | Adapter(s) | How to get the adapter | Feature level |
@@ -180,14 +182,17 @@ languages are supported out of the box:
 | Python | `debugpy` (default) | installed with `textual-debugger` | everything in this README |
 | C / C++ (any native binary) | `gdb` (default), `lldb-dap` (alternate) | `gdb -i dap` requires GDB ≥ 14; `lldb-dap` ships with LLVM ≥ 17 (e.g. `apt install lldb`) | core debugging: breakpoints, stepping, stack, variables, evaluate console |
 | Perl | perl-tdb (bundled) | needs perl ≥ 5.18 on PATH (or `{"adapters": {"perl": ...}}`) | core debugging + remote attach |
+| Bash | bash-tdb (bundled) | needs bash ≥ 4.4 on PATH (or `{"adapters": {"bash": ...}}`) | core debugging (no remote attach) |
 
 ### Language detection and selection
 
 The language is auto-detected from the debug target:
 
-1. File extension: `.py` → Python; `.pl` / `.pm` / `.t` → Perl.
+1. File extension: `.py` → Python; `.pl` / `.pm` / `.t` → Perl; `.sh` / `.bash`
+   → Bash.
 2. Native executables (ELF, Mach-O, PE magic bytes) → C/C++.
-3. A `#!...python` or `#!...perl` shebang → Python / Perl respectively.
+3. A `#!...python`, `#!...perl`, or `#!...bash` shebang → Python / Perl /
+   Bash respectively.
 4. C/C++/Rust *source* files (`.c`, `.cpp`, `.rs`, …) produce an error with a
    hint: compile with debug info (`g++ -g -O0`) and debug the binary.
 5. Anything else produces an error naming the `--lang` override.
@@ -227,8 +232,30 @@ process inspectors and wait graph, the evaluate console's trailing-`?` help,
 the post-mortem / `tdb.breakpoint()` hooks (those hooks live inside Python
 programs by nature). Remote attach (`-r`) also works for Perl (see
 [Perl](#perl) — `Devel::TdbRemote` in place of `debugpy.listen()`), but not
-for C/C++. `--terminal` is
+for C/C++ or Bash. `--terminal` is
 currently ignored for non-Python targets.
+
+**Bash limitations (v1):** the bash adapter uses bash's own `DEBUG` trap and
+has a smaller feature envelope than Python/Perl:
+
+- Debuggee code that installs its own `DEBUG` trap clobbers the harness;
+  debugging silently degrades to free-running.
+- No stopping inside subshells `(...)`, `$(...)`, or pipeline segments; they
+  execute normally.
+- Child bash processes run uninstrumented.
+- Outer-frame locals not inspectable (innermost frame only).
+- Pause is deferred while blocked in an external command.
+- `.sh` files that aren't bash are only diagnosed at launch, by bash itself
+  or the harness version check.
+- The `DEBUG` trap never fires on a function-definition line, so a
+  breakpoint on a `func() {` line never hits; entry and step-in stops land
+  on the first executable line of the function body instead.
+- The debug control channel occupies two inherited file descriptors
+  (typically high-numbered). A script that execs redirections onto those
+  exact fds (e.g. `exec 63>&-` or reusing them for its own I/O) will
+  silently break debugging.
+
+See [Bash](#bash) below for launch details.
 
 ### C/C++ tips
 
@@ -356,6 +383,33 @@ script.pl`) support pausing a running program at any time. Remote-attach
 sessions don't — debugpy-style asynchronous pause needs a control channel
 `Devel::TdbRemote` doesn't implement yet; `pause` in attach mode returns a
 clear "not available" error instead of hanging.
+
+### Bash
+
+`tdb` bundles its own bash adapter (`bash-tdb`) — no separate adapter install
+needed, just a `bash` ≥ 4.4 on `PATH`. It drives stock bash's own `DEBUG`
+trap (with `extdebug` for return-value control) under the hood via a small
+harness script sourced through `BASH_ENV`, so it works with any bash already
+on the system.
+
+**Launching a script:**
+
+```bash
+tdb script.sh
+```
+
+Core debugging works as described above (breakpoints, stepping,
+continue/pause, stack, variables, evaluate console), with the v1 caveats
+listed in [What works for non-Python languages](#what-works-for-non-python-languages)
+— most notably: a breakpoint can't be set on a `func() {` line itself (the
+`DEBUG` trap never fires there), stops never land inside subshells or
+pipeline segments, child bash processes run uninstrumented, and only the
+innermost frame's locals are inspectable. There is no remote-attach mode for
+Bash.
+
+The Variables view shows three scopes for bash: Locals (innermost frame
+only), Globals (unexported shell variables), and Environment (exported
+variables — inherited and script-`export`ed alike).
 
 ## Layout
 
@@ -500,8 +554,10 @@ Breakpoints persist across session restarts.
 
 ### Variable Inspection
 
-The Variable View shows a tree of scopes (Locals, Globals) with all variables in the current
-frame. Expand nodes to drill into complex objects.  Children are loaded lazily on demand.
+The Variable View shows a tree of scopes with all variables in the current frame. The scopes
+themselves are language-dependent — Locals, Globals, plus Environment for bash; Lexicals,
+Globals, Specials for Perl (see the [Bash](#bash) and [Perl](#perl) sections above for
+details). Expand nodes to drill into complex objects.  Children are loaded lazily on demand.
 Variable values can be changed in the Evaluate Console.
 
 Double-click a variable, or highlight the variable with the text cursor in

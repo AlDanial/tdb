@@ -1,7 +1,5 @@
 """The stderr error modal is driven by the active language profile."""
 
-import pytest
-
 from tdb.app import TdbApp
 from tdb.persist import TdbConfig
 
