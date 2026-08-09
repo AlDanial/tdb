@@ -42,7 +42,6 @@ class BashDapServer:
         # breakpoints per local path, applied via session.set_breakpoint;
         # kept to rebuild the table on setBreakpoints (clearall + re-set)
         self._breakpoints: dict[str, list[dict]] = {}
-        self.current_stop: dict | None = None
         # variablesReference registry: ref -> ("scope", frame, kind) or
         # ("children", [(key, value), ...]); reset at every stop
         self._refs: dict[int, tuple] = {}
@@ -112,7 +111,6 @@ class BashDapServer:
         self.send_event("output", {"category": category, "output": text})
 
     def _on_session_stop(self, reason: str, path: str, line: int) -> None:
-        self.current_stop = {"reason": reason, "path": path, "line": line}
         self._refs = {}
         self._next_ref = 1
         self._stack_cache = None
@@ -224,7 +222,6 @@ class BashDapServer:
         if reason is not None:
             self.send_error(request, reason)
             return
-        self.current_stop = None
         self.send_response(request)
         self.send_event("continued", {"threadId": 1, "allThreadsContinued": True})
         self.session.resume(mode)
@@ -286,6 +283,13 @@ class BashDapServer:
             self.send_error(request, reason)
             return
         frame = request.arguments.get("frameId", 0)
+        # frameId sanity guard: beyond the last known stack frame is a
+        # stale/bogus reference (e.g. a client-cached frameId from before a
+        # resume). When there's no cached stack yet, fall back to the
+        # unchanged default of treating frame 0 as valid.
+        if self._stack_cache is not None and not (0 <= frame < len(self._stack_cache)):
+            self.send_error(request, f"invalid frameId: {frame}")
+            return
         scopes = []
         if frame == 0:
             scopes.append(

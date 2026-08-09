@@ -75,6 +75,28 @@ async def test_outer_frame_scopes_are_globals_only():
 
 
 @pytest.mark.asyncio
+async def test_scopes_rejects_out_of_range_frame_id():
+    """Finding 4: a frameId beyond the last known stack frame (e.g. a
+    stale client-cached id) must be rejected with an error response
+    instead of silently returning a Globals-only scope list."""
+    client = await start_bash_adapter()
+    try:
+        program = str(FIXTURES / "bash_functions.sh")
+        await launch_stopped(
+            client, program, breakpoints=[{"line": 3}], stop_on_entry=False
+        )
+        await client.wait_event("stopped")
+        # populate self._stack_cache
+        await client.request("stackTrace", {"threadId": 1})
+        resp = await client.request("scopes", {"frameId": 99})
+        assert resp["success"] is False
+        await client.request("continue", {"threadId": 1})
+        await client.wait_event("exited")
+    finally:
+        await client.stop()
+
+
+@pytest.mark.asyncio
 async def test_evaluate_mutates_debuggee():
     client = await start_bash_adapter()
     try:
