@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import binascii
+import dataclasses
 import logging
 import os
 import re
@@ -83,6 +84,55 @@ _INTERNAL_VARS = re.compile(
     r"OPTIND$|PATH$|PWD$|SHLVL$|TERM$|_$)"
 )
 
+_ESCAPED = '"\\$`'  # characters declare -p backslash-escapes inside "..."
+
+
+def _unquote_declare_scalar(value: str) -> str | None:
+    """Reverse `declare -p`'s double-quoted rendering of a scalar value.
+
+    `declare -p`/`local -p` render scalar values as a double-quoted string
+    with `"`, `\\`, `$`, and backtick backslash-escaped. Returns None (the
+    caller should then treat the value as CHANGED, i.e. mark the variable
+    "touched") for anything that isn't a plain double-quoted scalar — an
+    unparseable value now errs toward marking it touched: a stray `* `
+    marker costs far less than a script-defined var getting lost among
+    ~80 lines of untouched inherited environment noise.
+    """
+    if len(value) < 2 or value[0] != '"' or value[-1] != '"':
+        return None
+    body = value[1:-1]
+    out: list[str] = []
+    i = 0
+    while i < len(body):
+        c = body[i]
+        if c == "\\" and i + 1 < len(body) and body[i + 1] in _ESCAPED:
+            out.append(body[i + 1])
+            i += 2
+            continue
+        if c == "\\":
+            return None  # an escape we don't recognize -- don't guess
+        out.append(c)
+        i += 1
+    return "".join(out)
+
+
+def _is_touched(v: BashVar, snapshot: dict[str, str]) -> bool:
+    """Did the debuggee itself create or modify this exported var?
+
+    Compared against `snapshot`, the exact env BashSession.launch() passed
+    to the subprocess. Arrays/assoc arrays (snapshot values are always
+    plain strings, so an exported array can never match one) and anything
+    new since launch count as touched unconditionally.
+    """
+    if v.children is not None:
+        return True
+    if v.name not in snapshot:
+        return True
+    raw = _unquote_declare_scalar(v.value)
+    if raw is None:
+        return True
+    return raw != snapshot[v.name]
+
 
 class BashSession:
     def __init__(
@@ -107,6 +157,9 @@ class BashSession:
         self._tasks: list[asyncio.Task] = []
         self._tmpdir: tempfile.TemporaryDirectory | None = None
         self._stderr_tail = ""  # last stderr bytes, for pre-ready failures
+        # annotation only (script-touched marker in environment_vars()) --
+        # does NOT affect the Globals/Environment split.
+        self._launch_env_snapshot: dict[str, str] = {}
 
     async def launch(
         self,
@@ -147,6 +200,12 @@ class BashSession:
         child_env["__TDB_CMD_FD"] = str(cmd_r)
         child_env["__TDB_RESP_FD"] = str(resp_w)
         child_env["__TDB_TMP"] = self._tmpdir.name
+        # Snapshot the exact env passed to the subprocess, for the
+        # script-touched annotation in environment_vars() ONLY -- it does
+        # not gate Globals/Environment membership (that split is strict:
+        # unexported vs exported). The harness/__TDB_* keys are harmless
+        # here -- they're prefix-filtered out of environment_vars() anyway.
+        self._launch_env_snapshot = dict(child_env)
         self._process = await asyncio.create_subprocess_exec(
             bash_path,
             program,
@@ -401,12 +460,27 @@ class BashSession:
         Deliberately NOT filtered by _INTERNAL_VARS — PATH/HOME/PWD/TERM
         are the point of an environment tree. Only the harness's own
         control variables are hidden.
+
+        A script's own vars (created or modified relative to the exact
+        env launch() passed to the subprocess) are easy to lose among ~80
+        inherited entries, so they're annotated "touched": the rendered
+        value is prefixed with "* " and touched entries sort first
+        (alphabetically within each group). This is annotation only — it
+        does not change the strict Locals/Globals/Environment partition.
         """
-        return [
-            v
-            for v in parse_declares(await self.request("globals"))
-            if v.exported and not v.name.startswith(_HARNESS_PREFIXES)
-        ]
+        snapshot = self._launch_env_snapshot
+        touched: list[BashVar] = []
+        untouched: list[BashVar] = []
+        for v in parse_declares(await self.request("globals")):
+            if not v.exported or v.name.startswith(_HARNESS_PREFIXES):
+                continue
+            if _is_touched(v, snapshot):
+                touched.append(dataclasses.replace(v, value=f"* {v.value}"))
+            else:
+                untouched.append(v)
+        touched.sort(key=lambda v: v.name)
+        untouched.sort(key=lambda v: v.name)
+        return touched + untouched
 
     async def evaluate(self, expr: str) -> tuple[int, str]:
         payload = await self.request("eval " + b64(expr))

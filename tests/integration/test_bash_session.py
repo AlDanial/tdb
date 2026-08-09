@@ -541,7 +541,12 @@ async def test_resp_loop_err_without_payload_does_not_hang():
 @pytest.mark.asyncio
 async def test_strict_split_globals_vs_environment():
     """Strict split: unexported -> Globals only; exported (script's own
-    AND inherited) -> Environment only; the two lists are disjoint."""
+    AND inherited) -> Environment only; the two lists are disjoint.
+
+    Also covers the script-touched annotation (final-review finding 1):
+    the script's own export gets a "* " value marker and sorts ahead of
+    untouched inherited noise; an untouched inherited var has no marker.
+    """
     rec = Recorder()
     fixture = FIXTURES / "bash_env_scopes.sh"
     session = BashSession(rec.on_output, rec.on_stop, rec.on_exit)
@@ -550,24 +555,86 @@ async def test_strict_split_globals_vs_environment():
     await session.launch(
         program=str(fixture), args=[], cwd=str(fixture.parent), env=env
     )
-    await session.set_breakpoint(str(fixture), 3)  # echo "marker"
+    await session.set_breakpoint(str(fixture), 4)  # echo "marker"
     session.resume("continue")
     await rec.wait_stop()
 
     gnames = {v.name for v in await session.globals_vars()}
-    envvars = {v.name: v for v in await session.environment_vars()}
+    envvars_list = await session.environment_vars()
+    envvars = {v.name: v for v in envvars_list}
 
     assert "plain_var" in gnames  # unexported -> Globals
     assert "plain_var" not in envvars
     assert "exported_var" in envvars  # script export -> Environment
     assert "exported_var" not in gnames
-    assert '"from-script"' == envvars["exported_var"].value
+    assert envvars["exported_var"].value == '* "from-script"'  # touched marker
     assert "TDB_TEST_SENTINEL" in envvars  # inherited -> Environment
     assert "TDB_TEST_SENTINEL" not in gnames
+    assert envvars["TDB_TEST_SENTINEL"].value == '"inherited-untouched"'  # no marker
     assert "PATH" in envvars  # real env deliberately shown
     assert not any(n.startswith(("__tdb_", "__TDB_")) for n in envvars)
     assert not any(n.startswith(("__tdb_", "__TDB_")) for n in gnames)
     assert gnames.isdisjoint(envvars)
+
+    # touched entries (marker-prefixed values) sort ahead of untouched ones
+    marked = [v.value.startswith("* ") for v in envvars_list]
+    assert marked == sorted(marked, reverse=True)
+    names_env = [v.name for v in envvars_list]
+    assert names_env.index("exported_var") < names_env.index("TDB_TEST_SENTINEL")
+
+    session.resume("continue")
+    await asyncio.wait_for(rec.exit_event.wait(), 10)
+    await session.stop()
+
+
+@pytest.mark.asyncio
+async def test_environment_touched_annotation_on_modified_inherited_var():
+    """Item 1: a script export-MODIFYING an inherited var (not just
+    creating a new one) also earns the touched marker -- exercises the
+    value-diff path in _is_touched(), not just the "new name" path."""
+    rec = Recorder()
+    fixture = FIXTURES / "bash_env_scopes.sh"
+    session = BashSession(rec.on_output, rec.on_stop, rec.on_exit)
+    env = dict(os.environ)
+    env["TDB_TEST_SENTINEL2"] = "orig"
+    await session.launch(
+        program=str(fixture), args=[], cwd=str(fixture.parent), env=env
+    )
+    await session.set_breakpoint(str(fixture), 4)  # echo "marker"
+    session.resume("continue")
+    await rec.wait_stop()
+
+    rc, _ = await session.evaluate("export TDB_TEST_SENTINEL2=changed")
+    assert rc == 0
+
+    envvars = {v.name: v for v in await session.environment_vars()}
+    assert envvars["TDB_TEST_SENTINEL2"].value == '* "changed"'
+
+    session.resume("continue")
+    await asyncio.wait_for(rec.exit_event.wait(), 10)
+    await session.stop()
+
+
+@pytest.mark.asyncio
+async def test_set_a_vars_marked_touched():
+    """`set -a` regression: every subsequent assignment is auto-exported,
+    so it's brand-new to Environment (never in the launch snapshot) --
+    both vars must come back touched/marked, not lost among inherited
+    noise. Globals may end up empty since `set -a` never leaves an
+    unexported var behind."""
+    rec = Recorder()
+    fixture = FIXTURES / "bash_set_a.sh"
+    session = await _launch(fixture, rec)
+    await session.set_breakpoint(str(fixture), 5)  # echo "marker"
+    session.resume("continue")
+    await rec.wait_stop()
+
+    envvars = {v.name: v for v in await session.environment_vars()}
+    assert envvars["var1"].value == '* "alpha"'
+    assert envvars["var2"].value == '* "beta"'
+    gnames = {v.name for v in await session.globals_vars()}
+    assert "var1" not in gnames
+    assert "var2" not in gnames
 
     session.resume("continue")
     await asyncio.wait_for(rec.exit_event.wait(), 10)
