@@ -18,11 +18,8 @@ from __future__ import annotations
 
 import asyncio
 
-import pytest
-
 from tdb.server.event_handler import ServerEventHandler
 from tdb.server.handlers import ControllerRef, HandlerRef, RpcHandlers
-from tdb.server.event_handler import ServerEventHandler as _SH  # alias for clarity
 from tdb.session.controller import DebugController
 
 

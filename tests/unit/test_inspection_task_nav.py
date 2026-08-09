@@ -5,7 +5,6 @@ entries) into synthetic StackFrame objects for the main Stack View.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from types import SimpleNamespace
 
 from tdb.app_handlers.inspection import InspectionWorkflows, _TASK_FRAME_RE

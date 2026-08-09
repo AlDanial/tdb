@@ -7,8 +7,6 @@ controller state — no Textual app needed.
 
 from __future__ import annotations
 
-from types import SimpleNamespace
-
 from tdb.app_handlers.dap_events import DapEventCoordinator
 from tdb.dap.types import Source, StackFrame
 from tdb.server.event_handler import ServerEventHandler

@@ -1,6 +1,6 @@
 """Language-specific fatal-error parsers behind Presentation.parse_error."""
 
-from tdb.languages.errors import parse_python_error
+from tdb.languages.errors import parse_perl_error, parse_python_error
 
 SIMPLE = """Traceback (most recent call last):
   File "/app/main.py", line 12, in <module>
@@ -69,8 +69,6 @@ def test_presentation_parse_error_defaults_to_none():
 
     assert Presentation().parse_error is None
 
-
-from tdb.languages.errors import parse_perl_error
 
 PERL_COMPILE = """Illegal division by zero at /w/has_begin.pl line 10.
  at /w/has_begin.pl line 10.

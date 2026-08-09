@@ -120,7 +120,6 @@ async def test_replay_restart_reinstalls_breakpoints(tmp_path):
     )
     out: list[str] = []
     errors = await run_replay(load_recording(path), echo=out.append)
-    text = "\n".join(out)
     assert errors == 0
     stop_lines = [line for line in out if ":3" in line and "ok:" in line]
     assert len(stop_lines) == 2
@@ -151,7 +150,7 @@ async def test_condition_reset_updates_in_place(tmp_path):
     # function name ("test_condition_reset_updates_..."), so every
     # transcript line that echoes the recorded file path (e.g. the
     # set_breakpoint command headers) spuriously contains "condition" too.
-    listing = [l for l in out if "toy.py:3" in l and "condition=" in l]
+    listing = [line for line in out if "toy.py:3" in line and "condition=" in line]
     assert len(listing) == 1
 
 

@@ -14,8 +14,6 @@ from __future__ import annotations
 
 import asyncio
 
-import pytest
-
 from tdb.dap.messages import Event
 from tdb.session.controller import DebugController
 from tdb.session.event_bus import DebugEventHandler

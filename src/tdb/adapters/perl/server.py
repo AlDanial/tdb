@@ -79,7 +79,9 @@ class PerlDapServer:
 
     def _to_local(self, path: str) -> str:
         """Remote (perl5db-facing) path -> local (caller-facing) path."""
-        return self._translate_path(path, [(r, l) for l, r in self._path_map])
+        return self._translate_path(
+            path, [(remote, local) for local, remote in self._path_map]
+        )
 
     @staticmethod
     def _translate_path(path: str, mapping: list[tuple[str, str]]) -> str:

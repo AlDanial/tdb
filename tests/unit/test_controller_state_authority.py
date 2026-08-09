@@ -13,8 +13,6 @@ tests below extend the same proof to stopped/continued.
 
 from __future__ import annotations
 
-import asyncio
-
 from tdb.dap.client import DAPClient
 from tdb.dap.messages import Event
 from tdb.dap.types import StackFrame, Source

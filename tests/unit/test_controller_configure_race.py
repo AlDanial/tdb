@@ -17,8 +17,6 @@ from __future__ import annotations
 
 import asyncio
 
-import pytest
-
 from tdb.dap.messages import Event, Response
 from tdb.dap.types import Capabilities
 from tdb.server.event_handler import ServerEventHandler

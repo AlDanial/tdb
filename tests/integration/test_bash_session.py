@@ -208,7 +208,7 @@ async def test_step_in_descends_into_function():
     session.resume("step")
     await rec.wait_stop()  # entry: line 9 (`outer` call — see next test's note)
     # keep stepping; we must eventually stop on the `local iv=99` line (2)
-    lines = [l for _, l in await _stop_lines(session, rec, "step", 6)]
+    lines = [line for _, line in await _stop_lines(session, rec, "step", 6)]
     assert 2 in lines  # inside inner()
     await session.stop()
 

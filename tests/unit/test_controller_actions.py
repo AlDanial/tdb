@@ -31,7 +31,6 @@ from tdb.dap.types import (
     Variable,
 )
 from tdb.languages.base import (
-    AdapterQuirks,
     AdapterSpec,
     LanguageProfile,
     Presentation,

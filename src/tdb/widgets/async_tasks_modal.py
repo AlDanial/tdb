@@ -10,7 +10,7 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical
 from textual.message import Message
-from textual.widgets import DataTable, Static, Tree
+from textual.widgets import DataTable, Tree
 from textual.widgets._tree import TreeNode
 
 from tdb.inspection import (

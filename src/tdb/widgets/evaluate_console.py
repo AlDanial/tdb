@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from textual.binding import Binding
 from textual.containers import Vertical
-from textual.events import Key
 from textual.message import Message
 from textual.widgets import Input, RichLog
 from rich.text import Text
@@ -139,7 +138,7 @@ class EvaluateConsole(Vertical):
             input_widget.cursor_position = len(input_widget.value)
         else:
             # Multiple matches — find common prefix and auto-complete that
-            labels = [t or l for l, t in completions]
+            labels = [text or label for label, text in completions]
             prefix = _common_prefix(labels)
 
             current = input_widget.value
@@ -155,7 +154,7 @@ class EvaluateConsole(Vertical):
                 input_widget.cursor_position = len(input_widget.value)
 
             # Show all matches in output
-            items = [t or l for l, t in completions]
+            items = [text or label for label, text in completions]
             output.write(Text("  ".join(items), style="dim"))
 
     def show_result(self, result: str) -> None:

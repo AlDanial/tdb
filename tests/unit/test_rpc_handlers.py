@@ -7,6 +7,8 @@ breakpoint state, dispatch, and validation paths can run in milliseconds.
 
 from __future__ import annotations
 
+import json as _json
+
 import pytest
 
 from tdb.dap.types import SourceBreakpoint, Thread
@@ -333,8 +335,6 @@ async def test_get_output_drains_buffer(handlers):
 
 
 # --- wait_graph ---------------------------------------------------------
-
-import json as _json
 
 
 def _stub_evaluate(handlers, payload):
