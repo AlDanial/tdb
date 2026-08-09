@@ -470,7 +470,7 @@ async def test_globals_include_arrays_and_filter_internals():
     rec = Recorder()
     fixture = FIXTURES / "bash_arrays.sh"
     session = await _launch(fixture, rec)
-    await session.set_breakpoint(str(fixture), 4)
+    await session.set_breakpoint(str(fixture), 8)  # echo (final line)
     session.resume("continue")
     await rec.wait_stop()
     gv = {v.name: v for v in await session.globals_vars()}
@@ -480,6 +480,16 @@ async def test_globals_include_arrays_and_filter_internals():
     assert "greeting" in gv
     assert not any(n.startswith("__tdb_") for n in gv)
     assert "BASH_VERSINFO" not in gv
+    # regression: unanchored HIST/EPOCH/SHELL prefixes used to hide these
+    # real user variables (HISTORY, EPOCH_START, SHELLCHECK_OPTS are not
+    # bash specials, despite superficially resembling HISTFILE/EPOCHSECONDS/
+    # SHELLOPTS).
+    assert "HISTORY" in gv
+    assert "EPOCH_START" in gv
+    assert "SHELLCHECK_OPTS" in gv
+    # FUNCNEST is a real bash special (shopt-adjacent recursion-depth
+    # limit) and must still be filtered.
+    assert "FUNCNEST" not in gv
     await session.stop()
 
 

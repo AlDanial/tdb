@@ -13,6 +13,8 @@ import signal
 import tempfile
 from typing import Callable
 
+from tdb.adapters.bash.declares import BashVar, parse_declares
+
 log = logging.getLogger(__name__)
 
 HARNESS = os.path.join(os.path.dirname(__file__), "tdb_harness.sh")
@@ -59,10 +61,20 @@ def unb64(field: str) -> str:
 # variables the debuggee didn't create: bash specials + harness state.
 # BASH_REMATCH/PIPESTATUS etc. change under the harness's own feet, so
 # showing them would mislead; users can still `eval echo $PIPESTATUS`.
+#
+# BASH and COMP_ are kept as unanchored prefixes — those namespaces are
+# bash-owned in practice (BASH_*, BASHPID, BASHOPTS, COMP_*) — but every
+# other entry is anchored/enumerated to the exact bash special it names.
+# An unanchored prefix here silently hides real user variables (HISTORY,
+# EPOCH_START, SHELLCHECK_OPTS all collided with the old HIST/EPOCH/SHELL
+# prefixes).
 _INTERNAL_VARS = re.compile(
-    r"^(__tdb_|__TDB_|BASH|SHELL|IFS$|PS4$|EPOCH|EUID$|UID$|PPID$|RANDOM$|"
+    r"^(__tdb_|__TDB_|BASH|SHELL$|SHELLOPTS$|IFS$|PS4$|"
+    r"EPOCHREALTIME$|EPOCHSECONDS$|EUID$|UID$|PPID$|RANDOM$|"
     r"SECONDS$|SRANDOM$|LINENO$|FUNCNAME$|GROUPS$|DIRSTACK$|PIPESTATUS$|"
-    r"COMP_|HIST|HOSTNAME$|HOSTTYPE$|MACHTYPE$|OSTYPE$|OLDPWD$|OPTERR$|"
+    r"COMP_|COMPREPLY$|FUNCNEST$|OPTARG$|"
+    r"HIST(CMD|CONTROL|FILE|FILESIZE|IGNORE|SIZE|TIMEFORMAT)$|"
+    r"HOSTNAME$|HOSTTYPE$|MACHTYPE$|OSTYPE$|OLDPWD$|OPTERR$|"
     r"OPTIND$|PATH$|PWD$|SHLVL$|TERM$|_$)"
 )
 
@@ -338,14 +350,10 @@ class BashSession:
             frames.append({"func": func, "file": file, "line": int(lineno)})
         return frames
 
-    async def locals(self) -> list:
-        from tdb.adapters.bash.declares import parse_declares
-
+    async def locals(self) -> list[BashVar]:
         return parse_declares(await self.request("locals"))
 
-    async def globals_vars(self) -> list:
-        from tdb.adapters.bash.declares import parse_declares
-
+    async def globals_vars(self) -> list[BashVar]:
         return [
             v
             for v in parse_declares(await self.request("globals"))
