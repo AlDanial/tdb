@@ -7,6 +7,20 @@
 #    (extdebug: nonzero skips the debuggee's next command)
 #  - everything must survive set -euo pipefail in the debuggee
 #  - locals/eval run INLINE in the trap string (scope!)
+#
+# Wire protocol / correlation ids (final review, I1): a REQUEST command
+# line (stack/globals/locals/eval/setbp/clearbp/clearall/pause sent via
+# BashSession.request(), which awaits a reply) is prefixed with a
+# monotonic decimal id: "7 stack". The harness echoes that id back in
+# its reply: "ok 7 <b64>" / "err 7 <b64>". BashSession._resp_loop drops
+# any ok/err frame whose id doesn't match the id it's currently waiting
+# on, so a late reply for a request the adapter already gave up on
+# (timeout) can never be mistaken for the answer to a different, later
+# request. A bare command line (no leading id, e.g. plain "step" or a
+# fire-and-forget send_async() edit) gets no correlated reply — either
+# no ack at all (the running-fast-path drain loop never acks) or an ack
+# with id "-" (stopped/config-phase dispatch), which never matches a
+# real pending id and is harmlessly dropped.
 
 # BASH_ENV, and the __TDB_* env vars with it, keep being inherited (and
 # this file keeps being re-sourced) by every child bash the debuggee
@@ -70,14 +84,18 @@ __tdb_canonical() {  # canonicalize $1 -> __tdb_cpath (cached; realpath(dir)+bas
     return 0
 }
 
-__tdb_read_cmd() {  # blocks; fills __tdb_cmd/__tdb_a1/__tdb_a2/__tdb_a3
+__tdb_read_cmd() {  # blocks; fills __tdb_cmd/__tdb_a1/__tdb_a2/__tdb_a3/__tdb_id
     # IFS is local to this function so a debuggee-modified global IFS
     # (e.g. `IFS=,`) can't break the field-split below and hang the
     # stopped/config-phase read loop.
     local __tdb_line IFS=$' \t\n'
     IFS= read -r -u "$__TDB_CMD_FD" __tdb_line || return 1
-    __tdb_a1= __tdb_a2= __tdb_a3=
+    __tdb_id= __tdb_a1= __tdb_a2= __tdb_a3=
     read -r __tdb_cmd __tdb_a1 __tdb_a2 __tdb_a3 <<< "$__tdb_line"
+    if [[ $__tdb_cmd =~ ^[0-9]+$ ]]; then  # REQUEST id prefix; bare = fire-and-forget
+        __tdb_id=$__tdb_cmd
+        read -r __tdb_cmd __tdb_a1 __tdb_a2 __tdb_a3 <<< "${__tdb_line#* }"
+    fi
     return 0
 }
 
@@ -120,11 +138,11 @@ __tdb_stack() {  # $1 = harness frames to skip; stdout: func|canon|line per fram
 
 __tdb_dispatch() {  # scope-independent commands, acked (stopped/config phase)
     case $__tdb_cmd in
-    stack)   __tdb_send "ok $(__tdb_b64 "$(__tdb_stack 2)")" ;;
-    globals) __tdb_send "ok $(__tdb_b64 "$(declare -p 2>/dev/null || true)")" ;;
+    stack)   __tdb_send "ok ${__tdb_id:--} $(__tdb_b64 "$(__tdb_stack 2)")" ;;
+    globals) __tdb_send "ok ${__tdb_id:--} $(__tdb_b64 "$(declare -p 2>/dev/null || true)")" ;;
     setbp|clearbp|clearall|pause)
-             __tdb_apply_cmd; __tdb_send "ok -" ;;
-    *)       __tdb_send "err $(__tdb_b64 "unknown command: $__tdb_cmd")" ;;
+             __tdb_apply_cmd; __tdb_send "ok ${__tdb_id:--} -" ;;
+    *)       __tdb_send "err ${__tdb_id:--} $(__tdb_b64 "unknown command: $__tdb_cmd")" ;;
     esac
     return 0
 }
@@ -196,12 +214,12 @@ trap 'shopt -s extdebug; __tdb_should_stop "${BASH_SOURCE[0]:-$0}" "$LINENO" && 
     while __tdb_read_cmd; do
         case $__tdb_cmd in
         locals)
-            __tdb_send "ok $(__tdb_b64 "$(local -p 2>/dev/null || true)")" ;;
+            __tdb_send "ok ${__tdb_id:--} $(__tdb_b64 "$(local -p 2>/dev/null || true)")" ;;
         eval)
             __tdb_unb64 "$__tdb_a1"
             __tdb_rc=0
             eval "$__tdb_dec" >"$__TDB_TMP/eval.out" 2>&1 || __tdb_rc=$?
-            __tdb_send "ok $(__tdb_b64 "rc=$__tdb_rc
+            __tdb_send "ok ${__tdb_id:--} $(__tdb_b64 "rc=$__tdb_rc
 $(< "$__TDB_TMP/eval.out")")" ;;
         step|next|finish|continue)
             __tdb_mode=$__tdb_cmd __tdb_depth=$__tdb_cur_depth

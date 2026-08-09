@@ -96,6 +96,8 @@ class BashSession:
         self._cmd_w: int | None = None
         self._resp_reader: asyncio.StreamReader | None = None
         self._pending: asyncio.Future | None = None  # one in-flight ok/err request
+        self._pending_id: int | None = None  # correlation id for _pending (I1)
+        self._req_id = 0  # monotonic REQUEST id counter
         self._ready: asyncio.Future | None = None
         self._tasks: list[asyncio.Task] = []
         self._tmpdir: tempfile.TemporaryDirectory | None = None
@@ -252,12 +254,25 @@ class BashSession:
                     self.stopped = True
                     self._on_stop(fields[1], unb64(fields[2]), int(fields[3]))
                 elif kind in ("ok", "err"):
+                    # I1: the harness echoes back the id of the REQUEST it's
+                    # replying to ("ok 7 <b64>" / "err 7 <b64>"; "-" for a
+                    # bare/fire-and-forget command). A reply whose id
+                    # doesn't match what we're currently waiting on is a
+                    # late/stale reply for a request we already timed out
+                    # on -- drop it instead of resolving whatever request
+                    # happens to be pending now (that used to shift every
+                    # later reply by one).
+                    reply_id = fields[1] if len(fields) > 1 else "-"
+                    if self._pending is None or reply_id != str(self._pending_id):
+                        continue
+                    payload = fields[2] if len(fields) > 2 else "-"
                     fut, self._pending = self._pending, None
+                    self._pending_id = None
                     if fut and not fut.done():
                         if kind == "ok":
-                            fut.set_result(unb64(fields[1]) if len(fields) > 1 else "")
+                            fut.set_result(unb64(payload))
                         else:
-                            fut.set_exception(BashProtocolError(unb64(fields[1])))
+                            fut.set_exception(BashProtocolError(unb64(payload)))
             except (IndexError, ValueError, binascii.Error) as e:
                 # A malformed frame must not kill this task — that would
                 # silently wedge the whole session (no more stop/ok/err
@@ -277,16 +292,25 @@ class BashSession:
         """Fire-and-forget while the debuggee is running (bp edits, pause)."""
         self._write_line(line)
 
-    async def request(self, line: str) -> str:
-        """Send a command that gets an ok/err reply (stopped/config phase only)."""
+    async def request(self, line: str, timeout: float = 15.0) -> str:
+        """Send a command that gets an ok/err reply (stopped/config phase only).
+
+        The line is sent prefixed with a monotonic correlation id (I1) so a
+        late reply for a request this call already timed out on can never
+        be mistaken for the answer to a different, later request.
+        """
         if self._pending is not None:
             raise BashProtocolError("another request is in flight")
+        self._req_id += 1
+        req_id = self._req_id
         self._pending = asyncio.get_running_loop().create_future()
-        self._write_line(line)
+        self._pending_id = req_id
+        self._write_line(f"{req_id} {line}")
         try:
-            return await asyncio.wait_for(self._pending, 15.0)
+            return await asyncio.wait_for(self._pending, timeout)
         finally:
             self._pending = None
+            self._pending_id = None
 
     def resume(self, mode: str) -> None:
         if mode not in ("step", "next", "finish", "continue"):

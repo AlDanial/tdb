@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from tdb.adapters.bash.session import BashSession, b64, canonical
+from tdb.adapters.bash.session import BashProtocolError, BashSession, b64, canonical
 from tests.integration.bash_adapter_harness import bash_ok
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -477,6 +477,64 @@ async def test_globals_include_arrays_and_filter_internals():
     # limit) and must still be filtered.
     assert "FUNCNEST" not in gv
     await session.stop()
+
+
+# --- Final review (I1, I2, I3): wire-protocol correlation ids + globals ---
+
+
+@pytest.mark.asyncio
+async def test_late_reply_does_not_corrupt_next_request():
+    """I1 regression: a timed-out request()'s late reply used to resolve
+    whatever request happened to be pending by the time it finally
+    arrived -- request()'s `finally` cleared self._pending on timeout, so
+    _resp_loop had no way to tell a stale reply from the current one. In
+    the field: `eval sleep 30` times out after 15s; the user opens
+    Variables; the sleep's late "ok" resolves the globals request's
+    future instead -> empty scope, and every reply after that is shifted
+    by one, forever.
+
+    Reproduced here: an eval that outlives a short 0.5s request() timeout
+    is still being executed (synchronously, inline in the trap) by the
+    harness when a second request is issued right behind it. The second
+    request must get its OWN correct reply, not the stale sleep's.
+    """
+    rec = Recorder()
+    session = await _launch(FIXTURES / "bash_hello.sh", rec)
+    session.resume("step")
+    await rec.wait_stop()
+    with pytest.raises(asyncio.TimeoutError):
+        await session.request("eval " + b64("sleep 3"), timeout=0.5)
+    # The stale sleep-eval is still running in the harness (it blocks the
+    # trap for the full 3s); queue the next request immediately behind it.
+    rc, out = await session.evaluate("echo marker123")
+    assert rc == 0
+    assert "marker123" in out
+    session.resume("continue")
+    await asyncio.wait_for(rec.exit_event.wait(), 10)
+    await session.stop()
+
+
+@pytest.mark.asyncio
+async def test_resp_loop_err_without_payload_does_not_hang():
+    """I3 regression: the err branch of _resp_loop used to index fields[1]
+    unconditionally (no length guard, unlike the ok branch), so a
+    malformed/payload-less err frame raised IndexError inside the
+    try/except and left the pending future unresolved for the full
+    timeout instead of failing fast. Exercise the guarded path directly
+    against a fake response stream.
+    """
+    rec = Recorder()
+    session = BashSession(rec.on_output, rec.on_stop, rec.on_exit)
+    session._resp_reader = asyncio.StreamReader()
+    fut = asyncio.get_running_loop().create_future()
+    session._pending = fut
+    session._pending_id = 1
+    session._resp_reader.feed_data(b"err 1\n")
+    session._resp_reader.feed_eof()
+    await session._resp_loop()
+    assert fut.done()
+    with pytest.raises(BashProtocolError):
+        fut.result()
 
 
 @pytest.mark.asyncio
