@@ -13,12 +13,20 @@ def bash_ok() -> bool:
     bash = shutil.which("bash")
     if not bash:
         return False
-    out = subprocess.run(
-        [bash, "-c", 'echo "${BASH_VERSINFO[0]}.${BASH_VERSINFO[1]}"'],
-        capture_output=True,
-        text=True,
-    ).stdout.strip()
-    major, minor = (int(p) for p in out.split("."))
+    try:
+        cp = subprocess.run(
+            [bash, "-c", 'echo "${BASH_VERSINFO[0]}.${BASH_VERSINFO[1]}"'],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        out = cp.stdout.strip()
+        parts = out.split(".")
+        if len(parts) != 2:
+            return False
+        major, minor = (int(p) for p in parts)
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return False
     return (major, minor) >= (4, 4)
 
 
