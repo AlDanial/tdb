@@ -26,6 +26,7 @@ class BashVar:
     name: str
     value: str
     children: list[tuple[str, str]] | None
+    exported: bool = False
 
 
 def _scan_quoted(text: str, i: int) -> int:
@@ -81,7 +82,11 @@ def parse_declares(text: str) -> list[BashVar]:
             else:
                 items.sort(key=lambda kv: int(kv[0]))
                 summary = f"array[{len(items)}]"
-            out.append(BashVar(name=name, value=summary, children=items))
+            out.append(
+                BashVar(name=name, value=summary, children=items, exported="x" in flags)
+            )
         else:
-            out.append(BashVar(name=name, value=value, children=None))
+            out.append(
+                BashVar(name=name, value=value, children=None, exported="x" in flags)
+            )
     return out

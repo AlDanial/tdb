@@ -539,29 +539,38 @@ async def test_resp_loop_err_without_payload_does_not_hang():
 
 
 @pytest.mark.asyncio
-async def test_globals_hide_untouched_inherited_env_but_show_script_vars():
-    """I2 regression: BashSession.globals_vars() used to include every
-    inherited env var the debuggee never touched (measured: 79 globals,
-    73 of them inherited noise like CLAUDE_*/XDG_*/LC_*). The fix
-    snapshots the exact env launch() passes to the subprocess and drops
-    name+value-unchanged matches; a variable the script itself sets
-    still shows (it's either absent from the snapshot or its value now
-    differs).
-    """
+async def test_strict_split_globals_vs_environment():
+    """Strict split: unexported -> Globals only; exported (script's own
+    AND inherited) -> Environment only; the two lists are disjoint."""
     rec = Recorder()
-    fixture = FIXTURES / "bash_arrays.sh"
-    env = dict(os.environ)
-    env["TDB_TEST_SENTINEL"] = "untouched_value"  # launch(env=...) REPLACES
+    fixture = FIXTURES / "bash_env_scopes.sh"
     session = BashSession(rec.on_output, rec.on_stop, rec.on_exit)
+    env = dict(os.environ)
+    env["TDB_TEST_SENTINEL"] = "inherited-untouched"
     await session.launch(
         program=str(fixture), args=[], cwd=str(fixture.parent), env=env
     )
-    await session.set_breakpoint(str(fixture), 8)  # final echo line
+    await session.set_breakpoint(str(fixture), 3)  # echo "marker"
     session.resume("continue")
     await rec.wait_stop()
-    gv = {v.name: v for v in await session.globals_vars()}
-    assert "TDB_TEST_SENTINEL" not in gv  # untouched inherited noise
-    assert "greeting" in gv  # the script's own variable
+
+    gnames = {v.name for v in await session.globals_vars()}
+    envvars = {v.name: v for v in await session.environment_vars()}
+
+    assert "plain_var" in gnames  # unexported -> Globals
+    assert "plain_var" not in envvars
+    assert "exported_var" in envvars  # script export -> Environment
+    assert "exported_var" not in gnames
+    assert '"from-script"' == envvars["exported_var"].value
+    assert "TDB_TEST_SENTINEL" in envvars  # inherited -> Environment
+    assert "TDB_TEST_SENTINEL" not in gnames
+    assert "PATH" in envvars  # real env deliberately shown
+    assert not any(n.startswith(("__tdb_", "__TDB_")) for n in envvars)
+    assert not any(n.startswith(("__tdb_", "__TDB_")) for n in gnames)
+    assert gnames.isdisjoint(envvars)
+
+    session.resume("continue")
+    await asyncio.wait_for(rec.exit_event.wait(), 10)
     await session.stop()
 
 

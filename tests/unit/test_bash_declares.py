@@ -62,3 +62,24 @@ def test_multiple_lines_and_garbage_skipped():
 
 def test_empty_input():
     assert parse_declares("") == []
+
+
+def test_exported_flag_detected():
+    out = parse_declares('declare -x PATH="/usr/bin"\ndeclare -- plain="v"')
+    assert out[0].exported is True
+    assert out[1].exported is False
+
+
+def test_exported_default_false_for_arrays_and_ints():
+    out = parse_declares(
+        'declare -i n="5"\ndeclare -a a=([0]="x")\ndeclare -A m=([k]="v")'
+    )
+    assert [v.exported for v in out] == [False, False, False]
+
+
+def test_exported_array_keeps_children():
+    out = parse_declares('declare -ax arr=([0]="x" [1]="y")')
+    v = out[0]
+    assert v.exported is True
+    assert v.value == "array[2]"
+    assert v.children == [("0", '"x"'), ("1", '"y"')]
