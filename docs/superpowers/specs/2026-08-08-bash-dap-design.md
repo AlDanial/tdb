@@ -197,6 +197,11 @@ readable for the innermost frame** — bash has no API into outer
 frames' locals. Frame 0: Locals + Globals scopes; outer frames:
 Globals only. Documented limitation.
 
+**(revised during implementation):** a third scope, Environment, was
+added after this spec — see 2026-08-08-bash-env-scope-design.md. Frame
+0 is Locals + Globals + Environment; outer frames are Globals +
+Environment.
+
 ## Language profile (`languages/bash.py`)
 
 ```python

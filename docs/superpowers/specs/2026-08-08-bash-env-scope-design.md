@@ -13,7 +13,9 @@ bash — alongside Locals and Globals.
 ## Semantics: strict split
 
 In bash, "environment variable" means "exported variable" (`declare -x`).
-The three scopes partition the visible variables with no duplication:
+The three scopes partition the visible variables with no duplication
+**(revised during implementation): for top-level variables — see the
+qualification below the scope table)**.
 
 | Scope | Contents | Frames | Filter |
 |---|---|---|---|
@@ -24,7 +26,8 @@ The three scopes partition the visible variables with no duplication:
 Consequences of the strict split:
 
 - A script's `FOO=1` appears under Globals; its `export BAR=2` appears
-  under Environment; nothing appears twice.
+  under Environment; nothing appears twice (top-level variables — see
+  the "(revised during implementation)" qualification below).
 - `PATH`, `HOME`, `PWD`, `TERM`, `_` etc. deliberately SHOW under
   Environment — surfacing the real environment is the feature. The
   `_INTERNAL_VARS` filter does NOT apply to the Environment scope.
@@ -37,6 +40,39 @@ Consequences of the strict split:
   can never reach Globals. That machinery and its now-obsolete test are
   removed/reworked, not left as dead code.
 
+**(revised during implementation):** the final-review fix wave brought
+the snapshot back, but purely as a display annotation, not a filter —
+the strict split above is unchanged; membership between Globals and
+Environment never depends on the snapshot. `BashSession.launch()`
+snapshots the exact child env it passes to the subprocess
+(`_launch_env_snapshot`). `environment_vars()` marks an entry "touched"
+when its name is new since launch or its value differs (comparison
+reverses `declare -p`'s quoting via `_unquote_declare_scalar`, which now
+errs toward TOUCHED on anything unparseable); arrays/assoc arrays are
+always touched. Touched values are rendered with a `"* "` prefix and
+the list is sorted touched-group-first, alphabetically within each
+group — the rationale being that a `set -a` script's handful of own
+vars would otherwise drown among ~80 inherited entries. See
+`_is_touched()`/`environment_vars()` in `session.py`.
+
+**(revised during implementation):** "no duplication" holds for
+top-level variables, not universally. Bash's `local` is dynamically
+scoped: a variable `local`'d in an outer live frame stays visible to
+every frame it called into, unless a nested frame shadows the same
+name. The harness's `globals` command runs bare `declare -p` (no
+name — the "all visible variables" form) from deep inside the DEBUG
+trap's own call chain, which is itself a callee of whatever debuggee
+frame is stopped — so `declare -p` there sees not just true globals but
+every live frame's locals too. Consequence: a `local -x FOO=1` in any
+live frame is picked up by both `locals()` (it's a local of the
+innermost frame) and `environment_vars()` (it's genuinely exported,
+so it's really in bash's environment right now) — the two are not
+disjoint here. Likewise a plain (non-`-x`) local declared in a live
+*outer* frame (not the innermost one `locals()` reads) can appear in
+both `locals()`, once that frame is the one stopped in, and
+`globals_vars()`. The partition claim in the table above is exact only
+for variables declared outside any function (top-level script scope).
+
 ## Mechanism
 
 No harness, protocol, or wire changes. The existing `globals` command's
@@ -47,10 +83,17 @@ flags group and currently discards it.
 - `declares.py`: `BashVar` gains `exported: bool = False` (defaulted —
   every existing construction remains valid). `parse_declares` sets it
   when the captured flags contain `x`.
-- `session.py`: one `request("globals")` payload feeds both lists.
-  `globals_vars()` keeps only unexported vars (then `_INTERNAL_VARS`, as
-  today). New `environment_vars() -> list[BashVar]` keeps only exported
-  vars minus `__tdb_`/`__TDB_` prefixes. Snapshot machinery removed.
+- `session.py`: `globals_vars()` keeps only unexported vars (then
+  `_INTERNAL_VARS`, as today). New `environment_vars() -> list[BashVar]`
+  keeps only exported vars minus `__tdb_`/`__TDB_` prefixes. Snapshot
+  machinery removed.
+  **(revised during implementation):** `globals_vars()` and
+  `environment_vars()` each issue their own `request("globals")` rather
+  than sharing one cached payload — freshness over caching; scopes are
+  fetched independently (a client may request one scope without ever
+  requesting the other, e.g. outer frames or a UI that lazily expands
+  trees), and a shared cache would need explicit invalidation on every
+  resume to avoid serving a stale snapshot.
 - `server.py`: `_on_scopes` — frame 0: Locals, Globals, Environment;
   outer frames: Globals, Environment. `_on_variables` dispatches the new
   `("scope", "environment")` ref kind to `environment_vars()`. Array /
