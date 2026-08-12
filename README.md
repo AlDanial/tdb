@@ -7,6 +7,7 @@ with a Debug Adapter Protocol (DAP) implementation.  In addition to Python,
 - C and C++ (via `gdb` or `lldb-dap`)
 - Perl (via `perl -d`)
 - Bash (via bash's own `DEBUG` trap; bash ≥ 4.4)
+- Tcsh (via source instrumentation of a stock `tcsh`)
 
 `tdb` is built with [textual](https://github.com/Textualize/textual) and speaks
 DAP to a pluggable debug adapter: [debugpy](https://github.com/microsoft/debugpy)
@@ -28,7 +29,8 @@ MIT License.  Copyright 2026 by Al Danial.
 
 - debugs multiple languages through the Debug Adapter Protocol: Python (via `debugpy`,
 the richest feature set), C/C++ (via `gdb -i dap` or `lldb-dap`), Perl (via `perl -d`),
-and Bash (via bash's own `DEBUG` trap), with the language
+Bash (via bash's own `DEBUG` trap), and Tcsh (via source instrumentation of a
+stock `tcsh`), with the language
 auto-detected from the target (ref. [Multi-Language Debugging](#multi-language-debugging)).
 
 - supports debugging of synchronous, asynchronous, multi-threaded, and multi-process Python code.
@@ -174,7 +176,7 @@ python -m tdb my_program.py
 
 ## Multi-Language Debugging
 
-`tdb` debugs any language that has a Debug Adapter Protocol backend. Four
+`tdb` debugs any language that has a Debug Adapter Protocol backend. Five
 languages are supported out of the box:
 
 | Language | Adapter(s) | How to get the adapter | Feature level |
@@ -183,16 +185,17 @@ languages are supported out of the box:
 | C / C++ (any native binary) | `gdb` (default), `lldb-dap` (alternate) | `gdb -i dap` requires GDB ≥ 14; `lldb-dap` ships with LLVM ≥ 17 (e.g. `apt install lldb`) | core debugging: breakpoints, stepping, stack, variables, evaluate console |
 | Perl | perl-tdb (bundled) | needs perl ≥ 5.18 on PATH (or `{"adapters": {"perl": ...}}`) | core debugging + remote attach |
 | Bash | bash-tdb (bundled) | needs bash ≥ 4.4 on PATH (or `{"adapters": {"bash": ...}}`) | core debugging (no remote attach) |
+| Tcsh | tcsh-tdb (bundled) | needs tcsh on PATH (or `{"adapters": {"tcsh": ...}}`); Python ≥ 3.11 | core debugging (no remote attach, no conditional breakpoints, no pause) |
 
 ### Language detection and selection
 
 The language is auto-detected from the debug target:
 
 1. File extension: `.py` → Python; `.pl` / `.pm` / `.t` → Perl; `.sh` / `.bash`
-   → Bash.
+   → Bash; `.csh` / `.tcsh` → Tcsh.
 2. Native executables (ELF, Mach-O, PE magic bytes) → C/C++.
-3. A `#!...python`, `#!...perl`, or `#!...bash` shebang → Python / Perl /
-   Bash respectively.
+3. A `#!...python`, `#!...perl`, `#!...bash`, or `#!...csh`/`#!...tcsh`
+   shebang → Python / Perl / Bash / Tcsh respectively.
 4. C/C++/Rust *source* files (`.c`, `.cpp`, `.rs`, …) produce an error with a
    hint: compile with debug info (`g++ -g -O0`) and debug the binary.
 5. Anything else produces an error naming the `--lang` override.
@@ -232,7 +235,7 @@ process inspectors and wait graph, the evaluate console's trailing-`?` help,
 the post-mortem / `tdb.breakpoint()` hooks (those hooks live inside Python
 programs by nature). Remote attach (`-r`) also works for Perl (see
 [Perl](#perl) — `Devel::TdbRemote` in place of `debugpy.listen()`), but not
-for C/C++ or Bash. `--terminal` is
+for C/C++, Bash, or Tcsh. `--terminal` is
 currently ignored for non-Python targets.
 
 **Bash limitations (v1):** the bash adapter uses bash's own `DEBUG` trap and
@@ -256,6 +259,29 @@ has a smaller feature envelope than Python/Perl:
   silently break debugging.
 
 See [Bash](#bash) below for launch details.
+
+**Tcsh limitations (v1):** tcsh has no debug hooks at all, so the tcsh
+adapter debugs an instrumented temporary *copy* of the script (original
+paths and line numbers are preserved in everything tdb displays):
+
+- Conditional breakpoints are not supported; a condition set in the
+  Breakpoint View is ignored for tcsh (the breakpoint always stops).
+- No asynchronous pause: a free-running script stops only at the next
+  breakpoint (or when it exits).
+- A breakpoint binds to the nearest safe statement at or after the
+  requested line; unplaceable breakpoints are reported unverified.
+- Stack frames represent `source`d files, not native call frames, and only
+  literal `source` targets resolvable at launch are instrumented (computed
+  or `cd`-dependent sources run normally but are atomic to the debugger).
+- All frames show the same live shell state (Shell Variables, Environment,
+  Aliases, Arguments) — stock tcsh keeps no per-frame history.
+- Multiple commands on one physical line (`a ; b`), command substitutions,
+  and external commands are atomic stepping units.
+- `$0` inside dynamically generated or evaluated text can expose the
+  generated copy's path (ordinary lexical `$0` is rewritten correctly).
+- Requires Python ≥ 3.11 (tdb itself runs on 3.10).
+
+See [Tcsh](#tcsh) below for launch details.
 
 ### C/C++ tips
 
@@ -410,6 +436,38 @@ Bash.
 The Variables view shows three scopes for bash: Locals (innermost frame
 only), Globals (unexported shell variables), and Environment (exported
 variables — inherited and script-`export`ed alike).
+
+### Tcsh
+
+`tdb` bundles its own tcsh adapter (`tcsh-tdb`) — no separate adapter
+install needed, just a stock `tcsh` on `PATH` (or
+`{"adapters": {"tcsh": "/path/to/tcsh"}}` in `config.json`). Stock tcsh has
+no debugger hooks, so the adapter instruments a temporary copy of the script
+(and of any literal `source`d files), runs it with `tcsh -f`, and
+coordinates stops through private FIFOs. tdb always shows the original
+source paths and line numbers; the generated copies are private adapter
+details and are cleaned up when the session ends.
+
+**Launching a script:**
+
+```bash
+tdb script.csh
+```
+
+Core debugging works as described above — line breakpoints, stepping
+(`next` steps over `source`d files, `stepIn` steps into instrumented ones),
+stack navigation across `source` nesting, variable inspection, and the
+evaluate console — with the v1 caveats listed in
+[What works for non-Python languages](#what-works-for-non-python-languages),
+most notably: no conditional breakpoints, no pause of a free-running
+script, and stepping is per logical source line.
+
+The Variables view shows four scopes for tcsh: Shell Variables (`set`),
+Environment (`setenv`), Aliases, and Arguments (`argv`). All of them show
+the live state of the single tcsh process. The evaluate console executes
+text directly in the paused shell — it can inspect *and mutate* state
+(`set name = value` takes effect immediately), and a syntax error in
+evaluated text can terminate the debuggee; there is no isolation.
 
 ## Layout
 
