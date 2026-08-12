@@ -279,7 +279,7 @@ paths and line numbers are preserved in everything tdb displays):
   and external commands are atomic stepping units.
 - `$0` inside dynamically generated or evaluated text can expose the
   generated copy's path (ordinary lexical `$0` is rewritten correctly).
-- Requires Python ≥ 3.11 (tdb itself runs on 3.10).
+- Requires Python ≥ 3.11.
 
 See [Tcsh](#tcsh) below for launch details.
 
