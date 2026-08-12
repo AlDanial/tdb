@@ -3,7 +3,7 @@
   dynamic = ["version"]
   description = "A TUI debugger for Python, Perl, and other languages.  Based on textual."
   readme = "README.md"
-  requires-python = ">=3.10"
+  requires-python = ">=3.11"
   license = {file = "LICENSE"}
   authors = [{name = "Al Danial", email = "al.danial@gmail.com"}]
   keywords = ["debugger", "tui", "textual", "debugpy", "debug", "DAP"]
@@ -14,7 +14,6 @@
       "License :: OSI Approved :: MIT License",
       "Operating System :: POSIX :: Linux",
       "Programming Language :: Python :: 3",
-      "Programming Language :: Python :: 3.10",
       "Programming Language :: Python :: 3.11",
       "Programming Language :: Python :: 3.12",
       "Programming Language :: Python :: 3.13",
