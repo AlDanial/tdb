@@ -59,7 +59,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 127
 
     signal.signal(signal.SIGTERM, _retain_session)
-    watchdog: tuple[int, int, int] | None = None
+    watchdog: tuple[int, int, int, int] | None = None
     if status_descriptor is not None and control_descriptor is not None:
         watchdog = _arm_startup_watchdog(status_descriptor, control_descriptor)
         if os.read(watchdog[1], 1) != b"1":
