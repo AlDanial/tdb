@@ -7,6 +7,7 @@ with a Debug Adapter Protocol (DAP) implementation.  In addition to Python,
 - C and C++ (via `gdb` or `lldb-dap`)
 - Perl (via `perl -d`)
 - Bash (via bash's own `DEBUG` trap; bash ≥ 4.4)
+- Tcsh (via source instrumentation of a stock `tcsh`)
 
 `tdb` is built with [textual](https://github.com/Textualize/textual) and speaks
 DAP to a pluggable debug adapter: [debugpy](https://github.com/microsoft/debugpy)
@@ -28,7 +29,8 @@ MIT License.  Copyright 2026 by Al Danial.
 
 - debugs multiple languages through the Debug Adapter Protocol: Python (via `debugpy`,
 the richest feature set), C/C++ (via `gdb -i dap` or `lldb-dap`), Perl (via `perl -d`),
-and Bash (via bash's own `DEBUG` trap), with the language
+Bash (via bash's own `DEBUG` trap), and Tcsh (via source instrumentation of a
+stock `tcsh`), with the language
 auto-detected from the target (ref. [Multi-Language Debugging](#multi-language-debugging)).
 
 - supports debugging of synchronous, asynchronous, multi-threaded, and multi-process Python code.
@@ -174,25 +176,26 @@ python -m tdb my_program.py
 
 ## Multi-Language Debugging
 
-`tdb` debugs any language that has a Debug Adapter Protocol backend. Four
+`tdb` debugs any language that has a Debug Adapter Protocol backend. Five
 languages are supported out of the box:
 
-| Language | Adapter(s) | How to get the adapter | Feature level |
+| Language | Adapter(s) | Dependencies           | Feature level |
 |----------|------------|------------------------|---------------|
-| Python | `debugpy` (default) | installed with `textual-debugger` | everything in this README |
+| Python | `debugpy` (default) | Python ≥ 3.11 | everything in this README |
 | C / C++ (any native binary) | `gdb` (default), `lldb-dap` (alternate) | `gdb -i dap` requires GDB ≥ 14; `lldb-dap` ships with LLVM ≥ 17 (e.g. `apt install lldb`) | core debugging: breakpoints, stepping, stack, variables, evaluate console |
-| Perl | perl-tdb (bundled) | needs perl ≥ 5.18 on PATH (or `{"adapters": {"perl": ...}}`) | core debugging + remote attach |
-| Bash | bash-tdb (bundled) | needs bash ≥ 4.4 on PATH (or `{"adapters": {"bash": ...}}`) | core debugging (no remote attach) |
+| Perl | perl-tdb (bundled) | perl ≥ 5.18 on PATH  | core debugging + remote attach |
+| Bash | bash-tdb (bundled) | bash ≥ 4.4 on PATH  | core debugging (no remote attach) |
+| Tcsh | tcsh-tdb (bundled) | tcsh on PATH | core debugging (no remote attach, no conditional breakpoints, no pause) |
 
 ### Language detection and selection
 
 The language is auto-detected from the debug target:
 
 1. File extension: `.py` → Python; `.pl` / `.pm` / `.t` → Perl; `.sh` / `.bash`
-   → Bash.
+   → Bash; `.csh` / `.tcsh` → Tcsh.
 2. Native executables (ELF, Mach-O, PE magic bytes) → C/C++.
-3. A `#!...python`, `#!...perl`, or `#!...bash` shebang → Python / Perl /
-   Bash respectively.
+3. A `#!...python`, `#!...perl`, `#!...bash`, or `#!...csh`/`#!...tcsh`
+   shebang → Python / Perl / Bash / Tcsh respectively.
 4. C/C++/Rust *source* files (`.c`, `.cpp`, `.rs`, …) produce an error with a
    hint: compile with debug info (`g++ -g -O0`) and debug the binary.
 5. Anything else produces an error naming the `--lang` override.
@@ -224,15 +227,15 @@ conditions and persistence), stepping, continue/pause, run-to-cursor, stack
 navigation, variable inspection, the evaluate console, syntax highlighting,
 and the JSON-RPC / MCP programmatic modes.
 
-Python-specific features are hidden or return a clear "not supported for this
+Python-specific features are hidden or return "not supported for this
 language" message when debugging other languages: statement-granularity
 stepping (non-Python languages always step per line), the async task /
 process inspectors and wait graph, the evaluate console's trailing-`?` help,
 `--python`/`--pv`, `--no-subprocess`, automatic child-process attachment, and
 the post-mortem / `tdb.breakpoint()` hooks (those hooks live inside Python
 programs by nature). Remote attach (`-r`) also works for Perl (see
-[Perl](#perl) — `Devel::TdbRemote` in place of `debugpy.listen()`), but not
-for C/C++ or Bash. `--terminal` is
+[Perl](#perl), `Devel::TdbRemote` in place of `debugpy.listen()`), but not
+for C/C++, Bash, or Tcsh. `--terminal` is
 currently ignored for non-Python targets.
 
 **Bash limitations (v1):** the bash adapter uses bash's own `DEBUG` trap and
@@ -257,6 +260,29 @@ has a smaller feature envelope than Python/Perl:
 
 See [Bash](#bash) below for launch details.
 
+**Tcsh limitations (v1):** tcsh has no debug hooks at all, so the tcsh
+adapter debugs an instrumented temporary *copy* of the script (original
+paths and line numbers are preserved in everything tdb displays):
+
+- Conditional breakpoints are not supported; a condition set in the
+  Breakpoint View is ignored for tcsh (the breakpoint always stops).
+- No asynchronous pause: a free-running script stops only at the next
+  breakpoint (or when it exits).
+- A breakpoint binds to the nearest safe statement at or after the
+  requested line; unplaceable breakpoints are reported unverified.
+- Stack frames represent `source`d files, not native call frames, and only
+  literal `source` targets resolvable at launch are instrumented (computed
+  or `cd`-dependent sources run normally but are atomic to the debugger).
+- All frames show the same live shell state (Shell Variables, Environment,
+  Aliases, Arguments).  Stock tcsh keeps no per-frame history.
+- Multiple commands on one physical line (`a ; b`), command substitutions,
+  and external commands are atomic stepping units.
+- `$0` inside dynamically generated or evaluated text can expose the
+  generated copy's path (ordinary lexical `$0` is rewritten correctly).
+- Requires Python ≥ 3.11.
+
+See [Tcsh](#tcsh) below for launch details.
+
 ### C/C++ tips
 
 - Compile with `-g` (ideally `-g -O0`). If no breakpoint in a file can be
@@ -267,7 +293,7 @@ See [Bash](#bash) below for launch details.
   variables, and evaluate console remain fully usable.
 - GDB (the default adapter) has the most complete libstdc++
   pretty-printing. `lldb-dap` (via `--adapter lldb-dap`) also debugs
-  GCC-built binaries fine — DWARF is compiler-neutral.
+  GCC-built binaries fine.  DWARF is compiler-neutral.
 - **GDB evaluate-console quirk:** GDB's DAP treats REPL input as CLI
   commands, so evaluate expressions with an explicit `print`, e.g.
   `print x` rather than bare `x` (bare `x` collides with GDB's
@@ -275,8 +301,8 @@ See [Bash](#bash) below for launch details.
 
 ### Perl
 
-`tdb` bundles its own Perl adapter (`perl-tdb`) — no separate adapter install
-needed, just a `perl` ≥ 5.18 on `PATH`. It drives stock `perl5db` under the
+`tdb` bundles its own Perl adapter (`perl-tdb`) so only need
+`perl` ≥ 5.18 on `PATH`. It drives stock `perl5db` under the
 hood, so it works with any Perl already on the system.
 
 **Launching a script:**
@@ -285,8 +311,8 @@ hood, so it works with any Perl already on the system.
 tdb script.pl
 ```
 
-**Compile-time code (`BEGIN` blocks):** Perl runs `BEGIN` blocks — and the
-`use` statements that are themselves `BEGIN` blocks — while it is still
+**Compile-time code (`BEGIN` blocks):** Perl runs `BEGIN` blocks and the
+`use` statements that are themselves `BEGIN` blocks while it is still
 *compiling* your program, before stock `perl5db` ever stops. `tdb` arms the
 debugger ahead of compilation so that code is debuggable too, which means the
 first stop is the first **compile-time** statement of your file (typically
@@ -294,8 +320,8 @@ first stop is the first **compile-time** statement of your file (typically
 there and you land inside your `BEGIN` blocks, with the stack and evaluate
 views working normally (local variable listing is limited at a compile-time
 stop); the `Stack` view shows the frame as `main::BEGIN`. Stepping through a
-`use` line takes a few steps — the pragma's
-own compile-time work happens in between — but you are never dragged into
+`use` line takes a few steps (the pragma's
+own compile-time work happens in between) but you are never dragged into
 another module's internals.
 
 Two consequences worth knowing:
@@ -304,11 +330,11 @@ Two consequences worth knowing:
   phase Perl has only parsed part of your file, so its line table is
   incomplete and a breakpoint can't be verified yet. `tdb` holds such requests
   and, while it single-steps through the rest of compilation, checks each
-  compile-time statement it lands on against them — so a breakpoint placed
+  compile-time statement it lands on against them. A breakpoint placed
   *inside* a `BEGIN` block fires there directly, on the first run, without
   needing to be stepped into by hand. Conditional breakpoints work the same
   way at compile time; a condition that itself errors behaves exactly like a
-  bad condition at runtime — it does not fire. Two residual caveats: a
+  bad condition at runtime in that it does not fire. Two residual caveats: a
   breakpoint on a non-statement line (the `BEGIN {` line itself, or a blank
   line) never fires during the compile phase, since it's never actually
   trapped as a statement; and `hitCondition` (break on the Nth hit) isn't
@@ -323,7 +349,7 @@ behavior, not a `tdb` limitation.
 
 **When your program dies:** an uncaught Perl error (`die`, or a fatal runtime
 error such as division by zero) opens the same error modal Python tracebacks
-get — the message, the call stack parsed from Perl's `at FILE line N.` /
+get: the message, the call stack parsed from Perl's `at FILE line N.` /
 `... called at FILE line N` output, and Code View navigated to the failing
 line. This works for compile-time failures too, including a `die` inside a
 `BEGIN` block that aborts compilation. Press `e` in Code View to re-summon the
@@ -336,9 +362,10 @@ another host/container. Add three lines to the target program, with the
 `use` line first so the debugger is armed before any of your code compiles:
 
 ```perl
-use Devel::TdbRemote;                 # FIRST line of your program
+use Devel::TdbRemote;                 # first line of your program
 ...
 Devel::TdbRemote::listen(5678);       # non-blocking
+print "Waiting for tdb to attach on port 5678\n";
 Devel::TdbRemote::wait_for_client();  # blocks until tdb connects
 ```
 
@@ -357,8 +384,8 @@ script controls startup), arm it before Perl even parses your file instead:
 environment that launches the debuggee.
 
 **Copying the adapter to a remote host:** `Devel::TdbRemote` and its helper
-script are plain files, not a CPAN install — copy both onto the remote
-machine and point `PERL5LIB` at the directory that contains them:
+script are plain files, not a CPAN install.  Copy both onto the remote
+machine and point `PERL5LIB` at the directory that contains them, for example:
 
 ```bash
 # From a checkout or an installed wheel's site-packages/tdb/adapters/perl:
@@ -368,7 +395,7 @@ export PERL5LIB=/opt/tdb-perl:$PERL5LIB
 ```
 
 (`Devel/TdbRemote.pm` locates `helpers.pl` next to itself at runtime, so keep
-the two files in the same relative layout shown above — `helpers.pl` is a
+the two files in the same relative layout shown above; `helpers.pl` is a
 sibling of the `Devel/` directory, not inside it.)
 
 **PadWalker (optional but recommended):** inspecting lexical (`my`)
@@ -380,13 +407,13 @@ Install with `cpanm PadWalker` (or your distro's package) for full fidelity.
 
 **Pause is unavailable in attach mode.** Launch-mode sessions (`tdb
 script.pl`) support pausing a running program at any time. Remote-attach
-sessions don't — debugpy-style asynchronous pause needs a control channel
+sessions don't. Asynchronous pause (as Python gets via `debugpy`) needs a control channel
 `Devel::TdbRemote` doesn't implement yet; `pause` in attach mode returns a
-clear "not available" error instead of hanging.
+"not available" error instead of hanging.
 
 ### Bash
 
-`tdb` bundles its own bash adapter (`bash-tdb`) — no separate adapter install
+`tdb` bundles its own bash adapter (`bash-tdb`) so no separate adapter install
 needed, just a `bash` ≥ 4.4 on `PATH`. It drives stock bash's own `DEBUG`
 trap (with `extdebug` for return-value control) under the hood via a small
 harness script sourced through `BASH_ENV`, so it works with any bash already
@@ -400,8 +427,8 @@ tdb script.sh
 
 Core debugging works as described above (breakpoints, stepping,
 continue/pause, stack, variables, evaluate console), with the v1 caveats
-listed in [What works for non-Python languages](#what-works-for-non-python-languages)
-— most notably: a breakpoint can't be set on a `func() {` line itself (the
+listed in [What works for non-Python languages](#what-works-for-non-python-languages).
+Most notably, a breakpoint can't be set on a `func() {` line itself (the
 `DEBUG` trap never fires there), stops never land inside subshells or
 pipeline segments, child bash processes run uninstrumented, and only the
 innermost frame's locals are inspectable. There is no remote-attach mode for
@@ -409,7 +436,39 @@ Bash.
 
 The Variables view shows three scopes for bash: Locals (innermost frame
 only), Globals (unexported shell variables), and Environment (exported
-variables — inherited and script-`export`ed alike).
+variables, both inherited and script-`export`ed).
+
+### Tcsh
+
+`tdb` bundles its own tcsh adapter (`tcsh-tdb`) so no separate adapter
+is needed, just a stock `tcsh` on `PATH` (or
+`{"adapters": {"tcsh": "/path/to/tcsh"}}` in `config.json`). Stock tcsh has
+no debugger hooks, so the adapter instruments a temporary copy of the script
+(and of any literal `source`d files), runs it with `tcsh -f`, and
+coordinates stops through private FIFOs. tdb always shows the original
+source paths and line numbers; the generated copies are private adapter
+details and are cleaned up when the session ends.
+
+**Launching a script:**
+
+```bash
+tdb script.csh
+```
+
+Core debugging works as described above: line breakpoints, stepping
+(`next` steps over `source`d files, `stepIn` steps into instrumented ones),
+stack navigation across `source` nesting, variable inspection, and the
+evaluate console with the v1 caveats listed in
+[What works for non-Python languages](#what-works-for-non-python-languages),
+most notably: no conditional breakpoints, no pause of a free-running
+script, and stepping is per logical source line.
+
+The Variables view shows four scopes for tcsh: Shell Variables (`set`),
+Environment (`setenv`), Aliases, and Arguments (`argv`). All of them show
+the live state of the single tcsh process. The evaluate console executes
+text directly in the paused shell. It can inspect *and mutate* state
+(`set name = value` takes effect immediately), and a syntax error in
+evaluated text can terminate the debuggee; there is no isolation.
 
 ## Layout
 
@@ -555,7 +614,7 @@ Breakpoints persist across session restarts.
 ### Variable Inspection
 
 The Variable View shows a tree of scopes with all variables in the current frame. The scopes
-themselves are language-dependent — Locals, Globals, plus Environment for bash; Lexicals,
+themselves are language-dependent: Locals, Globals, plus Environment for bash; Lexicals,
 Globals, Specials for Perl (see the [Bash](#bash) and [Perl](#perl) sections above for
 details). Expand nodes to drill into complex objects.  Children are loaded lazily on demand.
 Variable values can be changed in the Evaluate Console.
@@ -1006,23 +1065,23 @@ Each is JSON with `event`, `data`, and `timestamp` fields.
 ## Recording and replaying sessions
 
 `tdb --record session.jsonl prog.py` runs a normal TUI session and captures
-your debugging actions — breakpoints (including `-k`/`-t` and persisted
+your debugging actions including breakpoints (including `-k`/`-t` and persisted
 ones), stepping, continue/pause, Evaluate-console entries, stack-frame
-navigation, variable expansion, restart, quit — to `session.jsonl` as
+navigation, variable expansion, restart, quit. The session is
+written to `session.jsonl` as
 JSON-RPC commands. Works with launch mode (any language) and `-r`
 remote attach.
 
 Replay it two ways:
 
-- `tdb --replay session.jsonl` — one command: launches the recorded
+- `tdb --replay session.jsonl` launches the recorded
   program headless, feeds every recorded command through the same RPC
   dispatch `tdb --server` uses, and prints a transcript (recorded time,
   command, verbatim result, interleaved program output). Exit code 0 iff
   every command succeeded. Add `--timing` to reproduce the original
   pacing, `--replay-timeout S` to bound each stop-wait (default 30 s).
 - Against a live server: start `tdb --server prog.py`, then feed line 2
-  onward of the file to `POST /rpc` — each line is already a valid
-  request body:
+  onward of the file to `POST /rpc` . Each line is a valid request body:
 
       tail -n +2 session.jsonl | while read line; do
           curl -s -X POST -H 'Content-Type: application/json' \
@@ -1076,7 +1135,7 @@ client expects to launch servers.
 | Cluster | Tools |
 |---------|-------|
 | Lifecycle | `debug_launch`, `debug_attach`, `quit` |
-| Control | `control(action, timeout_s=30)` — `action ∈ {continue, next, step_in, step_out, pause, wait_for_stop}` |
+| Control | `control(action, timeout_s=30)` where `action ∈ {continue, next, step_in, step_out, pause, wait_for_stop}` |
 | Inspection | `inspect(expressions)`, `read_source(file_path)`, `stack_trace()`, `status()`, `get_output()` |
 | Breakpoints | `set_breakpoint(spec, condition?, hit_condition?)`, `remove_breakpoint(spec)`, `list_breakpoints()` |
 | Differentiators | `threads(thread_id?)`, `tasks(task_name?)`, `processes(name_or_pid?)`, `wait_graph()` |
@@ -1146,7 +1205,7 @@ usage: tdb [-h] [-v] [-r [HOST:]PORT] [--cwd CWD] [--no-stop-on-entry]
 | `--local-root PATH` | Local directory containing a copy of remote code (repeat to mirror multiple trees). Pair with `--remote-root`; counts must match. Required when `-k` sets a breakpoint against a remote debuggee whose code lives at a different path. |
 | `--remote-root PATH` | Remote directory matched to `--local-root` (same CLI position via `zip()`). |
 | `-k`, `--breakpoint FILE:LINE|LINE` | Set a breakpoint (may be repeated). Passing `-k` implies `--no-stop-on-entry` so the program runs straight to the first breakpoint. |
-| `-t`, `--to-line FILE:LINE|LINE` | Like `-k`, but the breakpoint is not saved to the breakpoints file — it just takes you to that spot in the code for this session (may be repeated). |
+| `-t`, `--to-line FILE:LINE|LINE` | Like `-k`, but the breakpoint is not saved to the breakpoints file, it just takes you to that spot in the code for this session (may be repeated). |
 | `--no-stop-on-entry` | Do not pause at the first line (default: stop on entry; automatic when `-k` is given) |
 | `--cwd DIR` | Working directory for the debuggee |
 | `--python PATH` | Python interpreter for the debuggee (Python targets only) |
@@ -1181,7 +1240,7 @@ executable path (`{"adapters": {"lldb-dap": "/opt/llvm/bin/lldb-dap"}}`), and
 (`{"default_adapters": {"cpp": "lldb-dap"}}`).
 
 **Perl is a special case:** `perl-tdb` is tdb's own bundled adapter (always
-found — it's Python code, not an external executable), so
+found; it's Python code, not an external executable), so
 `adapters.perl` doesn't select an adapter binary. Instead it names the
 *Perl interpreter* tdb should spawn to run the debuggee:
 `{"adapters": {"perl": "/path/to/perl"}}`. Use this when the `perl` on

@@ -58,6 +58,8 @@ _EXTENSION_MAP = {
     ".t": "perl",
     ".sh": "bash",
     ".bash": "bash",
+    ".csh": "tcsh",
+    ".tcsh": "tcsh",
 }
 
 # Source files for compiled languages: debugging the source is a user
@@ -106,6 +108,10 @@ def detect(program: str | None) -> str:
         return "perl"
     if head.startswith(b"#!") and b"bash" in head.splitlines()[0]:
         return "bash"
+    # "csh" matches both #!/bin/csh and #!/bin/tcsh; checked after bash
+    # (which never contains "csh") so bash shebangs keep winning.
+    if head.startswith(b"#!") and b"csh" in head.splitlines()[0]:
+        return "tcsh"
     raise LanguageNotSupportedError(
         f"cannot determine the language of {program!r} — pass --lang "
         f"(supported: {', '.join(known_languages())})"
@@ -125,3 +131,7 @@ register("perl", build_perl_profile)
 from tdb.languages.bash import build_bash_profile  # noqa: E402
 
 register("bash", build_bash_profile)
+
+from tdb.languages.tcsh import build_tcsh_profile  # noqa: E402
+
+register("tcsh", build_tcsh_profile)
