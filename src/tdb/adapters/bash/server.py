@@ -15,6 +15,7 @@ from typing import Any, Awaitable, Callable
 
 from tdb.dap.messages import Event, Request, Response, parse_message
 from tdb.dap.protocol import encode_message, read_message
+from tdb.dap.reverse import ReverseRequester
 
 from .declares import BashVar
 from .session import BashProtocolError, BashSession
@@ -47,6 +48,7 @@ class BashDapServer:
         self._refs: dict[int, tuple] = {}
         self._next_ref = 1
         self._stack_cache: list[dict] | None = None
+        self._reverse = ReverseRequester(self._write, self._next_seq)
         self.handlers: dict[str, Callable[[Request], Awaitable[None]]] = {}
         for name in dir(self):
             if name.startswith("_on_"):
@@ -92,6 +94,9 @@ class BashDapServer:
             except (ConnectionError, asyncio.IncompleteReadError, EOFError):
                 break
             msg = parse_message(raw)
+            if self._reverse.route(msg):
+                await self._writer.drain()
+                continue
             if not isinstance(msg, Request):
                 continue
             handler = self.handlers.get(msg.command)
