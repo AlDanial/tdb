@@ -45,6 +45,7 @@ def test_launch_body_carries_perl_override():
         "args": ["a"],
         "cwd": "/x",
         "stopOnEntry": True,
+        "console": "internalConsole",
         "env": {"K": "V"},
         "perl": "/opt/bin/perl",
     }
@@ -107,6 +108,20 @@ def test_adapter_paths_names_the_interpreter():
 def test_unknown_adapter_rejected():
     with pytest.raises(LanguageNotSupportedError):
         build_perl_profile(adapter="perl5db-xyz")
+
+
+def test_launch_body_carries_console():
+    adapter = PerlAdapter()
+    body = adapter.launch_body(
+        program="/tmp/x.pl",
+        args=[],
+        cwd="/tmp",
+        env=None,
+        stop_on_entry=True,
+        console="externalTerminal",
+        opts={},
+    )
+    assert body["console"] == "externalTerminal"
 
 
 def test_no_exception_filters():
