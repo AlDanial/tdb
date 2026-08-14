@@ -28,7 +28,9 @@ def bind_breakpoints(
     probes = source_map.for_path(path.resolve(strict=False))
     bound: list[BoundBreakpoint] = []
     for requested_line in requested_lines:
-        probe = next((item for item in probes if item.span.start_line >= requested_line), None)
+        probe = next(
+            (item for item in probes if item.span.start_line >= requested_line), None
+        )
         if probe is None:
             bound.append(
                 BoundBreakpoint(
@@ -40,5 +42,9 @@ def bind_breakpoints(
                 )
             )
         else:
-            bound.append(BoundBreakpoint(requested_line, True, probe.span.start_line, probe.id, None))
+            bound.append(
+                BoundBreakpoint(
+                    requested_line, True, probe.span.start_line, probe.id, None
+                )
+            )
     return tuple(bound)

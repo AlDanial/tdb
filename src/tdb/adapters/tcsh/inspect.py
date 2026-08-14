@@ -136,7 +136,9 @@ class VariableStore:
         try:
             return self._values[kind]
         except KeyError:
-            raise InspectionError(f"variables reference {reference} has not been loaded") from None
+            raise InspectionError(
+                f"variables reference {reference} has not been loaded"
+            ) from None
 
     def is_loaded(self, kind: ScopeKind) -> bool:
         """Return whether a scope kind has cached values for this stop."""
@@ -150,8 +152,12 @@ class VariableStore:
             return self._kind_by_reference[reference]
         except KeyError:
             if reference in self._known_references:
-                raise StaleReferenceError(f"stale variables reference: {reference}") from None
-            raise UnknownReferenceError(f"unknown variables reference: {reference}") from None
+                raise StaleReferenceError(
+                    f"stale variables reference: {reference}"
+                ) from None
+            raise UnknownReferenceError(
+                f"unknown variables reference: {reference}"
+            ) from None
 
     def cache_set(self, variables: tuple[Variable, ...]) -> None:
         """Cache shell variables and derive the MVP Arguments view from argv."""

@@ -189,4 +189,6 @@ def test_golden_scans_round_trip_with_exact_units(
     units = scan(text)
 
     assert_unit_invariants(text, units)
-    assert [(u.span.start_line, u.span.end_line, u.kind, u.source_target) for u in units] == expected
+    assert [
+        (u.span.start_line, u.span.end_line, u.kind, u.source_target) for u in units
+    ] == expected

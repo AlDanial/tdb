@@ -97,7 +97,10 @@ async def stopped_frame_id(client: DAPClient) -> int:
 
 
 def variable_pairs(response: dict[str, object]) -> set[tuple[object, object]]:
-    return {(variable["name"], variable["value"]) for variable in response["body"]["variables"]}
+    return {
+        (variable["name"], variable["value"])
+        for variable in response["body"]["variables"]
+    }
 
 
 def dap_workspaces() -> set[Path]:
@@ -139,7 +142,9 @@ async def test_step_in_and_out_report_current_first_original_source_stack(
 
     assert (await dap_client.request("stepOut", {"threadId": 1}))["success"] is True
     frames = await stack_frames_after_stop(dap_client)
-    assert [(frame["source"]["path"], frame["line"]) for frame in frames] == [(str(program), 4)]
+    assert [(frame["source"]["path"], frame["line"]) for frame in frames] == [
+        (str(program), 4)
+    ]
 
     assert (await dap_client.request("continue", {"threadId": 1}))["success"] is True
     await dap_client.wait_for_event("terminated")
@@ -183,7 +188,9 @@ async def test_scopes_and_evaluate_observe_live_tcsh_state(
     }
     assert ("name", "original") in variable_pairs(values["Shell Variables"])
     assert ("items", "(one two words)") in variable_pairs(values["Shell Variables"])
-    assert ("TCSH_DAP_SCOPE_VALUE", "environment value") in variable_pairs(values["Environment"])
+    assert ("TCSH_DAP_SCOPE_VALUE", "environment value") in variable_pairs(
+        values["Environment"]
+    )
     assert ("greeting", "echo hello world") in variable_pairs(values["Aliases"])
     assert variable_pairs(values["Arguments"]) == {("argv", "(first two words)")}
 
@@ -290,7 +297,9 @@ async def test_program_path_with_spaces_and_verbatim_arguments(
         and message["body"]["category"] == "stdout"
     )
     assert "argc=5\n" in output
-    assert [f"arg{index}=<{argument}>" for index, argument in enumerate(arguments, 1)] == [
+    assert [
+        f"arg{index}=<{argument}>" for index, argument in enumerate(arguments, 1)
+    ] == [
         line
         for line in output.splitlines()
         if line.startswith("arg") and not line.startswith("argc")
@@ -364,7 +373,9 @@ async def test_one_thousand_probes_finish_without_deadlock(
     tmp_path: Path,
 ) -> None:
     program = tmp_path / "thousand-probes.csh"
-    program.write_text("#!/usr/bin/tcsh -f\nset count = 0\n" + "@ count++\n" * 1000 + "exit 0\n")
+    program.write_text(
+        "#!/usr/bin/tcsh -f\nset count = 0\n" + "@ count++\n" * 1000 + "exit 0\n"
+    )
     before = dap_workspaces()
     await dap_client.initialize()
     await dap_client.launch(program, tcshPath=str(tcsh_path), stopOnEntry=False)
