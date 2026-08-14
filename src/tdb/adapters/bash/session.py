@@ -157,6 +157,7 @@ class BashSession:
         self._tasks: list[asyncio.Task] = []
         self._tmpdir: tempfile.TemporaryDirectory | None = None
         self._stderr_tail = ""  # last stderr bytes, for pre-ready failures
+        self.debuggee_pid: int | None = None
         # annotation only (script-touched marker in environment_vars()) --
         # does NOT affect the Globals/Environment split.
         self._launch_env_snapshot: dict[str, str] = {}
@@ -191,14 +192,24 @@ class BashSession:
         self._ready = loop.create_future()
         self.launch_cwd = os.path.abspath(cwd)
         self._tmpdir = tempfile.TemporaryDirectory(prefix="tdb-bash-")
-        cmd_r, cmd_w = os.pipe()  # adapter writes, bash reads
-        resp_r, resp_w = os.pipe()  # bash writes, adapter reads
-        os.set_inheritable(cmd_r, True)
-        os.set_inheritable(resp_w, True)
+        # FIFOs (not inherited pipe fds) so the channel survives a terminal
+        # emulator spawning the debuggee: the adapter opens the command
+        # FIFO O_RDWR itself so the harness's read-open (`exec {fd}<path`)
+        # can never block and the FIFO never EOFs while the session lives;
+        # the response FIFO is opened read-only non-blocking so the
+        # harness's write-open never blocks, while EOF still arrives once
+        # bash and every fd-inheriting child have exited -- exactly like
+        # the pipe it replaces.
+        cmd_path = os.path.join(self._tmpdir.name, "cmd.fifo")
+        resp_path = os.path.join(self._tmpdir.name, "resp.fifo")
+        os.mkfifo(cmd_path, 0o600)
+        os.mkfifo(resp_path, 0o600)
+        cmd_w = os.open(cmd_path, os.O_RDWR | os.O_CLOEXEC)
+        resp_r = os.open(resp_path, os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC)
         child_env = dict(env or os.environ)
         child_env["BASH_ENV"] = HARNESS
-        child_env["__TDB_CMD_FD"] = str(cmd_r)
-        child_env["__TDB_RESP_FD"] = str(resp_w)
+        child_env["__TDB_CMD_PATH"] = cmd_path
+        child_env["__TDB_RESP_PATH"] = resp_path
         child_env["__TDB_TMP"] = self._tmpdir.name
         # Snapshot the exact env passed to the subprocess, for the
         # script-touched annotation in environment_vars() ONLY -- it does
@@ -216,10 +227,7 @@ class BashSession:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             start_new_session=True,
-            pass_fds=(cmd_r, resp_w),
         )
-        os.close(cmd_r)
-        os.close(resp_w)
         self._cmd_w = cmd_w
         self._resp_reader = asyncio.StreamReader(limit=_RESP_LIMIT)
         transport, _ = await loop.connect_read_pipe(
@@ -312,6 +320,7 @@ class BashSession:
                     continue
                 kind = fields[0]
                 if kind == "ready":
+                    self.debuggee_pid = int(fields[1]) if len(fields) > 1 else None
                     if self._ready and not self._ready.done():
                         self._ready.set_result(None)
                 elif kind == "stopped":

@@ -658,3 +658,19 @@ async def test_eval_side_effects_persist_and_rc_reported():
     await asyncio.wait_for(rec.exit_event.wait(), 10)
     assert "x is 42" in rec.stdout()  # the mutation persisted
     await session.stop()
+
+
+@pytest.mark.asyncio
+async def test_harness_connects_over_fifo_paths_and_reports_pid(tmp_path):
+    script = tmp_path / "t.sh"
+    script.write_text("x=1\nx=2\n")
+    rec = Recorder()
+    s = BashSession(rec.on_output, rec.on_stop, rec.on_exit)
+    try:
+        await s.launch(program=str(script), args=[], cwd=str(tmp_path), env=None)
+        assert s.debuggee_pid is not None
+        os.kill(s.debuggee_pid, 0)  # alive, and it is bash itself
+        assert "__TDB_CMD_FD" not in s._launch_env_snapshot
+        assert s._launch_env_snapshot["__TDB_CMD_PATH"].endswith("cmd.fifo")
+    finally:
+        await s.stop()
