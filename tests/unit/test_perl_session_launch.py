@@ -65,7 +65,7 @@ async def _fake_start_server(client_connected_cb, host, port):
 def _make_session() -> PerlSession:
     session = PerlSession(on_output=lambda *a: None, on_stop=lambda: None)
 
-    async def _noop_await_prompt(timeout: float) -> None:
+    async def _noop_await_prompt(timeout: float, terminal: bool = False) -> None:
         pass
 
     async def _noop_command(text: str, timeout: float = 20.0) -> list:

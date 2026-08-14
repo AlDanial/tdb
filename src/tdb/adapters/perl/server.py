@@ -20,7 +20,7 @@ from typing import Any, Awaitable, Callable
 
 from tdb.dap.messages import Event, Request, Response, parse_message
 from tdb.dap.protocol import encode_message, read_message
-from tdb.dap.reverse import ReverseRequestError, ReverseRequester
+from tdb.dap.reverse import ReverseRequester
 from tdb.dap.types import DEFERRED_VERIFICATION_MESSAGE
 
 from .refs import RefRegistry
@@ -168,7 +168,33 @@ class PerlDapServer:
         )
         self.send_response(request, CAPABILITIES)
 
+    async def _cancel_launch_task(self) -> None:
+        """Cancel and await an in-flight externalTerminal `_finish_launch`
+        background task before disconnect/terminate tear down the session.
+
+        Without this, a still-running launch continuation can assign
+        `self.session = PerlSession(...)` (the first thing `_finish_launch`
+        does, synchronously, before any await) AFTER disconnect/terminate's
+        own `if self.session is not None` check already ran and found
+        nothing to stop -- leaking a live (or about-to-be-live) debuggee
+        with nothing left to ever call session.stop() on it. Cancelling and
+        awaiting first makes the eventual `self.session is not None` check
+        below see any session the task managed to create before it was
+        cancelled, so it still gets torn down.
+        """
+        task, self._launch_task = self._launch_task, None
+        if task is None or task.done():
+            return
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            log.exception("launch task raised during cancellation")
+
     async def _on_disconnect(self, request: Request) -> None:
+        await self._cancel_launch_task()
         if self.session is not None:
             await self.session.stop()
             self.session = None
@@ -176,6 +202,7 @@ class PerlDapServer:
         self._done.set()
 
     async def _on_terminate(self, request: Request) -> None:
+        await self._cancel_launch_task()
         if self.session is not None:
             await self.session.stop()
             self.session = None
@@ -276,15 +303,32 @@ class PerlDapServer:
                 perl=perl,
                 run_in_terminal=run_in_terminal,
             )
-        except (PerlProtocolError, ReverseRequestError) as e:
+        except Exception as e:
+            # Deliberately broad (mirrors run()'s own blanket `except
+            # Exception` net around handler dispatch): PerlProtocolError
+            # and ReverseRequestError are the expected failures, but
+            # session.launch() can also raise e.g. bare
+            # asyncio.TimeoutError (ReverseRequester.request()'s own
+            # wait_for) or OSError (tempfile.mkdtemp). In the terminal-mode
+            # (background-task) case this coroutine is NOT awaited inline
+            # by run() -- there is no other except-Exception net standing
+            # behind this one -- so anything narrower here would leave the
+            # client's launch request unanswered forever and silently
+            # strand the exception on self._launch_task.
+            #
+            # asyncio.CancelledError deliberately propagates past this
+            # (BaseException, not Exception, on py>=3.8): that's
+            # _on_disconnect/_on_terminate cancelling an in-flight launch,
+            # not a launch failure, and they do their own cleanup.
             try:
                 await self.session.stop()
             except Exception:
                 log.exception("session.stop() failed while tearing down failed launch")
             self.session = None
-            if hasattr(e, "tail"):
-                self.send_error(request, f"{e} [{getattr(e, 'tail', '')}]")
+            if isinstance(e, PerlProtocolError):
+                self.send_error(request, f"{e} [{e.tail}]")
             else:
+                log.exception("launch failed unexpectedly")
                 self.send_error(request, str(e))
             await self._writer.drain()
             return

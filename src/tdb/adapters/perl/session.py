@@ -209,7 +209,7 @@ class PerlSession:
         finally:
             server.close()
         self._reader_task = asyncio.create_task(self._read_loop())
-        await self._await_prompt(timeout=timeout)
+        await self._await_prompt(timeout=timeout, terminal=run_in_terminal is not None)
         self.stopped = True
         await self.command(f"do '{helpers_path()}'")
         if run_in_terminal is not None:
@@ -273,13 +273,20 @@ class PerlSession:
             # Console view.
             log.debug("perl5db chatter: %r", ev[1])
 
-    async def _await_prompt(self, timeout: float) -> None:
+    async def _await_prompt(self, timeout: float, terminal: bool = False) -> None:
         self._collect = []
         try:
             await asyncio.wait_for(self._prompt_evt.wait(), timeout)
         except asyncio.TimeoutError:
+            message = (
+                "timed out waiting for perl5db prompt in the external "
+                "terminal — did the terminal emulator actually run the "
+                "launched command?"
+                if terminal
+                else "timed out waiting for perl5db prompt"
+            )
             raise PerlProtocolError(
-                "timed out waiting for perl5db prompt",
+                message,
                 tail=self._tail.decode("utf-8", errors="replace"),
             )
         finally:
