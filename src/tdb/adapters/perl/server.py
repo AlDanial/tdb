@@ -4,6 +4,11 @@ One request at a time is dispatched from the read loop; handlers are
 `_on_<command>` methods collected into `self.handlers` so later tasks
 extend the surface by adding methods. Events may be emitted at any
 time via send_event (the session driver calls it from its own task).
+
+Exception: an externalTerminal `launch` runs on a background task (see
+`_on_launch`/`_finish_launch`) because it must itself await a reverse
+request whose response can only be read by this same read loop --
+awaiting it inline would deadlock the adapter against its own client.
 """
 
 from __future__ import annotations
@@ -15,7 +20,7 @@ from typing import Any, Awaitable, Callable
 
 from tdb.dap.messages import Event, Request, Response, parse_message
 from tdb.dap.protocol import encode_message, read_message
-from tdb.dap.reverse import ReverseRequester
+from tdb.dap.reverse import ReverseRequestError, ReverseRequester
 from tdb.dap.types import DEFERRED_VERIFICATION_MESSAGE
 
 from .refs import RefRegistry
@@ -66,6 +71,12 @@ class PerlDapServer:
         self._pending_breakpoints: dict[str, tuple[str, list[dict]]] = {}
         self.refs = RefRegistry()
         self._reverse = ReverseRequester(self._write, self._next_seq)
+        self._client_supports_run_in_terminal = False
+        # Strong ref for the same reason as _classify_task/_eof_task: an
+        # externalTerminal launch runs in the background so run()'s read
+        # loop can service the runInTerminal reverse-request reply (see
+        # _on_launch).
+        self._launch_task: asyncio.Future | None = None
         self.handlers: dict[str, Callable[[Request], Awaitable[None]]] = {}
         for name in dir(self):
             if name.startswith("_on_"):
@@ -152,6 +163,9 @@ class PerlDapServer:
         await self._writer.drain()
 
     async def _on_initialize(self, request: Request) -> None:
+        self._client_supports_run_in_terminal = bool(
+            request.arguments.get("supportsRunInTerminalRequest")
+        )
         self.send_response(request, CAPABILITIES)
 
     async def _on_disconnect(self, request: Request) -> None:
@@ -201,7 +215,55 @@ class PerlDapServer:
         if not os.path.isfile(program):
             self.send_error(request, f"program not found: {program}")
             return
+        run_in_terminal = None
+        if args.get("console") == "externalTerminal":
+            if not self._client_supports_run_in_terminal:
+                self.send_error(
+                    request,
+                    "externalTerminal launch requires a client that "
+                    "supports the runInTerminal reverse request",
+                )
+                return
+
+            async def run_in_terminal(cmd, cwd, env):
+                await self._reverse.request(
+                    "runInTerminal",
+                    {
+                        "kind": "external",
+                        "title": "tdb perl debuggee",
+                        "cwd": cwd,
+                        "args": cmd,
+                        "env": env,
+                    },
+                )
+
         self._stop_on_entry = bool(args.get("stopOnEntry", True))
+        if run_in_terminal is not None:
+            # session.launch() awaits self._reverse.request("runInTerminal",
+            # ...), whose reply can only be read/routed by THIS coroutine's
+            # own run() loop -- but run() is what's calling _on_launch, and
+            # it awaits handler(msg) synchronously before reading the next
+            # message. Awaiting inline here would deadlock: the reply can
+            # never arrive because nothing is reading stdin anymore. Run
+            # the rest of launch as a background task (strong ref, per the
+            # repo's task-GC pitfall) so _on_launch returns immediately,
+            # letting run() go back to reading -- including the eventual
+            # runInTerminal response, which self._reverse.route(msg)
+            # handles directly in run() without going through a handler.
+            self._launch_task = asyncio.ensure_future(
+                self._finish_launch(request, program, perl, args, run_in_terminal)
+            )
+            return
+        await self._finish_launch(request, program, perl, args, run_in_terminal)
+
+    async def _finish_launch(
+        self,
+        request: Request,
+        program: str,
+        perl: str,
+        args: dict,
+        run_in_terminal,
+    ) -> None:
         self.session = PerlSession(
             on_output=self._forward_output, on_stop=self._on_unsolicited_stop
         )
@@ -212,17 +274,23 @@ class PerlDapServer:
                 cwd=args.get("cwd") or os.getcwd(),
                 env=args.get("env"),
                 perl=perl,
+                run_in_terminal=run_in_terminal,
             )
-        except PerlProtocolError as e:
+        except (PerlProtocolError, ReverseRequestError) as e:
             try:
                 await self.session.stop()
             except Exception:
                 log.exception("session.stop() failed while tearing down failed launch")
             self.session = None
-            self.send_error(request, f"{e} [{e.tail}]")
+            if hasattr(e, "tail"):
+                self.send_error(request, f"{e} [{getattr(e, 'tail', '')}]")
+            else:
+                self.send_error(request, str(e))
+            await self._writer.drain()
             return
         self._start_request = request
         self.send_event("initialized")
+        await self._writer.drain()
         # response is sent by _on_configurationDone (DAP ordering)
 
     async def _on_attach(self, request: Request) -> None:
@@ -586,8 +654,19 @@ class PerlDapServer:
                 # NOTE for a later task: any future compile-phase stop must
                 # report a real file from location(), never "?" -- otherwise
                 # it would trip this same "ended" branch.
-                if loc is not None and session.pid is not None:
-                    # Owned child (launch mode) AND a confirmed "?" location.
+                #
+                # session.pid is None in externalTerminal launch mode too
+                # (self._process is never set there -- see session.py) even
+                # though we still own the debuggee's lifecycle via
+                # debuggee_pid, so both must be checked here or a terminal
+                # launch would be misclassified as attach mode: `q` never
+                # sent, exit code always reported as 0.
+                if loc is not None and (
+                    session.pid is not None
+                    or getattr(session, "debuggee_pid", None) is not None
+                ):
+                    # Owned child (launch mode, in-process or terminal) AND
+                    # a confirmed "?" location.
                     # `q` closes the debug socket, which the read loop will
                     # also observe as EOF and route through
                     # _forward_output's "__eof__" branch -- set
