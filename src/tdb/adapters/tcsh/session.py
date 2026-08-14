@@ -8,7 +8,6 @@ import errno
 import os
 import signal
 import stat
-import subprocess
 import sys
 import tempfile
 from collections.abc import Awaitable, Callable, Mapping, Sequence
@@ -17,6 +16,7 @@ from enum import Enum
 from pathlib import Path
 
 from tdb.adapters.tcsh.breakpoints import BoundBreakpoint, bind_breakpoints
+from tdb.adapters.tcsh.guardian import process_table_snapshot
 from tdb.adapters.tcsh.inspect import (
     InspectionError,
     Scope,
@@ -30,7 +30,11 @@ from tdb.adapters.tcsh.inspect import (
 )
 from tdb.adapters.tcsh.instrumenter import InstrumentationResult, Instrumenter, Probe
 from tdb.adapters.tcsh.models import StackFrame, StopReason, ThreadInfo
-from tdb.adapters.tcsh.runtime import render_inspection_request, render_probe, render_source_event
+from tdb.adapters.tcsh.runtime import (
+    render_inspection_request,
+    render_probe,
+    render_source_event,
+)
 from tdb.adapters.tcsh.transport import (
     IncompleteResponseError,
     ProbeEvent,
@@ -235,14 +239,18 @@ class DebugSession:
             raise
         except BaseException as error:
             await self._cleanup(primary_error=error)
-            raise LaunchError(f"Could not prepare program {original_program}: {error}") from error
+            raise LaunchError(
+                f"Could not prepare program {original_program}: {error}"
+            ) from error
         self.state = SessionState.CONFIGURED
 
     async def start(self) -> None:
         """Spawn tcsh with adapter stdin isolated from the debuggee."""
 
         if self.state is not SessionState.CONFIGURED:
-            raise LaunchError(f"start requires CONFIGURED state, got {self.state.value}")
+            raise LaunchError(
+                f"start requires CONFIGURED state, got {self.state.value}"
+            )
         assert self.instrumentation is not None
 
         environment = dict(os.environ)
@@ -319,7 +327,9 @@ class DebugSession:
                 await self._cleanup(primary_error=error)
             finally:
                 self._completion_event.set()
-            raise LaunchError(f"Could not launch program {self.config.program}: {error}") from error
+            raise LaunchError(
+                f"Could not launch program {self.config.program}: {error}"
+            ) from error
         finally:
             if status_writer is not None:
                 os.close(status_writer)
@@ -340,7 +350,9 @@ class DebugSession:
             except ProcessLookupError:
                 pass
             try:
-                await asyncio.wait_for(process.wait(), timeout=_TERMINATE_TIMEOUT_SECONDS + 1)
+                await asyncio.wait_for(
+                    process.wait(), timeout=_TERMINATE_TIMEOUT_SECONDS + 1
+                )
             except TimeoutError:
                 pass
             return
@@ -349,7 +361,9 @@ class DebugSession:
         except (BrokenPipeError, RuntimeError, TimeoutError):
             pass
         try:
-            await asyncio.wait_for(process.wait(), timeout=_TERMINATE_TIMEOUT_SECONDS + 1)
+            await asyncio.wait_for(
+                process.wait(), timeout=_TERMINATE_TIMEOUT_SECONDS + 1
+            )
         except TimeoutError:
             pass
 
@@ -363,7 +377,9 @@ class DebugSession:
                 if self.failure is not None:
                     raise self.failure
                 return
-            raise LaunchError(f"wait requires RUNNING or TERMINATED state, got {self.state.value}")
+            raise LaunchError(
+                f"wait requires RUNNING or TERMINATED state, got {self.state.value}"
+            )
         await asyncio.shield(task)
         if self.failure is not None:
             raise self.failure
@@ -376,7 +392,9 @@ class DebugSession:
         """Replace and bind line breakpoints for one original source file."""
 
         if self.state in {SessionState.NEW, SessionState.TERMINATED}:
-            raise InvalidStateError("set_breakpoints requires a prepared active session")
+            raise InvalidStateError(
+                "set_breakpoints requires a prepared active session"
+            )
         assert self.instrumentation is not None
         canonical = path.resolve(strict=False)
         bound = bind_breakpoints(self.instrumentation.source_map, canonical, lines)
@@ -430,7 +448,9 @@ class DebugSession:
                 self._detach_requested = True
                 return
             if self.state not in {SessionState.RUNNING, SessionState.STOPPED}:
-                raise InvalidStateError("detach requires a configured, running, or stopped session")
+                raise InvalidStateError(
+                    "detach requires a configured, running, or stopped session"
+                )
             self._entry_pending = False
             self._breakpoint_probe_ids.clear()
             self._run_mode = RunMode.CONTINUE
@@ -443,7 +463,9 @@ class DebugSession:
             try:
                 await self.transport.release()
                 await self._emit(
-                    SessionEvent("continued", {"threadId": 1, "allThreadsContinued": True})
+                    SessionEvent(
+                        "continued", {"threadId": 1, "allThreadsContinued": True}
+                    )
                 )
                 self._detach_requested = True
             except BaseException as error:
@@ -451,7 +473,9 @@ class DebugSession:
                 try:
                     await self._stop_process_group()
                 except BaseException as termination_error:  # noqa: BLE001
-                    error.add_note(f"process termination also failed: {termination_error}")
+                    error.add_note(
+                        f"process termination also failed: {termination_error}"
+                    )
                 raise
 
     async def _detach_configured(self) -> None:
@@ -524,7 +548,9 @@ class DebugSession:
         async with self._execution_lock:
             if self.state is not SessionState.STOPPED:
                 raise InvalidStateError("evaluate requires a stopped session")
-            if frame_id is not None and all(frame.id != frame_id for frame in self._frames):
+            if frame_id is not None and all(
+                frame.id != frame_id for frame in self._frames
+            ):
                 raise UnknownFrameError(f"unknown frame ID: {frame_id}")
             if "\x00" in expression:
                 raise EvaluationError("evaluation expression cannot contain NUL")
@@ -640,14 +666,18 @@ class DebugSession:
             try:
                 await self.transport.release()
                 await self._emit(
-                    SessionEvent("continued", {"threadId": 1, "allThreadsContinued": True})
+                    SessionEvent(
+                        "continued", {"threadId": 1, "allThreadsContinued": True}
+                    )
                 )
             except BaseException as error:
                 self.failure = error
                 try:
                     await self._stop_process_group()
                 except BaseException as termination_error:  # noqa: BLE001
-                    error.add_note(f"process termination also failed: {termination_error}")
+                    error.add_note(
+                        f"process termination also failed: {termination_error}"
+                    )
                 raise
 
     async def _run_probe_events(self) -> None:
@@ -730,7 +760,10 @@ class DebugSession:
         )
 
     def _build_stack_frames(self, current: Probe) -> tuple[StackFrame, ...]:
-        locations = [current, *(activation.caller for activation in reversed(self._source_stack))]
+        locations = [
+            current,
+            *(activation.caller for activation in reversed(self._source_stack)),
+        ]
         frames: list[StackFrame] = []
         for probe in locations:
             path = probe.span.path.resolve(strict=False)
@@ -760,7 +793,9 @@ class DebugSession:
                 await self._completion_event.wait()
                 return
             if self.state is SessionState.NEW:
-                raise LaunchError("terminate requires CONFIGURED, RUNNING, or TERMINATED state")
+                raise LaunchError(
+                    "terminate requires CONFIGURED, RUNNING, or TERMINATED state"
+                )
             if self.state is SessionState.CONFIGURED:
                 self.state = SessionState.TERMINATED
                 try:
@@ -784,7 +819,9 @@ class DebugSession:
                         await asyncio.shield(task)
                     except BaseException as monitor_error:  # noqa: BLE001
                         if monitor_error is not error:
-                            error.add_note(f"session monitor also failed: {monitor_error}")
+                            error.add_note(
+                                f"session monitor also failed: {monitor_error}"
+                            )
                 raise
             if task is not None:
                 await asyncio.shield(task)
@@ -817,7 +854,9 @@ class DebugSession:
                 if not self._exited_attempted:
                     await self._emit_process_termination(returncode)
             except BaseException as termination_error:  # noqa: BLE001
-                error.add_note(f"terminal event recovery also failed: {termination_error}")
+                error.add_note(
+                    f"terminal event recovery also failed: {termination_error}"
+                )
             self.state = SessionState.TERMINATED
             raise error
         finally:
@@ -877,7 +916,9 @@ class DebugSession:
     async def _emit_output_text(self, category: str, output: str) -> None:
         if self.workspace is not None:
             output = output.replace(str(self.workspace), _WORKSPACE_REDACTION)
-        await self._emit(SessionEvent("output", {"category": category, "output": output}))
+        await self._emit(
+            SessionEvent("output", {"category": category, "output": output})
+        )
 
     async def _emit_process_termination(self, returncode: int) -> None:
         if not self._exited_attempted:
@@ -904,9 +945,13 @@ class DebugSession:
             try:
                 await self._request_guardian_termination()
             except RuntimeError:
-                await asyncio.wait_for(process.wait(), timeout=_TERMINATE_TIMEOUT_SECONDS + 1)
+                await asyncio.wait_for(
+                    process.wait(), timeout=_TERMINATE_TIMEOUT_SECONDS + 1
+                )
                 raise
-            await asyncio.wait_for(process.wait(), timeout=_TERMINATE_TIMEOUT_SECONDS + 1)
+            await asyncio.wait_for(
+                process.wait(), timeout=_TERMINATE_TIMEOUT_SECONDS + 1
+            )
         assert process.returncode is not None
         return process.returncode
 
@@ -926,7 +971,9 @@ class DebugSession:
                     timeout=_TERMINATE_TIMEOUT_SECONDS + 1,
                 )
             except TimeoutError as error:
-                raise TimeoutError("guardian termination acknowledgement timed out") from error
+                raise TimeoutError(
+                    "guardian termination acknowledgement timed out"
+                ) from error
             if status not in {b"terminated\n", b"escalating\n"}:
                 detail = status.decode(errors="replace").strip()
                 failure = RuntimeError(
@@ -960,7 +1007,10 @@ class DebugSession:
             self._guardian_status_buffer.extend(chunk)
 
     def _close_guardian_descriptors(self) -> None:
-        for attribute in ("_guardian_control_descriptor", "_guardian_status_descriptor"):
+        for attribute in (
+            "_guardian_control_descriptor",
+            "_guardian_status_descriptor",
+        ):
             descriptor = getattr(self, attribute)
             if descriptor is None:
                 continue
@@ -994,25 +1044,17 @@ class DebugSession:
             and not self._live_root_identity_matches()
         ):
             return set()
-        try:
-            result = subprocess.run(
-                ("/bin/ps", "-axo", "pid=,pgid="),
-                check=False,
-                capture_output=True,
-                text=True,
-            )
-        except OSError:
-            return self._validated_live_root_group()
-        if result.returncode != 0:
+        snapshot = process_table_snapshot()
+        if snapshot is None:
             return self._validated_live_root_group()
         groups: set[int] = set()
         root_pid_present = False
-        for line in result.stdout.splitlines():
+        for line in snapshot.splitlines():
             fields = line.split()
-            if len(fields) != 2:
+            if len(fields) < 2:
                 continue
             try:
-                candidate_pid, candidate_group = map(int, fields)
+                candidate_pid, candidate_group = map(int, fields[:2])
             except ValueError:
                 continue
             if candidate_pid <= 0 or candidate_group <= 0:
@@ -1118,21 +1160,29 @@ class DebugSession:
                         primary_error.add_note(
                             f"transport close also failed: {transport_error}"
                         )
-                    primary_error.add_note(f"workspace cleanup also failed: {removal_error}")
+                    primary_error.add_note(
+                        f"workspace cleanup also failed: {removal_error}"
+                    )
                     return
                 if restore_error is not None:
                     removal_error.add_note(
                         f"workspace access restoration also failed: {restore_error}"
                     )
                 if transport_error is not None:
-                    removal_error.add_note(f"transport close also failed: {transport_error}")
+                    removal_error.add_note(
+                        f"transport close also failed: {transport_error}"
+                    )
                 raise
             cleanup_error = restore_error or transport_error
             if cleanup_error is not None:
                 if restore_error is not None and transport_error is not None:
-                    cleanup_error.add_note(f"transport close also failed: {transport_error}")
+                    cleanup_error.add_note(
+                        f"transport close also failed: {transport_error}"
+                    )
                 if primary_error is not None:
-                    primary_error.add_note(f"session cleanup also failed: {cleanup_error}")
+                    primary_error.add_note(
+                        f"session cleanup also failed: {cleanup_error}"
+                    )
                     return
                 self.failure = cleanup_error
                 raise cleanup_error

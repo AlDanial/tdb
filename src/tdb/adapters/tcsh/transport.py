@@ -96,11 +96,13 @@ class ProbeTransport:
         event_reader: _PersistentReader,
         response_reader: _PersistentReader,
         fifo_identities: dict[str, tuple[int, int]],
+        control_pin_descriptor: int | None = None,
     ) -> None:
         self.paths = paths
         self._event_reader: _PersistentReader | None = event_reader
         self._response_reader: _PersistentReader | None = response_reader
         self._fifo_identities = fifo_identities
+        self._control_pin_descriptor = control_pin_descriptor
         self._control_writer: int | None = None
         self._next_request_id = 1
         self._completed_response_ids: set[int] = set()
@@ -143,7 +145,9 @@ class ProbeTransport:
             try:
                 owned_workspace_descriptor = os.dup(workspace_descriptor)
             except OSError as error:
-                raise TransportError("runtime workspace descriptor is unavailable") from error
+                raise TransportError(
+                    "runtime workspace descriptor is unavailable"
+                ) from error
 
         paths = RuntimePaths(
             event_fifo=workspace / "events.fifo",
@@ -154,6 +158,7 @@ class ProbeTransport:
         )
         created: dict[str, tuple[int, int]] = {}
         opened: list[_PersistentReader] = []
+        control_pin_descriptor: int | None = None
         try:
             os.fchmod(owned_workspace_descriptor, _WORKSPACE_MODE)
             _verify_workspace_path_identity(workspace, owned_workspace_descriptor)
@@ -184,6 +189,11 @@ class ProbeTransport:
                     )
                 finally:
                     cls._close_descriptor(descriptor)
+            control_pin_descriptor = cls._pin_owned_fifo(
+                paths.control_fifo,
+                owned_workspace_descriptor,
+                created[paths.control_fifo.name],
+            )
             event_reader = cls._open_persistent_reader(
                 paths.event_fifo,
                 owned_workspace_descriptor,
@@ -200,6 +210,8 @@ class ProbeTransport:
             for persistent_reader in reversed(opened):
                 cls._close_descriptor(persistent_reader.descriptor)
                 cls._close_descriptor(persistent_reader.keeper_descriptor)
+            if control_pin_descriptor is not None:
+                cls._close_descriptor(control_pin_descriptor)
             for basename, identity in reversed(tuple(created.items())):
                 try:
                     cls._unlink_owned_fifo(
@@ -208,10 +220,14 @@ class ProbeTransport:
                         identity,
                     )
                 except OSError as cleanup_error:
-                    error.add_note(f"runtime FIFO rollback also failed: {cleanup_error}")
+                    error.add_note(
+                        f"runtime FIFO rollback also failed: {cleanup_error}"
+                    )
             cls._close_descriptor(owned_workspace_descriptor)
             raise
-        return cls(paths, event_reader, response_reader, created)
+        return cls(
+            paths, event_reader, response_reader, created, control_pin_descriptor
+        )
 
     @staticmethod
     def _require_descriptor_relative_apis() -> None:
@@ -219,11 +235,16 @@ class ProbeTransport:
             not {os.mkfifo, os.open, os.stat, os.unlink}.issubset(os.supports_dir_fd)
             or os.stat not in os.supports_follow_symlinks
         ):
-            raise RuntimeError("runtime transport requires descriptor-relative POSIX file APIs")
+            raise RuntimeError(
+                "runtime transport requires descriptor-relative POSIX file APIs"
+            )
 
     @staticmethod
     def _verify_fifo_status(status: os.stat_result, path: Path) -> None:
-        if not stat.S_ISFIFO(status.st_mode) or stat.S_IMODE(status.st_mode) != _FIFO_MODE:
+        if (
+            not stat.S_ISFIFO(status.st_mode)
+            or stat.S_IMODE(status.st_mode) != _FIFO_MODE
+        ):
             raise TransportError(f"runtime FIFO has unsafe permissions: {path}")
 
     @classmethod
@@ -242,10 +263,10 @@ class ProbeTransport:
         )
         cls._verify_fifo_status(descriptor_status, path)
         cls._verify_fifo_status(entry_status, path)
-        if (
-            (descriptor_status.st_dev, descriptor_status.st_ino) != identity
-            or (entry_status.st_dev, entry_status.st_ino) != identity
-        ):
+        if (descriptor_status.st_dev, descriptor_status.st_ino) != identity or (
+            entry_status.st_dev,
+            entry_status.st_ino,
+        ) != identity:
             raise TransportError(f"runtime FIFO identity changed: {path}")
 
     @classmethod
@@ -266,6 +287,53 @@ class ProbeTransport:
             raise TransportError(f"could not open runtime FIFO: {path}") from error
         try:
             cls._verify_owned_fifo(path, workspace_descriptor, descriptor, identity)
+        except BaseException:
+            cls._close_descriptor(descriptor)
+            raise
+        return descriptor
+
+    @classmethod
+    def _pin_owned_fifo(
+        cls,
+        path: Path,
+        workspace_descriptor: int,
+        identity: tuple[int, int],
+    ) -> int | None:
+        """Hold the FIFO's inode open for the transport's lifetime.
+
+        The (st_dev, st_ino) identity comparisons are only sound while
+        the original inode cannot be recycled: filesystems such as
+        overlayfs reuse a freed inode number immediately, so an
+        unlink-and-recreate would otherwise be indistinguishable from
+        the FIFO we created. O_PATH carries no FIFO reader/writer
+        semantics; where it does not exist (e.g. macOS) the identity
+        checks keep their existing best-effort behavior. The event and
+        response FIFOs need no pin — their persistent readers already
+        hold their inodes open.
+        """
+
+        pin_flags = getattr(os, "O_PATH", 0)
+        if not pin_flags:
+            return None
+        try:
+            descriptor = os.open(
+                path.name,
+                pin_flags | os.O_CLOEXEC | os.O_NOFOLLOW,
+                dir_fd=workspace_descriptor,
+            )
+        except OSError as error:
+            raise TransportError(f"could not open runtime FIFO: {path}") from error
+        try:
+            status = os.fstat(descriptor)
+            if (
+                not stat.S_ISFIFO(status.st_mode)
+                or (
+                    status.st_dev,
+                    status.st_ino,
+                )
+                != identity
+            ):
+                raise TransportError(f"runtime FIFO identity changed: {path}")
         except BaseException:
             cls._close_descriptor(descriptor)
             raise
@@ -522,7 +590,9 @@ class ProbeTransport:
                         f"response END request ID {end_id} does not match BEGIN {request_id}"
                     )
                 break
-            if line.startswith(marker_prefix) and (b" BEGIN " in line or b" END " in line):
+            if line.startswith(marker_prefix) and (
+                b" BEGIN " in line or b" END " in line
+            ):
                 raise TransportError(f"malformed response marker: {line!r}")
             payload.extend(line)
 
@@ -635,6 +705,10 @@ class ProbeTransport:
                                 cleanup_error.add_note(
                                     f"runtime FIFO cleanup also failed: {error}"
                                 )
+                    pin_descriptor = self._control_pin_descriptor
+                    self._control_pin_descriptor = None
+                    if pin_descriptor is not None:
+                        self._close_descriptor(pin_descriptor)
                     try:
                         os.close(workspace_descriptor)
                     except OSError as error:
@@ -645,7 +719,9 @@ class ProbeTransport:
                                 f"workspace descriptor close also failed: {error}"
                             )
                 if cleanup_error is not None:
-                    raise TransportError("could not safely close runtime transport") from cleanup_error
+                    raise TransportError(
+                        "could not safely close runtime transport"
+                    ) from cleanup_error
 
     def _finish_request_owner(
         self,
@@ -713,7 +789,9 @@ class ProbeTransport:
     async def _open_control_writer(self) -> None:
         async with self._control_lock:
             if self._control_writer is not None:
-                raise TransportError("received a probe before the prior probe was released")
+                raise TransportError(
+                    "received a probe before the prior probe was released"
+                )
             while True:
                 self._ensure_open()
                 workspace_descriptor = self.paths.workspace_descriptor
@@ -730,8 +808,13 @@ class ProbeTransport:
                         self._fifo_identities[self.paths.control_fifo.name],
                     )
                 except TransportError as error:
-                    if not isinstance(error.__cause__, OSError) or error.__cause__.errno != errno.ENXIO:
-                        raise TransportError("could not open the probe control FIFO") from error
+                    if (
+                        not isinstance(error.__cause__, OSError)
+                        or error.__cause__.errno != errno.ENXIO
+                    ):
+                        raise TransportError(
+                            "could not open the probe control FIFO"
+                        ) from error
                     await asyncio.sleep(_CONTROL_OPEN_RETRY_SECONDS)
                     continue
                 self._control_writer = descriptor
@@ -764,7 +847,9 @@ class ProbeTransport:
             except OSError as error:
                 if self._closed:
                     raise TransportError("transport is closed") from error
-                raise TransportError(f"could not read runtime FIFO: {reader.path}") from error
+                raise TransportError(
+                    f"could not read runtime FIFO: {reader.path}"
+                ) from error
             if chunk is None:
                 continue
             if not chunk:
@@ -792,7 +877,9 @@ class ProbeTransport:
                 await self._wait_writable(descriptor, deadline)
                 continue
             except OSError as error:
-                raise TransportError("control FIFO closed while writing a request") from error
+                raise TransportError(
+                    "control FIFO closed while writing a request"
+                ) from error
             if written == 0:
                 lifecycle.submission_state = prior_state
                 raise TransportError("control FIFO accepted no request bytes")
@@ -869,7 +956,9 @@ def _verify_workspace_path_identity(path: Path, descriptor: int) -> None:
         descriptor_status = os.fstat(descriptor)
         path_status = os.stat(path, follow_symlinks=False)
     except OSError as error:
-        raise TransportError(f"runtime workspace path identity changed: {path}") from error
+        raise TransportError(
+            f"runtime workspace path identity changed: {path}"
+        ) from error
     if (
         not stat.S_ISDIR(descriptor_status.st_mode)
         or not stat.S_ISDIR(path_status.st_mode)
@@ -906,9 +995,6 @@ def verify_workspace_descriptor(paths: RuntimePaths, descriptor: int) -> None:
     """Verify endpoint placement and the current name of a retained workspace."""
 
     workspace = paths.control_fifo.parent
-    if (
-        paths.event_fifo.parent != workspace
-        or paths.response_fifo.parent != workspace
-    ):
+    if paths.event_fifo.parent != workspace or paths.response_fifo.parent != workspace:
         raise TransportError("runtime endpoints are not rooted in one workspace")
     _verify_workspace_path_identity(workspace, descriptor)

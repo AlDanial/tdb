@@ -7,7 +7,9 @@ from tdb.adapters.tcsh.protocol import ProtocolError, encode_message, read_messa
 
 
 def test_encode_message_uses_compact_utf8_body() -> None:
-    body = json.dumps({"seq": 1, "type": "request", "command": "é"}, separators=(",", ":")).encode()
+    body = json.dumps(
+        {"seq": 1, "type": "request", "command": "é"}, separators=(",", ":")
+    ).encode()
     encoded = encode_message({"seq": 1, "type": "request", "command": "é"})
     assert encoded == f"Content-Length: {len(body)}\r\n\r\n".encode() + body
 
@@ -15,7 +17,9 @@ def test_encode_message_uses_compact_utf8_body() -> None:
 @pytest.mark.asyncio
 async def test_read_message_accepts_case_insensitive_content_length() -> None:
     reader = asyncio.StreamReader()
-    reader.feed_data(b"content-length: 26\r\nX-Test: yes\r\n\r\n{\"type\":\"request\",\"seq\":1}")
+    reader.feed_data(
+        b'content-length: 26\r\nX-Test: yes\r\n\r\n{"type":"request","seq":1}'
+    )
     reader.feed_eof()
     assert await read_message(reader) == {"type": "request", "seq": 1}
 

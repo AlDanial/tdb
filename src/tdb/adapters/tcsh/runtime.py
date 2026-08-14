@@ -21,7 +21,9 @@ _DIRECTORY_OPEN_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | os.O_NOFOL
 
 
 class _RequestFileOwner:
-    def __init__(self, path: Path, directory_descriptor: int, file_descriptor: int) -> None:
+    def __init__(
+        self, path: Path, directory_descriptor: int, file_descriptor: int
+    ) -> None:
         self.path = path
         self._directory_descriptor = directory_descriptor
         self._file_descriptor = file_descriptor
@@ -104,7 +106,9 @@ def render_source_event(kind: str, source_id: int, paths: RuntimePaths) -> str:
     return f"echo {record} >! {event_fifo}\n"
 
 
-def render_inspection_request(request_id: int, command: str, paths: RuntimePaths) -> str:
+def render_inspection_request(
+    request_id: int, command: str, paths: RuntimePaths
+) -> str:
     """Frame one verbatim adapter-owned command and its combined output."""
 
     _validate_identifier(request_id, "request ID")
@@ -133,7 +137,9 @@ def _write_request_file(
         not {os.mkdir, os.open, os.stat, os.unlink}.issubset(os.supports_dir_fd)
         or os.stat not in os.supports_follow_symlinks
     ):
-        raise RuntimeError("inspection requests require descriptor-relative POSIX file APIs")
+        raise RuntimeError(
+            "inspection requests require descriptor-relative POSIX file APIs"
+        )
     request_directory = paths.control_fifo.parent / "requests"
     workspace_descriptor = duplicate_workspace_descriptor(paths)
     created_directory = False
@@ -212,7 +218,9 @@ def _write_request_file(
             view = view[written:]
         os.fsync(descriptor)
         file_status = os.fstat(descriptor)
-        entry_status = os.stat(basename, dir_fd=directory_descriptor, follow_symlinks=False)
+        entry_status = os.stat(
+            basename, dir_fd=directory_descriptor, follow_symlinks=False
+        )
         if (
             not stat.S_ISREG(file_status.st_mode)
             or stat.S_IMODE(file_status.st_mode) != 0o600
@@ -256,7 +264,9 @@ def _write_request_file(
                 (directory_descriptor, "request directory close also failed"),
             ),
         )
-        raise TransportError("could not close runtime workspace authority") from close_error
+        raise TransportError(
+            "could not close runtime workspace authority"
+        ) from close_error
     return _RequestFileOwner(request_path, directory_descriptor, descriptor)
 
 

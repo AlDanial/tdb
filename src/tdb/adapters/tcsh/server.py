@@ -10,7 +10,12 @@ from pathlib import Path
 from typing import Protocol
 
 from tdb.adapters.tcsh.inspect import InspectionError
-from tdb.adapters.tcsh.protocol import EndOfStream, ProtocolError, encode_message, read_message
+from tdb.adapters.tcsh.protocol import (
+    EndOfStream,
+    ProtocolError,
+    encode_message,
+    read_message,
+)
 from tdb.adapters.tcsh.session import (
     DebugSession,
     EvaluationError,
@@ -158,14 +163,22 @@ class DAPServer:
         if not _is_int(request_seq):
             raise ProtocolError("Request seq must be an integer")
         if request.get("type") != "request":
-            await self._send_response(request_seq, _command_name(command), RequestError("type must be 'request'"))
+            await self._send_response(
+                request_seq,
+                _command_name(command),
+                RequestError("type must be 'request'"),
+            )
             return
         if not isinstance(command, str) or not command:
-            await self._send_response(request_seq, "", RequestError("command must be a non-empty string"))
+            await self._send_response(
+                request_seq, "", RequestError("command must be a non-empty string")
+            )
             return
         raw_arguments = request.get("arguments", {})
         if not isinstance(raw_arguments, dict):
-            await self._send_response(request_seq, command, RequestError("arguments must be an object"))
+            await self._send_response(
+                request_seq, command, RequestError("arguments must be an object")
+            )
             return
         handler = self._dispatch.get(command)
         if handler is None:
@@ -217,7 +230,9 @@ class DAPServer:
         if self._deferred_events is not None:
             self._deferred_events.append(event)
             return
-        await self._send({"type": "event", "event": event.kind, "body": dict(event.body)})
+        await self._send(
+            {"type": "event", "event": event.kind, "body": dict(event.body)}
+        )
 
     async def _flush_deferred_events(self) -> None:
         events = self._deferred_events or []
@@ -252,7 +267,9 @@ class DAPServer:
         self._session = session
         return {}
 
-    async def _set_breakpoints(self, arguments: Mapping[str, object]) -> Mapping[str, object]:
+    async def _set_breakpoints(
+        self, arguments: Mapping[str, object]
+    ) -> Mapping[str, object]:
         session = self._require_session()
         source = _require_mapping(arguments, "source")
         path_text = _require_string(source, "path", display="source.path")
@@ -261,7 +278,11 @@ class DAPServer:
         for index, item in enumerate(requested):
             if not isinstance(item, dict):
                 raise RequestError(f"breakpoints[{index}] must be an object")
-            lines.append(_require_int(item, "line", display=f"breakpoints[{index}].line", positive=True))
+            lines.append(
+                _require_int(
+                    item, "line", display=f"breakpoints[{index}].line", positive=True
+                )
+            )
         bound = session.set_breakpoints(Path(path_text), tuple(lines))
         dap_breakpoints: list[dict[str, object]] = []
         dap_source = {"path": path_text}
@@ -291,9 +312,15 @@ class DAPServer:
     async def _threads(self, arguments: Mapping[str, object]) -> Mapping[str, object]:
         del arguments
         session = self._require_session()
-        return {"threads": [{"id": item.id, "name": item.name} for item in session.threads()]}
+        return {
+            "threads": [
+                {"id": item.id, "name": item.name} for item in session.threads()
+            ]
+        }
 
-    async def _stack_trace(self, arguments: Mapping[str, object]) -> Mapping[str, object]:
+    async def _stack_trace(
+        self, arguments: Mapping[str, object]
+    ) -> Mapping[str, object]:
         session = self._require_session()
         _require_thread(arguments)
         frames = session.stack_trace()
@@ -355,7 +382,10 @@ class DAPServer:
         if context is not None and not isinstance(context, str):
             raise RequestError("context must be a string")
         result = await session.evaluate(expression, frame_id)
-        return {"result": result.result, "variablesReference": result.variables_reference}
+        return {
+            "result": result.result,
+            "variablesReference": result.variables_reference,
+        }
 
     async def _continue(self, arguments: Mapping[str, object]) -> Mapping[str, object]:
         session = self._require_session()
@@ -381,7 +411,9 @@ class DAPServer:
         await session.step_out()
         return {}
 
-    async def _disconnect(self, arguments: Mapping[str, object]) -> Mapping[str, object]:
+    async def _disconnect(
+        self, arguments: Mapping[str, object]
+    ) -> Mapping[str, object]:
         session = self._require_session()
         terminate = arguments.get("terminateDebuggee", True)
         if not isinstance(terminate, bool):
@@ -403,7 +435,9 @@ class DAPServer:
         program_text = _require_string(arguments, "program")
         program = Path(program_text)
         raw_args = arguments.get("args", [])
-        if not isinstance(raw_args, list) or any(not isinstance(item, str) for item in raw_args):
+        if not isinstance(raw_args, list) or any(
+            not isinstance(item, str) for item in raw_args
+        ):
             raise RequestError("args must be an array of strings")
         cwd_value = arguments.get("cwd")
         if cwd_value is None:
@@ -431,7 +465,9 @@ class DAPServer:
         stop_on_entry = arguments.get("stopOnEntry", True)
         if not isinstance(stop_on_entry, bool):
             raise RequestError("stopOnEntry must be a boolean")
-        return LaunchConfig(program, tuple(raw_args), cwd, dict(raw_env), tcsh_path, stop_on_entry)
+        return LaunchConfig(
+            program, tuple(raw_args), cwd, dict(raw_env), tcsh_path, stop_on_entry
+        )
 
     def _require_initialized(self) -> None:
         if not self._initialized:

@@ -82,7 +82,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     session_id = os.getsid(0)
     if control_descriptor is None:
         returncode = child.wait()
-        _wait_for_session_drain(session_id)
+        _drain_session_or_give_up(session_id)
     else:
         try:
             returncode = _wait_for_child_or_termination(
@@ -175,7 +175,10 @@ def _run_startup_watchdog(
                             close=False,
                         )
         if handoff_descriptor in readable:
-            if control_descriptor >= 0 and select.select((control_descriptor,), (), (), 0)[0]:
+            if (
+                control_descriptor >= 0
+                and select.select((control_descriptor,), (), (), 0)[0]
+            ):
                 continue
             if control_descriptor >= 0:
                 os.close(control_descriptor)
@@ -278,13 +281,41 @@ def _report_status(descriptor: int | None, status: str, *, close: bool = True) -
 def _wait_for_session_drain(
     session_id: int,
     *,
-    member_check: MemberCheck = lambda session_id: _session_has_other_live_members(session_id),
+    member_check: MemberCheck = lambda session_id: _session_has_other_live_members(
+        session_id
+    ),
     wait: Wait = time.sleep,
 ) -> None:
     delay = _INITIAL_MEMBERSHIP_POLL_SECONDS
     while member_check(session_id):
         wait(delay)
         delay = min(delay * 2, _MAX_MEMBERSHIP_POLL_SECONDS)
+
+
+def _drain_session_or_give_up(
+    session_id: int,
+    *,
+    member_check: MemberCheck = lambda session_id: _session_has_other_live_members(
+        session_id
+    ),
+    wait: Wait = time.sleep,
+) -> None:
+    """Wait for the session to drain, abandoning the wait if inspection fails.
+
+    "Could not inspect" must never become "keep waiting": an unbounded
+    fail-open loop here hangs the adapter with no diagnostic. Giving up
+    mirrors the child's exit status at worst leaving background session
+    members unwaited-for.
+    """
+
+    try:
+        _wait_for_session_drain(session_id, member_check=member_check, wait=wait)
+    except _TerminationFailure as failure:
+        print(
+            f"guardian could not inspect session members ({failure}); "
+            "not waiting for the session to drain",
+            file=sys.stderr,
+        )
 
 
 class _Sentinel:
@@ -434,10 +465,12 @@ def _wait_for_child_or_termination(
                 break
             if command == b"terminate\n":
                 return _terminate_owned_session(child, session_id, status_descriptor)
-            _report_status(status_descriptor, "failed invalid guardian command", close=False)
+            _report_status(
+                status_descriptor, "failed invalid guardian command", close=False
+            )
         returncode = child.wait()
         if control_descriptor < 0:
-            _wait_for_session_drain(session_id)
+            _drain_session_or_give_up(session_id)
             return returncode
         return _wait_for_drain_or_termination(
             child,
@@ -461,24 +494,37 @@ def _wait_for_drain_or_termination(
     status_descriptor: int | None,
     returncode: int,
     *,
-    member_check: MemberCheck = lambda session_id: _session_has_other_live_members(session_id),
+    member_check: MemberCheck = lambda session_id: _session_has_other_live_members(
+        session_id
+    ),
 ) -> int:
     """Retain the control channel while members outlive the reaped root child."""
 
     delay = _INITIAL_MEMBERSHIP_POLL_SECONDS
-    while member_check(session_id):
+    while True:
+        try:
+            if not member_check(session_id):
+                return returncode
+        except _TerminationFailure as failure:
+            print(
+                f"guardian could not inspect session members ({failure}); "
+                "not waiting for the session to drain",
+                file=sys.stderr,
+            )
+            return returncode
         readable, _, _ = select.select((control_descriptor,), (), (), delay)
         if not readable:
             delay = min(delay * 2, _MAX_MEMBERSHIP_POLL_SECONDS)
             continue
         command = os.read(control_descriptor, 64)
         if not command:
-            _wait_for_session_drain(session_id, member_check=member_check)
+            _drain_session_or_give_up(session_id, member_check=member_check)
             return returncode
         if command == b"terminate\n":
             return _terminate_owned_session(child, session_id, status_descriptor)
-        _report_status(status_descriptor, "failed invalid guardian command", close=False)
-    return returncode
+        _report_status(
+            status_descriptor, "failed invalid guardian command", close=False
+        )
 
 
 def _terminate_owned_session(
@@ -543,7 +589,9 @@ def _terminate_owned_session(
             frozen_members = load_members(session_id, sentinel_pids)
             if frozen_members is None:
                 _fail_termination(status_descriptor, "process inspection")
-            if complete and set(frozen_members.values()) - {guardian_group} <= set(pinned.sentinels):
+            if complete and set(frozen_members.values()) - {guardian_group} <= set(
+                pinned.sentinels
+            ):
                 break
         else:
             _fail_termination(status_descriptor, "to freeze owned groups")
@@ -579,9 +627,7 @@ def _complete_startup_escalation(
     remaining = set(member_pids)
     while remaining and time.monotonic() < deadline:
         for process_id in tuple(remaining):
-            try:
-                os.kill(process_id, 0)
-            except ProcessLookupError:
+            if _process_is_gone(process_id):
                 remaining.remove(process_id)
         if remaining:
             time.sleep(_INITIAL_MEMBERSHIP_POLL_SECONDS)
@@ -593,14 +639,68 @@ def _fail_termination(status_descriptor: int | None, detail: str) -> None:
     raise _TerminationFailure(detail)
 
 
-def _live_session_members(
-    session_id: int,
-    excluded_pids: set[int] | None = None,
-) -> dict[int, int] | None:
-    excluded = set() if excluded_pids is None else excluded_pids
+# POSIX-portable snapshot arguments: BusyBox ps (Alpine's /bin/ps)
+# rejects the BSD-style -a/-x/-p flags, but -A and -o are accepted by
+# BusyBox, procps, and the BSDs alike.
+_PS_SNAPSHOT_ARGUMENTS = ("-Ao", "pid=,pgid=,stat=")
+
+
+def process_table_snapshot() -> str | None:
+    """Return `pid pgid state` rows for every visible process, or None.
+
+    Reads /proc directly where it exists (every Linux, regardless of
+    which ps is installed) and falls back to a portable ps invocation
+    elsewhere (e.g. macOS).
+    """
+
+    snapshot = _proc_table_snapshot()
+    if snapshot is not None:
+        return snapshot
+    return _ps_table_snapshot()
+
+
+def _proc_table_snapshot() -> str | None:
+    try:
+        entries = os.listdir("/proc")
+    except OSError:
+        return None
+    rows: list[str] = []
+    for entry in entries:
+        if not entry.isdigit():
+            continue
+        state_fields = _proc_stat_fields(int(entry))
+        if state_fields is None:
+            continue
+        state, process_group = state_fields
+        rows.append(f"{entry} {process_group} {state}")
+    if not rows:
+        return None
+    return "\n".join(rows) + "\n"
+
+
+def _proc_stat_fields(process_id: int) -> tuple[str, int] | None:
+    """Return (state, pgrp) from /proc/<pid>/stat, or None if unreadable."""
+
+    try:
+        with open(f"/proc/{process_id}/stat", "rb") as stream:
+            data = stream.read().decode("latin-1")
+    except OSError:
+        return None
+    # "<pid> (<comm>) <state> <ppid> <pgrp> <session> ..."; comm may
+    # contain spaces and parentheses, so parse after the LAST ')'.
+    fields = data[data.rfind(")") + 2 :].split()
+    if len(fields) < 3:
+        return None
+    try:
+        return fields[0], int(fields[2])
+    except ValueError:
+        return None
+
+
+def _ps_table_snapshot() -> str | None:
     try:
         result = subprocess.run(
-            ("/bin/ps", "-axo", "pid=,pgid=,stat="),
+            ("/bin/ps", *_PS_SNAPSHOT_ARGUMENTS),
             check=False,
             capture_output=True,
             text=True,
@@ -610,13 +710,12 @@ def _live_session_members(
         return None
     if result.returncode != 0:
         return None
-    return _parse_live_session_members(result.stdout, session_id, excluded)
+    return result.stdout
 
 
-def _live_session_members_forked(
-    session_id: int,
-    excluded_pids: set[int],
-) -> dict[int, int] | None:
+def _ps_table_snapshot_forked() -> str | None:
+    """Snapshot via fork+exec only, safe inside the startup watchdog."""
+
     output_reader, output_writer = os.pipe()
     process_id = os.fork()
     if process_id == 0:
@@ -624,7 +723,7 @@ def _live_session_members_forked(
             os.dup2(output_writer, 1)
             os.close(output_reader)
             os.close(output_writer)
-            os.execl("/bin/ps", "ps", "-axo", "pid=,pgid=,stat=")
+            os.execl("/bin/ps", "ps", *_PS_SNAPSHOT_ARGUMENTS)
         finally:
             os._exit(127)
     os.close(output_writer)
@@ -637,14 +736,62 @@ def _live_session_members_forked(
     _, status = os.waitpid(process_id, 0)
     if not os.WIFEXITED(status) or os.WEXITSTATUS(status) != 0:
         return None
-    return _parse_live_session_members(
-        output.decode(errors="replace"),
-        session_id,
-        excluded_pids,
-    )
+    return output.decode(errors="replace")
+
+
+def _live_session_members(
+    session_id: int,
+    excluded_pids: set[int] | None = None,
+) -> dict[int, int] | None:
+    excluded = set() if excluded_pids is None else excluded_pids
+    output = process_table_snapshot()
+    if output is None:
+        return None
+    return _parse_live_session_members(output, session_id, excluded)
+
+
+def _live_session_members_forked(
+    session_id: int,
+    excluded_pids: set[int],
+) -> dict[int, int] | None:
+    output = _proc_table_snapshot()
+    if output is None:
+        output = _ps_table_snapshot_forked()
+    if output is None:
+        return None
+    return _parse_live_session_members(output, session_id, excluded_pids)
+
+
+def _process_is_gone(process_id: int) -> bool:
+    """Return whether a process is dead, counting unreaped zombies as dead.
+
+    A plain os.kill(pid, 0) probe is not enough: without an init-style
+    reaper at PID 1 (e.g. a `docker build` RUN step), an orphaned corpse
+    stays a zombie forever and the probe keeps succeeding.
+    """
+
+    try:
+        os.kill(process_id, 0)
+    except ProcessLookupError:
+        return True
+    state = _process_state_forked(process_id)
+    if state is None:
+        return False
+    return state == "" or state.startswith("Z")
 
 
 def _process_state_forked(process_id: int) -> str | None:
+    """Return a process's state letters, '' if it is gone, None on failure."""
+
+    if os.path.isdir("/proc"):
+        state_fields = _proc_stat_fields(process_id)
+        if state_fields is not None:
+            return state_fields[0]
+        try:
+            os.getsid(process_id)
+        except ProcessLookupError:
+            return ""
+        return None
     output_reader, output_writer = os.pipe()
     reader_pid = os.fork()
     if reader_pid == 0:
@@ -710,7 +857,10 @@ def _parse_live_session_members(
 def _session_has_other_live_members(session_id: int) -> bool:
     members = _live_session_members(session_id)
     if members is None:
-        return True
+        # Fail closed: callers must decide what an inspection failure
+        # means; treating it as "members are still alive" turns any
+        # persistent failure into an unbounded silent wait.
+        raise _TerminationFailure("process inspection")
     return bool(members)
 
 

@@ -84,14 +84,18 @@ class Instrumenter:
         self._sources_dir.mkdir(parents=True, exist_ok=True)
         self._probes_dir.mkdir(parents=True, exist_ok=True)
 
-        root = self._instrument_path(program.resolve(strict=False), source_depth=0, is_root=True)
+        root = self._instrument_path(
+            program.resolve(strict=False), source_depth=0, is_root=True
+        )
         return InstrumentationResult(
             root=root,
             source_map=SourceMap(tuple(self._probes)),
             generated_by_original=MappingProxyType(dict(self._generated_by_original)),
         )
 
-    def _instrument_path(self, original: Path, source_depth: int, is_root: bool = False) -> Path:
+    def _instrument_path(
+        self, original: Path, source_depth: int, is_root: bool = False
+    ) -> Path:
         existing = self._generated_by_original.get(original)
         if existing is not None:
             return existing
@@ -128,11 +132,19 @@ class Instrumenter:
                 else:
                     generated_target = self._instrument_path(target, source_depth + 1)
                     output.append(
-                        _line_terminated(self.source_event_renderer("enter", source_depth + 1))
+                        _line_terminated(
+                            self.source_event_renderer("enter", source_depth + 1)
+                        )
                     )
-                    output.append(_line_terminated(_replace_source_operand(rewritten, generated_target)))
                     output.append(
-                        _line_terminated(self.source_event_renderer("leave", source_depth + 1))
+                        _line_terminated(
+                            _replace_source_operand(rewritten, generated_target)
+                        )
+                    )
+                    output.append(
+                        _line_terminated(
+                            self.source_event_renderer("leave", source_depth + 1)
+                        )
                     )
             else:
                 output.append(rewritten)
@@ -253,7 +265,9 @@ def _rewrite_dollar_zero(text: str) -> str:
         elif (
             quote != "'"
             and command[index : index + 2] == "$0"
-            and (index + 2 == len(command) or not _is_name_character(command[index + 2]))
+            and (
+                index + 2 == len(command) or not _is_name_character(command[index + 2])
+            )
         ):
             output.append("${__tcsh_dap_original_0}")
             index += 1

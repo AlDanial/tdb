@@ -18,7 +18,9 @@ from tdb.adapters.tcsh.inspect import (
     UnknownFrameError,
     UnknownReferenceError,
 )
-from tdb.adapters.tcsh.runtime import render_inspection_request as render_runtime_inspection_request
+from tdb.adapters.tcsh.runtime import (
+    render_inspection_request as render_runtime_inspection_request,
+)
 from tdb.adapters.tcsh.session import (
     DebugSession,
     EvaluationError,
@@ -31,7 +33,11 @@ from tdb.adapters.tcsh.session import (
     StopReason,
     should_stop_at_probe,
 )
-from tdb.adapters.tcsh.transport import IncompleteResponseError, ProbeEvent, TransportError
+from tdb.adapters.tcsh.transport import (
+    IncompleteResponseError,
+    ProbeEvent,
+    TransportError,
+)
 
 EventSink = Callable[[SessionEvent], Awaitable[None]]
 
@@ -185,7 +191,13 @@ async def test_start_owns_process_boundary_and_pumps_output(
     await asyncio.wait_for(session.wait(), timeout=2.0)
 
     record = json.loads(record_path.read_text())
-    assert record["argv"] == [str(recording_tcsh), "-f", str(generated_root), "first", "second"]
+    assert record["argv"] == [
+        str(recording_tcsh),
+        "-f",
+        str(generated_root),
+        "first",
+        "second",
+    ]
     assert record["cwd"] == str(tmp_path.resolve())
     assert record["original_0"] == str(basic_program.resolve())
     assert record["overlay"] == "configured"
@@ -194,10 +206,14 @@ async def test_start_owns_process_boundary_and_pumps_output(
     assert record["process_group"] == record["pid"]
     assert record["process_group"] != session.process.pid
     stdout = [
-        event.body for event in events if event.kind == "output" and event.body["category"] == "stdout"
+        event.body
+        for event in events
+        if event.kind == "output" and event.body["category"] == "stdout"
     ]
     stderr = [
-        event.body for event in events if event.kind == "output" and event.body["category"] == "stderr"
+        event.body
+        for event in events
+        if event.kind == "output" and event.body["category"] == "stderr"
     ]
     assert stdout == [
         {"category": "stdout", "output": "stdout line\n"},
@@ -470,9 +486,7 @@ async def test_output_pump_accepts_lines_larger_than_stream_reader_limit(
 ) -> None:
     executable = tmp_path / "large-output-tcsh"
     executable.write_text(
-        "#!/usr/bin/env python3\n"
-        "import os\n"
-        "os.write(1, b'x' * 70000 + b'\\npartial')\n"
+        "#!/usr/bin/env python3\nimport os\nos.write(1, b'x' * 70000 + b'\\npartial')\n"
     )
     executable.chmod(executable.stat().st_mode | stat.S_IXUSR)
     events: list[SessionEvent] = []
@@ -547,9 +561,7 @@ async def test_chunked_output_preserves_utf8_and_redacts_workspace_across_bounda
     await session._pump_output(ChunkedStream(), "stdout")  # type: ignore[arg-type]
 
     output = "".join(
-        str(event.body["output"])
-        for event in events
-        if event.kind == "output"
+        str(event.body["output"]) for event in events if event.kind == "output"
     )
     assert output == "x" * (64 * 1024 - 3) + "<adapter-workspace>€"
     assert str(session.workspace) not in output
@@ -847,17 +859,13 @@ def test_owned_process_groups_use_live_original_session_members(
     session.process = LiveGuardian()  # type: ignore[assignment]
     session._process_group_id = 101
     session._process_session_id = 101  # type: ignore[attr-defined]
-    calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
+    calls: list[str] = []
 
-    class Snapshot:
-        returncode = 0
-        stdout = "101 101\n202 202\n303 404\n505 606\ninvalid row here\n"
+    def snapshot() -> str:
+        calls.append("snapshot")
+        return "101 101\n202 202\n303 404\n505 606 S\ninvalid row here\n"
 
-    def snapshot(*args: object, **kwargs: object) -> Snapshot:
-        calls.append((args, kwargs))
-        return Snapshot()
-
-    monkeypatch.setattr("tdb.adapters.tcsh.session.subprocess.run", snapshot)
+    monkeypatch.setattr("tdb.adapters.tcsh.session.process_table_snapshot", snapshot)
     monkeypatch.setattr(os, "waitid", lambda idtype, pid, options: None)
     monkeypatch.setattr(
         os,
@@ -867,12 +875,7 @@ def test_owned_process_groups_use_live_original_session_members(
     monkeypatch.setattr(os, "getpgid", lambda pid: 101)
 
     assert session._owned_process_group_ids() == {101, 202, 404}
-    assert calls == [
-        (
-            (("/bin/ps", "-axo", "pid=,pgid="),),
-            {"check": False, "capture_output": True, "text": True},
-        )
-    ]
+    assert calls == ["snapshot"]
 
 
 def test_darwin_shaped_snapshot_uses_kernel_session_ids_per_pid(
@@ -891,15 +894,11 @@ def test_darwin_shaped_snapshot_uses_kernel_session_ids_per_pid(
     session.process = LiveGuardian()  # type: ignore[assignment]
     session._process_group_id = 101
     session._process_session_id = 101
-    calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
+    calls: list[str] = []
 
-    class Snapshot:
-        returncode = 0
-        stdout = "101 101\n202 202\n303 404\n505 606\ninvalid row here\n"
-
-    def snapshot(*args: object, **kwargs: object) -> Snapshot:
-        calls.append((args, kwargs))
-        return Snapshot()
+    def snapshot() -> str:
+        calls.append("snapshot")
+        return "101 101\n202 202\n303 404\n505 606\ninvalid row here\n"
 
     def process_session(pid: int) -> int:
         return {101: 101, 202: 101, 303: 101, 505: 505}[pid]
@@ -909,18 +908,13 @@ def test_darwin_shaped_snapshot_uses_kernel_session_ids_per_pid(
     def live_child(idtype: int, pid: int, options: int) -> None:
         waitid_calls.append((idtype, pid, options))
 
-    monkeypatch.setattr("tdb.adapters.tcsh.session.subprocess.run", snapshot)
+    monkeypatch.setattr("tdb.adapters.tcsh.session.process_table_snapshot", snapshot)
     monkeypatch.setattr(os, "getsid", process_session)
     monkeypatch.setattr(os, "getpgid", lambda pid: 101)
     monkeypatch.setattr(os, "waitid", live_child)
 
     assert session._owned_process_group_ids() == {101, 202, 404}
-    assert calls == [
-        (
-            (("/bin/ps", "-axo", "pid=,pgid="),),
-            {"check": False, "capture_output": True, "text": True},
-        )
-    ]
+    assert calls == ["snapshot"]
     expected_options = os.WEXITED | os.WNOHANG | os.WNOWAIT
     assert waitid_calls == [
         (os.P_PID, 101, expected_options),
@@ -944,18 +938,14 @@ def test_reaped_root_pid_reused_as_same_sid_rejects_entire_snapshot(
     session.process = ReapedProcess()  # type: ignore[assignment]
     session._process_group_id = 101
     session._process_session_id = 101
-    snapshots: list[object] = []
+    snapshots: list[str] = []
     monkeypatch.setattr(os, "getsid", lambda pid: 101)
 
-    class Snapshot:
-        returncode = 0
-        stdout = "101 700\n"
+    def snapshot() -> str:
+        snapshots.append("snapshot")
+        return "101 700\n"
 
-    def snapshot(*args: object, **kwargs: object) -> Snapshot:
-        snapshots.append((args, kwargs))
-        return Snapshot()
-
-    monkeypatch.setattr("tdb.adapters.tcsh.session.subprocess.run", snapshot)
+    monkeypatch.setattr("tdb.adapters.tcsh.session.process_table_snapshot", snapshot)
 
     groups = session._owned_process_group_ids()
     session._signal_process_groups(groups, signal.SIGTERM)
@@ -977,10 +967,6 @@ def test_reaped_owner_rejects_same_sid_members_after_replacement_leader_exits(
         pid = 101
         returncode = None
 
-    class ReplacementSnapshot:
-        returncode = 0
-        stdout = "202 202\n"
-
     session.process = ReapedGuardian()  # type: ignore[assignment]
     session._process_group_id = 101
     session._process_session_id = 101
@@ -991,8 +977,8 @@ def test_reaped_owner_rejects_same_sid_members_after_replacement_leader_exits(
     monkeypatch.setattr(os, "waitid", reaped_child)
     monkeypatch.setattr(os, "getsid", lambda pid: 101)
     monkeypatch.setattr(
-        "tdb.adapters.tcsh.session.subprocess.run",
-        lambda *args, **kwargs: ReplacementSnapshot(),
+        "tdb.adapters.tcsh.session.process_table_snapshot",
+        lambda: "202 202\n",
     )
 
     groups = session._owned_process_group_ids()
@@ -1024,19 +1010,15 @@ def test_reaped_root_replaced_during_snapshot_rejects_same_identity_members(
         if root_replaced:
             raise ChildProcessError
 
-    class Snapshot:
-        returncode = 0
-        stdout = "101 101\n202 202\n"
-
-    def snapshot(*args: object, **kwargs: object) -> Snapshot:
+    def snapshot() -> str:
         nonlocal root_replaced
         root_replaced = True
-        return Snapshot()
+        return "101 101\n202 202\n"
 
     monkeypatch.setattr(os, "waitid", child_generation)
     monkeypatch.setattr(os, "getsid", lambda pid: 101)
     monkeypatch.setattr(os, "getpgid", lambda pid: 101)
-    monkeypatch.setattr("tdb.adapters.tcsh.session.subprocess.run", snapshot)
+    monkeypatch.setattr("tdb.adapters.tcsh.session.process_table_snapshot", snapshot)
     signals: list[tuple[int, signal.Signals]] = []
     monkeypatch.setattr(os, "killpg", lambda pgid, sig: signals.append((pgid, sig)))
 
@@ -1074,20 +1056,16 @@ def test_exited_guardian_generation_is_rejected_without_reaping(
         waitid_calls.append((idtype, pid, options))
         return object()
 
-    snapshots: list[object] = []
+    snapshots: list[str] = []
 
-    class Snapshot:
-        returncode = 0
-        stdout = "101 101\n202 202\n"
-
-    def snapshot(*args: object, **kwargs: object) -> Snapshot:
-        snapshots.append((args, kwargs))
-        return Snapshot()
+    def snapshot() -> str:
+        snapshots.append("snapshot")
+        return "101 101\n202 202\n"
 
     monkeypatch.setattr(os, "waitid", zombie_child)
     monkeypatch.setattr(os, "getsid", lambda pid: 101)
     monkeypatch.setattr(os, "getpgid", lambda pid: 101)
-    monkeypatch.setattr("tdb.adapters.tcsh.session.subprocess.run", snapshot)
+    monkeypatch.setattr("tdb.adapters.tcsh.session.process_table_snapshot", snapshot)
 
     assert session._owned_process_group_ids() == set()
     expected_options = os.WEXITED | os.WNOHANG | os.WNOWAIT
@@ -1113,20 +1091,16 @@ def test_waitid_unavailable_fails_closed_without_snapshotting_members(
     session.process = LiveProcess()  # type: ignore[assignment]
     session._process_group_id = 101
     session._process_session_id = 101
-    snapshots: list[object] = []
+    snapshots: list[str] = []
 
-    class Snapshot:
-        returncode = 0
-        stdout = "101 101\n202 202\n"
-
-    def snapshot(*args: object, **kwargs: object) -> Snapshot:
-        snapshots.append((args, kwargs))
-        return Snapshot()
+    def snapshot() -> str:
+        snapshots.append("snapshot")
+        return "101 101\n202 202\n"
 
     monkeypatch.delattr(os, "waitid")
     monkeypatch.setattr(os, "getsid", lambda pid: 101)
     monkeypatch.setattr(os, "getpgid", lambda pid: 101)
-    monkeypatch.setattr("tdb.adapters.tcsh.session.subprocess.run", snapshot)
+    monkeypatch.setattr("tdb.adapters.tcsh.session.process_table_snapshot", snapshot)
 
     assert session._owned_process_group_ids() == set()
     assert snapshots == []
@@ -1149,11 +1123,10 @@ def test_stale_root_pid_snapshot_does_not_return_or_signal_reused_group(
     session._process_group_id = 101
     session._process_session_id = 101  # type: ignore[attr-defined]
 
-    class Snapshot:
-        returncode = 0
-        stdout = "101 700\n102 701\n"
-
-    monkeypatch.setattr("tdb.adapters.tcsh.session.subprocess.run", lambda *args, **kwargs: Snapshot())
+    monkeypatch.setattr(
+        "tdb.adapters.tcsh.session.process_table_snapshot",
+        lambda: "101 700\n102 701\n",
+    )
     signals: list[tuple[int, signal.Signals]] = []
     monkeypatch.setattr(os, "killpg", lambda pgid, sig: signals.append((pgid, sig)))
 
@@ -1181,8 +1154,8 @@ def test_process_snapshot_failure_falls_back_only_to_validated_live_root(
     session._process_group_id = 101
     session._process_session_id = 101  # type: ignore[attr-defined]
     monkeypatch.setattr(
-        "tdb.adapters.tcsh.session.subprocess.run",
-        lambda *args, **kwargs: (_ for _ in ()).throw(OSError("ps unavailable")),
+        "tdb.adapters.tcsh.session.process_table_snapshot",
+        lambda: None,
     )
     monkeypatch.setattr(os, "waitid", lambda idtype, pid, options: None)
     monkeypatch.setattr(os, "getpgid", lambda pid: 101)
@@ -1482,7 +1455,9 @@ async def test_replaced_workspace_still_closes_descriptor_owned_transport(
     workspace.rename(retained_workspace)
     workspace.symlink_to(victim, target_is_directory=True)
     try:
-        with pytest.raises(RuntimeError, match="refusing to remove a replaced workspace"):
+        with pytest.raises(
+            RuntimeError, match="refusing to remove a replaced workspace"
+        ):
             await session._cleanup()
 
         assert transport._closed is True
@@ -1562,7 +1537,10 @@ def test_probe_stop_decision(
     is_breakpoint: bool,
     should_stop: bool,
 ) -> None:
-    assert should_stop_at_probe(mode, start_depth, event_depth, is_breakpoint) is should_stop
+    assert (
+        should_stop_at_probe(mode, start_depth, event_depth, is_breakpoint)
+        is should_stop
+    )
 
 
 @pytest.mark.asyncio
@@ -1601,7 +1579,9 @@ async def test_every_probe_is_released_exactly_once(
             await session.terminate()
 
     assert release_count == 2
-    assert [event.body["reason"] for event in events if event.kind == "stopped"] == ["entry"]
+    assert [event.body["reason"] for event in events if event.kind == "stopped"] == [
+        "entry"
+    ]
 
 
 @pytest.mark.asyncio
@@ -1684,7 +1664,9 @@ async def test_step_in_and_step_out_track_original_source_stack(
         if session.state is not SessionState.TERMINATED:
             await session.terminate()
 
-    execution_events = [event.kind for event in events if event.kind in {"continued", "stopped"}]
+    execution_events = [
+        event.kind for event in events if event.kind in {"continued", "stopped"}
+    ]
     assert execution_events == [
         "stopped",
         "continued",
@@ -1952,10 +1934,18 @@ async def test_inspection_is_lazy_cached_and_shared_across_source_frames(
         inner = {scope.name: scope for scope in session.scopes(frames[0].id)}
         outer = {scope.name: scope for scope in session.scopes(frames[1].id)}
 
-        inner_arguments = await session.variables(inner["Arguments"].variables_reference)
-        outer_shell = await session.variables(outer["Shell Variables"].variables_reference)
-        inner_environment = await session.variables(inner["Environment"].variables_reference)
-        outer_environment = await session.variables(outer["Environment"].variables_reference)
+        inner_arguments = await session.variables(
+            inner["Arguments"].variables_reference
+        )
+        outer_shell = await session.variables(
+            outer["Shell Variables"].variables_reference
+        )
+        inner_environment = await session.variables(
+            inner["Environment"].variables_reference
+        )
+        outer_environment = await session.variables(
+            outer["Environment"].variables_reference
+        )
         aliases = await session.variables(inner["Aliases"].variables_reference)
 
         assert [(item.name, item.value) for item in inner_arguments] == [
@@ -2099,9 +2089,7 @@ async def test_live_tcsh_exposes_all_four_current_shell_scopes(
 ) -> None:
     program = tmp_path / "live-inspection.csh"
     program.write_text(
-        'set shell_value = "hello world"\n'
-        'alias ll "echo one two"\n'
-        "echo breakpoint\n"
+        'set shell_value = "hello world"\nalias ll "echo one two"\necho breakpoint\n'
     )
     events: list[SessionEvent] = []
     session = DebugSession(
@@ -2388,14 +2376,18 @@ async def test_partial_inspection_timeout_terminates_desynchronized_session(
             f"/bin/sleep 1\n{command}",
             paths,
         )
-        request_files.append(paths.control_fifo.parent / "requests" / f"request-{request_id}.csh")
+        request_files.append(
+            paths.control_fifo.parent / "requests" / f"request-{request_id}.csh"
+        )
         return body
 
     async def send_with_short_timeout(body_factory, timeout: float = 5.0) -> str:
         del timeout
         return await original_send_request(body_factory, timeout=0.05)
 
-    monkeypatch.setattr("tdb.adapters.tcsh.session.render_inspection_request", render_partial_response)
+    monkeypatch.setattr(
+        "tdb.adapters.tcsh.session.render_inspection_request", render_partial_response
+    )
     session.transport.send_request = send_with_short_timeout  # type: ignore[method-assign]
     try:
         await session.start()
@@ -2427,11 +2419,7 @@ async def test_partial_inspection_control_write_terminates_desynchronized_sessio
 ) -> None:
     marker = tmp_path / "advanced"
     program = tmp_path / "partial-control.csh"
-    program.write_text(
-        "/bin/sleep 1\n"
-        f"/usr/bin/touch {marker}\n"
-        "/bin/sleep 30\n"
-    )
+    program.write_text(f"/bin/sleep 1\n/usr/bin/touch {marker}\n/bin/sleep 30\n")
     events: list[SessionEvent] = []
     session = DebugSession(
         launch_config(program, tcsh_path, stop_on_entry=True),

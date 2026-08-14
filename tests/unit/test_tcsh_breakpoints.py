@@ -20,7 +20,10 @@ def source_map() -> SourceMap:
 
 def test_source_map_looks_up_canonical_paths(source_map: SourceMap) -> None:
     assert source_map.probe(11).span.start_line == 5
-    assert [probe.id for probe in source_map.for_path(Path("/work/./main.csh"))] == [10, 11]
+    assert [probe.id for probe in source_map.for_path(Path("/work/./main.csh"))] == [
+        10,
+        11,
+    ]
 
 
 def test_breakpoint_moves_to_next_safe_probe(source_map: SourceMap) -> None:
@@ -31,7 +34,9 @@ def test_breakpoint_moves_to_next_safe_probe(source_map: SourceMap) -> None:
     assert bound[1].message == "No safe executable statement at or after this line"
 
 
-def test_breakpoint_binding_preserves_duplicate_requested_lines(source_map: SourceMap) -> None:
+def test_breakpoint_binding_preserves_duplicate_requested_lines(
+    source_map: SourceMap,
+) -> None:
     bound = bind_breakpoints(source_map, Path("/work/./main.csh"), [5, 5, 6])
 
     assert [(item.requested_line, item.line, item.probe_id) for item in bound] == [

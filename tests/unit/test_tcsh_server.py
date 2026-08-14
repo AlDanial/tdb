@@ -174,9 +174,14 @@ class InMemoryClient:
             request["arguments"] = dict(arguments)
         self.request_reader.feed_data(encode_message(request))
         while True:
-            message = await asyncio.wait_for(read_message(self.response_reader), timeout=1)
+            message = await asyncio.wait_for(
+                read_message(self.response_reader), timeout=1
+            )
             self.messages.append(message)
-            if message.get("type") == "response" and message.get("request_seq") == sequence:
+            if (
+                message.get("type") == "response"
+                and message.get("request_seq") == sequence
+            ):
                 return message
 
     async def next_message(self) -> dict[str, object]:
@@ -204,7 +209,9 @@ async def server_client() -> object:
 
 
 async def initialize_and_launch(client: InMemoryClient) -> FakeSession:
-    assert (await client.request("initialize", {"adapterID": "tcsh"}))["success"] is True
+    assert (await client.request("initialize", {"adapterID": "tcsh"}))[
+        "success"
+    ] is True
     initialized = await client.next_message()
     assert initialized["event"] == "initialized"
     assert (
@@ -225,7 +232,9 @@ async def initialize_and_launch(client: InMemoryClient) -> FakeSession:
 
 
 @pytest.mark.asyncio
-async def test_initialize_advertises_only_supported_features(server_client: object) -> None:
+async def test_initialize_advertises_only_supported_features(
+    server_client: object,
+) -> None:
     client = server_client
     response = await client.request("initialize", {"adapterID": "tcsh"})  # type: ignore[attr-defined]
     assert response["success"] is True
@@ -308,7 +317,9 @@ async def test_launch_rejects_malformed_arguments(
 
 
 @pytest.mark.asyncio
-async def test_supported_requests_dispatch_and_project_dap_bodies(server_client: object) -> None:
+async def test_supported_requests_dispatch_and_project_dap_bodies(
+    server_client: object,
+) -> None:
     client = server_client
     session = await initialize_and_launch(client)  # type: ignore[arg-type]
     source = {"path": "/work/demo.csh"}
@@ -341,7 +352,9 @@ async def test_supported_requests_dispatch_and_project_dap_bodies(server_client:
         "totalFrames": 1,
     }
     assert (await client.request("scopes", {"frameId": 4}))["body"] == {  # type: ignore[attr-defined]
-        "scopes": [{"name": "Shell Variables", "variablesReference": 11, "expensive": False}]
+        "scopes": [
+            {"name": "Shell Variables", "variablesReference": 11, "expensive": False}
+        ]
     }
     assert (await client.request("variables", {"variablesReference": 11}))["body"] == {  # type: ignore[attr-defined]
         "variables": [{"name": "answer", "value": "42", "variablesReference": 0}]
@@ -371,7 +384,9 @@ async def test_supported_requests_dispatch_and_project_dap_bodies(server_client:
 
 
 @pytest.mark.asyncio
-async def test_disconnect_and_terminate_follow_owned_lifecycle(server_client: object) -> None:
+async def test_disconnect_and_terminate_follow_owned_lifecycle(
+    server_client: object,
+) -> None:
     client = server_client
     session = await initialize_and_launch(client)  # type: ignore[arg-type]
     response = await client.request("disconnect", {"terminateDebuggee": False})  # type: ignore[attr-defined]
@@ -387,7 +402,11 @@ async def test_disconnect_and_terminate_follow_owned_lifecycle(server_client: ob
     ("command", "arguments", "fragment"),
     [
         ("setBreakpoints", {"source": {}, "breakpoints": []}, "source.path"),
-        ("setBreakpoints", {"source": {"path": "x"}, "breakpoints": [{"line": True}]}, "line"),
+        (
+            "setBreakpoints",
+            {"source": {"path": "x"}, "breakpoints": [{"line": True}]},
+            "line",
+        ),
         ("stackTrace", {"threadId": "1"}, "threadId"),
         ("scopes", {"frameId": True}, "frameId"),
         ("variables", {"variablesReference": "1"}, "variablesReference"),
@@ -425,7 +444,9 @@ async def test_unknown_and_domain_errors_get_one_failed_response_and_server_surv
     assert failed["message"] == "control channel closed"
     healthy = await client.request("threads", {})  # type: ignore[attr-defined]
     assert healthy["success"] is True
-    responses = [message for message in client.messages if message["type"] == "response"]  # type: ignore[attr-defined]
+    responses = [
+        message for message in client.messages if message["type"] == "response"
+    ]  # type: ignore[attr-defined]
     assert [message["request_seq"] for message in responses[-3:]] == [3, 4, 5]
     assert len({message["request_seq"] for message in responses}) == len(responses)
     assert [message["seq"] for message in client.messages] == list(  # type: ignore[attr-defined]
@@ -442,7 +463,9 @@ async def test_lifecycle_and_duplicate_requests_fail_without_replacing_session(
     assert (await client.request("launch", {"program": "x"}))["success"] is False  # type: ignore[attr-defined]
     await client.request("initialize", {"adapterID": "tcsh"})  # type: ignore[attr-defined]
     await client.next_message()  # type: ignore[attr-defined]
-    assert (await client.request("initialize", {"adapterID": "tcsh"}))["success"] is False  # type: ignore[attr-defined]
+    assert (await client.request("initialize", {"adapterID": "tcsh"}))[
+        "success"
+    ] is False  # type: ignore[attr-defined]
     assert (await client.request("configurationDone", {}))["success"] is False  # type: ignore[attr-defined]
     assert (await client.request("launch", {"program": "x"}))["success"] is True  # type: ignore[attr-defined]
     original = client.factory.sessions[0]  # type: ignore[attr-defined]
@@ -453,11 +476,15 @@ async def test_lifecycle_and_duplicate_requests_fail_without_replacing_session(
 
 
 @pytest.mark.asyncio
-async def test_session_events_and_responses_share_serialized_sequence(server_client: object) -> None:
+async def test_session_events_and_responses_share_serialized_sequence(
+    server_client: object,
+) -> None:
     client = server_client
     session = await initialize_and_launch(client)  # type: ignore[arg-type]
     event_task = asyncio.create_task(
-        session.event_sink(SessionEvent("output", {"category": "stdout", "output": "hi\n"}))
+        session.event_sink(
+            SessionEvent("output", {"category": "stdout", "output": "hi\n"})
+        )
     )
     response = await client.request("threads", {})  # type: ignore[attr-defined]
     await event_task
@@ -613,9 +640,7 @@ async def test_termination_event_writer_can_reentrantly_await_server_stop() -> N
                 self.armed = False
                 assert server is not None
                 await server.stop()
-                self.termination_state_during_reentry.append(
-                    server._session_terminated
-                )
+                self.termination_state_during_reentry.append(server._session_terminated)
 
     writer = ReentrantStopWriter(response_reader)
     factory = FakeFactory()
@@ -701,7 +726,9 @@ async def test_cancelled_only_stop_waiter_retrieves_later_termination_failure() 
 
 
 @pytest.mark.asyncio
-async def test_disconnect_without_termination_supervises_detached_session_on_eof() -> None:
+async def test_disconnect_without_termination_supervises_detached_session_on_eof() -> (
+    None
+):
     request_reader = asyncio.StreamReader()
     response_reader = asyncio.StreamReader()
     factory = FakeFactory()
@@ -725,7 +752,9 @@ async def test_disconnect_without_termination_supervises_detached_session_on_eof
 
 
 @pytest.mark.asyncio
-async def test_configured_disconnect_without_termination_responds_before_terminal_event() -> None:
+async def test_configured_disconnect_without_termination_responds_before_terminal_event() -> (
+    None
+):
     request_reader = asyncio.StreamReader()
     response_reader = asyncio.StreamReader()
     factory = FakeFactory()
@@ -757,9 +786,9 @@ async def test_cancelling_detached_wait_reclaims_session_ownership() -> None:
     client = InMemoryClient(request_reader, response_reader)
     client.factory = factory  # type: ignore[attr-defined]
     session = await initialize_and_launch(client)
-    assert (
-        await client.request("disconnect", {"terminateDebuggee": False})
-    )["success"] is True
+    assert (await client.request("disconnect", {"terminateDebuggee": False}))[
+        "success"
+    ] is True
     request_reader.feed_eof()
     await asyncio.wait_for(session.wait_started.wait(), timeout=0.1)
 
@@ -783,9 +812,9 @@ async def test_detach_does_not_suppress_fatal_or_signal_cleanup(shutdown: str) -
     client = InMemoryClient(request_reader, response_reader)
     client.factory = factory  # type: ignore[attr-defined]
     session = await initialize_and_launch(client)
-    assert (
-        await client.request("disconnect", {"terminateDebuggee": False})
-    )["success"] is True
+    assert (await client.request("disconnect", {"terminateDebuggee": False}))[
+        "success"
+    ] is True
 
     if shutdown == "protocol_error":
         request_reader.feed_data(b"Missing-Colon\r\n\r\n")
@@ -838,9 +867,9 @@ async def test_black_box_configured_disconnect_without_termination(
     program.write_text("echo never-started\n")
     client = await DAPClient.start(shutdown_timeout=0.2)
     try:
-        assert (
-            await client.request("initialize", {"adapterID": "tcsh"})
-        )["success"] is True
+        assert (await client.request("initialize", {"adapterID": "tcsh"}))[
+            "success"
+        ] is True
         await client.wait_for_event("initialized")
         assert (
             await client.request(

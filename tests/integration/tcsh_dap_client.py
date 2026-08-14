@@ -7,7 +7,12 @@ from collections import defaultdict
 from collections.abc import Mapping
 from pathlib import Path
 
-from tdb.adapters.tcsh.protocol import EndOfStream, ProtocolError, encode_message, read_message
+from tdb.adapters.tcsh.protocol import (
+    EndOfStream,
+    ProtocolError,
+    encode_message,
+    read_message,
+)
 
 
 class DAPClient:
@@ -80,7 +85,9 @@ class DAPClient:
     async def initialize(self) -> dict[str, object]:
         response = await self.request("initialize", {"adapterID": "tcsh"})
         if response.get("success") is not True:
-            raise AssertionError(f"initialize failed: {response!r}; stderr={self.stderr!r}")
+            raise AssertionError(
+                f"initialize failed: {response!r}; stderr={self.stderr!r}"
+            )
         await self.wait_for_event("initialized")
         return response
 
@@ -127,7 +134,9 @@ class DAPClient:
                 assert result is not None
                 return result
 
-        return await self._with_diagnostics(wait(), f"output containing {text!r}", timeout)
+        return await self._with_diagnostics(
+            wait(), f"output containing {text!r}", timeout
+        )
 
     async def wait_for_event(
         self,
@@ -157,7 +166,9 @@ class DAPClient:
                 if not await self._wait_for_exit():
                     self.process.kill()
                     if not await self._wait_for_exit():
-                        raise AssertionError("Adapter process did not exit after SIGKILL")
+                        raise AssertionError(
+                            "Adapter process did not exit after SIGKILL"
+                        )
         finally:
             await self._finish_collectors()
 
