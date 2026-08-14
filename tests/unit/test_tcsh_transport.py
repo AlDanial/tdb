@@ -44,7 +44,11 @@ async def write_fifo(path: Path, data: str | bytes) -> None:
                 raise
             await asyncio.sleep(0.005)
     try:
-        encoded = data.encode("utf-8", errors="surrogateescape") if isinstance(data, str) else data
+        encoded = (
+            data.encode("utf-8", errors="surrogateescape")
+            if isinstance(data, str)
+            else data
+        )
         view = memoryview(encoded)
         while view:
             try:
@@ -226,7 +230,9 @@ async def test_create_makes_private_fifos(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_event_parser_accepts_grammar_and_keeps_reader_alive(tmp_path: Path) -> None:
+async def test_event_parser_accepts_grammar_and_keeps_reader_alive(
+    tmp_path: Path,
+) -> None:
     transport = ProbeTransport.create(tmp_path / "session")
     control_reader = open_control_reader(transport)
     try:
@@ -258,7 +264,9 @@ async def test_event_parser_accepts_grammar_and_keeps_reader_alive(tmp_path: Pat
     "record",
     ["\n", "X 1\n", "P\n", "P nope\n", "P -1\n", "E 1 extra\n", " L 1\n"],
 )
-async def test_event_parser_rejects_malformed_records(tmp_path: Path, record: str) -> None:
+async def test_event_parser_rejects_malformed_records(
+    tmp_path: Path, record: str
+) -> None:
     transport = ProbeTransport.create(tmp_path / "session")
     try:
         event_task = asyncio.create_task(transport.next_event())
@@ -270,7 +278,9 @@ async def test_event_parser_rejects_malformed_records(tmp_path: Path, record: st
 
 
 @pytest.mark.asyncio
-async def test_cancelled_event_read_does_not_discard_the_next_record(tmp_path: Path) -> None:
+async def test_cancelled_event_read_does_not_discard_the_next_record(
+    tmp_path: Path,
+) -> None:
     transport = ProbeTransport.create(tmp_path / "session")
     try:
         cancelled_read = asyncio.create_task(transport.next_event())
@@ -282,9 +292,9 @@ async def test_cancelled_event_read_does_not_discard_the_next_record(tmp_path: P
         await feed_event(transport, "E 7\n")
         await asyncio.sleep(0.15)
 
-        assert await asyncio.wait_for(transport.next_event(), timeout=0.25) == ProbeEvent(
-            kind="enter", probe_id=None, source_id=7
-        )
+        assert await asyncio.wait_for(
+            transport.next_event(), timeout=0.25
+        ) == ProbeEvent(kind="enter", probe_id=None, source_id=7)
     finally:
         await transport.close()
 
@@ -306,9 +316,9 @@ async def test_cancelled_event_read_preserves_probe_while_control_open_is_pendin
             await cancelled_read
 
         control_reader = open_control_reader(transport)
-        assert await asyncio.wait_for(transport.next_event(), timeout=0.25) == ProbeEvent(
-            kind="probe", probe_id=9, source_id=None
-        )
+        assert await asyncio.wait_for(
+            transport.next_event(), timeout=0.25
+        ) == ProbeEvent(kind="probe", probe_id=9, source_id=None)
     finally:
         await transport.release()
         if control_reader >= 0:
@@ -320,9 +330,13 @@ async def test_cancelled_event_read_preserves_probe_while_control_open_is_pendin
 async def test_response_parser_preserves_multiline_payload(tmp_path: Path) -> None:
     transport = ProbeTransport.create(tmp_path / "session")
     try:
-        response_task = asyncio.create_task(transport.read_response(3, timeout=_IO_TIMEOUT))
+        response_task = asyncio.create_task(
+            transport.read_response(3, timeout=_IO_TIMEOUT)
+        )
         await feed_response(transport, request_id=3, payload="one\ntwo\n")
-        assert await asyncio.wait_for(response_task, timeout=_IO_TIMEOUT) == "one\ntwo\n"
+        assert (
+            await asyncio.wait_for(response_task, timeout=_IO_TIMEOUT) == "one\ntwo\n"
+        )
     finally:
         await transport.close()
 
@@ -336,7 +350,9 @@ async def test_response_parser_removes_only_adapter_payload_separator(
     transport = ProbeTransport.create(tmp_path / "session")
     nonce = transport.paths.nonce.encode("ascii")
     try:
-        response_task = asyncio.create_task(transport.read_response(3, timeout=_IO_TIMEOUT))
+        response_task = asyncio.create_task(
+            transport.read_response(3, timeout=_IO_TIMEOUT)
+        )
         await write_fifo(
             transport.paths.response_fifo,
             nonce + b" BEGIN 3 ok\n" + payload + b"\n" + nonce + b" END 3\n",
@@ -349,10 +365,14 @@ async def test_response_parser_removes_only_adapter_payload_separator(
 
 
 @pytest.mark.asyncio
-async def test_cancelled_response_read_does_not_discard_the_frame(tmp_path: Path) -> None:
+async def test_cancelled_response_read_does_not_discard_the_frame(
+    tmp_path: Path,
+) -> None:
     transport = ProbeTransport.create(tmp_path / "session")
     try:
-        cancelled_read = asyncio.create_task(transport.read_response(3, timeout=_IO_TIMEOUT))
+        cancelled_read = asyncio.create_task(
+            transport.read_response(3, timeout=_IO_TIMEOUT)
+        )
         await asyncio.sleep(0.02)
         cancelled_read.cancel()
         with pytest.raises(asyncio.CancelledError):
@@ -373,7 +393,9 @@ async def test_cancelled_response_read_preserves_partially_consumed_frame(
     transport = ProbeTransport.create(tmp_path / "session")
     nonce = transport.paths.nonce
     try:
-        cancelled_read = asyncio.create_task(transport.read_response(3, timeout=_IO_TIMEOUT))
+        cancelled_read = asyncio.create_task(
+            transport.read_response(3, timeout=_IO_TIMEOUT)
+        )
         await write_fifo(
             transport.paths.response_fifo,
             f"{nonce} BEGIN 3 ok\nfirst\n",
@@ -395,11 +417,15 @@ async def test_cancelled_response_read_preserves_partially_consumed_frame(
 
 
 @pytest.mark.asyncio
-async def test_response_parser_preserves_large_single_line_payload(tmp_path: Path) -> None:
+async def test_response_parser_preserves_large_single_line_payload(
+    tmp_path: Path,
+) -> None:
     transport = ProbeTransport.create(tmp_path / "session")
     payload = "x" * (128 * 1024) + "\n"
     try:
-        response_task = asyncio.create_task(transport.read_response(3, timeout=_IO_TIMEOUT))
+        response_task = asyncio.create_task(
+            transport.read_response(3, timeout=_IO_TIMEOUT)
+        )
         await feed_response(transport, request_id=3, payload=payload)
         assert await asyncio.wait_for(response_task, timeout=_IO_TIMEOUT) == payload
     finally:
@@ -418,10 +444,14 @@ async def test_response_parser_preserves_large_single_line_payload(tmp_path: Pat
         "{nonce} BEGIN 3 ok\npayload\n{nonce} END nope\n",
     ],
 )
-async def test_response_parser_rejects_malformed_frames(tmp_path: Path, frame: str) -> None:
+async def test_response_parser_rejects_malformed_frames(
+    tmp_path: Path, frame: str
+) -> None:
     transport = ProbeTransport.create(tmp_path / "session")
     try:
-        response_task = asyncio.create_task(transport.read_response(3, timeout=_IO_TIMEOUT))
+        response_task = asyncio.create_task(
+            transport.read_response(3, timeout=_IO_TIMEOUT)
+        )
         await write_fifo(
             transport.paths.response_fifo, frame.format(nonce=transport.paths.nonce)
         )
@@ -435,7 +465,9 @@ async def test_response_parser_rejects_malformed_frames(tmp_path: Path, frame: s
 async def test_response_parser_rejects_mismatched_begin_id(tmp_path: Path) -> None:
     transport = ProbeTransport.create(tmp_path / "session")
     try:
-        response_task = asyncio.create_task(transport.read_response(3, timeout=_IO_TIMEOUT))
+        response_task = asyncio.create_task(
+            transport.read_response(3, timeout=_IO_TIMEOUT)
+        )
         await feed_response(transport, request_id=4, payload="wrong request\n")
         with pytest.raises(TransportError, match="request ID"):
             await asyncio.wait_for(response_task, timeout=_IO_TIMEOUT)
@@ -468,7 +500,9 @@ async def test_error_response_preserves_exact_payload_in_typed_exception(
 ) -> None:
     transport = ProbeTransport.create(tmp_path / "session")
     try:
-        response_task = asyncio.create_task(transport.read_response(8, timeout=_IO_TIMEOUT))
+        response_task = asyncio.create_task(
+            transport.read_response(8, timeout=_IO_TIMEOUT)
+        )
         await feed_response(transport, request_id=8, status="error", payload=payload)
         with pytest.raises(RuntimeResponseError) as caught:
             await asyncio.wait_for(response_task, timeout=_IO_TIMEOUT)
@@ -479,7 +513,9 @@ async def test_error_response_preserves_exact_payload_in_typed_exception(
 
 
 @pytest.mark.asyncio
-async def test_response_timeout_is_bounded_and_transport_remains_usable(tmp_path: Path) -> None:
+async def test_response_timeout_is_bounded_and_transport_remains_usable(
+    tmp_path: Path,
+) -> None:
     transport = ProbeTransport.create(tmp_path / "session")
     try:
         started = time.monotonic()
@@ -487,9 +523,14 @@ async def test_response_timeout_is_bounded_and_transport_remains_usable(tmp_path
             await transport.read_response(1, timeout=0.05)
         assert time.monotonic() - started < 0.5
 
-        response_task = asyncio.create_task(transport.read_response(2, timeout=_IO_TIMEOUT))
+        response_task = asyncio.create_task(
+            transport.read_response(2, timeout=_IO_TIMEOUT)
+        )
         await feed_response(transport, request_id=2, payload="after timeout\n")
-        assert await asyncio.wait_for(response_task, timeout=_IO_TIMEOUT) == "after timeout\n"
+        assert (
+            await asyncio.wait_for(response_task, timeout=_IO_TIMEOUT)
+            == "after timeout\n"
+        )
     finally:
         await transport.close()
 
@@ -551,7 +592,9 @@ async def test_cancelled_response_wait_keeps_next_request_serialized(
         await asyncio.wait_for(event_task, timeout=_IO_TIMEOUT)
 
         first = asyncio.create_task(
-            transport.send_request(lambda request_id: f"request {request_id}\n", timeout=0.5)
+            transport.send_request(
+                lambda request_id: f"request {request_id}\n", timeout=0.5
+            )
         )
         assert await read_line(control_reader) == "request 1\n"
         nonce = transport.paths.nonce
@@ -566,7 +609,9 @@ async def test_cancelled_response_wait_keeps_next_request_serialized(
             await first
 
         second = asyncio.create_task(
-            transport.send_request(lambda request_id: f"request {request_id}\n", timeout=0.5)
+            transport.send_request(
+                lambda request_id: f"request {request_id}\n", timeout=0.5
+            )
         )
         with pytest.raises(TimeoutError):
             await asyncio.wait_for(read_line(control_reader), timeout=0.05)
@@ -575,7 +620,10 @@ async def test_cancelled_response_wait_keeps_next_request_serialized(
             transport.paths.response_fifo,
             f"\n{nonce} END 1\n",
         )
-        assert await asyncio.wait_for(read_line(control_reader), timeout=0.25) == "request 2\n"
+        assert (
+            await asyncio.wait_for(read_line(control_reader), timeout=0.25)
+            == "request 2\n"
+        )
         await feed_response(transport, request_id=2, payload="second\n")
         assert await asyncio.wait_for(second, timeout=0.25) == "second\n"
     finally:
@@ -605,20 +653,27 @@ async def test_response_timeout_keeps_serialization_until_late_frame(
         await asyncio.wait_for(event_task, timeout=_IO_TIMEOUT)
 
         first = asyncio.create_task(
-            transport.send_request(lambda request_id: f"request {request_id}\n", timeout=0.05)
+            transport.send_request(
+                lambda request_id: f"request {request_id}\n", timeout=0.05
+            )
         )
         assert await read_line(control_reader) == "request 1\n"
         with pytest.raises(TimeoutError):
             await asyncio.wait_for(first, timeout=0.25)
 
         second = asyncio.create_task(
-            transport.send_request(lambda request_id: f"request {request_id}\n", timeout=0.5)
+            transport.send_request(
+                lambda request_id: f"request {request_id}\n", timeout=0.5
+            )
         )
         with pytest.raises(TimeoutError):
             await asyncio.wait_for(read_line(control_reader), timeout=0.05)
 
         await feed_response(transport, request_id=1, payload="late\n")
-        assert await asyncio.wait_for(read_line(control_reader), timeout=0.25) == "request 2\n"
+        assert (
+            await asyncio.wait_for(read_line(control_reader), timeout=0.25)
+            == "request 2\n"
+        )
         await feed_response(transport, request_id=2, payload="after timeout\n")
         assert await asyncio.wait_for(second, timeout=0.25) == "after timeout\n"
     finally:
@@ -651,7 +706,9 @@ async def test_zero_byte_response_timeout_drains_late_frame_before_next_request(
     second: asyncio.Task[str] | None = None
     stopped = False
     try:
-        assert await asyncio.wait_for(transport.next_event(), timeout=_IO_TIMEOUT) == ProbeEvent(
+        assert await asyncio.wait_for(
+            transport.next_event(), timeout=_IO_TIMEOUT
+        ) == ProbeEvent(
             kind="probe",
             probe_id=1,
             source_id=None,
@@ -723,20 +780,26 @@ async def test_failed_late_response_drain_marks_transport_incomplete(
         await asyncio.wait_for(event_task, timeout=_IO_TIMEOUT)
 
         first = asyncio.create_task(
-            transport.send_request(lambda request_id: f"request {request_id}\n", timeout=0.05)
+            transport.send_request(
+                lambda request_id: f"request {request_id}\n", timeout=0.05
+            )
         )
         assert await read_line(control_reader) == "request 1\n"
         with pytest.raises(TimeoutError):
             await asyncio.wait_for(first, timeout=0.25)
 
         second = asyncio.create_task(
-            transport.send_request(lambda request_id: f"request {request_id}\n", timeout=0.5)
+            transport.send_request(
+                lambda request_id: f"request {request_id}\n", timeout=0.5
+            )
         )
         with pytest.raises(TimeoutError):
             await asyncio.wait_for(read_line(control_reader), timeout=0.05)
         await write_fifo(transport.paths.response_fifo, "malformed late frame\n")
 
-        with pytest.raises(IncompleteResponseError, match="could not be drained") as raised:
+        with pytest.raises(
+            IncompleteResponseError, match="could not be drained"
+        ) as raised:
             await asyncio.wait_for(second, timeout=0.25)
         assert isinstance(raised.value.__cause__, TransportError)
     finally:
@@ -749,7 +812,9 @@ async def test_failed_late_response_drain_marks_transport_incomplete(
 
 
 @pytest.mark.asyncio
-async def test_completed_request_cleanup_failure_is_a_transport_error(tmp_path: Path) -> None:
+async def test_completed_request_cleanup_failure_is_a_transport_error(
+    tmp_path: Path,
+) -> None:
     transport = ProbeTransport.create(tmp_path / "session")
     control_reader = open_control_reader(transport)
 
@@ -800,7 +865,9 @@ async def test_request_error_precedes_completed_cleanup_failure(tmp_path: Path) 
             )
         )
         assert await read_line(control_reader) == "request 1\n"
-        await feed_response(transport, request_id=1, status="error", payload="primary\n")
+        await feed_response(
+            transport, request_id=1, status="error", payload="primary\n"
+        )
 
         with pytest.raises(RuntimeResponseError, match="primary") as raised:
             await asyncio.wait_for(request, timeout=0.25)
@@ -860,7 +927,9 @@ async def test_partial_control_write_failure_is_incomplete_and_retains_owner_unt
 
         with pytest.raises(IncompleteResponseError, match="desynchronized") as raised:
             await transport.send_request(
-                lambda request_id: OwnedBody(f"source request-{request_id}.csh\necho done\n"),
+                lambda request_id: OwnedBody(
+                    f"source request-{request_id}.csh\necho done\n"
+                ),
                 timeout=0.5,
             )
 
@@ -889,7 +958,9 @@ async def test_partial_response_timeout_keeps_next_request_serialized(
         await asyncio.wait_for(event_task, timeout=_IO_TIMEOUT)
 
         first = asyncio.create_task(
-            transport.send_request(lambda request_id: f"request {request_id}\n", timeout=0.05)
+            transport.send_request(
+                lambda request_id: f"request {request_id}\n", timeout=0.05
+            )
         )
         assert await read_line(control_reader) == "request 1\n"
         nonce = transport.paths.nonce
@@ -901,7 +972,9 @@ async def test_partial_response_timeout_keeps_next_request_serialized(
             await asyncio.wait_for(first, timeout=0.25)
 
         second = asyncio.create_task(
-            transport.send_request(lambda request_id: f"request {request_id}\n", timeout=0.5)
+            transport.send_request(
+                lambda request_id: f"request {request_id}\n", timeout=0.5
+            )
         )
         with pytest.raises(TimeoutError):
             await asyncio.wait_for(read_line(control_reader), timeout=0.05)
@@ -910,7 +983,10 @@ async def test_partial_response_timeout_keeps_next_request_serialized(
             transport.paths.response_fifo,
             f"\n{nonce} END 1\n",
         )
-        assert await asyncio.wait_for(read_line(control_reader), timeout=0.25) == "request 2\n"
+        assert (
+            await asyncio.wait_for(read_line(control_reader), timeout=0.25)
+            == "request 2\n"
+        )
         await feed_response(transport, request_id=2, payload="second\n")
         assert await asyncio.wait_for(second, timeout=0.25) == "second\n"
     finally:
@@ -940,7 +1016,9 @@ async def test_close_cancels_partial_response_lifecycle_and_queued_request(
         await asyncio.wait_for(event_task, timeout=_IO_TIMEOUT)
 
         first = asyncio.create_task(
-            transport.send_request(lambda request_id: f"request {request_id}\n", timeout=0.05)
+            transport.send_request(
+                lambda request_id: f"request {request_id}\n", timeout=0.05
+            )
         )
         assert await read_line(control_reader) == "request 1\n"
         nonce = transport.paths.nonce
@@ -952,7 +1030,9 @@ async def test_close_cancels_partial_response_lifecycle_and_queued_request(
             await asyncio.wait_for(first, timeout=0.25)
 
         second = asyncio.create_task(
-            transport.send_request(lambda request_id: f"request {request_id}\n", timeout=5.0)
+            transport.send_request(
+                lambda request_id: f"request {request_id}\n", timeout=5.0
+            )
         )
         with pytest.raises(TimeoutError):
             await asyncio.wait_for(read_line(control_reader), timeout=0.05)
@@ -984,7 +1064,9 @@ async def _respond_before_draining_request(
         try:
             received = len(os.read(control_reader, 1))
         except BlockingIOError:
-            await _wait_for_descriptor(control_reader, writable=False, deadline=deadline)
+            await _wait_for_descriptor(
+                control_reader, writable=False, deadline=deadline
+            )
             continue
         if received:
             break
@@ -998,7 +1080,9 @@ async def _respond_before_draining_request(
         try:
             chunk = os.read(control_reader, min(64 * 1024, request_size - received))
         except BlockingIOError:
-            await _wait_for_descriptor(control_reader, writable=False, deadline=deadline)
+            await _wait_for_descriptor(
+                control_reader, writable=False, deadline=deadline
+            )
             continue
         if not chunk:
             raise EOFError("control writer closed before the request was complete")
@@ -1048,7 +1132,9 @@ async def test_partial_control_write_timeout_marks_transport_incomplete(
         await asyncio.wait_for(event_task, timeout=_IO_TIMEOUT)
 
         request_task = asyncio.create_task(
-            transport.send_request(lambda request_id: "x" * (2 * 1024 * 1024), timeout=0.05)
+            transport.send_request(
+                lambda request_id: "x" * (2 * 1024 * 1024), timeout=0.05
+            )
         )
         done, _ = await asyncio.wait({request_task}, timeout=0.25)
 
@@ -1277,7 +1363,9 @@ async def test_close_interrupts_stalled_control_write(tmp_path: Path) -> None:
         await asyncio.wait_for(event_task, timeout=_IO_TIMEOUT)
 
         request_task = asyncio.create_task(
-            transport.send_request(lambda request_id: "x" * (2 * 1024 * 1024), timeout=5.0)
+            transport.send_request(
+                lambda request_id: "x" * (2 * 1024 * 1024), timeout=5.0
+            )
         )
         await asyncio.sleep(0.02)
         assert not request_task.done()
@@ -1333,16 +1421,18 @@ async def test_release_only_closes_current_control_writer_and_is_idempotent(
         try:
             second_event = asyncio.create_task(transport.next_event())
             await feed_event(transport, "P 2\n")
-            assert await asyncio.wait_for(second_event, timeout=_IO_TIMEOUT) == ProbeEvent(
-                kind="probe", probe_id=2, source_id=None
-            )
+            assert await asyncio.wait_for(
+                second_event, timeout=_IO_TIMEOUT
+            ) == ProbeEvent(kind="probe", probe_id=2, source_id=None)
             await transport.release()
         finally:
             os.close(second_reader)
 
         source_event = asyncio.create_task(transport.next_event())
         await feed_event(transport, "E 1\n")
-        assert (await asyncio.wait_for(source_event, timeout=_IO_TIMEOUT)).kind == "enter"
+        assert (
+            await asyncio.wait_for(source_event, timeout=_IO_TIMEOUT)
+        ).kind == "enter"
     finally:
         if first_reader >= 0:
             os.close(first_reader)
@@ -1371,9 +1461,7 @@ def test_probe_fragment_reports_before_waiting(runtime_paths: RuntimePaths) -> N
     assert fragment.index("P\\ 17") < fragment.index("source ")
 
 
-@pytest.mark.parametrize(
-    ("kind", "record"), [("enter", "E\\ 4"), ("leave", "L\\ 4")]
-)
+@pytest.mark.parametrize(("kind", "record"), [("enter", "E\\ 4"), ("leave", "L\\ 4")])
 def test_source_event_fragment_writes_without_waiting(
     runtime_paths: RuntimePaths, kind: str, record: str
 ) -> None:
@@ -1385,7 +1473,9 @@ def test_source_event_fragment_writes_without_waiting(
     assert "source " not in fragment
 
 
-def test_source_event_fragment_rejects_unknown_kind(runtime_paths: RuntimePaths) -> None:
+def test_source_event_fragment_rejects_unknown_kind(
+    runtime_paths: RuntimePaths,
+) -> None:
     with pytest.raises(ValueError, match="event kind"):
         render_source_event("exit", 4, runtime_paths)
 
@@ -1666,7 +1756,9 @@ def test_rendered_inspection_executes_before_control_fifo_is_released(
         assert _read_line(response_reader) == b"live123 END 7\n"
         fragment.cleanup()
         assert not (tmp_path / "requests" / "request-7.csh").exists()
-        os.write(control_writer, f"echo current=$live_value >>&! {response_fifo}\n".encode())
+        os.write(
+            control_writer, f"echo current=$live_value >>&! {response_fifo}\n".encode()
+        )
         assert _read_line(response_reader) == b"current=changed\n"
         assert process.poll() is None
     finally:
@@ -1803,7 +1895,9 @@ def test_runtime_fragments_force_redirection_to_existing_fifos(
 ) -> None:
     probe_lines = render_probe(1, runtime_paths).splitlines()
     source_lines = render_source_event("enter", 2, runtime_paths).splitlines()
-    inspection_lines = render_inspection_request(3, "echo value", runtime_paths).splitlines()
+    inspection_lines = render_inspection_request(
+        3, "echo value", runtime_paths
+    ).splitlines()
 
     assert " >! " in probe_lines[0]
     assert " >! " in source_lines[0]
@@ -1848,7 +1942,9 @@ def test_runtime_renderers_reject_negative_ids(
 
 @pytest.mark.parametrize("invalid", ["bad\npath", "bad\rpath", "bad\x00path"])
 @pytest.mark.parametrize("renderer", ["probe", "source", "inspection"])
-def test_runtime_fragments_reject_unsafe_path_operands(invalid: str, renderer: str) -> None:
+def test_runtime_fragments_reject_unsafe_path_operands(
+    invalid: str, renderer: str
+) -> None:
     paths = RuntimePaths(Path(invalid), Path(invalid), Path(invalid), "safe")
 
     with pytest.raises(ValueError, match="NUL|newline"):
@@ -1870,10 +1966,17 @@ def test_rendered_source_event_executes_with_noclobber(tmp_path: Path) -> None:
     event_fifo = tmp_path / "events.fifo"
     os.mkfifo(event_fifo, 0o600)
     reader = os.open(event_fifo, os.O_RDONLY | os.O_NONBLOCK)
-    paths = RuntimePaths(event_fifo, tmp_path / "control", tmp_path / "response", "abc123")
+    paths = RuntimePaths(
+        event_fifo, tmp_path / "control", tmp_path / "response", "abc123"
+    )
     try:
         completed = subprocess.run(
-            [TCSH, "-f", "-c", "set noclobber\n" + render_source_event("enter", 7, paths)],
+            [
+                TCSH,
+                "-f",
+                "-c",
+                "set noclobber\n" + render_source_event("enter", 7, paths),
+            ],
             check=False,
             capture_output=True,
             text=True,
@@ -1886,13 +1989,17 @@ def test_rendered_source_event_executes_with_noclobber(tmp_path: Path) -> None:
 
 
 @pytest.mark.skipif(TCSH is None, reason="tcsh is not installed")
-def test_rendered_source_event_executes_with_metacharacters_in_fifo_path(tmp_path: Path) -> None:
+def test_rendered_source_event_executes_with_metacharacters_in_fifo_path(
+    tmp_path: Path,
+) -> None:
     unusual = tmp_path / "fifo space $d `cmd` !*?[]{}~%'\\\""
     unusual.mkdir()
     event_fifo = unusual / "event stream"
     os.mkfifo(event_fifo, 0o600)
     reader = os.open(event_fifo, os.O_RDONLY | os.O_NONBLOCK)
-    paths = RuntimePaths(event_fifo, unusual / "control", unusual / "response", "abc123")
+    paths = RuntimePaths(
+        event_fifo, unusual / "control", unusual / "response", "abc123"
+    )
     try:
         completed = subprocess.run(
             [TCSH, "-f", "-c", render_source_event("enter", 7, paths)],
@@ -1905,3 +2012,30 @@ def test_rendered_source_event_executes_with_metacharacters_in_fifo_path(tmp_pat
         assert _read_line(reader) == b"E 7\n"
     finally:
         os.close(reader)
+
+
+@pytest.mark.asyncio
+async def test_control_fifo_inode_is_pinned_for_transport_lifetime(
+    tmp_path: Path,
+) -> None:
+    """The pin makes identity checks sound on inode-recycling filesystems.
+
+    Overlayfs (docker) reuses a freed inode number immediately, so
+    without a held descriptor an unlink-and-recreate of control.fifo
+    would be indistinguishable from the FIFO the transport created.
+    """
+
+    transport = ProbeTransport.create(tmp_path / "session")
+    try:
+        if not hasattr(os, "O_PATH"):
+            pytest.skip("inode pinning requires O_PATH")
+        pin = transport._control_pin_descriptor
+        assert pin is not None
+        status = os.fstat(pin)
+        assert stat.S_ISFIFO(status.st_mode)
+        assert (status.st_dev, status.st_ino) == transport._fifo_identities[
+            transport.paths.control_fifo.name
+        ]
+    finally:
+        await transport.close()
+    assert transport._control_pin_descriptor is None

@@ -9,6 +9,7 @@ import stat
 import subprocess
 import sys
 import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -21,7 +22,14 @@ async def start_guardian(
     cwd: Path,
     env: dict[str, str] | None = None,
 ) -> asyncio.subprocess.Process:
-    guardian = Path(__file__).resolve().parents[2] / "src" / "tdb" / "adapters" / "tcsh" / "guardian.py"
+    guardian = (
+        Path(__file__).resolve().parents[2]
+        / "src"
+        / "tdb"
+        / "adapters"
+        / "tcsh"
+        / "guardian.py"
+    )
     environment = dict(os.environ)
     if env is not None:
         environment.update(env)
@@ -61,7 +69,14 @@ async def start_controlled_guardian(
     cwd: Path,
     start: bool = True,
 ) -> tuple[asyncio.subprocess.Process, int, int]:
-    guardian_path = Path(__file__).resolve().parents[2] / "src" / "tdb" / "adapters" / "tcsh" / "guardian.py"
+    guardian_path = (
+        Path(__file__).resolve().parents[2]
+        / "src"
+        / "tdb"
+        / "adapters"
+        / "tcsh"
+        / "guardian.py"
+    )
     status_reader, status_writer = os.pipe()
     control_reader, control_writer = os.pipe()
     try:
@@ -216,10 +231,13 @@ async def test_controlled_termination_remains_available_during_natural_drain(
 
         assert process.returncode is None
         os.write(control_writer, b"terminate\n")
-        assert await asyncio.wait_for(
-            asyncio.to_thread(read_descriptor_line, status_reader),
-            timeout=1,
-        ) == b"terminated\n"
+        assert (
+            await asyncio.wait_for(
+                asyncio.to_thread(read_descriptor_line, status_reader),
+                timeout=1,
+            )
+            == b"terminated\n"
+        )
         await asyncio.wait_for(process.wait(), timeout=1)
 
         assert process.returncode == 3
@@ -285,7 +303,9 @@ async def test_guardian_does_not_abandon_live_session_member_on_sigterm(
 
 
 @pytest.mark.asyncio
-async def test_guardian_reports_child_exec_failure_without_hanging(tmp_path: Path) -> None:
+async def test_guardian_reports_child_exec_failure_without_hanging(
+    tmp_path: Path,
+) -> None:
     process = await start_guardian(str(tmp_path / "missing"), cwd=tmp_path)
     stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=1)
 
@@ -409,7 +429,11 @@ def test_stopped_sentinel_release_is_bounded_and_reaped() -> None:
         with pytest.raises(ChildProcessError):
             os.waitpid(sentinel.pid, os.WNOHANG)
     finally:
-        if release_thread is not None and release_thread.is_alive() and sentinel is not None:
+        if (
+            release_thread is not None
+            and release_thread.is_alive()
+            and sentinel is not None
+        ):
             os.kill(sentinel.pid, signal.SIGCONT)
             release_thread.join(timeout=1)
         os.close(ready_reader)
@@ -464,7 +488,9 @@ def test_termination_inspection_failure_reports_and_exits_without_signaling(
 
     status_reader, status_writer = os.pipe()
     signals: list[tuple[int, signal.Signals]] = []
-    monkeypatch.setattr(guardian, "_live_session_members", lambda session_id, excluded: None)
+    monkeypatch.setattr(
+        guardian, "_live_session_members", lambda session_id, excluded: None
+    )
     monkeypatch.setattr(os, "killpg", lambda group, sig: signals.append((group, sig)))
     try:
         with pytest.raises(guardian._TerminationFailure):  # type: ignore[attr-defined]
@@ -609,7 +635,9 @@ def test_startup_watchdog_cleans_child_when_guardian_stalls_before_ok(
 
             guardian._live_session_members_forked = load_members_after_stale_snapshot  # type: ignore[attr-defined]
 
-        def spawn_then_stall(*args: object, **kwargs: object) -> subprocess.Popen[bytes]:
+        def spawn_then_stall(
+            *args: object, **kwargs: object
+        ) -> subprocess.Popen[bytes]:
             process = real_popen(*args, **kwargs)
             os.write(spawned_writer, f"{process.pid}\n".encode())
             os.kill(os.getpid(), signal.SIGSTOP)
@@ -664,3 +692,117 @@ def test_startup_watchdog_cleans_child_when_guardian_stalls_before_ok(
             os.waitpid(guardian_pid, 0)
         except ChildProcessError:
             pass
+
+
+# --- process inspection portability (BusyBox ps has no -a/-x/-p flags) ---
+
+
+@pytest.mark.skipif(not os.path.isdir("/proc"), reason="requires /proc")
+def test_proc_snapshot_reports_live_child_with_kernel_process_group() -> None:
+    child = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(30)"],
+        process_group=0,
+    )
+    try:
+        members = guardian._live_session_members(os.getsid(0))
+        assert members is not None
+        assert members[child.pid] == os.getpgid(child.pid) == child.pid
+    finally:
+        child.kill()
+        child.wait()
+
+
+@pytest.mark.skipif(not os.path.isdir("/proc"), reason="requires /proc")
+def test_snapshot_excludes_zombies_and_state_reports_reaped_as_gone() -> None:
+    child = subprocess.Popen([sys.executable, "-c", "pass"])
+    try:
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            state = guardian._process_state_forked(child.pid)
+            if state is not None and state.startswith("Z"):
+                break
+            time.sleep(0.01)
+        else:
+            raise AssertionError("child never became a zombie")
+        members = guardian._live_session_members(os.getsid(0))
+        assert members is not None
+        assert child.pid not in members
+    finally:
+        child.wait()
+    assert guardian._process_state_forked(child.pid) == ""
+    own_state = guardian._process_state_forked(os.getpid())
+    assert own_state
+    assert not own_state.startswith("Z")
+
+
+def test_ps_fallback_snapshot_uses_portable_flags(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    commands: list[tuple[str, ...]] = []
+
+    class Result:
+        returncode = 0
+        stdout = "1 1 S\n"
+
+    def run(argv: tuple[str, ...], **kwargs: object) -> Result:
+        commands.append(tuple(argv))
+        return Result()
+
+    monkeypatch.setattr(guardian.subprocess, "run", run)
+
+    assert guardian._ps_table_snapshot() == "1 1 S\n"
+    # BusyBox ps rejects -a/-x/-p; -Ao is accepted by BusyBox, procps,
+    # and the BSDs alike.
+    assert commands == [("/bin/ps", "-Ao", "pid=,pgid=,stat=")]
+
+
+def test_member_inspection_failure_raises_instead_of_reporting_live(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        guardian,
+        "process_table_snapshot",
+        lambda: None,
+    )
+
+    with pytest.raises(guardian._TerminationFailure):  # type: ignore[attr-defined]
+        guardian._session_has_other_live_members(101)  # type: ignore[attr-defined]
+
+
+def test_drain_gives_up_loudly_when_inspection_fails(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def failing_member_check(session_id: int) -> bool:
+        raise guardian._TerminationFailure("process inspection")  # type: ignore[attr-defined]
+
+    guardian._drain_session_or_give_up(  # type: ignore[attr-defined]
+        101,
+        member_check=failing_member_check,
+    )
+
+    assert "process inspection" in capsys.readouterr().err
+
+
+def test_drain_or_termination_returns_child_code_when_inspection_fails(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    control_reader, control_writer = os.pipe()
+
+    def failing_member_check(session_id: int) -> bool:
+        raise guardian._TerminationFailure("process inspection")  # type: ignore[attr-defined]
+
+    try:
+        returncode = guardian._wait_for_drain_or_termination(  # type: ignore[attr-defined]
+            guardian._StartupChild(),  # type: ignore[attr-defined, arg-type]
+            101,
+            control_reader,
+            None,
+            7,
+            member_check=failing_member_check,
+        )
+    finally:
+        os.close(control_reader)
+        os.close(control_writer)
+
+    assert returncode == 7
+    assert "process inspection" in capsys.readouterr().err
