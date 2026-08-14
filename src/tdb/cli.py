@@ -266,6 +266,11 @@ def _validate_terminal_choice(
     The terminal-choice names double as executable names; see
     `_TERMINAL_SPECS` in `tdb/session/terminal.py`.
     """
+    if args.terminal and getattr(args, "remote_attach", None):
+        parser.error(
+            "--terminal only applies when tdb launches the program; "
+            "it cannot be combined with -r/--remote-attach"
+        )
     if args.terminal and not shutil.which(args.terminal):
         parser.error(
             f"--terminal {args.terminal!r}: executable not found on PATH. "
