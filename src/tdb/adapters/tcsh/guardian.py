@@ -39,16 +39,29 @@ def main(argv: Sequence[str] | None = None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
     status_descriptor: int | None = None
     control_descriptor: int | None = None
-    while len(arguments) >= 2 and arguments[0] in {"--status-fd", "--control-fd"}:
+    status_from_path = False
+    while len(arguments) >= 2 and arguments[0] in {
+        "--status-fd",
+        "--control-fd",
+        "--status-path",
+        "--control-path",
+    }:
         option, value = arguments[:2]
-        try:
-            descriptor = int(value)
-        except ValueError:
-            descriptor = None
         if option == "--status-fd":
-            status_descriptor = descriptor
-        else:
-            control_descriptor = descriptor
+            try:
+                status_descriptor = int(value)
+            except ValueError:
+                status_descriptor = None
+        elif option == "--control-fd":
+            try:
+                control_descriptor = int(value)
+            except ValueError:
+                control_descriptor = None
+        elif option == "--status-path":
+            status_descriptor = os.open(value, os.O_WRONLY)
+            status_from_path = True
+        elif option == "--control-path":
+            control_descriptor = os.open(value, os.O_RDONLY)
         del arguments[:2]
     if arguments[:1] == ["--"]:
         arguments.pop(0)
@@ -76,6 +89,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             _handoff_startup_watchdog(watchdog)
         return 127
     _report_status(status_descriptor, "ok", close=control_descriptor is None)
+    if status_from_path:
+        _report_status(status_descriptor, f"pid {os.getpid()}", close=False)
     if watchdog is not None:
         _handoff_startup_watchdog(watchdog)
 
@@ -93,6 +108,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         except _TerminationFailure:
             return 125
+    if status_from_path:
+        if returncode < 0:
+            _report_status(status_descriptor, f"signal {-returncode}", close=False)
+        else:
+            _report_status(status_descriptor, f"exit {returncode}", close=False)
     if returncode < 0:
         child_signal = -returncode
         if child_signal != signal.SIGKILL:
