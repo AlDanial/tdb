@@ -627,9 +627,7 @@ def _complete_startup_escalation(
     remaining = set(member_pids)
     while remaining and time.monotonic() < deadline:
         for process_id in tuple(remaining):
-            try:
-                os.kill(process_id, 0)
-            except ProcessLookupError:
+            if _process_is_gone(process_id):
                 remaining.remove(process_id)
         if remaining:
             time.sleep(_INITIAL_MEMBERSHIP_POLL_SECONDS)
@@ -762,6 +760,24 @@ def _live_session_members_forked(
     if output is None:
         return None
     return _parse_live_session_members(output, session_id, excluded_pids)
+
+
+def _process_is_gone(process_id: int) -> bool:
+    """Return whether a process is dead, counting unreaped zombies as dead.
+
+    A plain os.kill(pid, 0) probe is not enough: without an init-style
+    reaper at PID 1 (e.g. a `docker build` RUN step), an orphaned corpse
+    stays a zombie forever and the probe keeps succeeding.
+    """
+
+    try:
+        os.kill(process_id, 0)
+    except ProcessLookupError:
+        return True
+    state = _process_state_forked(process_id)
+    if state is None:
+        return False
+    return state == "" or state.startswith("Z")
 
 
 def _process_state_forked(process_id: int) -> str | None:

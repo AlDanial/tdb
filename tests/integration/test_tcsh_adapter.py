@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from tdb.adapters.tcsh.guardian import _process_is_gone
 from tests.integration.tcsh_dap_client import DAPClient
 
 
@@ -356,11 +357,10 @@ async def test_terminate_kills_process_group_and_removes_workspace(
     await dap_client.wait_for_event("terminated")
 
     def child_is_gone() -> bool:
-        try:
-            os.kill(child_pid, 0)
-        except ProcessLookupError:
-            return True
-        return False
+        # Dead-or-zombie: without an init reaper at PID 1 (docker build
+        # RUN steps), the killed orphan stays an unreaped zombie and a
+        # plain os.kill(pid, 0) probe would keep succeeding.
+        return _process_is_gone(child_pid)
 
     await wait_until(child_is_gone)
     await wait_until(lambda: not any(path.exists() for path in created))

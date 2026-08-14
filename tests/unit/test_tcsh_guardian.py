@@ -241,8 +241,10 @@ async def test_controlled_termination_remains_available_during_natural_drain(
         await asyncio.wait_for(process.wait(), timeout=1)
 
         assert process.returncode == 3
-        with pytest.raises(ProcessLookupError):
-            os.kill(background_pid, 0)
+        # Dead-or-zombie: without an init reaper at PID 1 (docker build
+        # RUN steps), the killed orphan stays an unreaped zombie and a
+        # plain os.kill(pid, 0) probe would keep succeeding.
+        assert guardian._process_is_gone(background_pid)  # type: ignore[attr-defined]
     finally:
         os.close(control_writer)
         os.close(status_reader)
@@ -553,8 +555,7 @@ async def test_controlled_termination_pins_and_escalates_all_groups(
 
         assert status == b"escalating\n"
         assert process.returncode == -signal.SIGKILL
-        with pytest.raises(ProcessLookupError):
-            os.kill(member_pid, 0)
+        assert guardian._process_is_gone(member_pid)  # type: ignore[attr-defined]
     finally:
         os.close(control_writer)
         os.close(status_reader)
@@ -673,8 +674,7 @@ def test_startup_watchdog_cleans_child_when_guardian_stalls_before_ok(
         assert reaped_pid == guardian_pid
         assert os.WIFSIGNALED(status)
         assert os.WTERMSIG(status) == signal.SIGKILL
-        with pytest.raises(ProcessLookupError):
-            os.kill(child_pid, 0)
+        assert guardian._process_is_gone(child_pid)  # type: ignore[attr-defined]
     finally:
         os.close(status_reader)
         os.close(control_writer)
@@ -727,12 +727,15 @@ def test_snapshot_excludes_zombies_and_state_reports_reaped_as_gone() -> None:
         members = guardian._live_session_members(os.getsid(0))
         assert members is not None
         assert child.pid not in members
+        assert guardian._process_is_gone(child.pid)
     finally:
         child.wait()
     assert guardian._process_state_forked(child.pid) == ""
+    assert guardian._process_is_gone(child.pid)
     own_state = guardian._process_state_forked(os.getpid())
     assert own_state
     assert not own_state.startswith("Z")
+    assert not guardian._process_is_gone(os.getpid())
 
 
 def test_ps_fallback_snapshot_uses_portable_flags(
