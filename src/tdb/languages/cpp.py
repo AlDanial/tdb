@@ -62,6 +62,8 @@ class LldbDapAdapter(AdapterSpec):
         if env:
             # lldb-dap wants ["KEY=VALUE", ...], not a mapping.
             body["env"] = [f"{k}={v}" for k, v in env.items()]
+        if console == "externalTerminal":
+            body["runInTerminal"] = True
         return body
 
     def attach_body(
@@ -105,6 +107,12 @@ class GdbDapAdapter(AdapterSpec):
         console: str,
         opts: dict[str, Any],
     ) -> dict[str, Any]:
+        if console == "externalTerminal":
+            raise LanguageNotSupportedError(
+                "--terminal is not supported with the gdb adapter (gdb's "
+                "DAP mode has no terminal integration) — use "
+                "`--adapter lldb-dap`"
+            )
         body: dict[str, Any] = {
             "type": "gdb",
             "request": "launch",
