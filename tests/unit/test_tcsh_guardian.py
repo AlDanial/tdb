@@ -852,9 +852,7 @@ async def test_guardian_path_mode_handshake_pid_and_exit_status(
         assert line == b"armed\n"
         os.write(control_writer, b"start\n")
         assert (
-            await asyncio.wait_for(
-                asyncio.to_thread(read_fifo_line, status_reader), 5
-            )
+            await asyncio.wait_for(asyncio.to_thread(read_fifo_line, status_reader), 5)
             == b"ok\n"
         )
         pid_line = await asyncio.wait_for(
@@ -862,9 +860,7 @@ async def test_guardian_path_mode_handshake_pid_and_exit_status(
         )
         assert pid_line == f"pid {process.pid}\n".encode()
         assert (
-            await asyncio.wait_for(
-                asyncio.to_thread(read_fifo_line, status_reader), 5
-            )
+            await asyncio.wait_for(asyncio.to_thread(read_fifo_line, status_reader), 5)
             == b"exit 3\n"
         )
         assert await asyncio.wait_for(process.wait(), 5) == 3
@@ -916,9 +912,7 @@ async def test_guardian_path_mode_reports_signal_death(
         assert line == b"armed\n"
         os.write(control_writer, b"start\n")
         assert (
-            await asyncio.wait_for(
-                asyncio.to_thread(read_fifo_line, status_reader), 5
-            )
+            await asyncio.wait_for(asyncio.to_thread(read_fifo_line, status_reader), 5)
             == b"ok\n"
         )
         pid_line = await asyncio.wait_for(
@@ -926,9 +920,7 @@ async def test_guardian_path_mode_reports_signal_death(
         )
         assert pid_line == f"pid {process.pid}\n".encode()
         assert (
-            await asyncio.wait_for(
-                asyncio.to_thread(read_fifo_line, status_reader), 5
-            )
+            await asyncio.wait_for(asyncio.to_thread(read_fifo_line, status_reader), 5)
             == b"signal 9\n"
         )
         assert await asyncio.wait_for(process.wait(), 5) == -signal.SIGKILL
