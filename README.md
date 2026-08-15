@@ -74,6 +74,8 @@ as open source.
 - OpenAI, for providing access to Codex through the
 [Codex for Open Source](https://developers.openai.com/community/codex-for-oss) program.
 
+This project was inspired by Andreas Klöckner's excellent [pudb](https://pypi.org/project/pudb/) debugger.
+
 ## Gallery
 <p align="center">
   <img src="https://github.com/AlDanial/tdb/blob/main/gallery/async_breakpoint.png" alt="at breakpoint" width="300">
