@@ -1,6 +1,8 @@
 """Terminal-mode (runInTerminal) launches of the bash adapter."""
 
 import asyncio
+import os
+import signal
 
 import pytest
 
@@ -20,11 +22,17 @@ class TerminalSpawner:
     async def __call__(self, body: dict) -> dict:
         self.requests.append(body)
         args = body["arguments"]
+        # start_new_session=True mirrors what a real terminal emulator does
+        # when it opens a new window/pty for the spawned command (a fresh
+        # session/process-group leader) -- see
+        # test_terminal_launch_window_close_reports_terminated below, which
+        # relies on this to kill the whole group at once.
         self.proc = await asyncio.create_subprocess_exec(
             *args["args"],
             cwd=args.get("cwd"),
             env=args.get("env") or None,
             stdin=asyncio.subprocess.DEVNULL,
+            start_new_session=True,
         )
         return {}
 
@@ -112,6 +120,48 @@ async def test_terminal_launch_terminate_kills_debuggee(client, tmp_path):
         await asyncio.sleep(0.1)
     else:
         pytest.fail(f"debuggee pid {pid} was not confirmed dead after terminate")
+
+
+async def test_terminal_launch_window_close_reports_terminated(client, tmp_path):
+    """Destroying the terminal window (as opposed to sending `terminate`)
+    must still resolve to terminated/exited instead of hanging forever.
+
+    Closing a real terminal window tears down its whole session -- the
+    wrapper shell AND the bash child it forked both die together (typically
+    via SIGHUP to the session's foreground process group). Killing only
+    spawner.proc's own pid would NOT reproduce that: the wrapper shell
+    forks bash and waits on it to capture $? for the exit-status file --
+    it does not exec it -- so bash would survive as an orphan, still
+    connected to the debug control channel, and nothing would ever fire.
+    Killing the whole process group (enabled by TerminalSpawner's
+    start_new_session above) is what "the window closed" actually means.
+    """
+    script = tmp_path / "long.sh"
+    script.write_text("x=1\nsleep 30\nx=2\n")
+    spawner = TerminalSpawner()
+    client.on_reverse_request = spawner
+    await client.request("initialize", {"supportsRunInTerminalRequest": True})
+    launch_fut = client.send(
+        "launch",
+        {
+            "program": str(script),
+            "args": [],
+            "cwd": str(tmp_path),
+            "stopOnEntry": True,
+            "console": "externalTerminal",
+        },
+    )
+    await client.wait_event("initialized")
+    await client.request("configurationDone")
+    assert (await asyncio.wait_for(launch_fut, 30))["success"] is True
+    await client.wait_event("stopped")
+    assert spawner.proc is not None
+
+    os.killpg(os.getpgid(spawner.proc.pid), signal.SIGKILL)
+
+    exited = await asyncio.wait_for(client.wait_event("exited"), 15)
+    assert exited["body"]["exitCode"] in (-1, -signal.SIGKILL)
+    await asyncio.wait_for(client.wait_event("terminated"), 15)
 
 
 async def test_terminal_launch_without_capability_fails(client, tmp_path):

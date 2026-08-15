@@ -1,6 +1,8 @@
 """Terminal-mode (runInTerminal) launches of the tcsh adapter."""
 
 import asyncio
+import os
+import signal
 
 import pytest
 
@@ -155,4 +157,65 @@ async def test_terminal_launch_terminate_kills_debuggee(
     else:
         pytest.fail(
             f"guardian pid {guardian_pid} was not confirmed dead after terminate"
+        )
+
+
+@pytest.mark.asyncio
+async def test_terminal_launch_window_close_reports_terminated(
+    dap_client: DAPClient, tcsh_path, tmp_path
+) -> None:
+    """Destroying the terminal window (as opposed to sending `terminate`)
+    must still resolve to terminated/exited instead of hanging forever.
+
+    Closing a real terminal window tears down its whole session -- the
+    guardian (session leader, per start_new_session=True below) and every
+    tcsh descendant it owns all die together (typically via SIGHUP to the
+    session's foreground process group). killpg on the guardian's own
+    process group reproduces that directly.
+    """
+    program = tmp_path / "long.csh"
+    program.write_text("set x = 1\nsleep 30\nset y = 2\n")
+    spawned: list[asyncio.subprocess.Process] = []
+
+    async def spawn(message):
+        args = message["arguments"]
+        assert args["kind"] == "external"
+        proc = await asyncio.create_subprocess_exec(
+            *args["args"],
+            cwd=args.get("cwd"),
+            env=args.get("env") or None,
+            stdin=asyncio.subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        spawned.append(proc)
+        return {}
+
+    dap_client.on_reverse_request = spawn
+    await dap_client.request(
+        "initialize",
+        {"adapterID": "tcsh", "supportsRunInTerminalRequest": True},
+    )
+    await dap_client.wait_for_event("initialized")
+    await dap_client.launch(
+        program, tcshPath=str(tcsh_path), console="externalTerminal"
+    )
+    await configure(dap_client)
+    await dap_client.wait_for_event("stopped")
+    assert spawned
+    guardian_pid = spawned[0].pid
+
+    os.killpg(os.getpgid(guardian_pid), signal.SIGKILL)
+
+    exited = await dap_client.wait_for_event("exited", timeout=15)
+    assert exited["body"]["exitCode"] in (-1, -signal.SIGKILL)
+    await dap_client.wait_for_event("terminated", timeout=15)
+
+    deadline = asyncio.get_running_loop().time() + 5
+    while asyncio.get_running_loop().time() < deadline:
+        if _process_is_gone(guardian_pid):
+            break
+        await asyncio.sleep(0.1)
+    else:
+        pytest.fail(
+            f"guardian pid {guardian_pid} was not confirmed dead after window close"
         )

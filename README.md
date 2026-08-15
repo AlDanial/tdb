@@ -235,8 +235,9 @@ process inspectors and wait graph, the evaluate console's trailing-`?` help,
 the post-mortem / `tdb.breakpoint()` hooks (those hooks live inside Python
 programs by nature). Remote attach (`-r`) also works for Perl (see
 [Perl](#perl), `Devel::TdbRemote` in place of `debugpy.listen()`), but not
-for C/C++, Bash, or Tcsh. `--terminal` is
-currently ignored for non-Python targets.
+for C/C++, Bash, or Tcsh. `--terminal` works for every launch-mode
+language — Python, Perl, Bash, Tcsh, and C/C++ via `--adapter lldb-dap` —
+see [External Terminal Support](#external-terminal-support).
 
 **Bash limitations (v1):** the bash adapter uses bash's own `DEBUG` trap and
 has a smaller feature envelope than Python/Perl:
@@ -298,6 +299,9 @@ See [Tcsh](#tcsh) below for launch details.
   commands, so evaluate expressions with an explicit `print`, e.g.
   `print x` rather than bare `x` (bare `x` collides with GDB's
   examine-memory command). `lldb-dap` evaluates bare expressions directly.
+- `--terminal` (see [External Terminal Support](#external-terminal-support))
+  requires `--adapter lldb-dap`; GDB's DAP mode has no terminal integration
+  and `tdb` refuses `--terminal` with the default `gdb` adapter.
 
 ### Perl
 
@@ -310,6 +314,9 @@ hood, so it works with any Perl already on the system.
 ```bash
 tdb script.pl
 ```
+
+`--terminal` is supported (see
+[External Terminal Support](#external-terminal-support)).
 
 **Compile-time code (`BEGIN` blocks):** Perl runs `BEGIN` blocks and the
 `use` statements that are themselves `BEGIN` blocks while it is still
@@ -432,7 +439,8 @@ Most notably, a breakpoint can't be set on a `func() {` line itself (the
 `DEBUG` trap never fires there), stops never land inside subshells or
 pipeline segments, child bash processes run uninstrumented, and only the
 innermost frame's locals are inspectable. There is no remote-attach mode for
-Bash.
+Bash. `--terminal` is supported (see
+[External Terminal Support](#external-terminal-support)).
 
 The Variables view shows three scopes for bash: Locals (innermost frame
 only), Globals (unexported shell variables), and Environment (exported
@@ -461,7 +469,8 @@ stack navigation across `source` nesting, variable inspection, and the
 evaluate console with the v1 caveats listed in
 [What works for non-Python languages](#what-works-for-non-python-languages),
 most notably: no conditional breakpoints, no pause of a free-running
-script, and stepping is per logical source line.
+script, and stepping is per logical source line. `--terminal` is supported
+(see [External Terminal Support](#external-terminal-support)).
 
 The Variables view shows four scopes for tcsh: Shell Variables (`set`),
 Environment (`setenv`), Aliases, and Arguments (`argv`). All of them show
@@ -939,19 +948,31 @@ application directory and a shared library directory) in one invocation.
 
 ### External Terminal Support
 
-Some Python programs, notably text user interfaces, use terminal control
-codes and require direct access to the terminal to function properly. 
-Such programs can be debugged with `tdb` by having it launch the debuggee in
-a separate terminal:
+Some programs, notably text user interfaces, use terminal control codes and
+require direct access to the terminal to function properly. Such programs
+can be debugged with `tdb` by having it launch the debuggee in a separate
+terminal:
 
 ```bash
 tdb --terminal xterm my_tui_app.py
 ```
 
-The debuggee runs in a separate window of the specified terminal. Supported choices:
+`--terminal` works for every language `tdb` can *launch* (as opposed to
+attach to): Python, Perl, Bash, Tcsh, and C/C++ via `--adapter lldb-dap`.
+The default C/C++ adapter, `gdb -i dap`, has no terminal integration --
+`tdb` rejects `--terminal` up front with an error pointing at
+`--adapter lldb-dap` instead. `--terminal` also only applies when `tdb`
+launches the program itself; it is rejected for remote-attach (`-r`), since
+there's no program for `tdb` to spawn a terminal around.
+
+The debuggee runs in a separate window of the specified terminal, including
+all of its stdin/stdout/stderr -- keyboard input, program output, and
+anything the program itself draws to the terminal all happen in that
+window, not in `tdb`'s Console View. Supported choices:
 `xterm`, `konsole`, `gnome-terminal`, `ghostty`, `kitty`, `iterm2`, `warp`,
 `wezterm`, `terminator`. The selected terminal must be on `PATH`. Debugging
-proceeds as usual in the terminal where `tdb` was invoked.
+(breakpoints, stepping, variable inspection, the evaluate console) proceeds
+as usual in the terminal where `tdb` was invoked.
 
 This feature only works in graphical environments where external terminals are available.
 
