@@ -600,3 +600,47 @@ class _QuitConfirmModal(ModalScreen):
 
     def action_cancel(self) -> None:
         self.dismiss(False)
+
+
+class _DetachQuitModal(ModalScreen):
+    """Adopted-session quit (tdb --run): detach & resume, or terminate.
+
+    `d`/`q` -> "detach" (default: program keeps running, tdb returns to
+    headless run mode), `t` -> "terminate", ESC cancels.
+    """
+
+    DEFAULT_CSS = """
+    _DetachQuitModal {
+        align: center middle;
+    }
+    _DetachQuitModal #dialog {
+        width: 56;
+        height: 7;
+        border: solid $warning;
+        background: $surface;
+        padding: 1 2;
+        content-align: center middle;
+    }
+    """
+
+    BINDINGS = [
+        Binding("d", "detach", "Detach", show=False),
+        Binding("q", "detach", "Detach", show=False),
+        Binding("t", "terminate", "Terminate", show=False),
+        Binding("escape", "cancel", "Cancel", show=False),
+    ]
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="dialog"):
+            yield Static("[bold]d[/bold]: detach & resume program", markup=True)
+            yield Static("[bold]t[/bold]: terminate program & quit", markup=True)
+            yield Static("[dim]ESC: cancel[/dim]", markup=True)
+
+    def action_detach(self) -> None:
+        self.dismiss("detach")
+
+    def action_terminate(self) -> None:
+        self.dismiss("terminate")
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)

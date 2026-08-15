@@ -19,6 +19,7 @@ from textual.widgets._tree import TreeNode
 from tdb.app_handlers.routing import _AppMessageRoutes
 from tdb.languages.base import AdapterNotFoundError
 from tdb.session.controller import DebugController
+from tdb.session.messages import DapStopped
 from tdb.session.textual_handler import TextualEventHandler
 from tdb.keybindings import KeybindingConfig
 from tdb.widgets.breakpoint_view import BreakpointView
@@ -29,6 +30,7 @@ from tdb.widgets.menu_bar import MenuBar, _MenuDropdown
 from tdb.widgets.modals import (
     DEFAULT_TRACEBACK_HEADER,
     _AboutModal,
+    _DetachQuitModal,
     _DocumentationModal,
     _KeybindingsModal,
     _OpenFileModal,
@@ -52,6 +54,7 @@ from tdb import __version__ as tdb_version
 
 if TYPE_CHECKING:
     from tdb.languages.base import LanguageProfile
+    from tdb.session.event_bus import SwappableEventHandler
 
 log = logging.getLogger(__name__)
 
@@ -189,6 +192,9 @@ class TdbApp(_AppMessageRoutes, App):
         post_mortem_snapshot: dict | None = None,
         profile: "LanguageProfile | None" = None,
         recorder: object | None = None,
+        adopted_controller: "DebugController | None" = None,
+        adopted_handler: "SwappableEventHandler | None" = None,
+        adopted_stop: tuple | None = None,
     ) -> None:
         super().__init__()
         self._program = program
@@ -232,8 +238,23 @@ class TdbApp(_AppMessageRoutes, App):
             self._server_handler = None
             self._event_handler = self._textual_handler
 
-        self.controller = DebugController(self._event_handler, profile=self._profile)
-        self.controller.step_mode = self._config.step_mode
+        self._adopted = adopted_controller is not None
+        self._adopted_handler = adopted_handler
+        self._adopted_stop = adopted_stop
+        # Set by the detach path; read by run_mode after run_async returns.
+        self.detach_and_resume = False
+        if adopted_controller is not None:
+            # Run-mode episode: reuse the live session. The swappable
+            # handler flips from the console printer to the TUI here;
+            # the debuggee is paused, so no events race the swap.
+            assert adopted_handler is not None
+            self.controller = adopted_controller
+            adopted_handler.retarget(self._textual_handler)
+        else:
+            self.controller = DebugController(
+                self._event_handler, profile=self._profile
+            )
+            self.controller.step_mode = self._config.step_mode
         self._stderr_buffer: list[str] = []
         # Populated by _start_session on a fatal startup error (e.g.,
         # remote-attach connection refused). Read by cli._run_tui after
@@ -323,6 +344,20 @@ class TdbApp(_AppMessageRoutes, App):
 
         if self._post_mortem_snapshot is not None:
             self._enter_post_mortem(code_view)
+            return
+
+        if self._adopted:
+            code_view.focus()
+            # Load saved breakpoints once per run-mode process: episode 2+
+            # inherits live state from episode 1 and must not re-merge.
+            program_key = str(Path(self._program).resolve()) if self._program else ""
+            saved = load_breakpoints(program=program_key) if program_key else {}
+            if saved and not self.controller.state.breakpoints:
+                self.controller.state.breakpoints = saved
+            if self.controller.state.breakpoints:
+                bp_view = self.query_one("#breakpoint-view", BreakpointView)
+                bp_view.update_breakpoints(self.controller.state.breakpoints)
+            self._adopt_session()
             return
 
         if self._program:
@@ -424,6 +459,31 @@ class TdbApp(_AppMessageRoutes, App):
     def on_code_view_mode_changed(self, message: CodeView.ModeChanged) -> None:
         code_view = self.query_one("#code-view", CodeView)
         self._update_code_title(code_view)
+
+    @work(exclusive=True)
+    async def _adopt_session(self) -> None:
+        """Bring the adopted (already stopped) session into the UI.
+
+        Pushes any saved breakpoints (the session was configured with
+        none), then replays the recorded stop through the normal
+        DapStopped pipeline so the code/stack/variable views populate
+        exactly as they would for a live stop event.
+        """
+        try:
+            await self.controller.push_all_breakpoints()
+        except Exception:
+            log.exception("push_all_breakpoints failed during adoption")
+        stop = self._adopted_stop
+        if stop is None and self.controller.state.current_thread_id is not None:
+            stop = (
+                self.controller.state.current_thread_id,
+                self.controller.state.stop_reason or "pause",
+                None,
+                None,
+            )
+        if stop is not None:
+            thread_id, reason, description, text = stop
+            self.post_message(DapStopped(thread_id, reason, description, text))
 
     @work(exclusive=True)
     async def _start_session(self) -> None:
@@ -1490,6 +1550,11 @@ class TdbApp(_AppMessageRoutes, App):
         self.query_one("#breakpoint-view", BreakpointView).focus()
 
     async def action_quit_debugger(self) -> None:
+        if self._adopted:
+            # Adopted sessions route EVERY quit path — Ctrl+Q included —
+            # through the detach/terminate choice.
+            self.action_confirm_quit()
+            return
         # Idempotent: Ctrl+Q and the q-confirm path both land here, and
         # `controller.stop()` can take a moment when many child DAP
         # sessions need to be torn down — without this guard, a second
@@ -1506,6 +1571,29 @@ class TdbApp(_AppMessageRoutes, App):
         await self.controller.stop()
         if hasattr(self, "_uvicorn_server"):
             self._uvicorn_server.should_exit = True
+        self.exit()
+
+    async def _detach_and_exit(self) -> None:
+        """Leave the debuggee running; run_mode resumes it after exit."""
+        if self._is_quitting:
+            return
+        self._is_quitting = True
+        self.recorder.record("quit", [])
+        if self._program:
+            program_key = str(Path(self._program).resolve())
+            save_breakpoints(self.controller.state.breakpoints, program=program_key)
+        self.detach_and_resume = True
+        self.exit()
+
+    async def _terminate_and_exit(self) -> None:
+        if self._is_quitting:
+            return
+        self._is_quitting = True
+        self.recorder.record("quit", [])
+        if self._program:
+            program_key = str(Path(self._program).resolve())
+            save_breakpoints(self.controller.state.breakpoints, program=program_key)
+        await self.controller.stop()
         self.exit()
 
     # Threshold for what counts as a "render frame" vs a "control sequence"
@@ -1583,6 +1671,19 @@ class TdbApp(_AppMessageRoutes, App):
         self._print_error_renderables()
 
     def action_confirm_quit(self) -> None:
+        if self._adopted:
+            if isinstance(self.screen, _DetachQuitModal):
+                return
+
+            def on_dismiss_adopted(result: str | None) -> None:
+                if result == "detach":
+                    self.run_worker(self._detach_and_exit())
+                elif result == "terminate":
+                    self.run_worker(self._terminate_and_exit())
+
+            self.push_screen(_DetachQuitModal(), callback=on_dismiss_adopted)
+            return
+
         # Don't reopen the modal once a quit is already in flight; also
         # don't double-push it if it's currently the active screen.
         if self._is_quitting or isinstance(self.screen, _QuitConfirmModal):
