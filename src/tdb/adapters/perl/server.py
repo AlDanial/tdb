@@ -56,6 +56,12 @@ class PerlDapServer:
         self._stop_on_entry = True
         self._classifying = False
         self._pause_pending = False
+        # (file, line) the debuggee was stopped at when the user issued
+        # the last step command (n/s/r) -- None after a continue or once
+        # consumed. Lets _classify_and_emit_stop coalesce the several
+        # same-line stops one source statement generates during perl's
+        # compile phase (see _coalesce_compile_phase_step).
+        self._step_origin: tuple | None = None
         # (local, remote) pairs, longest-prefix-first translation. Empty
         # by default (no-op) unless attach carries pathMappings.
         self._path_map: list[tuple[str, str]] = []
@@ -455,7 +461,14 @@ class PerlDapServer:
                 log.error("location() failed after stop: %s", e)
                 return None
             file = loc.get("file") or ""
-            if "TdbCompile.pm" not in file:
+            # `shim` is helpers.pl's report that the PHYSICAL stop is
+            # inside Devel::TdbCompile even though the file/line shown
+            # belong to the caller (_user_frames hides shim frames, which
+            # also hid them from the plain file-name check here -- the
+            # self-uninstall leak then surfaced as a duplicate stop on
+            # the first RUN-phase line). Falsy/absent on older
+            # helpers.pl: degrades to the file-name check alone.
+            if "TdbCompile.pm" not in file and not loc.get("shim"):
                 return loc
             log.warning("stray stop inside TdbCompile.pm; stepping past it")
             try:
@@ -674,6 +687,7 @@ class PerlDapServer:
             if self.session is None:
                 return
             loc = await self._location_after_settling()
+            loc = await self._coalesce_compile_phase_step(loc)
             if loc is None or loc.get("file") == "?":
                 # perl5db's "ended" state: the debuggee ran to completion and
                 # perl5db parked at a live prompt without closing the socket
@@ -762,6 +776,61 @@ class PerlDapServer:
         finally:
             self._classifying = False
 
+    async def _coalesce_compile_phase_step(self, loc: dict | None) -> dict | None:
+        """Collapse the several same-line stops one source statement
+        generates during perl's compile phase into a single user-visible
+        step.
+
+        With the Devel::TdbCompile shim armed, perl5db traps every
+        compile-time internal operation of the target file: a single
+        `use` statement expands into loading the module and invoking its
+        import logic, so one displayed line yields several traps in a
+        row, all reporting the same file and line. Reporting each as its
+        own DAP stop meant one user `next` appeared to do nothing --
+        advancing past a `use` line took several presses.
+
+        So: when classifying the stop that answers a user step command
+        (n/s/r -- self._step_origin records where it started), and the
+        debuggee is still in phase START but sitting on the SAME file
+        and line it started from, keep issuing internal `n` commands
+        until the line changes. Guards, in order:
+
+        - Never during RUN phase: a one-line loop body legitimately
+          re-stops on the same line there, and skipping its iterations
+          would be wrong. Compile-phase-only, exactly as recommended in
+          the root-cause analysis (a one-line loop INSIDE a BEGIN block
+          would still be coalesced -- accepted trade-off).
+        - Never past a breakpoint or pending pause: those stops carry
+          meaning even on an unchanged line, so they surface as-is.
+        - Bounded, so a malformed or debugger-specific stop sequence
+          can't spin forever; on hitting the bound the current location
+          is reported as a normal stop (visible, not hung).
+
+        Consumes _step_origin (one coalesce per user step) and returns
+        the final location the classification should report.
+        """
+        origin, self._step_origin = self._step_origin, None
+        if origin is None or loc is None or self.session is None:
+            return loc
+        for _ in range(50):
+            if (loc.get("file"), loc.get("line")) != origin:
+                break
+            if self._pause_pending:
+                break
+            if loc.get("line") in self.breakpoint_lines.get(loc.get("file"), set()):
+                break
+            if await self._current_phase() != "START":
+                break
+            try:
+                await self.session.command("n")
+            except PerlProtocolError as e:
+                log.error("compile-phase step coalescing failed: %s", e)
+                break
+            loc = await self._location_after_settling()
+            if loc is None:
+                break
+        return loc
+
     async def _on_threads(self, request: Request) -> None:
         self.send_response(request, {"threads": [{"id": 1, "name": "main"}]})
 
@@ -785,6 +854,18 @@ class PerlDapServer:
         if reason is not None:
             self.send_error(request, reason)
             return
+        # Step commands (n/s/r) remember where they started so
+        # _classify_and_emit_stop can coalesce compile-phase stops that
+        # land back on this same line; `c` must never coalesce (a
+        # breakpoint in a one-line loop legitimately re-fires on the
+        # same line), so it clears the origin instead.
+        if cmd != "c" and self.current_stop is not None:
+            self._step_origin = (
+                self.current_stop.get("file"),
+                self.current_stop.get("line"),
+            )
+        else:
+            self._step_origin = None
         self.current_stop = None
         self.send_response(request)
         self.send_event("continued", {"threadId": 1, "allThreadsContinued": True})
