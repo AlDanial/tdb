@@ -110,6 +110,7 @@ def build_python_profile(
             compute_step_units=compute_step_units,
             child_process_strategy="debugpy",
             task_inspection=True,
+            pause_while_running=True,
         ),
     )
 

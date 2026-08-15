@@ -98,5 +98,5 @@ def build_perl_profile(
         presentation=Presentation(
             lexer="perl", parse_error=parse_perl_error, frame_placeholder="main"
         ),
-        capabilities=ProfileCapabilities(),
+        capabilities=ProfileCapabilities(pause_while_running=True),
     )
