@@ -1073,7 +1073,19 @@ class DebugSession:
             descriptor = self._guardian_control_descriptor
             if descriptor is None:
                 raise RuntimeError("guardian control descriptor is closed")
-            os.write(descriptor, b"terminate\n")
+            try:
+                os.write(descriptor, b"terminate\n")
+            except OSError:
+                # Can't signal the guardian in-band at all -- in terminal
+                # mode this is the only place with any independent OS-level
+                # handle on it (self._process_group_id, adopted from the
+                # guardian's own "pid " status line during the handshake),
+                # so fall it back to a direct SIGKILL rather than leaving
+                # the debuggee to run unsupervised. Still re-raise: callers
+                # (e.g. _stop_process_group) need to know the clean in-band
+                # handshake didn't happen.
+                self._force_kill_terminal_guardian()
+                raise
             try:
                 # In terminal mode _monitor_terminal() owns the status
                 # descriptor (it's the one reading the guardian's status
@@ -1092,6 +1104,11 @@ class DebugSession:
                         timeout=_TERMINATE_TIMEOUT_SECONDS + 1,
                     )
             except TimeoutError as error:
+                # The in-band acknowledgement never arrived -- same
+                # last-resort force-kill as the write failure above (see
+                # its comment); the guardian may simply be wedged or the
+                # client-spawned process tree may be unresponsive.
+                self._force_kill_terminal_guardian()
                 raise TimeoutError(
                     "guardian termination acknowledgement timed out"
                 ) from error
@@ -1107,6 +1124,34 @@ class DebugSession:
                 raise failure
             self._guardian_termination_status = status
             return status
+
+    def _force_kill_terminal_guardian(self) -> None:
+        """Last-resort SIGKILL of the guardian's own process group, used
+        only when the in-band control-FIFO route has just failed (the
+        `terminate\\n` write itself raised, or the acknowledgement never
+        arrived) -- see the two call sites in _request_guardian_termination.
+
+        Terminal mode only: `self._process_group_id` holds the *adopted
+        guardian pid* there (start()'s handshake reads a `pid <pid>` status
+        line and assigns it), and the guardian is its own session/
+        process-group leader (it never calls setsid/setpgid itself, but
+        whatever spawned it -- a real terminal emulator, or this task's
+        test harness passing start_new_session=True -- put it in a fresh
+        one), so killpg reaches it directly even though the adapter never
+        held it as a reapable child. Pipe mode has `self.process` (a real
+        subprocess.Process) to fall back on instead and isn't handled
+        here -- this is deliberately narrow, matching the in-band route's
+        being tried first and this being reached only on its failure.
+        """
+        if not self.config.external_terminal:
+            return
+        process_group_id = self._process_group_id
+        if process_group_id is None:
+            return
+        try:
+            os.killpg(process_group_id, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
 
     async def _read_guardian_status(self) -> bytes:
         deadline: float | None = None
@@ -1154,6 +1199,9 @@ class DebugSession:
             self._guardian_status_buffer.extend(chunk)
 
     def _close_guardian_descriptors(self) -> None:
+        if self.config.external_terminal:
+            self._abandon_terminal_guardian()
+            return
         for attribute in (
             "_guardian_control_descriptor",
             "_guardian_status_descriptor",
@@ -1164,6 +1212,83 @@ class DebugSession:
             setattr(self, attribute, None)
             try:
                 os.close(descriptor)
+            except OSError:
+                pass
+
+    def _abandon_terminal_guardian(self) -> None:
+        """Release the guardian FIFO descriptors for a terminal-mode
+        session without ever leaving a still-running, client-spawned
+        guardian process permanently blocked inside its own
+        `os.open(control_path, os.O_RDONLY)`.
+
+        The guardian may be in one of three states when a terminal-mode
+        start() aborts (fails or is cancelled) or the session otherwise
+        tears down: (a) it hasn't even reached its own
+        `os.open(status_path, os.O_WRONLY)` yet (still starting up), (b)
+        it's between that open and its `os.open(control_path,
+        os.O_RDONLY)` -- or literally blocked inside the latter -- or (c)
+        it's already past both opens and reading its own control loop.
+        `self._guardian_control_descriptor` is opened O_RDWR (see
+        start()), which means it ALWAYS counts as both a reader and a
+        writer for that FIFO from the kernel's point of view -- while it
+        stays open, ANY blocking open() of the same path by another
+        process (state (b)) is satisfied immediately by our fd being
+        present, and a write here is always legal (state (c) has
+        something to read it; even (b), not yet reading, still has our fd
+        as "a reader" so the write doesn't raise EPIPE). The bug this
+        fixes: the previous code closed control THEN status THEN (later,
+        via _remove_owned_workspace) unlinked the FIFOs -- so a guardian
+        in state (b) whose open() call hadn't happened yet by the time we
+        closed our own fd would block forever on a path that, once
+        unlinked, can never gain a fresh writer either (unlink doesn't
+        wake an already-blocked open(), and no NEW open by path is
+        possible once the guardian's own os.open() call resolved the
+        directory entry before the unlink -- moot for a fresh call, fatal
+        for one already waiting).
+
+        Fix, in order (all synchronous, none of this ever waits on the
+        guardian -- an unreachable/never-connecting guardian, state (a),
+        must not be able to hang cleanup on our side either):
+        1. Best-effort write "terminate\\n" into the still-open control
+           descriptor. A guardian already reading its control loop (state
+           (c)) sees it directly; one that's about to open (state (b))
+           finds it queued the instant it does.
+        2. Unlink both FIFO paths now, NOT later in
+           _remove_owned_workspace() -- while our control descriptor is
+           STILL open. This closes the remaining gap for a guardian in
+           state (b) that hasn't reached its control-path open() yet by
+           this point: once it does, either our fd is still open (below)
+           and satisfies it, or the path is already gone and it gets
+           ENOENT -- a crash, not a wedge, "proceeding to its own exit"
+           just as ungracefully as state (a) reaching a now-unlinked
+           status_path does.
+        3. Close status.
+        4. Close control LAST -- only after every state above already had
+           its chance to either see the terminate command or fail fast.
+        """
+        control_descriptor = self._guardian_control_descriptor
+        if control_descriptor is not None:
+            try:
+                os.write(control_descriptor, b"terminate\n")
+            except OSError:
+                pass
+        if self.workspace is not None and self._workspace_descriptor is not None:
+            for name in ("guardian-status.fifo", "guardian-control.fifo"):
+                try:
+                    os.unlink(name, dir_fd=self._workspace_descriptor)
+                except OSError:
+                    pass
+        status_descriptor = self._guardian_status_descriptor
+        self._guardian_status_descriptor = None
+        if status_descriptor is not None:
+            try:
+                os.close(status_descriptor)
+            except OSError:
+                pass
+        self._guardian_control_descriptor = None
+        if control_descriptor is not None:
+            try:
+                os.close(control_descriptor)
             except OSError:
                 pass
 
