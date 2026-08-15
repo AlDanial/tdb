@@ -239,6 +239,55 @@ async def test_begin_breakpoint_does_not_refire_on_next_continue(tmp_path):
         await c.stop()
 
 
+MANY_USES = """use strict;
+use warnings;
+use File::Basename;
+use File::Spec;
+
+BEGIN {
+    my $x = 10;
+    print STDERR "begin $x\\n";
+}
+
+my $b = 20;
+print STDERR "main $b\\n";
+"""
+
+
+async def test_one_next_advances_one_displayed_line_during_compile_phase(tmp_path):
+    """Regression: perl5db traps several compile-time internal operations
+    per source statement (a `use` expands into load + import), all
+    reporting the same line. Each such trap used to surface as its own
+    DAP stop, so advancing past one `use` line took several `next`
+    presses. One user `next` must land on a DIFFERENT displayed line."""
+    c, prog = await _launch(tmp_path, MANY_USES)
+    try:
+        prev = await _where(c)
+        visited = [prev[1]]
+        for _ in range(10):
+            await c.request("next", {"threadId": 1})
+            try:
+                await c.wait_event("stopped", timeout=20)
+            except AssertionError:
+                break  # ran to completion -- fine, no repeats seen
+            cur = await _where(c)
+            assert (cur[0], cur[1]) != (prev[0], prev[1]), (
+                f"one `next` did not advance the displayed line: stuck at "
+                f"{cur[0]}:{cur[1]}; lines visited so far: {visited}"
+            )
+            visited.append(cur[1])
+            prev = cur
+            # Step PAST the first runtime line (11, `my $b = 20;`): the
+            # START->RUN transition used to leak one extra same-line stop
+            # there (the shim's self-uninstall trap, reported under the
+            # caller's file:line), costing a duplicate `next` press.
+            if cur[1] >= 12:
+                break
+        assert 12 in visited, f"never crossed into the runtime lines: {visited}"
+    finally:
+        await c.stop()
+
+
 RUNTIME_LINE_BEFORE_LATER_BEGIN = """use strict;
 use warnings;
 

@@ -87,6 +87,27 @@ sub _user_frames {
     return @frames;
 }
 
+# True when the PHYSICAL innermost frame -- before _user_frames'
+# adapter-frame skipping -- is inside Devel::TdbCompile: the shim's
+# self-uninstall trap at the START->RUN transition (see TdbCompile.pm's
+# header). _user_frames deliberately hides that frame so the Stack View
+# stays clean, but that also hid it from server.py's auto-step-past-shim
+# backstop in _location_after_settling: the leak stop then reported the
+# CALLER's file:line and surfaced as a duplicate user-visible stop on
+# the first RUN-phase line. location() carries this as `shim` so the
+# backstop can fire.
+sub _stopped_in_shim {
+    my $i = 0;
+    while ( my @c = caller($i) ) {
+        my ( $pkg, $file ) = @c[ 0, 1 ];
+        $i++;
+        next if $pkg =~ /\A(?:DB\b|Devel::TdbHelper)/;
+        next if $file =~ /\(eval \d+\)/;
+        return $pkg =~ /\ADevel::TdbCompile/ ? 1 : 0;
+    }
+    return 0;
+}
+
 sub location {
     eval {
         %REG     = ();
@@ -99,6 +120,7 @@ sub location {
                 file    => $top->[0],
                 line    => $top->[1] + 0,
                 sub     => $top->[2],
+                shim    => _stopped_in_shim(),
             }
         );
         1;
