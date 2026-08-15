@@ -9,16 +9,19 @@ import dataclasses
 import logging
 import os
 import re
+import shlex
 import shutil
 import signal
 import tempfile
-from typing import Callable
+from typing import Awaitable, Callable
 
 from tdb.adapters.bash.declares import BashVar, parse_declares
 
 log = logging.getLogger(__name__)
 
 HARNESS = os.path.join(os.path.dirname(__file__), "tdb_harness.sh")
+
+RunInTerminal = Callable[[list[str], str, dict[str, str]], Awaitable[None]]
 
 # Large `globals`/`eval`/`locals` payloads (base64-encoded) can comfortably
 # exceed asyncio.StreamReader's default 64KiB readline limit; give the
@@ -155,8 +158,11 @@ class BashSession:
         self._req_id = 0  # monotonic REQUEST id counter
         self._ready: asyncio.Future | None = None
         self._tasks: list[asyncio.Task] = []
+        self._resp_loop_task: asyncio.Task | None = None
         self._tmpdir: tempfile.TemporaryDirectory | None = None
         self._stderr_tail = ""  # last stderr bytes, for pre-ready failures
+        self.debuggee_pid: int | None = None
+        self._exit_status_path: str | None = None
         # annotation only (script-touched marker in environment_vars()) --
         # does NOT affect the Globals/Environment split.
         self._launch_env_snapshot: dict[str, str] = {}
@@ -169,6 +175,7 @@ class BashSession:
         cwd: str,
         env: dict | None,
         bash: str = "bash",
+        run_in_terminal: RunInTerminal | None = None,
     ) -> None:
         if os.name == "nt":
             raise BashProtocolError(
@@ -191,14 +198,42 @@ class BashSession:
         self._ready = loop.create_future()
         self.launch_cwd = os.path.abspath(cwd)
         self._tmpdir = tempfile.TemporaryDirectory(prefix="tdb-bash-")
-        cmd_r, cmd_w = os.pipe()  # adapter writes, bash reads
-        resp_r, resp_w = os.pipe()  # bash writes, adapter reads
-        os.set_inheritable(cmd_r, True)
-        os.set_inheritable(resp_w, True)
+        # FIFOs (not inherited pipe fds) so the channel survives a terminal
+        # emulator spawning the debuggee: the adapter opens the command
+        # FIFO O_RDWR itself so the harness's read-open (`exec {fd}<path`)
+        # can never block and the FIFO never EOFs while the session lives;
+        # the response FIFO is opened read-only non-blocking so the
+        # harness's write-open never blocks, while EOF still arrives once
+        # bash and every fd-inheriting child have exited -- exactly like
+        # the pipe it replaces.
+        cmd_path = os.path.join(self._tmpdir.name, "cmd.fifo")
+        resp_path = os.path.join(self._tmpdir.name, "resp.fifo")
+        os.mkfifo(cmd_path, 0o600)
+        os.mkfifo(resp_path, 0o600)
+        cmd_w = os.open(cmd_path, os.O_RDWR | os.O_CLOEXEC)
+        resp_r = os.open(resp_path, os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC)
+        # Portability mitigation: hold our own O_WRONLY fd on the response
+        # FIFO from before the child spawns until the `ready` handshake
+        # resolves (closed in the try/finally around the ready-wait below).
+        # This open cannot block -- resp_r above already holds a reader
+        # open. On Linux, a reader-only FIFO opened O_NONBLOCK simply never
+        # reports EOF/EPOLLHUP while writer-less, so the gap between this
+        # open() and the harness's own write-open is currently harmless
+        # there -- but that's a kernel-specific quirk, not POSIX. On
+        # macOS/kqueue (and potentially other non-Linux kernels), the
+        # writer-less-FIFO EOF can fire immediately, which _resp_loop's
+        # readline() would read as EOF and treat as "bash exited" before
+        # the harness ever got a chance to report ready -- killing every
+        # bash session, pipe-mode included, not just --terminal ones.
+        # Guaranteeing a writer exists from before the child spawns
+        # restores the pre-branch semantics of the pipe this FIFO
+        # replaces; real EOF detection after `ready` is unaffected since
+        # the harness's own writer fd is open by then.
+        resp_w_holder = os.open(resp_path, os.O_WRONLY | os.O_CLOEXEC)
         child_env = dict(env or os.environ)
         child_env["BASH_ENV"] = HARNESS
-        child_env["__TDB_CMD_FD"] = str(cmd_r)
-        child_env["__TDB_RESP_FD"] = str(resp_w)
+        child_env["__TDB_CMD_PATH"] = cmd_path
+        child_env["__TDB_RESP_PATH"] = resp_path
         child_env["__TDB_TMP"] = self._tmpdir.name
         # Snapshot the exact env passed to the subprocess, for the
         # script-touched annotation in environment_vars() ONLY -- it does
@@ -206,41 +241,65 @@ class BashSession:
         # unexported vs exported). The harness/__TDB_* keys are harmless
         # here -- they're prefix-filtered out of environment_vars() anyway.
         self._launch_env_snapshot = dict(child_env)
-        self._process = await asyncio.create_subprocess_exec(
-            bash_path,
-            program,
-            *args,
-            cwd=cwd,
-            env=child_env,
-            stdin=asyncio.subprocess.DEVNULL,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            start_new_session=True,
-            pass_fds=(cmd_r, resp_w),
-        )
-        os.close(cmd_r)
-        os.close(resp_w)
+        if run_in_terminal is not None:
+            self._exit_status_path = os.path.join(self._tmpdir.name, "exit-status")
+            command = [bash_path, program, *args]
+            wrapped = [
+                "/bin/sh",
+                "-c",
+                f"{shlex.join(command)}; printf %s $? > "
+                f"{shlex.quote(self._exit_status_path)}",
+            ]
+            await run_in_terminal(wrapped, cwd, child_env)
+        else:
+            self._process = await asyncio.create_subprocess_exec(
+                bash_path,
+                program,
+                *args,
+                cwd=cwd,
+                env=child_env,
+                stdin=asyncio.subprocess.DEVNULL,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                start_new_session=True,
+            )
         self._cmd_w = cmd_w
         self._resp_reader = asyncio.StreamReader(limit=_RESP_LIMIT)
         transport, _ = await loop.connect_read_pipe(
             lambda: asyncio.StreamReaderProtocol(self._resp_reader),
             os.fdopen(resp_r, "rb"),
         )
-        self._tasks = [
-            asyncio.create_task(self._resp_loop()),
-            asyncio.create_task(self._pump(self._process.stdout, "stdout")),
-            asyncio.create_task(self._pump(self._process.stderr, "stderr")),
-            asyncio.create_task(self._reap()),
-        ]
+        self._resp_loop_task = asyncio.create_task(self._resp_loop())
+        if run_in_terminal is not None:
+            self._tasks = [
+                self._resp_loop_task,
+                asyncio.create_task(self._terminal_exit_watch()),
+            ]
+        else:
+            self._tasks = [
+                self._resp_loop_task,
+                asyncio.create_task(self._pump(self._process.stdout, "stdout")),
+                asyncio.create_task(self._pump(self._process.stderr, "stderr")),
+                asyncio.create_task(self._reap()),
+            ]
         try:
-            await asyncio.wait_for(self._ready, 15.0)
-        except (asyncio.TimeoutError, BashProtocolError) as e:
-            await self.stop()
-            if isinstance(e, BashProtocolError):
-                raise
-            raise BashProtocolError(
-                "the bash harness never reported ready — is bash hung during startup?"
-            )
+            try:
+                await asyncio.wait_for(
+                    self._ready, 30.0 if run_in_terminal is not None else 15.0
+                )
+            except (asyncio.TimeoutError, BashProtocolError) as e:
+                await self.stop()
+                if isinstance(e, BashProtocolError):
+                    raise
+                message = (
+                    "the bash harness never reported ready — "
+                    "is bash hung during startup?"
+                )
+                if run_in_terminal is not None:
+                    message += " — did the external terminal window open?"
+                raise BashProtocolError(message)
+        finally:
+            os.close(resp_w_holder)
         self.stopped = True  # config phase
 
     async def _pump(self, stream: asyncio.StreamReader, category: str) -> None:
@@ -301,6 +360,39 @@ class BashSession:
             self._pending.set_exception(BashProtocolError("debuggee exited"))
         self._on_exit(code)
 
+    async def _terminal_exit_watch(self) -> None:
+        """The `_reap()` equivalent for terminal-mode launches, where the
+        debuggee is spawned by the client (not an owned child of this
+        process): the response FIFO's EOF is our only signal bash (and
+        every fd-inheriting descendant) is gone, and the wrapper script's
+        exit-status file (written by launch()'s /bin/sh wrapper) is the
+        only way to learn its real exit code.
+        """
+        assert self._resp_loop_task is not None
+        await self._resp_loop_task  # returns on response-FIFO EOF
+        code = -1
+        deadline = asyncio.get_running_loop().time() + 2.0
+        while asyncio.get_running_loop().time() < deadline:
+            try:
+                text = open(self._exit_status_path).read().strip()
+            except OSError:
+                text = ""
+            if text:
+                code = int(text)
+                break
+            await asyncio.sleep(0.05)
+        self.exit_code = code
+        if self._ready and not self._ready.done():
+            self._ready.set_exception(
+                BashProtocolError(
+                    "bash exited before the harness reported ready (external terminal)"
+                )
+            )
+            return
+        if self._pending and not self._pending.done():
+            self._pending.set_exception(BashProtocolError("debuggee exited"))
+        self._on_exit(code)
+
     async def _resp_loop(self) -> None:
         while True:
             line = await self._resp_reader.readline()
@@ -312,6 +404,7 @@ class BashSession:
                     continue
                 kind = fields[0]
                 if kind == "ready":
+                    self.debuggee_pid = int(fields[1]) if len(fields) > 1 else None
                     if self._ready and not self._ready.done():
                         self._ready.set_result(None)
                 elif kind == "stopped":
@@ -402,6 +495,17 @@ class BashSession:
                 pass
             if self._process.returncode is None:
                 await self._process.wait()
+        if self._process is None and self.debuggee_pid is not None:
+            # Terminal mode: the debuggee is not our child (the client
+            # spawned it), so there's no process group to killpg -- it
+            # shares the terminal emulator's group, not ours. Plain kill
+            # by pid only, same as perl Task 6.
+            for sig in (signal.SIGTERM, signal.SIGKILL):
+                try:
+                    os.kill(self.debuggee_pid, sig)
+                except (ProcessLookupError, PermissionError):
+                    break
+                await asyncio.sleep(0.05)
         if self._cmd_w is not None:
             try:
                 os.close(self._cmd_w)

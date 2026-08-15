@@ -47,6 +47,7 @@ def test_launch_body_defaults():
         "args": ["a"],
         "cwd": "/tmp",
         "stopOnEntry": True,
+        "console": "internal",
     }
 
 
@@ -64,6 +65,20 @@ def test_launch_body_env_and_bash_override():
     assert body["env"] == {"K": "V"}
     assert body["bash"] == "/opt/bash"
     assert body["stopOnEntry"] is False
+
+
+def test_launch_body_carries_console():
+    profile = registry.resolve("bash")
+    body = profile.adapter.launch_body(
+        program="/tmp/x.sh",
+        args=[],
+        cwd="/tmp",
+        env=None,
+        stop_on_entry=True,
+        console="externalTerminal",
+        opts={},
+    )
+    assert body["console"] == "externalTerminal"
 
 
 def test_unknown_adapter_rejected():

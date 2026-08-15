@@ -62,6 +62,7 @@ def test_launch_body_defaults():
         "args": ["a"],
         "cwd": "/tmp",
         "stopOnEntry": True,
+        "console": "internal",
     }
 
 
@@ -85,6 +86,20 @@ def test_no_remote_attach():
     profile = registry.resolve("tcsh")
     with pytest.raises(LanguageNotSupportedError):
         profile.adapter.attach_body(host="localhost", port=5678, opts={})
+
+
+def test_launch_body_carries_console():
+    profile = registry.resolve("tcsh")
+    body = profile.adapter.launch_body(
+        program="/tmp/x.csh",
+        args=[],
+        cwd="/tmp",
+        env=None,
+        stop_on_entry=True,
+        console="externalTerminal",
+        opts={},
+    )
+    assert body["console"] == "externalTerminal"
 
 
 def test_unknown_adapter_rejected():

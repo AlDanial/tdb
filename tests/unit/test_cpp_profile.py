@@ -132,3 +132,42 @@ def test_gdb_launch_body():
         "cwd": "/x",
         "stopAtBeginningOfMainSubprogram": True,
     }
+
+
+def test_lldb_launch_body_external_terminal_sets_run_in_terminal() -> None:
+    body = LldbDapAdapter().launch_body(
+        program="/bin/x",
+        args=[],
+        cwd="/",
+        env=None,
+        stop_on_entry=False,
+        console="externalTerminal",
+        opts={},
+    )
+    assert body["runInTerminal"] is True
+
+
+def test_lldb_launch_body_internal_console_omits_run_in_terminal() -> None:
+    body = LldbDapAdapter().launch_body(
+        program="/bin/x",
+        args=[],
+        cwd="/",
+        env=None,
+        stop_on_entry=False,
+        console="internalConsole",
+        opts={},
+    )
+    assert "runInTerminal" not in body
+
+
+def test_gdb_launch_body_rejects_external_terminal() -> None:
+    with pytest.raises(LanguageNotSupportedError, match="lldb-dap"):
+        GdbDapAdapter().launch_body(
+            program="/bin/x",
+            args=[],
+            cwd="/",
+            env=None,
+            stop_on_entry=False,
+            console="externalTerminal",
+            opts={},
+        )

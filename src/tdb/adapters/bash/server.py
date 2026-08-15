@@ -15,6 +15,7 @@ from typing import Any, Awaitable, Callable
 
 from tdb.dap.messages import Event, Request, Response, parse_message
 from tdb.dap.protocol import encode_message, read_message
+from tdb.dap.reverse import ReverseRequester
 
 from .declares import BashVar
 from .session import BashProtocolError, BashSession
@@ -47,6 +48,14 @@ class BashDapServer:
         self._refs: dict[int, tuple] = {}
         self._next_ref = 1
         self._stack_cache: list[dict] | None = None
+        self._reverse = ReverseRequester(self._write, self._next_seq)
+        self._client_supports_run_in_terminal = False
+        # Strong ref: asyncio only holds a weak reference to a bare
+        # ensure_future() task, so it can be garbage-collected mid-flight
+        # if nothing else keeps it alive. An externalTerminal launch runs
+        # in the background so run()'s read loop can service the
+        # runInTerminal reverse-request reply (see _on_launch).
+        self._launch_task: asyncio.Future | None = None
         self.handlers: dict[str, Callable[[Request], Awaitable[None]]] = {}
         for name in dir(self):
             if name.startswith("_on_"):
@@ -92,6 +101,9 @@ class BashDapServer:
             except (ConnectionError, asyncio.IncompleteReadError, EOFError):
                 break
             msg = parse_message(raw)
+            if self._reverse.route(msg):
+                await self._writer.drain()
+                continue
             if not isinstance(msg, Request):
                 continue
             handler = self.handlers.get(msg.command)
@@ -131,7 +143,35 @@ class BashDapServer:
 
     # ---- lifecycle ----
     async def _on_initialize(self, request: Request) -> None:
+        self._client_supports_run_in_terminal = bool(
+            request.arguments.get("supportsRunInTerminalRequest")
+        )
         self.send_response(request, CAPABILITIES)
+
+    async def _cancel_launch_task(self) -> None:
+        """Cancel and await an in-flight externalTerminal `_finish_launch`
+        background task before disconnect/terminate tear down the session.
+
+        Without this, a still-running launch continuation can assign
+        `self.session = BashSession(...)` (the first thing `_finish_launch`
+        does, synchronously, before any await) AFTER disconnect/terminate's
+        own `if self.session is not None` check already ran and found
+        nothing to stop -- leaking a live (or about-to-be-live) debuggee
+        with nothing left to ever call session.stop() on it. Cancelling and
+        awaiting first makes the eventual `self.session is not None` check
+        below see any session the task managed to create before it was
+        cancelled, so it still gets torn down.
+        """
+        task, self._launch_task = self._launch_task, None
+        if task is None or task.done():
+            return
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            log.exception("launch task raised during cancellation")
 
     async def _on_launch(self, request: Request) -> None:
         args = request.arguments
@@ -139,7 +179,54 @@ class BashDapServer:
         if not os.path.isfile(program):
             self.send_error(request, f"program not found: {program}")
             return
+        run_in_terminal = None
+        if args.get("console") == "externalTerminal":
+            if not self._client_supports_run_in_terminal:
+                self.send_error(
+                    request,
+                    "externalTerminal launch requires a client that "
+                    "supports the runInTerminal reverse request",
+                )
+                return
+
+            async def run_in_terminal(cmd, cwd, env):
+                await self._reverse.request(
+                    "runInTerminal",
+                    {
+                        "kind": "external",
+                        "title": "tdb bash debuggee",
+                        "cwd": cwd,
+                        "args": cmd,
+                        "env": env,
+                    },
+                )
+
         self._stop_on_entry = bool(args.get("stopOnEntry", True))
+        if run_in_terminal is not None:
+            # session.launch() awaits self._reverse.request("runInTerminal",
+            # ...), whose reply can only be read/routed by THIS coroutine's
+            # own run() loop -- but run() is what's calling _on_launch, and
+            # it awaits handler(msg) synchronously before reading the next
+            # message. Awaiting inline here would deadlock: the reply can
+            # never arrive because nothing is reading stdin anymore. Run
+            # the rest of launch as a background task (strong ref, per the
+            # repo's task-GC pitfall) so _on_launch returns immediately,
+            # letting run() go back to reading -- including the eventual
+            # runInTerminal response, which self._reverse.route(msg)
+            # handles directly in run() without going through a handler.
+            self._launch_task = asyncio.ensure_future(
+                self._finish_launch(request, program, args, run_in_terminal)
+            )
+            return
+        await self._finish_launch(request, program, args, run_in_terminal)
+
+    async def _finish_launch(
+        self,
+        request: Request,
+        program: str,
+        args: dict,
+        run_in_terminal,
+    ) -> None:
         self.session = BashSession(
             self._forward_output, self._on_session_stop, self._on_session_exit
         )
@@ -150,15 +237,39 @@ class BashDapServer:
                 cwd=args.get("cwd") or os.getcwd(),
                 env=args.get("env"),
                 bash=args.get("bash") or "bash",
+                run_in_terminal=run_in_terminal,
             )
-        except BashProtocolError as e:
-            await self.session.stop()
+        except Exception as e:
+            # Deliberately broad (mirrors run()'s own blanket `except
+            # Exception` net around handler dispatch): BashProtocolError
+            # and ReverseRequestError are the expected failures, but
+            # session.launch() can also raise e.g. bare
+            # asyncio.TimeoutError (ReverseRequester.request()'s own
+            # wait_for) or OSError. In the terminal-mode (background-task)
+            # case this coroutine is NOT awaited inline by run() -- there
+            # is no other except-Exception net standing behind this one --
+            # so anything narrower here would leave the client's launch
+            # request unanswered forever and silently strand the exception
+            # on self._launch_task.
+            #
+            # asyncio.CancelledError deliberately propagates past this
+            # (BaseException, not Exception, on py>=3.8): that's
+            # _on_disconnect/_on_terminate cancelling an in-flight launch,
+            # not a launch failure, and they do their own cleanup.
+            try:
+                await self.session.stop()
+            except Exception:
+                log.exception("session.stop() failed while tearing down failed launch")
             self.session = None
+            if not isinstance(e, BashProtocolError):
+                log.exception("launch failed unexpectedly")
             self.send_error(request, str(e))
+            await self._writer.drain()
             return
         self._launched = True
         self._start_request = request
         self.send_event("initialized")
+        await self._writer.drain()
         # response is sent by _on_configurationDone (DAP ordering)
 
     async def _on_configurationDone(self, request: Request) -> None:
@@ -171,6 +282,7 @@ class BashDapServer:
         self.session.resume("step" if self._stop_on_entry else "continue")
 
     async def _on_disconnect(self, request: Request) -> None:
+        await self._cancel_launch_task()
         if self.session is not None:
             await self.session.stop()
             self.session = None

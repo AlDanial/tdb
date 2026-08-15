@@ -786,6 +786,152 @@ def test_drain_gives_up_loudly_when_inspection_fails(
     assert "process inspection" in capsys.readouterr().err
 
 
+def read_fifo_line(descriptor: int, timeout: float = 5.0) -> bytes:
+    """Read one line from a FIFO opened O_NONBLOCK before any writer connects.
+
+    A FIFO read end opened O_NONBLOCK before a writer has attached returns
+    an immediate zero-length read (and later, EAGAIN) rather than blocking
+    for real data — plain os.read/read_descriptor_line calls issued right
+    after open() can race the guardian subprocess's own FIFO open and
+    misread that transient state as EOF. Poll with a short backoff instead.
+    """
+
+    deadline = time.monotonic() + timeout
+    data = bytearray()
+    while not data.endswith(b"\n"):
+        try:
+            chunk = os.read(descriptor, 1)
+        except BlockingIOError:
+            chunk = None
+        if chunk:
+            data.extend(chunk)
+            continue
+        if time.monotonic() >= deadline:
+            break
+        time.sleep(0.005)
+    return bytes(data)
+
+
+@pytest.mark.asyncio
+async def test_guardian_path_mode_handshake_pid_and_exit_status(
+    tmp_path: Path,
+) -> None:
+    status_path = tmp_path / "status.fifo"
+    control_path = tmp_path / "control.fifo"
+    os.mkfifo(status_path, 0o600)
+    os.mkfifo(control_path, 0o600)
+    status_reader = os.open(status_path, os.O_RDONLY | os.O_NONBLOCK)
+    control_writer = os.open(control_path, os.O_RDWR)
+    guardian_path = (
+        Path(__file__).resolve().parents[2]
+        / "src"
+        / "tdb"
+        / "adapters"
+        / "tcsh"
+        / "guardian.py"
+    )
+    process = await asyncio.create_subprocess_exec(
+        sys.executable,
+        str(guardian_path),
+        "--status-path",
+        str(status_path),
+        "--control-path",
+        str(control_path),
+        "--",
+        "/bin/sh",
+        "-c",
+        "exit 3",
+        cwd=str(tmp_path),
+        stdin=asyncio.subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    try:
+        line = await asyncio.wait_for(
+            asyncio.to_thread(read_fifo_line, status_reader), 5
+        )
+        assert line == b"armed\n"
+        os.write(control_writer, b"start\n")
+        assert (
+            await asyncio.wait_for(asyncio.to_thread(read_fifo_line, status_reader), 5)
+            == b"ok\n"
+        )
+        pid_line = await asyncio.wait_for(
+            asyncio.to_thread(read_fifo_line, status_reader), 5
+        )
+        assert pid_line == f"pid {process.pid}\n".encode()
+        assert (
+            await asyncio.wait_for(asyncio.to_thread(read_fifo_line, status_reader), 5)
+            == b"exit 3\n"
+        )
+        assert await asyncio.wait_for(process.wait(), 5) == 3
+    finally:
+        os.close(status_reader)
+        os.close(control_writer)
+        if process.returncode is None:
+            process.kill()
+            await process.wait()
+
+
+@pytest.mark.asyncio
+async def test_guardian_path_mode_reports_signal_death(
+    tmp_path: Path,
+) -> None:
+    status_path = tmp_path / "status.fifo"
+    control_path = tmp_path / "control.fifo"
+    os.mkfifo(status_path, 0o600)
+    os.mkfifo(control_path, 0o600)
+    status_reader = os.open(status_path, os.O_RDONLY | os.O_NONBLOCK)
+    control_writer = os.open(control_path, os.O_RDWR)
+    guardian_path = (
+        Path(__file__).resolve().parents[2]
+        / "src"
+        / "tdb"
+        / "adapters"
+        / "tcsh"
+        / "guardian.py"
+    )
+    process = await asyncio.create_subprocess_exec(
+        sys.executable,
+        str(guardian_path),
+        "--status-path",
+        str(status_path),
+        "--control-path",
+        str(control_path),
+        "--",
+        "/bin/sh",
+        "-c",
+        "kill -KILL $$",
+        cwd=str(tmp_path),
+        stdin=asyncio.subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    try:
+        line = await asyncio.wait_for(
+            asyncio.to_thread(read_fifo_line, status_reader), 5
+        )
+        assert line == b"armed\n"
+        os.write(control_writer, b"start\n")
+        assert (
+            await asyncio.wait_for(asyncio.to_thread(read_fifo_line, status_reader), 5)
+            == b"ok\n"
+        )
+        pid_line = await asyncio.wait_for(
+            asyncio.to_thread(read_fifo_line, status_reader), 5
+        )
+        assert pid_line == f"pid {process.pid}\n".encode()
+        assert (
+            await asyncio.wait_for(asyncio.to_thread(read_fifo_line, status_reader), 5)
+            == b"signal 9\n"
+        )
+        assert await asyncio.wait_for(process.wait(), 5) == -signal.SIGKILL
+    finally:
+        os.close(status_reader)
+        os.close(control_writer)
+        if process.returncode is None:
+            process.kill()
+            await process.wait()
+
+
 def test_drain_or_termination_returns_child_code_when_inspection_fails(
     capsys: pytest.CaptureFixture[str],
 ) -> None:

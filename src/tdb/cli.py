@@ -266,6 +266,11 @@ def _validate_terminal_choice(
     The terminal-choice names double as executable names; see
     `_TERMINAL_SPECS` in `tdb/session/terminal.py`.
     """
+    if args.terminal and getattr(args, "remote_attach", None):
+        parser.error(
+            "--terminal only applies when tdb launches the program; "
+            "it cannot be combined with -r/--remote-attach"
+        )
     if args.terminal and not shutil.which(args.terminal):
         parser.error(
             f"--terminal {args.terminal!r}: executable not found on PATH. "
@@ -408,6 +413,16 @@ def _resolve_language(
         parser.error(
             f"--remote-attach supports Python and Perl debuggees only "
             f"(detected language: {profile.id})"
+        )
+
+    # gdb's DAP mode has no terminal integration (see GdbDapAdapter.launch_body,
+    # which raises the same error as a backstop if this guard is ever
+    # bypassed). Catches both `--adapter gdb` explicitly and the implicit
+    # default (no --adapter given for a cpp debuggee resolves to gdb).
+    if args.terminal and profile.id == "cpp" and profile.adapter.id == "gdb":
+        parser.error(
+            "--terminal is not supported with the gdb adapter (gdb's DAP "
+            "mode has no terminal integration) — use `--adapter lldb-dap`"
         )
 
 

@@ -11,6 +11,8 @@ class AdapterClient:
         self.seq = 0
         self.events: list[dict] = []
         self._responses: dict[int, asyncio.Future] = {}
+        self.on_reverse_request = None
+        self._reverse_tasks: set = set()
 
     async def start(self, module: str = "tdb.adapters.perl"):
         self.proc = await asyncio.create_subprocess_exec(
@@ -40,6 +42,33 @@ class AdapterClient:
                 fut = self._responses.pop(body["request_seq"], None)
                 if fut and not fut.done():
                     fut.set_result(body)
+            elif body["type"] == "request":
+                t = asyncio.ensure_future(self._answer_reverse(body))
+                self._reverse_tasks.add(t)
+                t.add_done_callback(self._reverse_tasks.discard)
+
+    async def _answer_reverse(self, body: dict):
+        handler = self.on_reverse_request
+        try:
+            result = await handler(body) if handler else {}
+            ok = handler is not None
+        except Exception as e:  # noqa: BLE001
+            result, ok = {"message": str(e)}, False
+        self.seq += 1
+        reply = {
+            "seq": self.seq,
+            "type": "response",
+            "request_seq": body["seq"],
+            "command": body["command"],
+            "success": ok,
+        }
+        if ok:
+            reply["body"] = result
+        else:
+            reply["message"] = result.get("message", "unhandled reverse request")
+        data = json.dumps(reply).encode()
+        self.proc.stdin.write(f"Content-Length: {len(data)}\r\n\r\n".encode() + data)
+        await self.proc.stdin.drain()
 
     async def request(
         self, command: str, arguments: dict | None = None, timeout: float = 30.0

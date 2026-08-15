@@ -51,6 +51,7 @@ class BashAdapter(AdapterSpec):
             "args": args,
             "cwd": cwd,
             "stopOnEntry": stop_on_entry,
+            "console": console,
         }
         if env:
             body["env"] = env

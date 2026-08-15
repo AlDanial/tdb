@@ -25,17 +25,27 @@
 # BASH_ENV, and the __TDB_* env vars with it, keep being inherited (and
 # this file keeps being re-sourced) by every child bash the debuggee
 # spawns; fds are not close-on-exec by default so children also inherit
-# the pipe FDs. `unset BASH_ENV` below is what actually stops the chain
-# (a grandchild bash no longer has BASH_ENV set, so it never re-sources
-# this file). This check just refuses to arm if something sourced this
-# file without going through BashSession at all (no FDs/tmp dir set).
-[[ -n ${__TDB_CMD_FD:-} && -n ${__TDB_RESP_FD:-} && -n ${__TDB_TMP:-} ]] || return 0
+# the __TDB_CMD_FD/__TDB_RESP_FD fds opened below from the FIFOs.
+# `unset BASH_ENV` below is what actually stops the chain (a grandchild
+# bash no longer has BASH_ENV set, so it never re-sources this file).
+# This check just refuses to arm if something sourced this file without
+# going through BashSession at all (no FIFO paths/tmp dir set).
+[[ -n ${__TDB_CMD_PATH:-} && -n ${__TDB_RESP_PATH:-} && -n ${__TDB_TMP:-} ]] || return 0
 
 if (( BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 4) )); then
     printf 'tdb: bash >= 4.4 is required to debug (this is bash %s)\n' \
         "$BASH_VERSION" >&2
     exit 2
 fi
+
+# Open the FIFOs into shell-allocated fds; every later reference goes
+# through $__TDB_CMD_FD/$__TDB_RESP_FD exactly as before. The adapter
+# already holds the command FIFO open O_RDWR (our read-open cannot
+# block) and a read end of the response FIFO (our write-open cannot
+# block). Children inherit these fds like they inherited the pipes.
+exec {__TDB_CMD_FD}<"$__TDB_CMD_PATH" || return 0
+exec {__TDB_RESP_FD}>"$__TDB_RESP_PATH" || return 0
+unset __TDB_CMD_PATH __TDB_RESP_PATH
 
 unset BASH_ENV
 set -o functrace

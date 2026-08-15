@@ -43,6 +43,7 @@ from tdb.adapters.tcsh.transport import (
 )
 
 _TERMINATE_TIMEOUT_SECONDS = 2.0
+_GUARDIAN_CONNECT_TIMEOUT_SECONDS = 30.0
 _WORKSPACE_REDACTION = "<adapter-workspace>"
 _OUTPUT_CHUNK_BYTES = 64 * 1024
 _DIRECTORY_OPEN_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | os.O_NOFOLLOW
@@ -70,6 +71,7 @@ class LaunchConfig:
     env: Mapping[str, str]
     tcsh_path: Path
     stop_on_entry: bool
+    external_terminal: bool = False
 
 
 class SessionState(str, Enum):
@@ -115,6 +117,7 @@ class EvaluationResult:
 
 EventSink = Callable[[SessionEvent], Awaitable[None]]
 ProcessFactory = Callable[..., Awaitable[asyncio.subprocess.Process]]
+RunInTerminal = Callable[[list[str], str, dict[str, str]], Awaitable[None]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -151,6 +154,7 @@ class DebugSession:
         event_sink: EventSink,
         *,
         process_factory: ProcessFactory = asyncio.create_subprocess_exec,
+        run_in_terminal: RunInTerminal | None = None,
     ) -> None:
         self.config = config
         self.state = SessionState.NEW
@@ -165,11 +169,14 @@ class DebugSession:
         self._guardian_control_descriptor: int | None = None
         self._guardian_status_descriptor: int | None = None
         self._guardian_status_buffer = bytearray()
+        self._guardian_status_writer_seen = False
         self._guardian_armed = False
         self._guardian_termination_status: bytes | None = None
         self._guardian_termination_failure: RuntimeError | None = None
+        self._guardian_ack_queue: asyncio.Queue[bytes] | None = None
         self._event_sink = event_sink
         self._process_factory = process_factory
+        self._run_in_terminal = run_in_terminal
         self._wait_task: asyncio.Task[None] | None = None
         self._probe_task: asyncio.Task[None] | None = None
         self._output_pump_tasks: tuple[asyncio.Task[None], ...] = ()
@@ -214,6 +221,7 @@ class DebugSession:
             env=dict(self.config.env),
             tcsh_path=tcsh_path,
             stop_on_entry=self.config.stop_on_entry,
+            external_terminal=self.config.external_terminal,
         )
 
         self.workspace = Path(tempfile.mkdtemp(prefix="tcsh-dap-"))
@@ -266,51 +274,99 @@ class DebugSession:
         status_writer: int | None = None
         control_reader: int | None = None
         try:
-            status_reader, status_writer = os.pipe()
-            self._guardian_status_descriptor = status_reader
-            control_reader, control_writer = os.pipe()
-            self._guardian_control_descriptor = control_writer
-            os.set_blocking(status_reader, False)
-            argv = (
-                sys.executable,
-                str(guardian),
-                "--status-fd",
-                str(status_writer),
-                "--control-fd",
-                str(control_reader),
-                "--",
-                *tcsh_argv,
-            )
-            try:
-                self.process = await self._process_factory(
-                    *argv,
-                    cwd=str(self.config.cwd),
-                    env=environment,
-                    stdin=asyncio.subprocess.DEVNULL,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                    start_new_session=True,
-                    pass_fds=(status_writer, control_reader),
+            if self.config.external_terminal:
+                assert self._run_in_terminal is not None
+                assert self.workspace is not None
+                status_path = self.workspace / "guardian-status.fifo"
+                control_path = self.workspace / "guardian-control.fifo"
+                os.mkfifo(status_path, 0o600)
+                os.mkfifo(control_path, 0o600)
+                # Open our ends FIRST: status read non-blocking (matches the
+                # pipe's set_blocking(False)) and control O_RDWR so the
+                # guardian's own read-open of the control FIFO can never
+                # block on us, and the control channel never spuriously
+                # EOFs while the session lives -- exactly like the pipe it
+                # replaces.
+                self._guardian_status_descriptor = os.open(
+                    status_path, os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC
                 )
-            finally:
-                if status_writer is not None:
-                    os.close(status_writer)
-                    status_writer = None
-                if control_reader is not None:
-                    os.close(control_reader)
-                    control_reader = None
-            self._process_group_id = self.process.pid
-            self._process_session_id = self.process.pid
+                self._guardian_control_descriptor = os.open(
+                    control_path, os.O_RDWR | os.O_CLOEXEC
+                )
+                control_writer = self._guardian_control_descriptor
+                self._guardian_ack_queue = asyncio.Queue()
+                argv = (
+                    sys.executable,
+                    str(guardian),
+                    "--status-path",
+                    str(status_path),
+                    "--control-path",
+                    str(control_path),
+                    "--",
+                    *tcsh_argv,
+                )
+                await self._run_in_terminal(
+                    list(argv), str(self.config.cwd), environment
+                )
+            else:
+                status_reader, status_writer = os.pipe()
+                self._guardian_status_descriptor = status_reader
+                control_reader, control_writer = os.pipe()
+                self._guardian_control_descriptor = control_writer
+                os.set_blocking(status_reader, False)
+                argv = (
+                    sys.executable,
+                    str(guardian),
+                    "--status-fd",
+                    str(status_writer),
+                    "--control-fd",
+                    str(control_reader),
+                    "--",
+                    *tcsh_argv,
+                )
+                try:
+                    self.process = await self._process_factory(
+                        *argv,
+                        cwd=str(self.config.cwd),
+                        env=environment,
+                        stdin=asyncio.subprocess.DEVNULL,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                        start_new_session=True,
+                        pass_fds=(status_writer, control_reader),
+                    )
+                finally:
+                    if status_writer is not None:
+                        os.close(status_writer)
+                        status_writer = None
+                    if control_reader is not None:
+                        os.close(control_reader)
+                        control_reader = None
+                self._process_group_id = self.process.pid
+                self._process_session_id = self.process.pid
             status = await self._read_guardian_status()
             if status != b"armed\n":
                 detail = status.decode(errors="replace").removeprefix("error ").strip()
-                raise OSError(detail or "guardian exited before arming startup")
+                message = detail or "guardian exited before arming startup"
+                if self.config.external_terminal:
+                    message += " — did the external terminal window open?"
+                raise OSError(message)
             self._guardian_armed = True
             os.write(control_writer, b"start\n")
             status = await self._read_guardian_status()
             if status != b"ok\n":
                 detail = status.decode(errors="replace").removeprefix("error ").strip()
-                raise OSError(detail or "guardian exited before launching tcsh")
+                message = detail or "guardian exited before launching tcsh"
+                if self.config.external_terminal:
+                    message += " — did the external terminal window open?"
+                raise OSError(message)
+            if self.config.external_terminal:
+                pid_line = await self._read_guardian_status()
+                if not pid_line.startswith(b"pid "):
+                    raise OSError("guardian did not report its pid")
+                guardian_pid = int(pid_line.split()[1])
+                self._process_group_id = guardian_pid
+                self._process_session_id = guardian_pid
         except asyncio.CancelledError as error:
             self.state = SessionState.TERMINATED
             try:
@@ -338,7 +394,11 @@ class DebugSession:
 
         self.state = SessionState.RUNNING
         self._probe_task = asyncio.create_task(self._run_probe_events())
-        self._wait_task = asyncio.create_task(self._monitor_process())
+        self._wait_task = asyncio.create_task(
+            self._monitor_process()
+            if self.process is not None
+            else self._monitor_terminal()
+        )
 
     async def _abort_launched_process(self) -> None:
         process = self.process
@@ -866,6 +926,51 @@ class DebugSession:
             finally:
                 self._completion_event.set()
 
+    async def _monitor_terminal(self) -> None:
+        """The `_monitor_process()` equivalent for terminal-mode launches,
+        where the guardian's status FIFO (not a reaped child process
+        object) is the only source of the debuggee's final exit status.
+
+        Interleaved non-exit status lines (e.g. `terminated`/`escalating`/
+        `failed ...` acknowledgements from an in-flight
+        `_request_guardian_termination`) are forwarded to
+        `self._guardian_ack_queue` rather than consumed here -- the
+        termination requester reads its own acknowledgement from that
+        queue instead of racing this loop for the same descriptor.
+        """
+        try:
+            while True:
+                line = await self._read_guardian_status()
+                if line.startswith(b"exit "):
+                    returncode = int(line.split()[1])
+                    break
+                if line.startswith(b"signal "):
+                    returncode = -int(line.split()[1])
+                    break
+                if line == b"":
+                    returncode = -1  # status FIFO closed with no report
+                    break
+                assert self._guardian_ack_queue is not None
+                await self._guardian_ack_queue.put(line)
+            await self._emit_process_termination(returncode)
+        except BaseException as error:  # noqa: BLE001
+            self.failure = self.failure or error
+            self.state = SessionState.TERMINATED
+            raise
+        finally:
+            # _monitor_process's own finally does the same cleanup+wake
+            # for the fd-mode path (see above); terminal mode has no
+            # process object to gather, but the same workspace/transport
+            # teardown and _completion_event wake are required here too --
+            # otherwise terminate()'s "already TERMINATED" branch
+            # (`await self._completion_event.wait()`) would hang forever
+            # once the debuggee exits on its own.
+            self.state = SessionState.TERMINATED
+            try:
+                await self._cleanup(primary_error=self.failure)
+            finally:
+                self._completion_event.set()
+
     async def _pump_output(
         self,
         stream: asyncio.StreamReader,
@@ -939,19 +1044,29 @@ class DebugSession:
 
     async def _stop_process_group(self) -> int:
         process = self.process
-        if process is None:
+        # process is None in terminal mode (the debuggee is owned by the
+        # guardian, not spawned as our own child); route on the control
+        # descriptor instead of `process is None` so a terminal-mode
+        # termination still reaches the guardian. `_process_group_id` holds
+        # the guardian's own pid in that mode (see start()), so the
+        # killpg fallback elsewhere that keys off it is unaffected.
+        if process is None and self._guardian_control_descriptor is None:
             return 0
-        if process.returncode is None:
+        if process is None or process.returncode is None:
             try:
                 await self._request_guardian_termination()
             except RuntimeError:
+                if process is not None:
+                    await asyncio.wait_for(
+                        process.wait(), timeout=_TERMINATE_TIMEOUT_SECONDS + 1
+                    )
+                raise
+            if process is not None:
                 await asyncio.wait_for(
                     process.wait(), timeout=_TERMINATE_TIMEOUT_SECONDS + 1
                 )
-                raise
-            await asyncio.wait_for(
-                process.wait(), timeout=_TERMINATE_TIMEOUT_SECONDS + 1
-            )
+        if process is None:
+            return 0
         assert process.returncode is not None
         return process.returncode
 
@@ -964,13 +1079,42 @@ class DebugSession:
             descriptor = self._guardian_control_descriptor
             if descriptor is None:
                 raise RuntimeError("guardian control descriptor is closed")
-            os.write(descriptor, b"terminate\n")
             try:
-                status = await asyncio.wait_for(
-                    self._read_guardian_status(),
-                    timeout=_TERMINATE_TIMEOUT_SECONDS + 1,
-                )
+                os.write(descriptor, b"terminate\n")
+            except OSError:
+                # Can't signal the guardian in-band at all -- in terminal
+                # mode this is the only place with any independent OS-level
+                # handle on it (self._process_group_id, adopted from the
+                # guardian's own "pid " status line during the handshake),
+                # so fall it back to a direct SIGKILL rather than leaving
+                # the debuggee to run unsupervised. Still re-raise: callers
+                # (e.g. _stop_process_group) need to know the clean in-band
+                # handshake didn't happen.
+                self._force_kill_terminal_guardian()
+                raise
+            try:
+                # In terminal mode _monitor_terminal() owns the status
+                # descriptor (it's the one reading the guardian's status
+                # lines to learn the debuggee's final exit/signal code), so
+                # reading here directly would race it for the same bytes.
+                # It forwards every non-exit line (including this
+                # acknowledgement) onto the queue instead.
+                if self._guardian_ack_queue is not None:
+                    status = await asyncio.wait_for(
+                        self._guardian_ack_queue.get(),
+                        timeout=_TERMINATE_TIMEOUT_SECONDS + 1,
+                    )
+                else:
+                    status = await asyncio.wait_for(
+                        self._read_guardian_status(),
+                        timeout=_TERMINATE_TIMEOUT_SECONDS + 1,
+                    )
             except TimeoutError as error:
+                # The in-band acknowledgement never arrived -- same
+                # last-resort force-kill as the write failure above (see
+                # its comment); the guardian may simply be wedged or the
+                # client-spawned process tree may be unresponsive.
+                self._force_kill_terminal_guardian()
                 raise TimeoutError(
                     "guardian termination acknowledgement timed out"
                 ) from error
@@ -987,7 +1131,36 @@ class DebugSession:
             self._guardian_termination_status = status
             return status
 
+    def _force_kill_terminal_guardian(self) -> None:
+        """Last-resort SIGKILL of the guardian's own process group, used
+        only when the in-band control-FIFO route has just failed (the
+        `terminate\\n` write itself raised, or the acknowledgement never
+        arrived) -- see the two call sites in _request_guardian_termination.
+
+        Terminal mode only: `self._process_group_id` holds the *adopted
+        guardian pid* there (start()'s handshake reads a `pid <pid>` status
+        line and assigns it), and the guardian is its own session/
+        process-group leader (it never calls setsid/setpgid itself, but
+        whatever spawned it -- a real terminal emulator, or this task's
+        test harness passing start_new_session=True -- put it in a fresh
+        one), so killpg reaches it directly even though the adapter never
+        held it as a reapable child. Pipe mode has `self.process` (a real
+        subprocess.Process) to fall back on instead and isn't handled
+        here -- this is deliberately narrow, matching the in-band route's
+        being tried first and this being reached only on its failure.
+        """
+        if not self.config.external_terminal:
+            return
+        process_group_id = self._process_group_id
+        if process_group_id is None:
+            return
+        try:
+            os.killpg(process_group_id, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
+
     async def _read_guardian_status(self) -> bytes:
+        deadline: float | None = None
         while True:
             newline = self._guardian_status_buffer.find(b"\n")
             if newline >= 0:
@@ -1003,10 +1176,52 @@ class DebugSession:
                 await asyncio.sleep(0.01)
                 continue
             if not chunk:
-                return bytes(self._guardian_status_buffer)
+                if (
+                    self._guardian_status_writer_seen
+                    or not self.config.external_terminal
+                ):
+                    # Real EOF: return whatever partial (unterminated) line
+                    # is left in the buffer, but clear it first. Without
+                    # this, a guardian that dies mid-line (no trailing
+                    # newline) would leave that partial data sitting in
+                    # the buffer forever -- the next call finds no b"\n"
+                    # (line 1165's `find` still misses) and, since a
+                    # writer has already been seen, immediately re-hits
+                    # this same branch and returns the identical bytes
+                    # again, spinning _monitor_terminal on the same
+                    # partial line forever instead of ever reporting the
+                    # closed status channel (`b""`) that tells it the
+                    # guardian is gone.
+                    status = bytes(self._guardian_status_buffer)
+                    self._guardian_status_buffer.clear()
+                    return status
+                # Terminal mode only: our own read-open of the status FIFO
+                # is non-blocking (start() can't block on the guardian's
+                # write-open -- it hasn't even been asked to spawn yet at
+                # that point), and on Linux a non-blocking read on a FIFO
+                # with NO writer currently connected returns b"" -- the
+                # exact same result a real EOF (writer connected, then all
+                # writers closed) produces. Until real data has actually
+                # been observed, an empty read is ambiguous ("not started
+                # yet" vs. "already gone"); assume the former and keep
+                # polling, bounded so a guardian that genuinely never
+                # connects can't hang start() forever. Once
+                # _guardian_status_writer_seen flips True the ambiguity is
+                # gone -- a later empty read is unambiguous real EOF.
+                loop = asyncio.get_running_loop()
+                if deadline is None:
+                    deadline = loop.time() + _GUARDIAN_CONNECT_TIMEOUT_SECONDS
+                elif loop.time() >= deadline:
+                    return bytes(self._guardian_status_buffer)
+                await asyncio.sleep(0.01)
+                continue
+            self._guardian_status_writer_seen = True
             self._guardian_status_buffer.extend(chunk)
 
     def _close_guardian_descriptors(self) -> None:
+        if self.config.external_terminal:
+            self._abandon_terminal_guardian()
+            return
         for attribute in (
             "_guardian_control_descriptor",
             "_guardian_status_descriptor",
@@ -1017,6 +1232,83 @@ class DebugSession:
             setattr(self, attribute, None)
             try:
                 os.close(descriptor)
+            except OSError:
+                pass
+
+    def _abandon_terminal_guardian(self) -> None:
+        """Release the guardian FIFO descriptors for a terminal-mode
+        session without ever leaving a still-running, client-spawned
+        guardian process permanently blocked inside its own
+        `os.open(control_path, os.O_RDONLY)`.
+
+        The guardian may be in one of three states when a terminal-mode
+        start() aborts (fails or is cancelled) or the session otherwise
+        tears down: (a) it hasn't even reached its own
+        `os.open(status_path, os.O_WRONLY)` yet (still starting up), (b)
+        it's between that open and its `os.open(control_path,
+        os.O_RDONLY)` -- or literally blocked inside the latter -- or (c)
+        it's already past both opens and reading its own control loop.
+        `self._guardian_control_descriptor` is opened O_RDWR (see
+        start()), which means it ALWAYS counts as both a reader and a
+        writer for that FIFO from the kernel's point of view -- while it
+        stays open, ANY blocking open() of the same path by another
+        process (state (b)) is satisfied immediately by our fd being
+        present, and a write here is always legal (state (c) has
+        something to read it; even (b), not yet reading, still has our fd
+        as "a reader" so the write doesn't raise EPIPE). The bug this
+        fixes: the previous code closed control THEN status THEN (later,
+        via _remove_owned_workspace) unlinked the FIFOs -- so a guardian
+        in state (b) whose open() call hadn't happened yet by the time we
+        closed our own fd would block forever on a path that, once
+        unlinked, can never gain a fresh writer either (unlink doesn't
+        wake an already-blocked open(), and no NEW open by path is
+        possible once the guardian's own os.open() call resolved the
+        directory entry before the unlink -- moot for a fresh call, fatal
+        for one already waiting).
+
+        Fix, in order (all synchronous, none of this ever waits on the
+        guardian -- an unreachable/never-connecting guardian, state (a),
+        must not be able to hang cleanup on our side either):
+        1. Best-effort write "terminate\\n" into the still-open control
+           descriptor. A guardian already reading its control loop (state
+           (c)) sees it directly; one that's about to open (state (b))
+           finds it queued the instant it does.
+        2. Unlink both FIFO paths now, NOT later in
+           _remove_owned_workspace() -- while our control descriptor is
+           STILL open. This closes the remaining gap for a guardian in
+           state (b) that hasn't reached its control-path open() yet by
+           this point: once it does, either our fd is still open (below)
+           and satisfies it, or the path is already gone and it gets
+           ENOENT -- a crash, not a wedge, "proceeding to its own exit"
+           just as ungracefully as state (a) reaching a now-unlinked
+           status_path does.
+        3. Close status.
+        4. Close control LAST -- only after every state above already had
+           its chance to either see the terminate command or fail fast.
+        """
+        control_descriptor = self._guardian_control_descriptor
+        if control_descriptor is not None:
+            try:
+                os.write(control_descriptor, b"terminate\n")
+            except OSError:
+                pass
+        if self.workspace is not None and self._workspace_descriptor is not None:
+            for name in ("guardian-status.fifo", "guardian-control.fifo"):
+                try:
+                    os.unlink(name, dir_fd=self._workspace_descriptor)
+                except OSError:
+                    pass
+        status_descriptor = self._guardian_status_descriptor
+        self._guardian_status_descriptor = None
+        if status_descriptor is not None:
+            try:
+                os.close(status_descriptor)
+            except OSError:
+                pass
+        self._guardian_control_descriptor = None
+        if control_descriptor is not None:
+            try:
+                os.close(control_descriptor)
             except OSError:
                 pass
 

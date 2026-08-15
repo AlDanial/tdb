@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import errno
 import json
 import os
@@ -50,6 +51,7 @@ def launch_config(
     cwd: Path | None = None,
     env: dict[str, str] | None = None,
     stop_on_entry: bool = False,
+    external_terminal: bool = False,
 ) -> LaunchConfig:
     return LaunchConfig(
         program=program,
@@ -58,6 +60,7 @@ def launch_config(
         env=env or {},
         tcsh_path=tcsh_path,
         stop_on_entry=stop_on_entry,
+        external_terminal=external_terminal,
     )
 
 
@@ -1207,6 +1210,300 @@ async def test_stop_delegates_termination_to_guardian_without_direct_killpg(
         os.close(control_reader)
         os.close(control_writer)
         os.close(status_reader)
+
+
+# ---- terminal-mode session seams (guardian FIFO path mode) ----
+
+
+@pytest.mark.asyncio
+async def test_monitor_terminal_reports_signal_death(
+    tmp_path: Path,
+    recording_tcsh: Path,
+) -> None:
+    program = tmp_path / "program.csh"
+    program.write_text("echo ready\n")
+    events: list[SessionEvent] = []
+    session = DebugSession(
+        launch_config(program, recording_tcsh, external_terminal=True),
+        collecting_sink(events),
+    )
+    status_reader, status_writer = os.pipe()
+    os.set_blocking(status_reader, False)
+    session._guardian_status_descriptor = status_reader  # type: ignore[attr-defined]
+    session._guardian_ack_queue = asyncio.Queue()  # type: ignore[attr-defined]
+    os.write(status_writer, b"signal 9\n")
+    os.close(status_writer)
+    try:
+        await session._monitor_terminal()
+    finally:
+        # _monitor_terminal's own cleanup (_cleanup -> _close_guardian_
+        # descriptors) already closes _guardian_status_descriptor for a
+        # terminal-mode session -- don't double-close.
+        with contextlib.suppress(OSError):
+            os.close(status_reader)
+    assert session.state is SessionState.TERMINATED
+    assert [event.kind for event in events] == ["exited", "terminated"]
+    assert events[0].body == {"exitCode": -9}
+
+
+@pytest.mark.asyncio
+async def test_monitor_terminal_reports_minus_one_on_status_eof_without_report(
+    tmp_path: Path,
+    recording_tcsh: Path,
+) -> None:
+    """A guardian that connected (so an empty read is unambiguous, not the
+    "hasn't connected yet" case _read_guardian_status retries) and then
+    closed the status FIFO without ever writing an exit/signal line (e.g.
+    a hard crash) must be reported as exit code -1, matching the guardian
+    path-mode status contract (Task 8's review)."""
+    program = tmp_path / "program.csh"
+    program.write_text("echo ready\n")
+    events: list[SessionEvent] = []
+    session = DebugSession(
+        launch_config(program, recording_tcsh, external_terminal=True),
+        collecting_sink(events),
+    )
+    status_reader, status_writer = os.pipe()
+    os.set_blocking(status_reader, False)
+    session._guardian_status_descriptor = status_reader  # type: ignore[attr-defined]
+    session._guardian_ack_queue = asyncio.Queue()  # type: ignore[attr-defined]
+    session._guardian_status_writer_seen = True  # type: ignore[attr-defined]
+    os.close(status_writer)
+    try:
+        await session._monitor_terminal()
+    finally:
+        with contextlib.suppress(OSError):
+            os.close(status_reader)
+    assert [event.kind for event in events] == ["exited", "terminated"]
+    assert events[0].body == {"exitCode": -1}
+
+
+@pytest.mark.asyncio
+async def test_monitor_terminal_survives_eof_mid_partial_line(
+    tmp_path: Path,
+    recording_tcsh: Path,
+) -> None:
+    """A guardian that dies mid-line (status FIFO closes with unterminated
+    data still buffered, no trailing newline) must not make
+    `_read_guardian_status` re-return that same partial line forever --
+    `_monitor_terminal` must still terminate, reporting exit code -1
+    (Task 8's review: the buffer has to be cleared at real EOF, or a
+    repeated call spins on identical bytes and never sees the closed-
+    channel `b""` that ends the loop)."""
+    program = tmp_path / "program.csh"
+    program.write_text("echo ready\n")
+    events: list[SessionEvent] = []
+    session = DebugSession(
+        launch_config(program, recording_tcsh, external_terminal=True),
+        collecting_sink(events),
+    )
+    status_reader, status_writer = os.pipe()
+    os.set_blocking(status_reader, False)
+    session._guardian_status_descriptor = status_reader  # type: ignore[attr-defined]
+    session._guardian_ack_queue = asyncio.Queue()  # type: ignore[attr-defined]
+    os.write(status_writer, b"partial data with no newline")
+    os.close(status_writer)
+    try:
+        await asyncio.wait_for(session._monitor_terminal(), timeout=2)
+    finally:
+        with contextlib.suppress(OSError):
+            os.close(status_reader)
+    assert [event.kind for event in events] == ["exited", "terminated"]
+    assert events[0].body == {"exitCode": -1}
+    # The partial line was routed to the ack queue (not treated as an
+    # exit/signal report) rather than the buffer looping on it forever.
+    assert session._guardian_ack_queue.get_nowait() == b"partial data with no newline"
+
+
+@pytest.mark.asyncio
+async def test_monitor_terminal_routes_non_exit_status_to_ack_queue(
+    tmp_path: Path,
+    recording_tcsh: Path,
+) -> None:
+    """A guardian status line that isn't `exit `/`signal ` (e.g. a
+    `failed ...` internal-termination-failure line, per the guardian's
+    path-mode status contract) must be routed onto _guardian_ack_queue by
+    _monitor_terminal instead of ending the session -- it's meant for
+    whoever is waiting inside _request_guardian_termination."""
+    program = tmp_path / "program.csh"
+    program.write_text("echo ready\n")
+    session = DebugSession(
+        launch_config(program, recording_tcsh, external_terminal=True),
+        collecting_sink([]),
+    )
+    status_reader, status_writer = os.pipe()
+    control_reader, control_writer = os.pipe()
+    os.set_blocking(status_reader, False)
+    os.set_blocking(control_reader, False)
+    session._guardian_control_descriptor = control_writer  # type: ignore[attr-defined]
+    session._guardian_status_descriptor = status_reader  # type: ignore[attr-defined]
+    session._guardian_ack_queue = asyncio.Queue()  # type: ignore[attr-defined]
+    monitor_task = asyncio.create_task(session._monitor_terminal())
+    try:
+        request_task = asyncio.create_task(session._request_guardian_termination())
+        for _ in range(200):
+            try:
+                if os.read(control_reader, 64) == b"terminate\n":
+                    break
+            except BlockingIOError:
+                pass
+            await asyncio.sleep(0.01)
+        else:
+            pytest.fail("_request_guardian_termination never wrote terminate")
+        os.write(status_writer, b"failed process inspection\n")
+        with pytest.raises(RuntimeError, match="process inspection"):
+            await asyncio.wait_for(request_task, timeout=2)
+    finally:
+        os.close(status_writer)
+        await asyncio.wait_for(monitor_task, timeout=2)
+        os.close(control_reader)
+        # _monitor_terminal's own cleanup already closed both guardian
+        # descriptors (status_reader and control_writer) for this
+        # terminal-mode session -- don't double-close.
+        with contextlib.suppress(OSError):
+            os.close(control_writer)
+        with contextlib.suppress(OSError):
+            os.close(status_reader)
+
+
+@pytest.mark.asyncio
+async def test_request_guardian_termination_force_kills_on_ack_timeout(
+    tmp_path: Path,
+    recording_tcsh: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When the in-band acknowledgement never arrives, the only remaining
+    OS-level handle on a terminal-mode session is the adopted guardian pid
+    (self._process_group_id, set from the guardian's own "pid " status
+    line during start()'s handshake) -- fall back to killpg(SIGKILL) on it
+    rather than leaving the guardian (and whatever it's still supervising)
+    to run unsupervised forever."""
+    monkeypatch.setattr("tdb.adapters.tcsh.session._TERMINATE_TIMEOUT_SECONDS", 0.05)
+    program = tmp_path / "program.csh"
+    program.write_text("echo ready\n")
+    session = DebugSession(
+        launch_config(program, recording_tcsh, external_terminal=True),
+        collecting_sink([]),
+    )
+    control_reader, control_writer = os.pipe()
+    os.set_blocking(control_reader, False)
+    session._guardian_control_descriptor = control_writer  # type: ignore[attr-defined]
+    session._guardian_ack_queue = asyncio.Queue()  # type: ignore[attr-defined]
+    session._process_group_id = 424242  # type: ignore[attr-defined]
+    killed: list[tuple[int, int]] = []
+    monkeypatch.setattr(os, "killpg", lambda group, sig: killed.append((group, sig)))
+    try:
+        with pytest.raises(TimeoutError, match="acknowledgement timed out"):
+            await session._request_guardian_termination()
+        assert killed == [(424242, signal.SIGKILL)]
+    finally:
+        os.close(control_reader)
+        os.close(control_writer)
+
+
+@pytest.mark.asyncio
+async def test_request_guardian_termination_force_kills_when_write_fails(
+    tmp_path: Path,
+    recording_tcsh: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Same fallback as the ack-timeout case, but triggered by the
+    in-band `terminate\\n` write itself failing (e.g. a descriptor-level
+    OS error) rather than a slow/missing acknowledgement."""
+    program = tmp_path / "program.csh"
+    program.write_text("echo ready\n")
+    session = DebugSession(
+        launch_config(program, recording_tcsh, external_terminal=True),
+        collecting_sink([]),
+    )
+    control_reader, control_writer = os.pipe()
+    session._guardian_control_descriptor = control_writer  # type: ignore[attr-defined]
+    session._guardian_ack_queue = asyncio.Queue()  # type: ignore[attr-defined]
+    session._process_group_id = 424243  # type: ignore[attr-defined]
+    killed: list[tuple[int, int]] = []
+    monkeypatch.setattr(os, "killpg", lambda group, sig: killed.append((group, sig)))
+    real_write = os.write
+
+    def failing_write(fd: int, data: bytes) -> int:
+        if fd == control_writer:
+            raise OSError("simulated guardian control write failure")
+        return real_write(fd, data)
+
+    monkeypatch.setattr(os, "write", failing_write)
+    try:
+        with pytest.raises(OSError, match="simulated guardian control write failure"):
+            await session._request_guardian_termination()
+        assert killed == [(424243, signal.SIGKILL)]
+    finally:
+        os.close(control_reader)
+        os.close(control_writer)
+
+
+@pytest.mark.asyncio
+async def test_close_guardian_descriptors_signals_and_unlinks_before_closing_control(
+    tmp_path: Path,
+    recording_tcsh: Path,
+) -> None:
+    """Regression test for the terminal-mode abort wedge: a guardian
+    process racing our own teardown must never be left blocked forever
+    inside its own os.open(control_path, os.O_RDONLY).
+
+    Covers both halves of the fix: (1) "terminate\\n" is written into the
+    control FIFO's buffer while our own descriptor is still open, so a
+    guardian that already holds an independent fd on the same path (as if
+    it had just opened it) finds the command waiting; (2) both FIFO paths
+    are unlinked BEFORE our own control descriptor closes, so a guardian
+    that hasn't reached its own open() call yet gets ENOENT (a crash it
+    can exit from) once it does, rather than blocking on a path with no
+    reader/writer left and no way to ever gain one.
+    """
+    program = tmp_path / "program.csh"
+    program.write_text("echo ready\n")
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    status_path = workspace / "guardian-status.fifo"
+    control_path = workspace / "guardian-control.fifo"
+    os.mkfifo(status_path, 0o600)
+    os.mkfifo(control_path, 0o600)
+
+    session = DebugSession(
+        launch_config(program, recording_tcsh, external_terminal=True),
+        collecting_sink([]),
+    )
+    session.workspace = workspace  # type: ignore[attr-defined]
+    session._workspace_descriptor = os.open(  # type: ignore[attr-defined]
+        workspace, os.O_RDONLY | os.O_DIRECTORY
+    )
+    session._guardian_status_descriptor = os.open(  # type: ignore[attr-defined]
+        status_path, os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC
+    )
+    session._guardian_control_descriptor = os.open(  # type: ignore[attr-defined]
+        control_path, os.O_RDWR | os.O_CLOEXEC
+    )
+
+    # A guardian that already has its own independent fd on control_path
+    # (as if it had opened it a moment before teardown started) must
+    # still see the queued "terminate\n" -- unaffected by our own
+    # descriptors closing, or the path being unlinked afterward, since it
+    # holds its own reference.
+    guardian_control_fd = os.open(control_path, os.O_RDONLY | os.O_NONBLOCK)
+    try:
+        session._close_guardian_descriptors()
+
+        assert os.read(guardian_control_fd, 64) == b"terminate\n"
+
+        assert not status_path.exists()
+        assert not control_path.exists()
+        # A guardian that hadn't reached its own open() calls yet by the
+        # time cleanup ran must get ENOENT -- never an indefinite block --
+        # once it finally tries.
+        with pytest.raises(FileNotFoundError):
+            os.open(control_path, os.O_RDONLY | os.O_NONBLOCK)
+        with pytest.raises(FileNotFoundError):
+            os.open(status_path, os.O_WRONLY | os.O_NONBLOCK)
+    finally:
+        os.close(guardian_control_fd)
+        os.close(session._workspace_descriptor)  # type: ignore[attr-defined]
 
 
 @pytest.mark.asyncio

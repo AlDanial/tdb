@@ -65,7 +65,7 @@ async def _fake_start_server(client_connected_cb, host, port):
 def _make_session() -> PerlSession:
     session = PerlSession(on_output=lambda *a: None, on_stop=lambda: None)
 
-    async def _noop_await_prompt(timeout: float) -> None:
+    async def _noop_await_prompt(timeout: float, terminal: bool = False) -> None:
         pass
 
     async def _noop_command(text: str, timeout: float = 20.0) -> list:
@@ -135,3 +135,68 @@ async def test_launch_includes_compile_shim_when_file_present(tmp_path, monkeypa
     assert "-MDevel::TdbCompile" in argv
     assert any(isinstance(a, str) and a.startswith("-I") for a in argv)
     assert captured["env"]["TDB_COMPILE_FILE"] == program
+
+
+async def _fake_run_in_terminal(cmd, cwd, env) -> None:
+    del cmd, cwd, env
+
+
+async def test_launch_terminal_mode_parses_pid_from_last_line(tmp_path, monkeypatch):
+    """--terminal launches scrape the debuggee pid from `p $$`'s reply.
+
+    Regression coverage for the fail-closed parse: the pid must come from
+    the LAST non-empty line of the reply, matched in full (whitespace
+    aside) -- not by concatenating every digit seen across every text
+    event, which let a single stray digit anywhere in the reply corrupt
+    the pid (stop() later SIGKILLs whatever that pid names).
+    """
+    monkeypatch.setattr(session_mod.asyncio, "start_server", _fake_start_server)
+    session = _make_session()
+
+    async def fake_command(text: str, timeout: float = 20.0) -> list:
+        if text == "p $$":
+            # A realistic perl5db reply: a leading prompt-ish line, then
+            # the actual pid alone on the last line.
+            return [("text", "DB<1>\n54321\n")]
+        return []
+
+    session.command = fake_command  # type: ignore[method-assign]
+    program = str(tmp_path / "prog.pl")
+    await session.launch(
+        program=program,
+        args=[],
+        cwd=str(tmp_path),
+        env=None,
+        run_in_terminal=_fake_run_in_terminal,
+    )
+
+    assert session.debuggee_pid == 54321
+
+
+async def test_launch_terminal_mode_pid_parse_fails_closed_on_stray_digit(
+    tmp_path, monkeypatch, caplog
+):
+    """A malformed/unexpected reply must leave debuggee_pid None, not a
+    corrupted value assembled from stray digits."""
+    monkeypatch.setattr(session_mod.asyncio, "start_server", _fake_start_server)
+    session = _make_session()
+
+    async def fake_command(text: str, timeout: float = 20.0) -> list:
+        if text == "p $$":
+            # Last non-empty line is not a bare integer -- must not parse.
+            return [("text", "some digit 7 appeared\n54321 extra junk\n")]
+        return []
+
+    session.command = fake_command  # type: ignore[method-assign]
+    program = str(tmp_path / "prog.pl")
+    with caplog.at_level("WARNING", logger="tdb.adapters.perl.session"):
+        await session.launch(
+            program=program,
+            args=[],
+            cwd=str(tmp_path),
+            env=None,
+            run_in_terminal=_fake_run_in_terminal,
+        )
+
+    assert session.debuggee_pid is None
+    assert "could not parse debuggee pid" in caplog.text

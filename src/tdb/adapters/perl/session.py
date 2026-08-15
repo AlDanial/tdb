@@ -12,12 +12,18 @@ import asyncio
 import importlib.resources
 import logging
 import os
+import re
+import shlex
+import shutil
 import signal
-from typing import Callable
+import tempfile
+from typing import Awaitable, Callable
 
 from tdb.adapters.perl.protocol import StreamParser
 
 log = logging.getLogger(__name__)
+
+RunInTerminal = Callable[[list[str], str, dict[str, str]], Awaitable[None]]
 
 
 class PerlProtocolError(Exception):
@@ -57,6 +63,8 @@ class PerlSession:
         self._tail = b""
         self.stopped = False
         self._eof = False
+        self.debuggee_pid: int | None = None
+        self._exit_status_path: str | None = None
 
     @property
     def pid(self) -> int | None:
@@ -82,6 +90,17 @@ class PerlSession:
         for whatever reason, never exits can't block the event loop
         indefinitely -- falls back to 0 in that case.
         """
+        if self._process is None and self._exit_status_path is not None:
+            deadline = asyncio.get_running_loop().time() + timeout
+            while asyncio.get_running_loop().time() < deadline:
+                try:
+                    text = open(self._exit_status_path).read().strip()
+                except OSError:
+                    text = ""
+                if text:
+                    return int(text)
+                await asyncio.sleep(0.05)
+            return -1
         if self._process is None:
             return 0
         if self._process.returncode is not None:
@@ -99,6 +118,7 @@ class PerlSession:
         cwd: str,
         env: dict | None,
         perl: str = "perl",
+        run_in_terminal: RunInTerminal | None = None,
     ) -> None:
         server_ready = asyncio.get_running_loop().create_future()
 
@@ -148,31 +168,67 @@ class PerlSession:
                 shim_path,
             )
         argv += [program, *args]
-        self._process = await asyncio.create_subprocess_exec(
-            *argv,
-            cwd=cwd,
-            env=child_env,
-            stdin=asyncio.subprocess.DEVNULL,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            start_new_session=True,
-        )
-        self._pump_tasks = [
-            asyncio.create_task(self._pump(self._process.stdout, "stdout")),
-            asyncio.create_task(self._pump(self._process.stderr, "stderr")),
-        ]
+        timeout = 30.0 if run_in_terminal is not None else 15.0
+        if run_in_terminal is not None:
+            # The debuggee is spawned by the client inside a terminal
+            # emulator; we cannot reap it, so a /bin/sh wrapper writes
+            # $? (128+n for signal deaths) where wait_exit_code() reads.
+            status_dir = tempfile.mkdtemp(prefix="tdb-perl-")
+            self._exit_status_path = os.path.join(status_dir, "exit-status")
+            wrapped = [
+                "/bin/sh",
+                "-c",
+                f"{shlex.join(argv)}; printf %s $? > "
+                f"{shlex.quote(self._exit_status_path)}",
+            ]
+            await run_in_terminal(wrapped, cwd, child_env)
+        else:
+            self._process = await asyncio.create_subprocess_exec(
+                *argv,
+                cwd=cwd,
+                env=child_env,
+                stdin=asyncio.subprocess.DEVNULL,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                start_new_session=True,
+            )
+            self._pump_tasks = [
+                asyncio.create_task(self._pump(self._process.stdout, "stdout")),
+                asyncio.create_task(self._pump(self._process.stderr, "stderr")),
+            ]
         try:
-            self._reader, self._writer = await asyncio.wait_for(server_ready, 15.0)
+            self._reader, self._writer = await asyncio.wait_for(server_ready, timeout)
         except asyncio.TimeoutError:
+            if run_in_terminal is not None:
+                raise PerlProtocolError(
+                    "perl5db never connected — the external terminal did not "
+                    "launch perl, or perl is not installed/too old there"
+                )
             raise PerlProtocolError(
                 "perl5db never connected — is perl installed and >= 5.18?"
             )
         finally:
             server.close()
         self._reader_task = asyncio.create_task(self._read_loop())
-        await self._await_prompt(timeout=15.0)
+        await self._await_prompt(timeout=timeout, terminal=run_in_terminal is not None)
         self.stopped = True
         await self.command(f"do '{helpers_path()}'")
+        if run_in_terminal is not None:
+            reply = await self.command("p $$")
+            # Fail-closed: pull the pid from the LAST non-empty line of the
+            # reply text and require it to be the full line (whitespace
+            # aside) -- concatenating every digit from every text event
+            # (the old approach) let a single stray digit anywhere in the
+            # reply corrupt the pid, and stop() later SIGKILLs whatever
+            # that pid names.
+            text = "".join(ev[1] for ev in reply if ev[0] == "text")
+            lines = [line.strip() for line in text.splitlines() if line.strip()]
+            match = re.fullmatch(r"\s*(\d+)\s*", lines[-1]) if lines else None
+            if match is not None:
+                self.debuggee_pid = int(match.group(1))
+            else:
+                self.debuggee_pid = None
+                log.warning("could not parse debuggee pid from perl5db reply: %r", text)
 
     async def attach_socket(self, reader, writer) -> None:
         """Adopt an already-connected perl5db socket (attach mode)."""
@@ -228,13 +284,20 @@ class PerlSession:
             # Console view.
             log.debug("perl5db chatter: %r", ev[1])
 
-    async def _await_prompt(self, timeout: float) -> None:
+    async def _await_prompt(self, timeout: float, terminal: bool = False) -> None:
         self._collect = []
         try:
             await asyncio.wait_for(self._prompt_evt.wait(), timeout)
         except asyncio.TimeoutError:
+            message = (
+                "timed out waiting for perl5db prompt in the external "
+                "terminal — did the terminal emulator actually run the "
+                "launched command?"
+                if terminal
+                else "timed out waiting for perl5db prompt"
+            )
             raise PerlProtocolError(
-                "timed out waiting for perl5db prompt",
+                message,
                 tail=self._tail.decode("utf-8", errors="replace"),
             )
         finally:
@@ -315,3 +378,13 @@ class PerlSession:
             except ProcessLookupError:
                 pass
             await self._process.wait()
+        if self._process is None and self.debuggee_pid is not None:
+            for sig in (signal.SIGTERM, signal.SIGKILL):
+                try:
+                    os.kill(self.debuggee_pid, sig)
+                except (ProcessLookupError, PermissionError):
+                    break
+                await asyncio.sleep(0.05)
+        if self._exit_status_path is not None:
+            shutil.rmtree(os.path.dirname(self._exit_status_path), ignore_errors=True)
+            self._exit_status_path = None
