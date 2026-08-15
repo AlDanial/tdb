@@ -108,6 +108,23 @@ class DAPServer:
         self._outbound_seq = 1
         self._write_lock = asyncio.Lock()
         self._deferred_events: list[SessionEvent] | None = None
+        self._client_supports_run_in_terminal = False
+        self._reverse_pending: dict[int, asyncio.Future[Mapping[str, object]]] = {}
+        # A reverse-request response can arrive (and be routed by
+        # _handle_request) before _send_reverse_request gets around to
+        # registering its future in _reverse_pending -- see that method's
+        # own comment. Responses that find no pending future are buffered
+        # here, keyed by request_seq, so _send_reverse_request can pick
+        # them up right after registering instead of hanging forever.
+        self._unmatched_responses: dict[int, Mapping[str, object]] = {}
+        # Strong ref for the same reason as the codebase's other
+        # background-task attributes (asyncio only holds a weak reference
+        # to a bare ensure_future() task): an externalTerminal launch's
+        # session.start() must run off of configurationDone's own request
+        # handling so this server's run() loop can keep reading and route
+        # the runInTerminal reverse-request's eventual response (see
+        # _configuration_done_request/_finish_terminal_start).
+        self._start_task: asyncio.Future[None] | None = None
         self._dispatch: dict[str, Handler] = {
             "initialize": self._initialize,
             "launch": self._launch,
@@ -162,6 +179,16 @@ class DAPServer:
         command = request.get("command")
         if not _is_int(request_seq):
             raise ProtocolError("Request seq must be an integer")
+        if request.get("type") == "response":
+            raw_request_seq = request.get("request_seq")
+            seq_value = raw_request_seq if _is_int(raw_request_seq) else -1
+            future = self._reverse_pending.pop(seq_value, None)
+            if future is not None:
+                if not future.done():
+                    future.set_result(request)
+            else:
+                self._unmatched_responses[seq_value] = request
+            return
         if request.get("type") != "request":
             await self._send_response(
                 request_seq,
@@ -240,13 +267,48 @@ class DAPServer:
         for event in events:
             await self._emit_session_event(event)
 
-    async def _send(self, message: Mapping[str, object]) -> None:
+    async def _send(self, message: Mapping[str, object]) -> int:
         async with self._write_lock:
             framed = dict(message)
             framed["seq"] = self._outbound_seq
             self._outbound_seq += 1
             self._writer.write(encode_message(framed))
             await self._writer.drain()
+            return framed["seq"]
+
+    async def _send_reverse_request(
+        self, command: str, arguments: Mapping[str, object]
+    ) -> None:
+        """Send a reverse (adapter -> client) request and await its reply.
+
+        `_handle_request` routes the client's eventual "response" message
+        back here by request_seq (see its `type == "response"` branch).
+        The future is registered in `self._reverse_pending` only AFTER
+        `_send` returns -- but `_send`'s own `await self._writer.drain()`
+        can yield the event loop to run()'s read loop, which could read
+        and route the client's reply before this coroutine gets back to
+        registering the future. `_handle_request` buffers such an
+        unmatched reply in `self._unmatched_responses` instead of
+        dropping it; check that buffer immediately after registering, so
+        a reply that won the race is still picked up rather than making
+        this hang until the 30s timeout.
+        """
+        future: asyncio.Future[Mapping[str, object]] = (
+            asyncio.get_running_loop().create_future()
+        )
+        seq = await self._send(
+            {"type": "request", "command": command, "arguments": dict(arguments)}
+        )
+        self._reverse_pending[seq] = future
+        buffered = self._unmatched_responses.pop(seq, None)
+        if buffered is not None and not future.done():
+            future.set_result(buffered)
+        try:
+            response = await asyncio.wait_for(future, 30.0)
+        finally:
+            self._reverse_pending.pop(seq, None)
+        if not response.get("success"):
+            raise LaunchError(str(response.get("message") or f"{command} was refused"))
 
     async def _initialize(self, arguments: Mapping[str, object]) -> _HandlerResult:
         if self._initialized:
@@ -254,6 +316,9 @@ class DAPServer:
         adapter_id = arguments.get("adapterID")
         if not isinstance(adapter_id, str) or not adapter_id:
             raise RequestError("adapterID must be a non-empty string")
+        self._client_supports_run_in_terminal = bool(
+            arguments.get("supportsRunInTerminalRequest")
+        )
         self._initialized = True
         return _HandlerResult(dict(_CAPABILITIES), (SessionEvent("initialized", {}),))
 
@@ -263,6 +328,27 @@ class DAPServer:
             raise RequestError("launch has already been requested")
         config = self._launch_config(arguments)
         session = self._session_factory(config, self._emit_session_event)
+        if config.external_terminal:
+            # Setting the attribute post-construction (rather than adding
+            # a run_in_terminal parameter to SessionFactory) keeps the
+            # factory signature -- and every existing test factory -- as
+            # is; DebugSession.__init__ already accepts the keyword too,
+            # for callers that construct it directly.
+            async def run_in_terminal(
+                cmd: list[str], cwd: str, env: dict[str, str]
+            ) -> None:
+                await self._send_reverse_request(
+                    "runInTerminal",
+                    {
+                        "kind": "external",
+                        "title": "tdb tcsh debuggee",
+                        "cwd": cwd,
+                        "args": cmd,
+                        "env": env,
+                    },
+                )
+
+            session._run_in_terminal = run_in_terminal  # type: ignore[attr-defined]
         await session.prepare()
         self._session = session
         return {}
@@ -305,9 +391,72 @@ class DAPServer:
         session = self._require_session()
         if self._configuration_done:
             raise RequestError("configurationDone has already been requested")
-        await session.start()
         self._configuration_done = True
+        if session.config.external_terminal:
+            # session.start() awaits self._run_in_terminal(...), which
+            # awaits _send_reverse_request(), whose reply can only be
+            # read/routed by THIS coroutine's own run() loop -- but run()
+            # is what's calling this handler, and it awaits handler(msg)
+            # synchronously before reading the next message. Awaiting
+            # start() inline here would deadlock: the reply could never
+            # arrive because nothing is reading stdin anymore. Run the
+            # rest of the launch as a background task (strong ref, per
+            # the repo's task-GC pitfall) so this handler returns
+            # immediately, letting run() go back to reading -- including
+            # the eventual runInTerminal response, which _handle_request's
+            # own `type == "response"` routing handles directly, without
+            # going through a command handler.
+            self._start_task = asyncio.ensure_future(
+                self._finish_terminal_start(session)
+            )
+            return {}
+        await session.start()
         return {}
+
+    async def _finish_terminal_start(self, session: DebugSession) -> None:
+        """Run a terminal-mode session.start() off of configurationDone's
+        own request handling (see _configuration_done_request).
+
+        By the time this runs, configurationDone has already answered
+        with a successful `{}` response -- there is no pending request
+        left to attach a failure to. On failure, the only way anything
+        user-visible reaches the client is via events: an `output`
+        (stderr) event describing what went wrong, followed by
+        `terminated` so the client stops treating the session as live.
+        session.start()'s own failure path already tears the session down
+        (cleanup, workspace removal, state -> TERMINATED) but -- unlike
+        the fd-mode path, where a raised LaunchError becomes an error
+        response to configurationDone itself -- it does not emit any DAP
+        event on its own, so that step still has to happen here.
+        """
+        try:
+            await session.start()
+        except asyncio.CancelledError:
+            # _cancel_start_task (disconnect/terminate tearing down an
+            # in-flight launch) cancelling this, not a launch failure --
+            # session.start() already did its own cleanup for this case.
+            raise
+        except BaseException as error:  # noqa: BLE001
+            # Deliberately broad: session.start() can raise LaunchError
+            # (the expected failure) but also e.g. a bare
+            # asyncio.TimeoutError from _send_reverse_request's own
+            # wait_for, or an OSError setting up the guardian FIFOs. This
+            # background task is not awaited inline by run() -- there is
+            # no other except-Exception net standing behind this one --
+            # so anything narrower here would silently strand the
+            # exception on self._start_task with nothing user-visible
+            # ever reaching the client (this exact class of bug happened
+            # once already, with a bare TimeoutError going unreported).
+            message = str(error) or type(error).__name__
+            try:
+                await self._emit_session_event(
+                    SessionEvent(
+                        "output", {"category": "stderr", "output": f"{message}\n"}
+                    )
+                )
+                await self._emit_session_event(SessionEvent("terminated", {}))
+            except BaseException:  # noqa: BLE001
+                pass
 
     async def _threads(self, arguments: Mapping[str, object]) -> Mapping[str, object]:
         del arguments
@@ -418,6 +567,14 @@ class DAPServer:
         terminate = arguments.get("terminateDebuggee", True)
         if not isinstance(terminate, bool):
             raise RequestError("terminateDebuggee must be a boolean")
+        # An in-flight terminal-mode start (see _configuration_done_request)
+        # runs concurrently with request handling -- unlike fd-mode, where
+        # session.start() is awaited inline by configurationDone, so run()
+        # can never dispatch a later request until it's done. Cancel and
+        # await it first so it can't still be mutating session state (or,
+        # for detach, assigning `session._run_in_terminal`'s in-flight
+        # effects) underneath whatever this request does next.
+        await self._cancel_start_task()
         if terminate:
             await self._terminate_active_session()
         else:
@@ -428,8 +585,33 @@ class DAPServer:
     async def _terminate(self, arguments: Mapping[str, object]) -> Mapping[str, object]:
         del arguments
         self._require_session()
+        await self._cancel_start_task()
         await self._terminate_active_session()
         return {}
+
+    async def _cancel_start_task(self) -> None:
+        """Cancel and await an in-flight terminal-mode `_finish_terminal_start`
+        background task before disconnect/terminate/EOF tear the session
+        down.
+
+        Without this, an in-flight session.start() could still be running
+        concurrently with (and racing) whatever teardown happens next --
+        e.g. setting session.state out from under start()'s own handshake,
+        or a second, overlapping guardian-termination attempt. Cancelling
+        it here drives start()'s own CancelledError branch (which does
+        its own full cleanup and re-raises), so by the time this returns
+        the session is in a stable, inert state for whatever runs next.
+        """
+        task, self._start_task = self._start_task, None
+        if task is None or task.done():
+            return
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        except Exception:  # noqa: BLE001
+            pass
 
     def _launch_config(self, arguments: Mapping[str, object]) -> LaunchConfig:
         program_text = _require_string(arguments, "program")
@@ -465,8 +647,23 @@ class DAPServer:
         stop_on_entry = arguments.get("stopOnEntry", True)
         if not isinstance(stop_on_entry, bool):
             raise RequestError("stopOnEntry must be a boolean")
+        console_value = arguments.get("console")
+        if console_value is not None and not isinstance(console_value, str):
+            raise RequestError("console must be a string")
+        external_terminal = console_value == "externalTerminal"
+        if external_terminal and not self._client_supports_run_in_terminal:
+            raise RequestError(
+                "externalTerminal launch requires a client that supports "
+                "the runInTerminal reverse request"
+            )
         return LaunchConfig(
-            program, tuple(raw_args), cwd, dict(raw_env), tcsh_path, stop_on_entry
+            program,
+            tuple(raw_args),
+            cwd,
+            dict(raw_env),
+            tcsh_path,
+            stop_on_entry,
+            external_terminal,
         )
 
     def _require_initialized(self) -> None:
@@ -479,6 +676,13 @@ class DAPServer:
         return self._session
 
     async def _terminate_active_session(self) -> None:
+        # Covers callers that don't already cancel it themselves (run()'s
+        # own EOF/exception-path teardown, stop()) -- _disconnect/_terminate
+        # call this too but cancel _start_task before they get here; the
+        # extra call is a no-op once it's already gone. See
+        # _cancel_start_task's own docstring for why this must happen
+        # before session.terminate() can safely run.
+        await self._cancel_start_task()
         session = self._session
         if session is None:
             return

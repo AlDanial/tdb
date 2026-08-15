@@ -32,6 +32,8 @@ class DAPClient:
         self._condition = asyncio.Condition()
         self._next_seq = 1
         self._stderr = bytearray()
+        self.on_reverse_request = None
+        self._spawned: list = []
         self._collector = asyncio.create_task(self._collect_messages())
         self._stderr_collector = asyncio.create_task(self._collect_stderr())
 
@@ -176,12 +178,41 @@ class DAPClient:
     def stderr(self) -> str:
         return self._stderr.decode("utf-8", errors="replace")
 
+    async def _answer_reverse(self, message: dict[str, object]) -> None:
+        handler = self.on_reverse_request
+        success = handler is not None
+        body: dict[str, object] = {}
+        failure = "no reverse-request handler installed"
+        if handler is not None:
+            try:
+                body = await handler(message)
+            except Exception as error:  # noqa: BLE001
+                success, failure = False, str(error)
+        reply: dict[str, object] = {
+            "seq": self._next_seq,
+            "type": "response",
+            "request_seq": message["seq"],
+            "command": message["command"],
+            "success": success,
+        }
+        self._next_seq += 1
+        if success:
+            reply["body"] = body
+        else:
+            reply["message"] = failure
+        assert self.process.stdin is not None
+        self.process.stdin.write(encode_message(reply))
+        await self.process.stdin.drain()
+
     async def _collect_messages(self) -> None:
         assert self.process.stdout is not None
         try:
             while True:
                 message = await read_message(self.process.stdout)
                 self.messages.append(message)
+                if message.get("type") == "request":
+                    await self._answer_reverse(message)
+                    continue
                 async with self._condition:
                     if message.get("type") == "response":
                         request_seq = message.get("request_seq")

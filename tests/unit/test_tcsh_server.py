@@ -201,6 +201,7 @@ async def server_client() -> object:
     client = InMemoryClient(request_reader, response_reader)
     client.factory = factory  # type: ignore[attr-defined]
     client.writer = writer  # type: ignore[attr-defined]
+    client.server = server  # type: ignore[attr-defined]
     try:
         yield client
     finally:
@@ -395,6 +396,65 @@ async def test_disconnect_and_terminate_follow_owned_lifecycle(
     response = await client.request("terminate", {})  # type: ignore[attr-defined]
     assert response["success"] is True
     assert session.terminated == 1
+
+
+@pytest.mark.asyncio
+async def test_initialize_records_run_in_terminal_capability(
+    server_client: object,
+) -> None:
+    client = server_client
+    server = client.server  # type: ignore[attr-defined]
+    assert server._client_supports_run_in_terminal is False
+    response = await client.request(  # type: ignore[attr-defined]
+        "initialize",
+        {"adapterID": "tcsh", "supportsRunInTerminalRequest": True},
+    )
+    assert response["success"] is True
+    assert server._client_supports_run_in_terminal is True
+
+
+@pytest.mark.asyncio
+async def test_external_terminal_launch_without_capability_fails_exact_message(
+    server_client: object,
+) -> None:
+    client = server_client
+    await client.request("initialize", {"adapterID": "tcsh"})  # type: ignore[attr-defined]
+    await client.next_message()  # type: ignore[attr-defined]
+    response = await client.request(  # type: ignore[attr-defined]
+        "launch",
+        {"program": "/work/demo.csh", "console": "externalTerminal"},
+    )
+    assert response["success"] is False
+    assert response["message"] == (
+        "externalTerminal launch requires a client that supports "
+        "the runInTerminal reverse request"
+    )
+    assert client.factory.sessions == []  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_stray_reverse_response_is_consumed_without_unsupported_command_error(
+    server_client: object,
+) -> None:
+    client = server_client
+    await client.request("initialize", {"adapterID": "tcsh"})  # type: ignore[attr-defined]
+    await client.next_message()  # type: ignore[attr-defined]
+    stray_response: dict[str, object] = {
+        "seq": 999,
+        "type": "response",
+        "request_seq": 12345,
+        "command": "runInTerminal",
+        "success": True,
+        "body": {},
+    }
+    client.request_reader.feed_data(encode_message(stray_response))
+    # A follow-up real request must still get its OWN response -- proves
+    # the stray "response" message above produced no reply of its own (an
+    # "unsupported command" error would otherwise show up here, ahead of
+    # or instead of this one) and didn't wedge the read loop.
+    response = await client.request("threads", {})  # type: ignore[attr-defined]
+    assert response["success"] is False
+    assert "launch must be requested first" in response["message"]
 
 
 @pytest.mark.asyncio
