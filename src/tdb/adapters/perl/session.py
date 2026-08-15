@@ -12,6 +12,7 @@ import asyncio
 import importlib.resources
 import logging
 import os
+import re
 import shlex
 import shutil
 import signal
@@ -214,10 +215,20 @@ class PerlSession:
         await self.command(f"do '{helpers_path()}'")
         if run_in_terminal is not None:
             reply = await self.command("p $$")
-            digits = "".join(
-                ch for ev in reply if ev[0] == "text" for ch in ev[1] if ch.isdigit()
-            )
-            self.debuggee_pid = int(digits) if digits else None
+            # Fail-closed: pull the pid from the LAST non-empty line of the
+            # reply text and require it to be the full line (whitespace
+            # aside) -- concatenating every digit from every text event
+            # (the old approach) let a single stray digit anywhere in the
+            # reply corrupt the pid, and stop() later SIGKILLs whatever
+            # that pid names.
+            text = "".join(ev[1] for ev in reply if ev[0] == "text")
+            lines = [line.strip() for line in text.splitlines() if line.strip()]
+            match = re.fullmatch(r"\s*(\d+)\s*", lines[-1]) if lines else None
+            if match is not None:
+                self.debuggee_pid = int(match.group(1))
+            else:
+                self.debuggee_pid = None
+                log.warning("could not parse debuggee pid from perl5db reply: %r", text)
 
     async def attach_socket(self, reader, writer) -> None:
         """Adopt an already-connected perl5db socket (attach mode)."""

@@ -1279,6 +1279,43 @@ async def test_monitor_terminal_reports_minus_one_on_status_eof_without_report(
 
 
 @pytest.mark.asyncio
+async def test_monitor_terminal_survives_eof_mid_partial_line(
+    tmp_path: Path,
+    recording_tcsh: Path,
+) -> None:
+    """A guardian that dies mid-line (status FIFO closes with unterminated
+    data still buffered, no trailing newline) must not make
+    `_read_guardian_status` re-return that same partial line forever --
+    `_monitor_terminal` must still terminate, reporting exit code -1
+    (Task 8's review: the buffer has to be cleared at real EOF, or a
+    repeated call spins on identical bytes and never sees the closed-
+    channel `b""` that ends the loop)."""
+    program = tmp_path / "program.csh"
+    program.write_text("echo ready\n")
+    events: list[SessionEvent] = []
+    session = DebugSession(
+        launch_config(program, recording_tcsh, external_terminal=True),
+        collecting_sink(events),
+    )
+    status_reader, status_writer = os.pipe()
+    os.set_blocking(status_reader, False)
+    session._guardian_status_descriptor = status_reader  # type: ignore[attr-defined]
+    session._guardian_ack_queue = asyncio.Queue()  # type: ignore[attr-defined]
+    os.write(status_writer, b"partial data with no newline")
+    os.close(status_writer)
+    try:
+        await asyncio.wait_for(session._monitor_terminal(), timeout=2)
+    finally:
+        with contextlib.suppress(OSError):
+            os.close(status_reader)
+    assert [event.kind for event in events] == ["exited", "terminated"]
+    assert events[0].body == {"exitCode": -1}
+    # The partial line was routed to the ack queue (not treated as an
+    # exit/signal report) rather than the buffer looping on it forever.
+    assert session._guardian_ack_queue.get_nowait() == b"partial data with no newline"
+
+
+@pytest.mark.asyncio
 async def test_monitor_terminal_routes_non_exit_status_to_ack_queue(
     tmp_path: Path,
     recording_tcsh: Path,

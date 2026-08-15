@@ -451,7 +451,14 @@ class DAPServer:
             try:
                 await self._emit_session_event(
                     SessionEvent(
-                        "output", {"category": "stderr", "output": f"{message}\n"}
+                        "output",
+                        # "console" (not "stderr"): the controller drops
+                        # stdout/stderr output events in --terminal mode
+                        # (program output goes to the external terminal
+                        # instead), which would silently swallow this
+                        # failure message. "console" is DAP-standard and
+                        # always rendered in the Console View.
+                        {"category": "console", "output": f"{message}\n"},
                     )
                 )
                 await self._emit_session_event(SessionEvent("terminated", {}))

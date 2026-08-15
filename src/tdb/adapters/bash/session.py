@@ -158,6 +158,7 @@ class BashSession:
         self._req_id = 0  # monotonic REQUEST id counter
         self._ready: asyncio.Future | None = None
         self._tasks: list[asyncio.Task] = []
+        self._resp_loop_task: asyncio.Task | None = None
         self._tmpdir: tempfile.TemporaryDirectory | None = None
         self._stderr_tail = ""  # last stderr bytes, for pre-ready failures
         self.debuggee_pid: int | None = None
@@ -211,6 +212,24 @@ class BashSession:
         os.mkfifo(resp_path, 0o600)
         cmd_w = os.open(cmd_path, os.O_RDWR | os.O_CLOEXEC)
         resp_r = os.open(resp_path, os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC)
+        # Portability mitigation: hold our own O_WRONLY fd on the response
+        # FIFO from before the child spawns until the `ready` handshake
+        # resolves (closed in the try/finally around the ready-wait below).
+        # This open cannot block -- resp_r above already holds a reader
+        # open. On Linux, a reader-only FIFO opened O_NONBLOCK simply never
+        # reports EOF/EPOLLHUP while writer-less, so the gap between this
+        # open() and the harness's own write-open is currently harmless
+        # there -- but that's a kernel-specific quirk, not POSIX. On
+        # macOS/kqueue (and potentially other non-Linux kernels), the
+        # writer-less-FIFO EOF can fire immediately, which _resp_loop's
+        # readline() would read as EOF and treat as "bash exited" before
+        # the harness ever got a chance to report ready -- killing every
+        # bash session, pipe-mode included, not just --terminal ones.
+        # Guaranteeing a writer exists from before the child spawns
+        # restores the pre-branch semantics of the pipe this FIFO
+        # replaces; real EOF detection after `ready` is unaffected since
+        # the harness's own writer fd is open by then.
+        resp_w_holder = os.open(resp_path, os.O_WRONLY | os.O_CLOEXEC)
         child_env = dict(env or os.environ)
         child_env["BASH_ENV"] = HARNESS
         child_env["__TDB_CMD_PATH"] = cmd_path
@@ -250,32 +269,37 @@ class BashSession:
             lambda: asyncio.StreamReaderProtocol(self._resp_reader),
             os.fdopen(resp_r, "rb"),
         )
+        self._resp_loop_task = asyncio.create_task(self._resp_loop())
         if run_in_terminal is not None:
             self._tasks = [
-                asyncio.create_task(self._resp_loop()),
+                self._resp_loop_task,
                 asyncio.create_task(self._terminal_exit_watch()),
             ]
         else:
             self._tasks = [
-                asyncio.create_task(self._resp_loop()),
+                self._resp_loop_task,
                 asyncio.create_task(self._pump(self._process.stdout, "stdout")),
                 asyncio.create_task(self._pump(self._process.stderr, "stderr")),
                 asyncio.create_task(self._reap()),
             ]
         try:
-            await asyncio.wait_for(
-                self._ready, 30.0 if run_in_terminal is not None else 15.0
-            )
-        except (asyncio.TimeoutError, BashProtocolError) as e:
-            await self.stop()
-            if isinstance(e, BashProtocolError):
-                raise
-            message = (
-                "the bash harness never reported ready — is bash hung during startup?"
-            )
-            if run_in_terminal is not None:
-                message += " — did the external terminal window open?"
-            raise BashProtocolError(message)
+            try:
+                await asyncio.wait_for(
+                    self._ready, 30.0 if run_in_terminal is not None else 15.0
+                )
+            except (asyncio.TimeoutError, BashProtocolError) as e:
+                await self.stop()
+                if isinstance(e, BashProtocolError):
+                    raise
+                message = (
+                    "the bash harness never reported ready — "
+                    "is bash hung during startup?"
+                )
+                if run_in_terminal is not None:
+                    message += " — did the external terminal window open?"
+                raise BashProtocolError(message)
+        finally:
+            os.close(resp_w_holder)
         self.stopped = True  # config phase
 
     async def _pump(self, stream: asyncio.StreamReader, category: str) -> None:
@@ -344,7 +368,8 @@ class BashSession:
         exit-status file (written by launch()'s /bin/sh wrapper) is the
         only way to learn its real exit code.
         """
-        await self._tasks[0]  # _resp_loop: returns on response-FIFO EOF
+        assert self._resp_loop_task is not None
+        await self._resp_loop_task  # returns on response-FIFO EOF
         code = -1
         deadline = asyncio.get_running_loop().time() + 2.0
         while asyncio.get_running_loop().time() < deadline:

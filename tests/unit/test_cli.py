@@ -182,6 +182,38 @@ def test_terminal_rejected_with_remote_attach(monkeypatch):
         parse_args(["--terminal", "xterm", "-r", "5678"])
 
 
+def test_terminal_rejected_for_cpp_with_default_gdb_adapter(tmp_path, monkeypatch):
+    """gdb's DAP mode has no terminal integration (GdbDapAdapter.launch_body
+    raises the same error as a backstop) -- the CLI must reject this
+    combination up front rather than let it fail deep inside a TUI worker,
+    where it degrades to a bare "Failed to start" subtitle. No --adapter
+    is given here, so this also covers the implicit gdb default."""
+    binary = _write_elf(tmp_path)
+    monkeypatch.setattr("shutil.which", lambda name: f"/usr/bin/{name}")
+    with pytest.raises(SystemExit):
+        parse_args(["--lang", "cpp", "--terminal", "xterm", str(binary)])
+
+
+def test_terminal_rejected_for_cpp_with_explicit_gdb_adapter(tmp_path, monkeypatch):
+    binary = _write_elf(tmp_path)
+    monkeypatch.setattr("shutil.which", lambda name: f"/usr/bin/{name}")
+    with pytest.raises(SystemExit):
+        parse_args(
+            ["--lang", "cpp", "--adapter", "gdb", "--terminal", "xterm", str(binary)]
+        )
+
+
+def test_terminal_allowed_for_cpp_with_lldb_dap_adapter(tmp_path, monkeypatch):
+    binary = _write_elf(tmp_path)
+    monkeypatch.setattr("shutil.which", lambda name: f"/usr/bin/{name}")
+    args = parse_args(
+        ["--lang", "cpp", "--adapter", "lldb-dap", "--terminal", "xterm", str(binary)]
+    )
+    assert args.terminal == "xterm"
+    assert args.profile.id == "cpp"
+    assert args.profile.adapter.id == "lldb-dap"
+
+
 def test_headless_implies_server(tmp_path):
     prog = tmp_path / "x.py"
     prog.write_text("\n")

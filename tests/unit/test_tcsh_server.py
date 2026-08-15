@@ -46,12 +46,15 @@ class FakeSession:
         self.finish_terminate = asyncio.Event()
         self.terminate_error: Exception | None = None
         self.terminate_event: SessionEvent | None = None
+        self.start_error: Exception | None = None
 
     async def prepare(self) -> None:
         self.calls.append("prepare")
 
     async def start(self) -> None:
         self.calls.append("start")
+        if self.start_error is not None:
+            raise self.start_error
 
     def set_breakpoints(
         self, path: Path, lines: tuple[int, ...]
@@ -430,6 +433,47 @@ async def test_external_terminal_launch_without_capability_fails_exact_message(
         "the runInTerminal reverse request"
     )
     assert client.factory.sessions == []  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_terminal_background_start_failure_uses_console_category(
+    server_client: object,
+) -> None:
+    """A background-start failure in --terminal mode must reach the user.
+
+    session.start()'s failure inside _finish_terminal_start is reported
+    via an `output` event since, by the time it runs, configurationDone
+    has already answered successfully -- there's no pending request left
+    to fail. The controller drops stdout/stderr `output` events in
+    --terminal mode (program output goes to the external terminal
+    instead), so this event must use category "console", not "stderr",
+    or the failure would be silently swallowed.
+    """
+    client = server_client
+    await client.request(  # type: ignore[attr-defined]
+        "initialize",
+        {"adapterID": "tcsh", "supportsRunInTerminalRequest": True},
+    )
+    await client.next_message()  # type: ignore[attr-defined]
+    launch_response = await client.request(  # type: ignore[attr-defined]
+        "launch",
+        {"program": "/work/demo.csh", "console": "externalTerminal"},
+    )
+    assert launch_response["success"] is True
+    factory = client.factory  # type: ignore[attr-defined]
+    session = factory.sessions[0]
+    session.start_error = RuntimeError("guardian exited before arming startup")
+
+    response = await client.request("configurationDone", {})  # type: ignore[attr-defined]
+    assert response["success"] is True
+
+    output_event = await client.next_message()  # type: ignore[attr-defined]
+    assert output_event["event"] == "output"
+    assert output_event["body"]["category"] == "console"
+    assert "guardian exited before arming startup" in output_event["body"]["output"]
+
+    terminated_event = await client.next_message()  # type: ignore[attr-defined]
+    assert terminated_event["event"] == "terminated"
 
 
 @pytest.mark.asyncio

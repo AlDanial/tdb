@@ -43,7 +43,7 @@ from tdb.adapters.tcsh.transport import (
 )
 
 _TERMINATE_TIMEOUT_SECONDS = 2.0
-_GUARDIAN_CONNECT_TIMEOUT_SECONDS = 15.0
+_GUARDIAN_CONNECT_TIMEOUT_SECONDS = 30.0
 _WORKSPACE_REDACTION = "<adapter-workspace>"
 _OUTPUT_CHUNK_BYTES = 64 * 1024
 _DIRECTORY_OPEN_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | os.O_NOFOLLOW
@@ -347,13 +347,19 @@ class DebugSession:
             status = await self._read_guardian_status()
             if status != b"armed\n":
                 detail = status.decode(errors="replace").removeprefix("error ").strip()
-                raise OSError(detail or "guardian exited before arming startup")
+                message = detail or "guardian exited before arming startup"
+                if self.config.external_terminal:
+                    message += " — did the external terminal window open?"
+                raise OSError(message)
             self._guardian_armed = True
             os.write(control_writer, b"start\n")
             status = await self._read_guardian_status()
             if status != b"ok\n":
                 detail = status.decode(errors="replace").removeprefix("error ").strip()
-                raise OSError(detail or "guardian exited before launching tcsh")
+                message = detail or "guardian exited before launching tcsh"
+                if self.config.external_terminal:
+                    message += " — did the external terminal window open?"
+                raise OSError(message)
             if self.config.external_terminal:
                 pid_line = await self._read_guardian_status()
                 if not pid_line.startswith(b"pid "):
@@ -1174,7 +1180,21 @@ class DebugSession:
                     self._guardian_status_writer_seen
                     or not self.config.external_terminal
                 ):
-                    return bytes(self._guardian_status_buffer)
+                    # Real EOF: return whatever partial (unterminated) line
+                    # is left in the buffer, but clear it first. Without
+                    # this, a guardian that dies mid-line (no trailing
+                    # newline) would leave that partial data sitting in
+                    # the buffer forever -- the next call finds no b"\n"
+                    # (line 1165's `find` still misses) and, since a
+                    # writer has already been seen, immediately re-hits
+                    # this same branch and returns the identical bytes
+                    # again, spinning _monitor_terminal on the same
+                    # partial line forever instead of ever reporting the
+                    # closed status channel (`b""`) that tells it the
+                    # guardian is gone.
+                    status = bytes(self._guardian_status_buffer)
+                    self._guardian_status_buffer.clear()
+                    return status
                 # Terminal mode only: our own read-open of the status FIFO
                 # is non-blocking (start() can't block on the guardian's
                 # write-open -- it hasn't even been asked to spawn yet at
