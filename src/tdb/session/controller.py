@@ -593,6 +593,11 @@ class DebugController:
         mode): `do_configure` ran long ago with an empty breakpoint
         map, so saved breakpoints loaded at adoption time must be sent
         explicitly.
+
+        Parent-client only, like `_send_breakpoints`: any child
+        processes already attached at adoption time (multiprocessing
+        debuggees can attach children during the headless run-mode
+        phase) do not get these breakpoints fanned out to them here.
         """
         if self.state.breakpoints_disabled:
             return

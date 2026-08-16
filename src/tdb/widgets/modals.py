@@ -632,7 +632,7 @@ class _DetachQuitModal(ModalScreen):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="dialog"):
-            yield Static("[bold]d[/bold]: detach & resume program", markup=True)
+            yield Static("[bold]d[/bold] (or q): detach & resume program", markup=True)
             yield Static("[bold]t[/bold]: terminate program & quit", markup=True)
             yield Static("[dim]ESC: cancel[/dim]", markup=True)
 

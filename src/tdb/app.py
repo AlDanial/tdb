@@ -1672,7 +1672,7 @@ class TdbApp(_AppMessageRoutes, App):
 
     def action_confirm_quit(self) -> None:
         if self._adopted:
-            if isinstance(self.screen, _DetachQuitModal):
+            if self._is_quitting or isinstance(self.screen, _DetachQuitModal):
                 return
 
             def on_dismiss_adopted(result: str | None) -> None:

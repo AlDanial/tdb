@@ -11,7 +11,18 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+import signal
 import sys
+from pathlib import Path
+from typing import TYPE_CHECKING, Awaitable, Callable
+
+from tdb.session.controller import DebugController
+from tdb.session.event_bus import SwappableEventHandler
+
+if TYPE_CHECKING:
+    from tdb.languages.base import LanguageProfile
+    from tdb.persist import TdbConfig
 
 log = logging.getLogger(__name__)
 
@@ -61,18 +72,6 @@ class ConsoleRunHandler:
     def on_external_terminal_started(self) -> None:
         pass
 
-
-import os
-import signal
-from pathlib import Path
-from typing import TYPE_CHECKING, Awaitable, Callable
-
-from tdb.session.controller import DebugController
-from tdb.session.event_bus import SwappableEventHandler
-
-if TYPE_CHECKING:
-    from tdb.languages.base import LanguageProfile
-    from tdb.persist import TdbConfig
 
 TuiEpisode = Callable[
     [DebugController, SwappableEventHandler, ConsoleRunHandler, "TdbConfig", str],
@@ -202,53 +201,71 @@ async def run(
         print(f"tdb: {exc.hint}", file=sys.stderr)
         return 2
 
-    await asyncio.wait_for(console.initialized.wait(), timeout=DAP_INITIALIZED)
-    await controller.do_configure()
-    if on_session_ready is not None:
-        on_session_ready(controller)
-
-    hint = "Ctrl-C" if os.name == "nt" else f"Ctrl-C or `kill -USR1 {os.getpid()}`"
-    print(f"tdb: running {program} — {hint} opens the debugger", file=sys.stderr)
-
-    loop = asyncio.get_running_loop()
-    interrupt = asyncio.Event()
-    episode = tui_episode or _default_tui_episode
-    installed = _arm_signals(loop, interrupt.set)
-    exit_code = 0
+    # From here on, the debuggee is running under a live adapter session.
+    # Any escaping exception (timeout waiting for `initialized`, a raising
+    # TUI episode, ...) must not leave the adapter+debuggee orphaned and
+    # detached from the terminal's process group — best-effort stop it
+    # before re-raising.
     try:
-        while True:
-            await _wait_first(console.exited, interrupt, console.stopped)
-            if console.exited.is_set():
-                exit_code = console.exit_code or 0
-                break
-            if interrupt.is_set() and not console.stopped.is_set():
-                interrupt.clear()
-                ok = await controller.pause(timeout=_PAUSE_TIMEOUT)
+        await asyncio.wait_for(console.initialized.wait(), timeout=DAP_INITIALIZED)
+        await controller.do_configure()
+        if on_session_ready is not None:
+            on_session_ready(controller)
+
+        hint = "Ctrl-C" if os.name == "nt" else f"Ctrl-C or `kill -USR1 {os.getpid()}`"
+        print(f"tdb: running {program} — {hint} opens the debugger", file=sys.stderr)
+
+        loop = asyncio.get_running_loop()
+        interrupt = asyncio.Event()
+        episode = tui_episode or _default_tui_episode
+        installed = _arm_signals(loop, interrupt.set)
+        exit_code = 0
+        try:
+            while True:
+                await _wait_first(console.exited, interrupt, console.stopped)
                 if console.exited.is_set():
-                    # Died between the signal and the pause landing.
                     exit_code = console.exit_code or 0
                     break
-                if not ok:
-                    print(
-                        "tdb: pause requested — the program is blocked inside "
-                        "a single call; the debugger opens when it returns",
-                        file=sys.stderr,
-                    )
-                    continue
-            # Reached on a landed pause, or on a spontaneous stop (a
-            # breakpoint set during a previous episode).
-            interrupt.clear()
-            _disarm_signals(loop, installed, ignore=True)
-            detach = await episode(controller, handler, console, config, program)
-            handler.retarget(console)
-            console.stopped.clear()
-            if controller.state.is_terminated:
-                break
-            if not detach:
+                if interrupt.is_set() and not console.stopped.is_set():
+                    interrupt.clear()
+                    ok = await controller.pause(timeout=_PAUSE_TIMEOUT)
+                    if console.exited.is_set():
+                        # Died between the signal and the pause landing.
+                        exit_code = console.exit_code or 0
+                        print(
+                            f"tdb: program exited (code {exit_code}) before "
+                            "the debugger could open",
+                            file=sys.stderr,
+                        )
+                        break
+                    if not ok:
+                        print(
+                            "tdb: pause requested — the program is blocked inside "
+                            "a single call; the debugger opens when it returns",
+                            file=sys.stderr,
+                        )
+                        continue
+                # Reached on a landed pause, or on a spontaneous stop (a
+                # breakpoint set during a previous episode).
+                interrupt.clear()
+                _disarm_signals(loop, installed, ignore=True)
+                detach = await episode(controller, handler, console, config, program)
+                handler.retarget(console)
+                console.stopped.clear()
+                if controller.state.is_terminated:
+                    break
+                if not detach:
+                    await controller.stop()
+                    break
+                await controller.continue_()
+                installed = _arm_signals(loop, interrupt.set)
+        finally:
+            _disarm_signals(loop, installed, ignore=False)
+        return exit_code
+    except BaseException:
+        if not controller.state.is_terminated:
+            try:
                 await controller.stop()
-                break
-            await controller.continue_()
-            installed = _arm_signals(loop, interrupt.set)
-    finally:
-        _disarm_signals(loop, installed, ignore=False)
-    return exit_code
+            except Exception:
+                log.exception("cleanup stop failed after run-mode error")
+        raise

@@ -94,3 +94,42 @@ async def test_signal_pause_episode_detach_and_terminate(tmp_path):
     assert episodes and len(episodes) == 2
     assert code == 0
     assert box["controller"].state.is_terminated
+
+
+async def test_run_cleans_up_when_tui_episode_raises(tmp_path):
+    """A TUI episode that raises must not orphan the adapter+debuggee:
+    run() should stop the controller before re-raising."""
+    p = tmp_path / "loop.py"
+    p.write_text(LOOP_SCRIPT)
+    box = {}
+
+    def ready(controller):
+        box["controller"] = controller
+
+    async def raising_episode(controller, handler, console, config, program):
+        raise RuntimeError("boom")
+
+    async def pulse():
+        await _wait_until(
+            lambda: (
+                box.get("controller") is not None
+                and box["controller"].state.phase is SessionPhase.RUNNING
+            )
+        )
+        os.kill(os.getpid(), signal.SIGUSR1)
+
+    pulse_task = asyncio.ensure_future(pulse())
+    try:
+        with pytest.raises(RuntimeError, match="boom"):
+            await asyncio.wait_for(
+                run_mode.run(
+                    program=str(p),
+                    config=TdbConfig(),
+                    tui_episode=raising_episode,
+                    on_session_ready=ready,
+                ),
+                timeout=90.0,
+            )
+    finally:
+        pulse_task.cancel()
+    assert box["controller"].state.is_terminated
