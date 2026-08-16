@@ -612,6 +612,35 @@ async def test_attach_body_comes_from_adapter_spec(dap):
     fut.cancel()
 
 
+async def test_adapter_spawn_isolated_from_terminal_signals(monkeypatch):
+    """POSIX: new session (setsid). Windows: new process group. Either
+    way the adapter must not share the terminal's Ctrl-C delivery."""
+    import tdb.dap.client as client_mod
+
+    captured = {}
+
+    async def fake_exec(*cmd, **kwargs):
+        captured.update(kwargs)
+        raise RuntimeError("stop before real spawn")
+
+    monkeypatch.setattr(client_mod.asyncio, "create_subprocess_exec", fake_exec)
+    from tdb.languages.python import build_python_profile
+
+    c = client_mod.DAPClient(build_python_profile().adapter)
+    with pytest.raises(RuntimeError):
+        await c.start()
+
+    import os
+
+    if os.name == "nt":
+        import subprocess
+
+        assert captured.get("creationflags") == subprocess.CREATE_NEW_PROCESS_GROUP
+        assert "start_new_session" not in captured
+    else:
+        assert captured.get("start_new_session") is True
+
+
 def test_default_adapter_is_debugpy():
     from tdb.dap.client import DAPClient
     from tdb.languages.python import DebugpyAdapter
