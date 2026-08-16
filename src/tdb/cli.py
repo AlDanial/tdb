@@ -41,6 +41,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="Attach to a remote debugpy server (e.g. 5678 or localhost:5678)",
     )
     parser.add_argument(
+        "--run",
+        action="store_true",
+        help="Run the program without the TUI, at full speed, ignoring "
+        "all breakpoints. Press Ctrl-C (or send SIGUSR1 on Unix) to "
+        "pause it and open the debugger at the current line; quitting "
+        "the debugger can detach and resume the program. For "
+        "inspecting programs that appear to be hung.",
+    )
+    parser.add_argument(
         "program",
         nargs="?",
         default=None,
@@ -255,6 +264,8 @@ def _apply_flag_implications(args: argparse.Namespace) -> None:
         args.stop_on_entry = False
     if args.headless:
         args.server = True
+    if args.run:
+        args.stop_on_entry = False
 
 
 def _validate_terminal_choice(
@@ -544,6 +555,22 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     args = parser.parse_args(argv)
     _apply_flag_implications(args)
 
+    if args.run:
+        for flag, value in (
+            ("-r/--remote-attach", args.remote_attach),
+            ("-k/--breakpoint", args.breakpoint),
+            ("-t/--to-line", args.to_line),
+            ("--record", args.record),
+            ("--replay", args.replay),
+            ("--headless", args.headless),
+            ("--server", args.server),
+            ("--mcp", args.mcp),
+            ("--terminal", args.terminal),
+            ("--post-mortem", args.post_mortem),
+        ):
+            if value:
+                parser.error(f"--run cannot be combined with {flag}")
+
     if args.record and (args.headless or args.server or args.post_mortem or args.mcp):
         parser.error(
             "--record captures an interactive TUI session; it cannot be "
@@ -576,6 +603,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     _parse_path_mappings(args, parser)
     _resolve_program_path(args, parser)
     _resolve_language(args, parser)
+    if args.run and not args.profile.capabilities.pause_while_running:
+        parser.error(
+            f"--run is not supported for {args.profile.id}: its debug "
+            f"adapter cannot pause a running program"
+        )
     _parse_breakpoints(args, parser)
     _snap_breakpoints(args)
     # Merged (path, line, persist) list consumed by the TUI and headless
@@ -624,6 +656,8 @@ def main(argv: list[str] | None = None) -> None:
         from tdb.replay import replay_main
 
         replay_main(args.replay, timing=args.timing, replay_timeout=args.replay_timeout)
+    elif args.run:
+        _run_run(args)
     elif args.headless:
         _run_headless(args)
     else:
@@ -737,6 +771,27 @@ def _run_headless(args: argparse.Namespace) -> None:
             profile=args.profile,
         )
     )
+
+
+def _run_run(args: argparse.Namespace) -> None:
+    """Run headless until a signal opens the TUI (`--run`)."""
+    import asyncio
+    from tdb.persist import load_config
+    from tdb.run_mode import run
+
+    code = asyncio.run(
+        run(
+            program=args.program,
+            args=args.args,
+            cwd=args.cwd,
+            just_my_code=not args.no_just_my_code,
+            python=args.python,
+            sub_process=not args.no_subprocess,
+            profile=args.profile,
+            config=load_config(),
+        )
+    )
+    sys.exit(code)
 
 
 def _run_tui(args: argparse.Namespace) -> None:
