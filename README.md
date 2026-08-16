@@ -1003,8 +1003,8 @@ debuggee itself never receives the signal (`tdb`'s adapter runs in its own proce
 group), so its own `SIGINT` handling is undisturbed.
 
 **Quitting an adopted session** adds a third choice to the usual quit dialog:
-- `d` -- detach and resume: the program keeps running headlessly; interrupt it again
-  later the same way.
+- `d` (or `q`) -- detach and resume: the program keeps running headlessly; interrupt it
+  again later the same way.
 - `t` -- terminate the program and quit `tdb`.
 - `Esc` -- cancel, stay in the TUI.
 
