@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 from .messages import Event, Request, Response, parse_message
@@ -80,12 +81,23 @@ class DAPClient:
         ``ModuleNotFoundError`` and tdb would hang waiting on stdout.
         """
         argv = self._adapter.command()
+        spawn_kwargs: dict = {}
+        if os.name == "nt":
+            import subprocess
+
+            # A console CTRL_C_EVENT is delivered to every process in
+            # the console's group; a new group keeps run-mode Ctrl-C
+            # (and TUI-mode terminal signals generally) tdb-only.
+            spawn_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+        else:
+            # isolate from terminal so it can't interfere with TUI
+            spawn_kwargs["start_new_session"] = True
         self._process = await asyncio.create_subprocess_exec(
             *argv,
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            start_new_session=True,  # isolate from terminal so it can't interfere with TUI
+            **spawn_kwargs,
         )
         self._reader = self._process.stdout
         self._reader_task = asyncio.create_task(self._read_loop())

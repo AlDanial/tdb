@@ -178,6 +178,12 @@ class ProfileCapabilities:
     # (tdb.inspection) may be evaluated in the debuggee.
     task_inspection: bool = False
 
+    # True -> the adapter honors a DAP `pause` request while the
+    # debuggee is running (required for `tdb --run`). debugpy, the
+    # perl adapter, and the bash adapter all do; tcsh gains it with
+    # its pause handler; gdb/lldb-dap pending verification.
+    pause_while_running: bool = False
+
 
 @dataclass(frozen=True)
 class LanguageProfile:

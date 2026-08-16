@@ -192,6 +192,7 @@ class DebugSession:
         self._run_mode = RunMode.CONTINUE
         self._step_start_depth = 0
         self._entry_pending = config.stop_on_entry
+        self._pause_pending = False
         self._detach_requested = False
         self._source_stack: list[_SourceActivation] = []
         self._last_probe: Probe | None = None
@@ -469,6 +470,15 @@ class DebugSession:
         """Resume until a bound breakpoint or process termination."""
 
         await self._request_resume(RunMode.CONTINUE)
+
+    def request_pause(self) -> None:
+        """Stop at the next probe regardless of run mode (DAP `pause`).
+
+        The instrumented script rendezvouses with the adapter after
+        every statement, so this needs no signal delivery — just a flag
+        the next `_handle_probe` call consumes.
+        """
+        self._pause_pending = True
 
     async def next(self) -> None:
         """Resume to the next probe at the current or a shallower source depth."""
@@ -787,7 +797,10 @@ class DebugSession:
         event_depth = len(self._source_stack)
         self._last_probe = probe
         reason: StopReason | None = None
-        if self._entry_pending and event_depth == 0:
+        if self._pause_pending:
+            self._pause_pending = False
+            reason = StopReason.PAUSE
+        elif self._entry_pending and event_depth == 0:
             self._entry_pending = False
             reason = StopReason.ENTRY
         elif probe.id in self._breakpoint_probe_ids.get(probe.span.path, frozenset()):

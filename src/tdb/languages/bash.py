@@ -80,5 +80,5 @@ def build_bash_profile(
         display_name="Bash",
         adapter=BashAdapter(bash_executable=(adapter_paths or {}).get("bash")),
         presentation=Presentation(lexer="bash", frame_placeholder="main"),
-        capabilities=ProfileCapabilities(),
+        capabilities=ProfileCapabilities(pause_while_running=True),
     )

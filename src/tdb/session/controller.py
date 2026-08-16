@@ -58,6 +58,10 @@ class DebugController:
         # must detach without terminating it (otherwise tdb.breakpoint()
         # and similar attach workflows would kill the user's program).
         self._is_remote_attach: bool = False
+        # True for sessions handed to the TUI by run mode (`tdb --run`).
+        # Restart is meaningless there: the run-mode loop owns the
+        # process lifecycle, not the TUI episode.
+        self.adopted_session: bool = False
         # Strong references to fire-and-forget tasks so they aren't
         # garbage-collected mid-execution (asyncio holds only weak refs).
         self._bg_tasks: set[asyncio.Task] = set()
@@ -124,7 +128,7 @@ class DebugController:
         Remote-attach sessions can't — there's no `program` to launch and
         the debugpy server is owned by the user's process.
         """
-        return not self._is_remote_attach
+        return not (self._is_remote_attach or self.adopted_session)
 
     @property
     def session_lock(self) -> asyncio.Lock:
@@ -549,13 +553,23 @@ class DebugController:
             return False
         if self.state.phase == SessionPhase.STOPPED:
             return True  # already stopped — nothing to wait for
-        if self.state.current_thread_id is None:
-            return False
+        thread_id = self.state.current_thread_id
+        if thread_id is None:
+            # Run mode: the debuggee has never stopped, so no stop event
+            # ever recorded a thread id. Ask the adapter directly.
+            try:
+                threads = await self.client.threads()
+            except Exception:
+                log.exception("thread query for pause failed")
+                return False
+            if not threads:
+                return False
+            thread_id = threads[0].id
         # Clear before sending so a stale set() from a previous stop
         # doesn't make us return True instantly.
         self._stopped_event.clear()
         try:
-            await self.client.pause(self.state.current_thread_id)
+            await self.client.pause(thread_id)
         except Exception:
             log.exception("DAP pause request failed for parent")
             return False
@@ -571,6 +585,24 @@ class DebugController:
             return True
         except asyncio.TimeoutError:
             return False
+
+    async def push_all_breakpoints(self) -> None:
+        """Install every enabled breakpoint over DAP.
+
+        Used when the TUI adopts an already-configured session (run
+        mode): `do_configure` ran long ago with an empty breakpoint
+        map, so saved breakpoints loaded at adoption time must be sent
+        explicitly.
+
+        Parent-client only, like `_send_breakpoints`: any child
+        processes already attached at adoption time (multiprocessing
+        debuggees can attach children during the headless run-mode
+        phase) do not get these breakpoints fanned out to them here.
+        """
+        if self.state.breakpoints_disabled:
+            return
+        for source_path, bps in self.state.breakpoints.items():
+            await self._send_breakpoints(source_path, self._enabled_bps(bps))
 
     async def toggle_breakpoint(self, source_path: str, line: int) -> None:
         bps = self.state.breakpoints.get(source_path, [])

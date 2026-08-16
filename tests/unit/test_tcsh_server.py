@@ -539,7 +539,7 @@ async def test_unknown_and_domain_errors_get_one_failed_response_and_server_surv
 ) -> None:
     client = server_client
     session = await initialize_and_launch(client)  # type: ignore[arg-type]
-    unknown = await client.request("pause", {"threadId": 1})  # type: ignore[attr-defined]
+    unknown = await client.request("restartFrame", {"threadId": 1})  # type: ignore[attr-defined]
     assert unknown["success"] is False
     assert "not supported" in unknown["message"]
     session.continue_error = TransportError("control channel closed")

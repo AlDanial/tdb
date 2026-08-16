@@ -387,3 +387,59 @@ async def test_one_thousand_probes_finish_without_deadlock(
     await dap_client.wait_for_event("terminated", timeout=30)
     assert exited["body"]["exitCode"] == 0
     await wait_until(lambda: not any(path.exists() for path in created))
+
+
+@pytest.mark.asyncio
+async def test_pause_stops_running_loop(
+    dap_client: DAPClient,
+    tcsh_path: Path,
+    tmp_path: Path,
+) -> None:
+    program = tmp_path / "spin.csh"
+    program.write_text("set i = 0\nwhile (1)\n  @ i++\nend\n")
+    await dap_client.initialize()
+    await dap_client.launch(program, tcshPath=str(tcsh_path), stopOnEntry=False)
+    await configure(dap_client)
+    await asyncio.sleep(0.5)  # let the loop spin freely first
+
+    response = await dap_client.request("pause", {"threadId": 1})
+    assert response["success"] is True
+
+    stopped = await dap_client.wait_for_event("stopped")
+    assert stopped["body"]["reason"] == "pause"
+    frames = await stack_frames(dap_client)
+    assert frames[0]["source"]["path"].endswith("spin.csh")
+
+
+@pytest.mark.asyncio
+async def test_pause_while_already_stopped_does_not_mislabel_next_stop(
+    dap_client: DAPClient,
+    tcsh_path: Path,
+    tmp_path: Path,
+) -> None:
+    """TOCTOU guard: pause request while stopped should not arm _pause_pending.
+
+    If session is already stopped at entry, requesting pause should not arm
+    the flag to mislabel the *next* stop (from next command) as "pause".
+    """
+    program = tmp_path / "multi_line.csh"
+    program.write_text("set a = 1\nset b = 2\nset c = 3\nexit 0\n")
+    await dap_client.initialize()
+    await dap_client.launch(program, tcshPath=str(tcsh_path), stopOnEntry=True)
+    await configure(dap_client)
+
+    # Stop at entry (first statement)
+    stopped = await dap_client.wait_for_event("stopped")
+    assert stopped["body"]["reason"] == "entry"
+
+    # Request pause while already stopped (should no-op and not arm _pause_pending)
+    response = await dap_client.request("pause", {"threadId": 1})
+    assert response["success"] is True
+
+    # Execute next to step to the next line
+    assert (await dap_client.request("next", {"threadId": 1}))["success"] is True
+    stopped_after_next = await dap_client.wait_for_event("stopped")
+
+    # Verify the stop reason is "step", NOT "pause"
+    # (the guard should have prevented _pause_pending from being armed)
+    assert stopped_after_next["body"]["reason"] == "step"
