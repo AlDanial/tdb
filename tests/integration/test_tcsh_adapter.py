@@ -387,3 +387,25 @@ async def test_one_thousand_probes_finish_without_deadlock(
     await dap_client.wait_for_event("terminated", timeout=30)
     assert exited["body"]["exitCode"] == 0
     await wait_until(lambda: not any(path.exists() for path in created))
+
+
+@pytest.mark.asyncio
+async def test_pause_stops_running_loop(
+    dap_client: DAPClient,
+    tcsh_path: Path,
+    tmp_path: Path,
+) -> None:
+    program = tmp_path / "spin.csh"
+    program.write_text("set i = 0\nwhile (1)\n  @ i++\nend\n")
+    await dap_client.initialize()
+    await dap_client.launch(program, tcshPath=str(tcsh_path), stopOnEntry=False)
+    await configure(dap_client)
+    await asyncio.sleep(0.5)  # let the loop spin freely first
+
+    response = await dap_client.request("pause", {"threadId": 1})
+    assert response["success"] is True
+
+    stopped = await dap_client.wait_for_event("stopped")
+    assert stopped["body"]["reason"] == "pause"
+    frames = await stack_frames(dap_client)
+    assert frames[0]["source"]["path"].endswith("spin.csh")

@@ -21,6 +21,7 @@ class StopReason(str, Enum):
     ENTRY = "entry"
     BREAKPOINT = "breakpoint"
     STEP = "step"
+    PAUSE = "pause"
 
 
 @dataclass(frozen=True, slots=True)

@@ -136,6 +136,7 @@ class DAPServer:
             "variables": self._variables,
             "evaluate": self._evaluate,
             "continue": self._continue,
+            "pause": self._pause,
             "next": self._next,
             "stepIn": self._step_in,
             "stepOut": self._step_out,
@@ -548,6 +549,11 @@ class DAPServer:
         _require_thread(arguments)
         await session.continue_()
         return {"allThreadsContinued": True}
+
+    async def _pause(self, arguments: Mapping[str, object]) -> Mapping[str, object]:
+        session = self._require_session()
+        session.request_pause()
+        return {}
 
     async def _next(self, arguments: Mapping[str, object]) -> Mapping[str, object]:
         session = self._require_session()

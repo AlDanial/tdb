@@ -98,5 +98,5 @@ def build_tcsh_profile(
         display_name="Tcsh",
         adapter=TcshAdapter(tcsh_executable=(adapter_paths or {}).get("tcsh")),
         presentation=Presentation(lexer="tcsh", frame_placeholder="main"),
-        capabilities=ProfileCapabilities(),
+        capabilities=ProfileCapabilities(pause_while_running=True),
     )
