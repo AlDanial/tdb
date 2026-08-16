@@ -52,11 +52,46 @@ def test_run_conflicts_with_replay(capsys):
     assert "--run cannot be combined with" in capsys.readouterr().err
 
 
-def test_run_requires_pause_capable_language(tmp_path, capsys):
-    # cpp is the profile without pause_while_running until Task 9.
+def test_run_requires_pause_capable_language(tmp_path, capsys, monkeypatch):
+    # Every real language profile supports pause_while_running now (cpp
+    # was the last holdout, enabled in Task 9 after verification against
+    # gdb and lldb-dap) — so exercise the gate with a fake profile that
+    # doesn't, mirroring
+    # tests/unit/test_app_adapter_not_found.py::_missing_adapter_profile.
+    from tdb.languages import registry
+    from tdb.languages.base import (
+        AdapterSpec,
+        LanguageProfile,
+        Presentation,
+        ProfileCapabilities,
+    )
+
+    class _NoPauseAdapterSpec(AdapterSpec):
+        id = "nopause"
+
+        def command(self):
+            return ["true"]
+
+        def launch_body(self, **kw):
+            return {}
+
+        def attach_body(self, **kw):
+            return {}
+
+    def _fake_no_pause_profile(*args, **kwargs) -> LanguageProfile:
+        return LanguageProfile(
+            id="nopause",
+            display_name="NoPause",
+            adapter=_NoPauseAdapterSpec(),
+            presentation=Presentation(),
+            capabilities=ProfileCapabilities(),  # pause_while_running=False
+        )
+
+    monkeypatch.setattr(registry, "resolve", _fake_no_pause_profile)
+
     prog = tmp_path / "prog.py"
     prog.write_text("print('hi')\n")
     with pytest.raises(SystemExit):
-        parse_args(["--run", "--lang", "cpp", str(prog)])
+        parse_args(["--run", "--lang", "nopause", str(prog)])
     err = capsys.readouterr().err
     assert "cannot pause a running program" in err

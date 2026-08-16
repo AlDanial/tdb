@@ -154,5 +154,8 @@ def build_cpp_profile(
         display_name="C/C++",
         adapter=adapters[adapter_id](executable=executable),
         presentation=Presentation(lexer="cpp"),
-        capabilities=ProfileCapabilities(),
+        # Verified (Task 9, tests/integration/test_cpp_pause.py): DAP
+        # `pause` reliably stops a never-stopped, actively-looping
+        # debuggee on both gdb -i dap and lldb-dap.
+        capabilities=ProfileCapabilities(pause_while_running=True),
     )
