@@ -24,6 +24,7 @@ from tdb.adapters.tcsh.session import (
     LaunchConfig,
     LaunchError,
     SessionEvent,
+    SessionState,
 )
 from tdb.adapters.tcsh.transport import TransportError
 
@@ -552,7 +553,13 @@ class DAPServer:
 
     async def _pause(self, arguments: Mapping[str, object]) -> Mapping[str, object]:
         session = self._require_session()
-        session.request_pause()
+        # TOCTOU guard: if the session is already stopped (or stopped between
+        # the pause request landing and this handler running), don't arm
+        # _pause_pending — doing so would mislabel the *next* stop as "pause"
+        # instead of its actual reason (breakpoint, step, etc.). The current
+        # stop already satisfies the user's "be stopped" intent.
+        if session.state is not SessionState.STOPPED:
+            session.request_pause()
         return {}
 
     async def _next(self, arguments: Mapping[str, object]) -> Mapping[str, object]:
