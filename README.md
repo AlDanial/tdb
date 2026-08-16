@@ -978,6 +978,54 @@ as usual in the terminal where `tdb` was invoked.
 
 This feature only works in graphical environments where external terminals are available.
 
+### Run Mode (`--run`)
+
+For inspecting a program that appears hung: run it headless, at full speed, with no
+breakpoints installed and no stop-on-entry, then drop into the full TUI the moment you
+actually need it -- without paying for either up front.
+
+```bash
+tdb --run my_program.py args...
+```
+
+The debuggee's stdout/stderr stream straight to the terminal. If the program exits on
+its own, `tdb` exits with the same code:
+
+```bash
+tdb --run my_program.py; echo $?   # my_program.py's own exit code
+```
+
+**Interrupting:** press Ctrl-C in the terminal (any platform), or, on Unix, send
+`SIGUSR1` to `tdb`'s pid from another terminal: `kill -USR1 <tdb pid>`. Either one pauses
+the debuggee at its currently executing line and opens the TUI with full debugging
+available -- breakpoints, stepping, variable inspection, the evaluate console. The
+debuggee itself never receives the signal (`tdb`'s adapter runs in its own process
+group), so its own `SIGINT` handling is undisturbed.
+
+**Quitting an adopted session** adds a third choice to the usual quit dialog:
+- `d` -- detach and resume: the program keeps running headlessly; interrupt it again
+  later the same way.
+- `t` -- terminate the program and quit `tdb`.
+- `Esc` -- cancel, stay in the TUI.
+
+A breakpoint set during one of these episodes stays live after you detach; if it's hit,
+`tdb` reopens the TUI there, just like an interrupt.
+
+If the program instead dies on an unhandled exception -- in Python this includes a
+nonzero `sys.exit()`, which `debugpy` treats as an uncaught `SystemExit` -- `tdb` opens
+the TUI at the point of failure instead of exiting silently, so you can inspect the
+crash. Exit-code passthrough applies only to a clean exit during the headless phase.
+
+Supported languages: Python, Perl, Bash, Tcsh, and C/C++ (both `gdb` and `lldb-dap`).
+`--run` is rejected up front for any other language.
+
+**Limitation:** pausing is cooperative. If the debuggee is blocked inside a single
+blocking external call or syscall, the pause can't land until that call returns --
+`tdb` prints a notice and opens the TUI once the stop actually arrives.
+
+**Incompatible flags:** `-r`, `-k`/`-t`, `--record`, `--replay`, `--server`,
+`--headless`, `--mcp`, `--terminal`.
+
 ### Keybinding Schemes
 
 ```bash
