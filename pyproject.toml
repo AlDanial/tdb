@@ -1,7 +1,7 @@
   [project]
-  name = "textual-debugger-ruby"
+  name = "textual-debugger"
   dynamic = ["version"]
-  description = "A TUI debugger for Python, Ruby, Perl, and other languages.  Based on textual."
+  description = "A TUI debugger for Python, Perl, Ruby and other languages.  Based on textual."
   readme = "README.md"
   requires-python = ">=3.11"
   license = {file = "LICENSE"}
@@ -40,12 +40,12 @@
          "ipython"]
 
   [project.urls]
-  Homepage = "http://oci-llm01:3000/michinari/tdb-ruby"
-  Issues = "http://oci-llm01:3000/michinari/tdb-ruby/issues"
-  Source = "http://oci-llm01:3000/michinari/tdb-ruby"
+  Homepage = "https://github.com/AlDanial/tdb"
+  Issues = "https://github.com/AlDanial/tdb/issues"
+  Source = "https://github.com/AlDanial/tdb"
 
   [project.scripts]
-  tdb-ruby = "tdb.cli:main"
+  tdb = "tdb.cli:main"
   tdb-mcp = "tdb.mcp.server:main"
 
   [build-system]
