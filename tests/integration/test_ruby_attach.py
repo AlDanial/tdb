@@ -16,7 +16,6 @@ import asyncio
 import shutil
 import socket
 import time
-from pathlib import Path
 
 import pytest
 
@@ -26,8 +25,6 @@ from tdb.languages.ruby import build_ruby_profile
 pytestmark = pytest.mark.skipif(
     shutil.which("rdbg") is None, reason="Ruby debug gem is not installed"
 )
-
-EXAMPLES = Path("examples/ruby")
 
 
 def _free_port() -> int:
@@ -53,10 +50,12 @@ def _wait_for_port(port: int, timeout: float = 10.0) -> bool:
     return False
 
 
-async def test_attach_to_running_rdbg_stops_at_entry_and_completes() -> None:
+async def test_attach_to_running_rdbg_stops_at_entry_and_completes(
+    tmp_path,
+) -> None:
     """Remote-attach flow through the bridge.
 
-    1. spawn `rdbg --open --port <port> hello.rb` (waits at entry for a debugger)
+    1. spawn `rdbg --open --port <port> <script>` (waits at entry for a debugger)
     2. attach via the bridge (DAPClient rdbg adapter)
     3. confirm we stop at the entry line and can inspect the stack/threads
     4. continue to completion and observe relayed program output + termination
@@ -66,13 +65,16 @@ async def test_attach_to_running_rdbg_stops_at_entry_and_completes() -> None:
     unavailable (a known constraint documented in 08). We assert the
     `terminated` event and the relayed stdout instead.
     """
+    script = tmp_path / "hello.rb"
+    script.write_text("puts 'hello from attach'\n")
+
     port = _free_port()
     proc = await asyncio.create_subprocess_exec(
         "rdbg",
         "--open",
         "--port",
         str(port),
-        str(EXAMPLES / "hello.rb"),
+        str(script),
         stdin=asyncio.subprocess.DEVNULL,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,

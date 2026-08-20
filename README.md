@@ -240,7 +240,7 @@ process inspectors and wait graph, the evaluate console's trailing-`?` help,
 the post-mortem / `tdb.breakpoint()` hooks (those hooks live inside Python
 programs by nature). Remote attach (`-r`) also works for Perl (see
 [Perl](#perl), `Devel::TdbRemote` in place of `debugpy.listen()`), but not
-for C/C++, Bash, or Tcsh. `--terminal` works for every launch-mode
+for C/C++, Bash, Ruby, or Tcsh. `--terminal` works for every launch-mode
 language — Python, Perl, Bash, Tcsh, and C/C++ via `--adapter lldb-dap` —
 see [External Terminal Support](#external-terminal-support).
 
@@ -453,41 +453,50 @@ variables, both inherited and script-`export`ed).
 
 ### Ruby
 
-`tdb` uses its bundled stdio-to-TCP DAP bridge to communicate with the
-[`debug`](https://github.com/ruby/debug) gem's `rdbg` command. Install the gem:
+Ruby debugging is provided through `rdbg` from the Ruby
+[`debug`](https://github.com/ruby/debug) gem via tdb's bundled
+stdio-to-TCP DAP bridge. Install the gem:
 
 ```bash
 gem install debug
 ```
 
+**Requirements:** Ruby with the `debug` gem installed (`rdbg` must be
+available in `PATH`). The `vscode-rdbg` VS Code extension is not
+required; tdb drives `rdbg` directly.
+
 **Launching a script:**
 
 ```bash
-tdb script.rb
-tdb app.rb
+tdb examples/ruby/classes.rb
+tdb examples/ruby/factorial.rb
 ```
 
 Core debugging works as described above: line breakpoints, stepping,
-stack navigation, variable inspection, and the evaluate console with
-the v1 caveats listed in
-[What works for non-Python languages](#what-works-for-non-python-languages).
-Ruby's dynamic nature means some variables may be hard to inspect
-(method introspection is limited), but basic locals and instance
+stack navigation, variable inspection, the evaluate console, live
+stdout streaming, and process termination (for local launches, the
+bridge reports the debuggee's exit code). Ruby's dynamic nature means
+some variables may be hard to inspect, but basic locals and instance
 variables are supported.
 
-**Rails support:** the bridge supports Bundler through its adapter option;
-the CLI does not yet expose a Rails-server shortcut. Start a server with
-`rdbg --open` and use tdb's remote-attach flow when required.
+**Remote attach:** not currently supported by the `tdb` CLI. Future
+support will require mapping tdb's path mappings to the Ruby `debug`
+`localfs` / `localfsMap` mechanisms.
 
-```bash
-# Debug a Rails app:
-tdb app/controllers/users_controller.rb
-```
+**Limitations and security:**
 
-The Variables view shows three scopes: Locals (local variables),
-Instance variables (bound to `self`), and Environment. The evaluate
-console executes arbitrary Ruby expressions in the paused frame,
-including mutating state.
+- The DAP connection to `rdbg` over TCP is unencrypted. The Ruby bridge
+  does not provide TLS. Do not expose a debug port directly on an
+  untrusted network; use SSH or another secure tunnel when necessary.
+- Ruby-specific DAP behavior in `debug`/`rdbg` is handled by the bridge,
+  including Ruby-specific DAP behavior and mixed DAP/console output.
+  Changes in future `debug` releases may require corresponding bridge
+  updates.
+- When attaching to an existing remote `rdbg` session, the debuggee's
+  OS-level exit code is not available.
+- In headless/server mode, `rdbg` status output may be relayed as DAP
+  `output` events, so the final output may differ from the local launch
+  case.
 
 ### Tcsh
 
