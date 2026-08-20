@@ -188,6 +188,7 @@ class TdbApp(_AppMessageRoutes, App):
         attach_port: int | None = None,
         path_mappings: list[tuple[str, str]] | None = None,
         sub_process: bool = True,
+        use_bundler: bool = False,
         server_port: int | None = None,
         post_mortem_snapshot: dict | None = None,
         profile: "LanguageProfile | None" = None,
@@ -213,6 +214,7 @@ class TdbApp(_AppMessageRoutes, App):
         self._attach_port = attach_port
         self._path_mappings = path_mappings or []
         self._sub_process = sub_process
+        self._use_bundler = use_bundler
         self._server_port = server_port
         self._post_mortem_snapshot = post_mortem_snapshot
         self._profile = profile
@@ -516,6 +518,7 @@ class TdbApp(_AppMessageRoutes, App):
                     python=self._python,
                     terminal=self._terminal,
                     sub_process=self._sub_process,
+                    use_bundler=self._use_bundler,
                 )
         except AdapterNotFoundError as exc:
             # The adapter couldn't be located (e.g. lldb-dap / gdb not
@@ -741,6 +744,7 @@ class TdbApp(_AppMessageRoutes, App):
                 python=self._python,
                 terminal=self._terminal,
                 sub_process=self._sub_process,
+                use_bundler=self._use_bundler,
             )
         except Exception:
             log.exception("Failed to restart debug session")

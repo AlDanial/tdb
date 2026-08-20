@@ -221,6 +221,7 @@ class DebugController:
         python: str | None = None,
         terminal: str | None = None,
         sub_process: bool = True,
+        use_bundler: bool = False,
     ) -> None:
         """Start the debug session.
 
@@ -259,6 +260,7 @@ class DebugController:
             "just_my_code": just_my_code,
             "python": python,
             "sub_process": sub_process,
+            "use_bundler": use_bundler,
         }
 
         await self.client.start()
@@ -275,6 +277,7 @@ class DebugController:
             python=p["python"],
             console="externalTerminal" if terminal is not None else "internalConsole",
             sub_process=p["sub_process"],
+            use_bundler=p["use_bundler"],
         )
 
     async def remote_attach(
@@ -758,13 +761,32 @@ class DebugController:
             return None
         return frames[0].id if frames else None
 
+    async def _evaluate_with_exception_suppression(
+        self, client: "DAPClient", expression: str, frame_id: int | None
+    ) -> tuple[str, int]:
+        """Evaluate, wrapping adapters that can deadlock on a raising expression.
+
+        rdbg fires its catch-all exception breakpoint when an evaluated
+        expression raises inside the debuggee thread and suspends it
+        mid-evaluation, so the evaluate response never arrives. Clear the
+        catch breakpoint around the request and restore it afterwards.
+        """
+        suppress = self.profile.adapter.quirks.suppress_exception_breakpoints_during_evaluate
+        if suppress:
+            await client.set_exception_breakpoints([])
+        try:
+            return await client.evaluate(expression, frame_id=frame_id, context="repl")
+        finally:
+            if suppress:
+                filters = self.profile.adapter.pick_exception_filters(client.capabilities)
+                if filters:
+                    await client.set_exception_breakpoints(filters)
+
     async def evaluate(self, expression: str) -> str:
         try:
             frame_id = await self.resolve_evaluate_frame_id(self._active_client)
-            result, _ = await self._active_client.evaluate(
-                expression,
-                frame_id=frame_id,
-                context="repl",
+            result, _ = await self._evaluate_with_exception_suppression(
+                self._active_client, expression, frame_id
             )
             return result
         except Exception as e:
@@ -794,10 +816,8 @@ class DebugController:
                         frames = await self.client.stack_trace(threads[0].id)
                         if frames:
                             frame_id = frames[0].id
-                result, _ = await self.client.evaluate(
-                    expression,
-                    frame_id=frame_id,
-                    context="repl",
+                result, _ = await self._evaluate_with_exception_suppression(
+                    self.client, expression, frame_id
                 )
                 return result
             except DAPError as e:

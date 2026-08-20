@@ -53,6 +53,10 @@ _EXTENSION_MAP = {
     ".py": "python",
     ".pyw": "python",
     ".go": "go",
+    ".rb": "ruby",
+    ".erb": "ruby",
+    ".jbuilder": "ruby",
+    ".rake": "ruby",
     ".pl": "perl",
     ".pm": "perl",
     ".t": "perl",
@@ -108,6 +112,8 @@ def detect(program: str | None) -> str:
         return "perl"
     if head.startswith(b"#!") and b"bash" in head.splitlines()[0]:
         return "bash"
+    if head.startswith(b"#!") and b"ruby" in head.splitlines()[0]:
+        return "ruby"
     # "csh" matches both #!/bin/csh and #!/bin/tcsh; checked after bash
     # (which never contains "csh") so bash shebangs keep winning.
     if head.startswith(b"#!") and b"csh" in head.splitlines()[0]:
@@ -123,6 +129,10 @@ register("python", build_python_profile)
 from tdb.languages.cpp import build_cpp_profile  # noqa: E402
 
 register("cpp", build_cpp_profile)
+
+from tdb.languages.ruby import build_ruby_profile  # noqa: E402
+
+register("ruby", build_ruby_profile)
 
 from tdb.languages.perl import build_perl_profile  # noqa: E402
 

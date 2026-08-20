@@ -4,3 +4,5 @@ htmlcov/
 .coverage
 build/
 src/textual_debugger.egg-info/
+dist/
+src/textual_debugger_ruby.egg-info/

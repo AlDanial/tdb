@@ -1,7 +1,7 @@
   [project]
-  name = "textual-debugger"
+  name = "textual-debugger-ruby"
   dynamic = ["version"]
-  description = "A TUI debugger for Python, Perl, and other languages.  Based on textual."
+  description = "A TUI debugger for Python, Ruby, Perl, and other languages.  Based on textual."
   readme = "README.md"
   requires-python = ">=3.11"
   license = {file = "LICENSE"}
@@ -40,12 +40,12 @@
          "ipython"]
 
   [project.urls]
-  Homepage = "https://github.com/AlDanial/tdb"
-  Issues = "https://github.com/AlDanial/tdb/issues"
-  Source = "https://github.com/AlDanial/tdb"
+  Homepage = "http://oci-llm01:3000/michinari/tdb-ruby"
+  Issues = "http://oci-llm01:3000/michinari/tdb-ruby/issues"
+  Source = "http://oci-llm01:3000/michinari/tdb-ruby"
 
   [project.scripts]
-  tdb = "tdb.cli:main"
+  tdb-ruby = "tdb.cli:main"
   tdb-mcp = "tdb.mcp.server:main"
 
   [build-system]
@@ -59,7 +59,7 @@
   where = ["src"]
 
   [tool.setuptools.package-data]
-  tdb = ["README.md", "adapters/perl/helpers.pl", "adapters/perl/Devel/TdbRemote.pm", "adapters/perl/Devel/TdbCompile.pm", "adapters/bash/tdb_harness.sh"]
+  tdb = ["README.md", "adapters/perl/helpers.pl", "adapters/perl/Devel/TdbRemote.pm", "adapters/perl/Devel/TdbCompile.pm", "adapters/bash/tdb_harness.sh", "adapters/ruby/stdout_sync.rb"]
 
   [tool.pytest.ini_options]
   testpaths = ["tests"]
@@ -86,3 +86,10 @@
   ]
   show_missing = true
   skip_covered = false
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+    "pytest-asyncio>=1.3.0",
+]

@@ -7,6 +7,7 @@ with a Debug Adapter Protocol (DAP) implementation.  In addition to Python,
 - C and C++ (via `gdb` or `lldb-dap`)
 - Perl (via `perl -d`)
 - Bash (via bash's own `DEBUG` trap; bash ≥ 4.4)
+- Ruby (via the bundled `rdbg` DAP bridge; Ruby `debug` gem)
 - Tcsh (via source instrumentation of a stock `tcsh`)
 
 `tdb` is built with [textual](https://github.com/Textualize/textual) and speaks
@@ -14,7 +15,8 @@ DAP to a pluggable debug adapter: [debugpy](https://github.com/microsoft/debugpy
 (the engine behind VS Code's Python debugger) for Python,
 [GDB's DAP mode](https://sourceware.org/gdb/current/onlinedocs/gdb.html/Debugger-Adapter-Protocol.html) or
 [lldb-dap](https://lldb.llvm.org/resources/lldbdap.html)
-for compiled code. It provides a rich interactive interface for stepping through
+for compiled code, and the bundled bridge for Ruby's
+[`debug`](https://github.com/ruby/debug) gem. It provides a rich interactive interface for stepping through
 code, inspecting variables, managing breakpoints, and evaluating expressions in
 complex programs.
 
@@ -29,7 +31,7 @@ MIT License.  Copyright 2026 by Al Danial.
 
 - debugs multiple languages through the Debug Adapter Protocol: Python (via `debugpy`,
 the richest feature set), C/C++ (via `gdb -i dap` or `lldb-dap`), Perl (via `perl -d`),
-Bash (via bash's own `DEBUG` trap), and Tcsh (via source instrumentation of a
+Bash (via bash's own `DEBUG` trap), Ruby (via the `debug` gem's `rdbg` command), and Tcsh (via source instrumentation of a
 stock `tcsh`), with the language
 auto-detected from the target (ref. [Multi-Language Debugging](#multi-language-debugging)).
 
@@ -178,7 +180,7 @@ python -m tdb my_program.py
 
 ## Multi-Language Debugging
 
-`tdb` debugs any language that has a Debug Adapter Protocol backend. Five
+`tdb` debugs any language that has a Debug Adapter Protocol backend. Six
 languages are supported out of the box:
 
 | Language | Adapter(s) | Dependencies           | Feature level |
@@ -187,6 +189,7 @@ languages are supported out of the box:
 | C / C++ (any native binary) | `gdb` (default), `lldb-dap` (alternate) | `gdb -i dap` requires GDB ≥ 14; `lldb-dap` ships with LLVM ≥ 17 (e.g. `apt install lldb`) | core debugging: breakpoints, stepping, stack, variables, evaluate console |
 | Perl | perl-tdb (bundled) | perl ≥ 5.18 on PATH  | core debugging + remote attach |
 | Bash | bash-tdb (bundled) | bash ≥ 4.4 on PATH  | core debugging (no remote attach) |
+| Ruby | bundled `rdbg` bridge | Ruby ≥ 2.7 with `rdbg` on PATH (`gem install debug`) | core debugging: breakpoints, stepping, stack, variables, evaluate |
 | Tcsh | tcsh-tdb (bundled) | tcsh on PATH | core debugging (no remote attach, no conditional breakpoints, no pause) |
 
 ### Language detection and selection
@@ -194,10 +197,10 @@ languages are supported out of the box:
 The language is auto-detected from the debug target:
 
 1. File extension: `.py` → Python; `.pl` / `.pm` / `.t` → Perl; `.sh` / `.bash`
-   → Bash; `.csh` / `.tcsh` → Tcsh.
+   → Bash; `.rb` / `.erb` / `.rake` / `.jbuilder` → Ruby; `.csh` / `.tcsh` → Tcsh.
 2. Native executables (ELF, Mach-O, PE magic bytes) → C/C++.
-3. A `#!...python`, `#!...perl`, `#!...bash`, or `#!...csh`/`#!...tcsh`
-   shebang → Python / Perl / Bash / Tcsh respectively.
+3. A `#!...python`, `#!...perl`, `#!...bash`, `#!...ruby`, or `#!...csh`/`#!...tcsh`
+   shebang → Python / Perl / Bash / Ruby / Tcsh respectively.
 4. C/C++/Rust *source* files (`.c`, `.cpp`, `.rs`, …) produce an error with a
    hint: compile with debug info (`g++ -g -O0`) and debug the binary.
 5. Anything else produces an error naming the `--lang` override.
@@ -447,6 +450,44 @@ Bash. `--terminal` is supported (see
 The Variables view shows three scopes for bash: Locals (innermost frame
 only), Globals (unexported shell variables), and Environment (exported
 variables, both inherited and script-`export`ed).
+
+### Ruby
+
+`tdb` uses its bundled stdio-to-TCP DAP bridge to communicate with the
+[`debug`](https://github.com/ruby/debug) gem's `rdbg` command. Install the gem:
+
+```bash
+gem install debug
+```
+
+**Launching a script:**
+
+```bash
+tdb script.rb
+tdb app.rb
+```
+
+Core debugging works as described above: line breakpoints, stepping,
+stack navigation, variable inspection, and the evaluate console with
+the v1 caveats listed in
+[What works for non-Python languages](#what-works-for-non-python-languages).
+Ruby's dynamic nature means some variables may be hard to inspect
+(method introspection is limited), but basic locals and instance
+variables are supported.
+
+**Rails support:** the bridge supports Bundler through its adapter option;
+the CLI does not yet expose a Rails-server shortcut. Start a server with
+`rdbg --open` and use tdb's remote-attach flow when required.
+
+```bash
+# Debug a Rails app:
+tdb app/controllers/users_controller.rb
+```
+
+The Variables view shows three scopes: Locals (local variables),
+Instance variables (bound to `self`), and Environment. The evaluate
+console executes arbitrary Ruby expressions in the paused frame,
+including mutating state.
 
 ### Tcsh
 

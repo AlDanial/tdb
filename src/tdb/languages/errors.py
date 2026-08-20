@@ -233,3 +233,78 @@ def parse_perl_error(stderr: str, exit_code: int | None = None) -> ParsedError |
     return ParsedError(
         header="Perl error:", message=message, frames=frames, detail=detail
     )
+
+
+def parse_ruby_error(stderr: str, exit_code: int | None = None) -> ParsedError | None:
+    """Parse a Ruby exception traceback out of raw stderr text.
+
+    Ruby's standard error format:
+      filename.rb:line:in `method_name': error message (ErrorClass)
+          from other_file.rb:line:in `other_method'
+
+    Bails (returns None) if there's no backtrace or exit_code is 0.
+    """
+    if not stderr or exit_code == 0:
+        return None
+
+    lines = stderr.strip().split("\n")
+    if not lines:
+        return None
+
+    # Two patterns:
+    # 1. Main error line: path.rb:line:in `method': message
+    # 2. Backtrace line: from path.rb:line:in `method'
+    main_error_re = re.compile(r"^(.+\.rb):(\d+):in `([^']*)':")
+    backtrace_re = re.compile(r"^\s*from\s+(.+\.rb):(\d+):in `([^']*)'")
+
+    frames = []
+    message = ""
+    detail_lines = []
+
+    for line in lines:
+        stripped = line.strip()
+
+        # Try main error line first (has : after the backtick)
+        match = main_error_re.match(stripped)
+        if match:
+            path = match.group(1)
+            line_num = int(match.group(2))
+            method = match.group(3)
+            frames.append(ErrorFrame(path=path, line=line_num, func=method))
+            # Extract message after the "': " part
+            after_method = stripped.split("': ", 1)
+            if len(after_method) > 1:
+                message = after_method[1].strip()
+            detail_lines.append(line)
+            continue
+
+        # Try backtrace line (from ...)
+        match = backtrace_re.match(stripped)
+        if match:
+            path = match.group(1)
+            line_num = int(match.group(2))
+            method = match.group(3)
+            frames.append(ErrorFrame(path=path, line=line_num, func=method))
+            detail_lines.append(line)
+            continue
+
+        # Collect other lines as detail
+        if frames or message:
+            detail_lines.append(line)
+
+    # No meaningful content found
+    if not frames and not message:
+        return None
+
+    # If no message yet, use the first line
+    if not message and lines:
+        message = lines[0].strip()
+
+    detail = "\n".join(detail_lines) if detail_lines else stderr.strip()
+
+    return ParsedError(
+        header="Ruby exception:",
+        message=message,
+        frames=frames,
+        detail=detail,
+    )

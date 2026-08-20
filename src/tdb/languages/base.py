@@ -55,6 +55,18 @@ class AdapterQuirks:
     # False (debugpy) -> tdb connects straight to the remote DAP server.
     attach_via_adapter: bool = False
 
+    # True -> suspend the adapter's catch-all exception breakpoint while
+    # an `evaluate` request is in flight, restoring it afterwards.
+    #
+    # rdbg evaluates expressions inside the debuggee thread; an expression
+    # that raises (e.g. an undefined variable) fires its `:raise` tracepoint
+    # and SUSPENDS the debuggee mid-evaluation. The evaluate response is
+    # then never sent (the eval can't finish until the debuggee resumes),
+    # while tdb waits on it holding the session lock: a deadlock. Disabling
+    # the catch breakpoint around evaluate lets the raised exception be
+    # caught by rdbg's own evaluate handler and returned as an error.
+    suppress_exception_breakpoints_during_evaluate: bool = False
+
 
 class AdapterSpec:
     """How to spawn and speak to one debug adapter. Subclass per adapter.
