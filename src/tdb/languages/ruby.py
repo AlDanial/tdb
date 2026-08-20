@@ -59,9 +59,9 @@ class RdbgAdapter(AdapterSpec):
         console: str,
         opts: dict[str, Any],
     ) -> dict[str, Any]:
-        """launch リクエストボディを構築。
+        """Build the launch request body.
 
-        Ruby でのプログラム起動設定を DAP 形式で返す。
+        Return the Ruby program launch configuration in DAP format.
         """
         body: dict[str, Any] = {
             "type": "rdbg",
@@ -76,16 +76,16 @@ class RdbgAdapter(AdapterSpec):
         if env:
             body["env"] = env
 
-        # Ruby 固有オプション
+        # Ruby-specific options
         if opts.get("show_protocol_messages"):
-            # デバッグ用：DAP プロトコルメッセージ表示
+            # Show DAP protocol messages for debugging
             body["showProtocolMessages"] = True
 
         if opts.get("use_bundler"):
-            # Bundler 経由で実行（Rails 対応）
+            # Run through Bundler
             body["useBundler"] = True
 
-        # リモートデバッグ用リスナーポート
+        # Port for the debug listener
         if opts.get("debug_port"):
             body["debugPort"] = opts["debug_port"]
 
@@ -94,9 +94,9 @@ class RdbgAdapter(AdapterSpec):
     def attach_body(
         self, *, host: str, port: int, opts: dict[str, Any]
     ) -> dict[str, Any]:
-        """attach リクエストボディを構築。
+        """Build the attach request body.
 
-        実行中の Ruby プロセスへのリモート接続設定。
+        Return the configuration for connecting to a running Ruby process.
         """
         body: dict[str, Any] = {
             "type": "rdbg",
@@ -114,13 +114,14 @@ class RdbgAdapter(AdapterSpec):
         return body
 
     def pick_exception_filters(self, caps: Capabilities) -> list[str]:
-        """例外フィルター選択。
+        """Select exception filters.
 
-        Ruby では例外の分類が標準化されているため、主要なものを選択。
+        Prefer the generic ``any`` filter when exposed by ``debug`` and fall
+        back to the adapter defaults otherwise.
         """
         filters = []
 
-        # 利用可能なフィルターをチェック
+        # Check available filters
         if caps.exception_breakpoint_filters:
             filter_names = [f.get("filter") for f in caps.exception_breakpoint_filters]
 
@@ -129,7 +130,7 @@ class RdbgAdapter(AdapterSpec):
             if "any" in filter_names:
                 filters.append("any")
 
-        # フィルターが見つからない場合：アダプターのデフォルトを使用
+        # Fall back to the adapter defaults if no filters are found
         if not filters and caps.exception_breakpoint_filters:
             filters = [
                 f["filter"]
@@ -143,18 +144,18 @@ class RdbgAdapter(AdapterSpec):
 def build_ruby_profile(
     adapter: str | None = None, adapter_paths: dict[str, str] | None = None
 ) -> LanguageProfile:
-    """Ruby 言語プロファイルを構築。
+    """Build the Ruby language profile.
 
     Args:
-        adapter: アダプター指定（"rdbg" のみサポート）
-        adapter_paths: アダプターへのパスマッピング
-            例: {"rdbg": "/path/to/rdbg"}
+    adapter: Adapter name ("rdbg" only).
+    adapter_paths: Mapping of adapter names to paths.
+        Example: {"rdbg": "/path/to/rdbg"}
 
     Returns:
-        Ruby 用 LanguageProfile インスタンス。
+    A Ruby LanguageProfile instance.
 
     Raises:
-        LanguageNotSupportedError: 未知のアダプター指定時。
+        LanguageNotSupportedError: If an unknown adapter is specified.
     """
     if adapter not in (None, "rdbg"):
         raise LanguageNotSupportedError(
@@ -171,10 +172,10 @@ def build_ruby_profile(
             frame_placeholder="<main>",
         ),
         capabilities=ProfileCapabilities(
-            compute_step_units=None,  # Ruby では statement stepping 未対応
-            child_process_strategy=None,  # 子プロセス追跡未対応
-            task_inspection=False,  # asyncio なし
-            pause_while_running=True,  # 実行中断対応
+            compute_step_units=None,  # Statement stepping is not supported
+            child_process_strategy=None,  # Child process tracking is not supported
+            task_inspection=False,  # Asyncio task inspection is not supported
+            pause_while_running=True,  # Pausing while running is supported
         ),
     )
 
