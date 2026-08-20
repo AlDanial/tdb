@@ -116,7 +116,7 @@ async def test_attach_to_running_rdbg_stops_at_entry_and_completes() -> None:
         # terminal ("output to the STDOUT/ERR printed on the TERMINAL"), so
         # program output is not captured as DAP `output` events here. The
         # bridge's stdout-relay path is covered by the launch-mode suite
-        # (test_ruby_session / test_ruby_rails_bundler).
+        # (test_ruby_session).
         await client.continue_(threads[0].id)
         await asyncio.wait_for(terminated.wait(), timeout=20)
     finally:
