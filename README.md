@@ -7,8 +7,8 @@ with a Debug Adapter Protocol (DAP) implementation.  In addition to Python,
 - C and C++ (via `gdb` or `lldb-dap`)
 - Perl (via `perl -d`)
 - Bash (via bash's own `DEBUG` trap; bash ≥ 4.4)
-- Ruby (via the bundled `rdbg` DAP bridge; Ruby `debug` gem)
 - Tcsh (via source instrumentation of a stock `tcsh`)
+- Ruby (via the bundled `rdbg` DAP bridge; Ruby `debug` gem)
 
 `tdb` is built with [textual](https://github.com/Textualize/textual) and speaks
 DAP to a pluggable debug adapter: [debugpy](https://github.com/microsoft/debugpy)
@@ -189,8 +189,8 @@ languages are supported out of the box:
 | C / C++ (any native binary) | `gdb` (default), `lldb-dap` (alternate) | `gdb -i dap` requires GDB ≥ 14; `lldb-dap` ships with LLVM ≥ 17 (e.g. `apt install lldb`) | core debugging: breakpoints, stepping, stack, variables, evaluate console |
 | Perl | perl-tdb (bundled) | perl ≥ 5.18 on PATH  | core debugging + remote attach |
 | Bash | bash-tdb (bundled) | bash ≥ 4.4 on PATH  | core debugging (no remote attach) |
-| Ruby | bundled `rdbg` bridge | Ruby ≥ 2.7 with `rdbg` on PATH (`gem install debug`) | core debugging: breakpoints, stepping, stack, variables, evaluate |
 | Tcsh | tcsh-tdb (bundled) | tcsh on PATH | core debugging (no remote attach, no conditional breakpoints, no pause) |
+| Ruby | bundled `rdbg` bridge | Ruby ≥ 2.7 with `rdbg` on PATH (`gem install debug`) | core debugging + attach |
 
 ### Language detection and selection
 
@@ -239,8 +239,10 @@ process inspectors and wait graph, the evaluate console's trailing-`?` help,
 `--python`/`--pv`, `--no-subprocess`, automatic child-process attachment, and
 the post-mortem / `tdb.breakpoint()` hooks (those hooks live inside Python
 programs by nature). Remote attach (`-r`) also works for Perl (see
-[Perl](#perl), `Devel::TdbRemote` in place of `debugpy.listen()`), but not
-for C/C++, Bash, Ruby, or Tcsh. `--terminal` works for every launch-mode
+[Perl](#perl), `Devel::TdbRemote` in place of `debugpy.listen()`). Ruby
+supports attaching to an existing `rdbg` TCP endpoint, but remote
+source path mapping is not yet supported. C/C++, Bash, and Tcsh do not
+support remote attach. `--terminal` works for every launch-mode
 language — Python, Perl, Bash, Tcsh, and C/C++ via `--adapter lldb-dap` —
 see [External Terminal Support](#external-terminal-support).
 
@@ -479,21 +481,27 @@ bridge reports the debuggee's exit code). Ruby's dynamic nature means
 some variables may be hard to inspect, but basic locals and instance
 variables are supported.
 
-**Remote attach:** not currently supported by the `tdb` CLI. Future
-support will require mapping tdb's path mappings to the Ruby `debug`
-`localfs` / `localfsMap` mechanisms.
+**Remote attach:** `tdb` can attach to an existing `rdbg` TCP endpoint:
+
+```bash
+rdbg --open --port 5678 script.rb
+tdb --lang ruby -r host:5678
+```
+
+Remote source path mapping is not yet supported. In particular, tdb
+path mappings are not currently translated to Ruby debug's
+localfs / localfsMap mechanisms.
 
 **Limitations and security:**
 
 - The DAP connection to `rdbg` over TCP is unencrypted. The Ruby bridge
   does not provide TLS. Do not expose a debug port directly on an
   untrusted network; use SSH or another secure tunnel when necessary.
-- Ruby-specific DAP behavior in `debug`/`rdbg` is handled by the bridge,
-  including Ruby-specific DAP behavior and mixed DAP/console output.
-  Changes in future `debug` releases may require corresponding bridge
-  updates.
-- When attaching to an existing remote `rdbg` session, the debuggee's
-  OS-level exit code is not available.
+- Ruby-specific DAP behavior and mixed DAP/console output are handled
+  by the bridge. Changes in future `debug` releases may require
+  corresponding bridge updates.
+- When attaching to an existing `rdbg` session, the debuggee's OS-level
+  exit code is not available.
 - In headless/server mode, `rdbg` status output may be relayed as DAP
   `output` events, so the final output may differ from the local launch
   case.
