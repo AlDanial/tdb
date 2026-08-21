@@ -55,8 +55,18 @@ they are load-bearing for the design:
 - `--open=vscode` must never be used: it attempts to launch VS Code.
 - AF_UNIX socket paths are limited to ~107 chars; long temp paths fail with
   `AF_UNIX path too long`. Socket paths must be short.
-- `--nonstop` runs the script without stopping at the first line; without
-  it, rdbg waits stopped at the beginning.
+- **rdbg's DAP `launch` handler ignores stop-on-entry** (server_dap.rb
+  hardcodes `@nonstop = true` for `launch`): after `configurationDone`
+  the program always auto-runs. Its DAP `attach` handler, by contrast,
+  honors a `nonstop` boolean argument, and when the debuggee is waiting
+  (as it is under `--open`, which blocks until a client connects) a
+  non-nonstop attach emits `stopped(reason="pause")` immediately after
+  `configurationDone`. Probe-verified both ways. **The proxy therefore
+  translates tdb's `launch` into an rdbg `attach` with
+  `nonstop: !stopOnEntry` and `localfs: true`** (same filesystem), and
+  never passes `--nonstop` on the rdbg command line — `--open`'s
+  wait-for-client behavior eliminates any fast-exit race, and no
+  entry-stop synthesis workaround is needed.
 - rdbg's `DEBUGGER:` banner lines ("Debugger can attach via …", "wait for
   debugger connection…", "Connected.") are printed on stderr.
 
@@ -84,7 +94,7 @@ Local-launch process tree:
 ```
 tdb (TUI, DAP client)
  └─ python -m tdb.adapters.ruby      (proxy: stdio DAP ⇄ socket DAP)
-     └─ rdbg --open --sock-path <short path> [--nonstop] -- program.rb args
+     └─ rdbg --open --sock-path <short path> -- program.rb args
          (rdbg = debug gem's DAP server; debuggee runs inside it)
 ```
 
@@ -146,19 +156,21 @@ forwarded to rdbg verbatim; rdbg's responses/events flow back with
   probe-verified capability set above.
 - **`launch`** — resolve rdbg; check `rdbg --version` (fail launch if debug
   gem < 1.9); build argv
-  `[rdbg, "--open", "--sock-path", <path>, *(["--nonstop"] if not
-  stop_on_entry else []), "--", program, *args]`; spawn in its own process
-  group with the launch body's `cwd`/`env` and pipes on stdout/stderr;
-  poll for the socket with a timeout (on timeout: failed launch response
-  that includes rdbg's captured stderr — this is where "gem not found"
-  errors surface); connect; run the proxy's own `initialize` + `launch`
-  handshake against rdbg; then emit `initialized` to tdb. If rdbg's live
-  capabilities diverge from the static dict, trust the static dict (tdb
-  already consumed it) and log the diff.
-- **`configurationDone`** — forward. If `stop_on_entry` and no `stopped`
-  event arrives within a short window, send `pause` to rdbg to synthesize
-  the entry stop (an implementation-time probe decides whether this
-  workaround is actually needed; the debugpy attach quirk sets precedent).
+  `[rdbg, "--open", "--sock-path", <path>, "--", program, *args]`; spawn
+  in its own process group with the launch body's `cwd`/`env` and pipes on
+  stdout/stderr; poll for the socket with a timeout (on timeout: failed
+  launch response that includes rdbg's captured stderr — this is where
+  "gem not found" errors surface); connect; send the proxy's own
+  `initialize` to rdbg (mirroring the client's initialize arguments); then
+  forward the client's launch **rewritten as an rdbg `attach`** with
+  `{"localfs": true, "nonstop": !stopOnEntry}` (see probe-verified facts:
+  rdbg's DAP `launch` ignores stop-on-entry; `attach` honors it). rdbg's
+  `attach` response is restamped as the client's `launch` response; rdbg's
+  own `initialized` event passes through to tdb. The entry stop arrives
+  from rdbg as `stopped(reason="pause")` right after `configurationDone`;
+  the proxy rewrites the first stopped event's reason to `"entry"` when
+  stop-on-entry was requested (debugpy parity).
+- **`configurationDone`** — plain passthrough (no local handler needed).
 - **`disconnect` / `terminate`** — forward, wait briefly for rdbg to exit,
   then SIGTERM → SIGKILL the process group. Always reply to tdb even if
   rdbg is already gone.
@@ -224,8 +236,8 @@ matching the other languages. Windows uses the TCP variant.
 ### `--run`
 
 Gated on `pause_while_running=True`, which Ruby sets. Run mode launches
-with `stop_on_entry=False` → proxy passes `--nonstop` → program runs
-immediately. Breakpoints armed before `configurationDone`, `pause` while
+with `stop_on_entry=False` → proxy sends rdbg `attach` with
+`nonstop: true` → program runs immediately after `configurationDone`. Breakpoints armed before `configurationDone`, `pause` while
 running, and asynchronous stop events are plain DAP passing through the
 proxy untouched; rdbg handles `pause` mid-execution including inside
 blocking calls. Integration coverage mirrors the Perl case in
@@ -341,9 +353,9 @@ entries needed (unlike perl/bash's non-Python assets).
 
 ## Risks / open implementation questions
 
-- **Entry-stop synthesis:** whether rdbg emits `stopped` unprompted after
-  `configurationDone` when waiting at entry — probe at implementation
-  time; the `pause` fallback in the proxy covers the negative case.
+- **Entry-stop location:** rdbg's entry stop is expected at the first
+  line of the target script (where `--open` blocks); the launch
+  integration test asserts the top stack frame is the program itself.
 - **Alpine debug gem build:** C-extension build on musl is expected to
   work with standard build deps but is unverified until the Dockerfile
   task.
