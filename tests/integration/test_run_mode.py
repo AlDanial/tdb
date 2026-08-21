@@ -4,7 +4,9 @@ detach -> resume -> second episode -> terminate."""
 
 import asyncio
 import os
+import shutil
 import signal
+import subprocess
 
 import pytest
 
@@ -14,6 +16,12 @@ from tdb.session.state import SessionPhase
 
 pytestmark = pytest.mark.skipif(
     os.name == "nt", reason="signal-driven run mode tests are POSIX-only"
+)
+
+perl_available = pytest.mark.skipif(
+    shutil.which("perl") is None
+    or subprocess.run(["perl", "-e", "require v5.18"]).returncode != 0,
+    reason="perl >= 5.18 required",
 )
 
 
@@ -44,6 +52,37 @@ async def test_exit_code_and_output_passthrough(tmp_path, capfd):
     code = await run_mode.run(program=str(p), config=TdbConfig())
     assert code == 7
     assert "bye" in capfd.readouterr().out
+
+
+@perl_available
+async def test_perl_compile_phase_runs_headless_without_tui_episode(tmp_path, capfd):
+    """Regression: `tdb --run prog.pl` where prog.pl has compile-time
+    statements (`use` lines). The compile-phase shim's re-trap after the
+    adapter's entry `c` surfaced as a spurious "step" stop, which run
+    mode treated as a signal to open the TUI. The program must instead
+    run straight to completion with no episode."""
+    from tdb.languages.perl import build_perl_profile
+
+    p = tmp_path / "hello.pl"
+    p.write_text('use strict;\nuse warnings;\nprint "phello\\n";\n')
+    episodes = []
+
+    async def fake_episode(controller, handler, console, config, program):
+        episodes.append(controller.state.phase)
+        return False
+
+    code = await asyncio.wait_for(
+        run_mode.run(
+            program=str(p),
+            config=TdbConfig(),
+            profile=build_perl_profile(),
+            tui_episode=fake_episode,
+        ),
+        timeout=60.0,
+    )
+    assert episodes == [], "spurious TUI episode during headless perl run"
+    assert code == 0
+    assert "phello" in capfd.readouterr().out
 
 
 async def test_signal_pause_episode_detach_and_terminate(tmp_path):

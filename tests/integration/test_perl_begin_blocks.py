@@ -113,6 +113,47 @@ async def test_program_without_compile_time_statements_unchanged(tmp_path):
         await c.stop()
 
 
+async def test_no_stop_on_entry_runs_compile_phase_without_stops(tmp_path):
+    """stopOnEntry:false (`--run`, headless): a program with compile-time
+    statements must run to completion with NO stopped event. A bare `c`
+    from the compile-phase entry prompt only clears single-step for the
+    current BEGIN/require frame — perl5db re-arms it when that frame
+    returns, so the debuggee traps again on the next `use` line and the
+    spurious "step" stop makes run mode open the TUI."""
+    prog = tmp_path / "p.pl"
+    prog.write_text(WITH_BEGIN)
+    c = AdapterClient()
+    await c.start()
+    try:
+        await c.request("initialize", {})
+        fut = c.send(
+            "launch",
+            {"program": str(prog), "cwd": str(tmp_path), "stopOnEntry": False},
+        )
+        await c.wait_event("initialized")
+        await c.request("configurationDone", {})
+        await asyncio.wait_for(fut, 30)
+        await c.wait_event("exited", timeout=30)
+        stops = [e for e in c.events if e["event"] == "stopped"]
+        assert stops == [], f"spurious stops with stopOnEntry:false: {stops}"
+    finally:
+        await c.stop()
+
+
+async def test_continue_from_entry_without_breakpoints_runs_to_exit(tmp_path):
+    """Same root cause, TUI path: `c` at the entry stop with no
+    breakpoints set must run to completion, not re-stop on the next
+    compile-time statement."""
+    c, prog = await _launch(tmp_path, WITH_BEGIN)
+    try:
+        await c.request("continue", {"threadId": 1})
+        await c.wait_event("exited", timeout=30)
+        stops = [e for e in c.events if e["event"] == "stopped"]
+        assert stops == [], f"spurious stops after continue-from-entry: {stops}"
+    finally:
+        await c.stop()
+
+
 async def test_breakpoints_set_during_compile_phase_still_fire(tmp_path):
     """Regression for the partial-line-table hazard: a breakpoint requested
     at the first (compile-phase) stop must fire once the program runs."""

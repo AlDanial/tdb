@@ -412,15 +412,18 @@ class PerlDapServer:
             if self._stop_on_entry:
                 await self._emit_stopped("entry")
             else:
-                # Mirrors _on_continue's guard: a bare "c" here races past
-                # any breakpoints deferred (Background 8) while still
-                # stopped at the entry prompt, the same way an explicit
-                # continue request would.
-                if self._pending_breakpoints:
-                    hit = await self._settle_to_run_phase()
-                    if hit is not None:
-                        await self._report_pending_hit(hit)
-                        return
+                # Mirrors _on_continue's guard: always settle out of the
+                # compile phase before the real "c". Beyond the deferred-
+                # breakpoint race (Background 8), a bare "c" from the
+                # compile-phase entry prompt only clears single-step for
+                # the current BEGIN/require frame -- perl5db restores it
+                # from its frame stack when that frame returns, so the
+                # debuggee traps again on the next compile-time statement
+                # and the spurious "step" stop opens the TUI in run mode.
+                hit = await self._settle_to_run_phase()
+                if hit is not None:
+                    await self._report_pending_hit(hit)
+                    return
                 self.session.resume("c")
 
     async def _emit_stopped(self, reason: str) -> None:
@@ -880,7 +883,15 @@ class PerlDapServer:
         # -- they can't skip over the deferred file's own later lines --
         # so a stop reaching RUN phase there is caught by
         # _classify_and_emit_stop's reactive flush instead.
-        if self._pending_breakpoints and self._not_ready() is None:
+        #
+        # Settle even with NO pending breakpoints: a bare "c" from a
+        # compile-phase stop only clears single-step for the current
+        # BEGIN/require frame -- perl5db restores it from its frame
+        # stack when that frame returns, so `c` would spuriously
+        # re-stop on the next compile-time statement instead of
+        # running. (In RUN phase the settle loop is a single phase()
+        # probe and falls straight through.)
+        if self._not_ready() is None:
             hit = await self._settle_to_run_phase()
             if hit is not None:
                 self.current_stop = None
