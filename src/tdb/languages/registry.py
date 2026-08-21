@@ -56,6 +56,7 @@ _EXTENSION_MAP = {
     ".pl": "perl",
     ".pm": "perl",
     ".t": "perl",
+    ".rb": "ruby",
     ".sh": "bash",
     ".bash": "bash",
     ".csh": "tcsh",
@@ -106,6 +107,8 @@ def detect(program: str | None) -> str:
         return "python"
     if head.startswith(b"#!") and b"perl" in head.splitlines()[0]:
         return "perl"
+    if head.startswith(b"#!") and b"ruby" in head.splitlines()[0]:
+        return "ruby"
     if head.startswith(b"#!") and b"bash" in head.splitlines()[0]:
         return "bash"
     # "csh" matches both #!/bin/csh and #!/bin/tcsh; checked after bash
@@ -135,3 +138,7 @@ register("bash", build_bash_profile)
 from tdb.languages.tcsh import build_tcsh_profile  # noqa: E402
 
 register("tcsh", build_tcsh_profile)
+
+from tdb.languages.ruby import build_ruby_profile  # noqa: E402
+
+register("ruby", build_ruby_profile)
