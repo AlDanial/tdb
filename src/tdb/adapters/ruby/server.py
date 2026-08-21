@@ -202,3 +202,443 @@ async def _rdbg_version(rdbg: str) -> tuple[int, int]:
     if not m:
         raise RuntimeError(f"could not parse `rdbg --version` output: {out!r}")
     return int(m.group(1)), int(m.group(2))
+
+
+class RubyDapServer:
+    """Store-and-forward proxy; see module docstring."""
+
+    def __init__(self, reader: asyncio.StreamReader, writer: Any) -> None:
+        self._reader = reader
+        self._writer = writer
+        self._seqs = SeqTranslator()
+        self._done = asyncio.Event()
+        self._proc: asyncio.subprocess.Process | None = None
+        self._rdbg_writer: asyncio.StreamWriter | None = None
+        self._transport: _Transport | None = None
+        self._client_init_args: dict = {}
+        self._client_supports_run_in_terminal = False
+        self._stop_on_entry = True
+        self._entry_stop_pending = False
+        self._start_client_seq: int | None = None
+        self._launched = False
+        self._sent_exited = False
+        self._sent_terminated = False
+        self._reverse = ReverseRequester(self._write_client, self._seqs.next_client_seq)
+        # Strong refs: asyncio only weakly references bare tasks (repo
+        # pitfall) — a GC'd pump silently loses program output.
+        self._tasks: set[asyncio.Future] = set()
+        self._pump_tasks: list[asyncio.Future] = []
+        self._launch_task: asyncio.Future | None = None
+        self.handlers: dict[str, Callable[[dict], Awaitable[None]]] = {}
+        for name in dir(self):
+            if name.startswith("_on_"):
+                self.handlers[name[4:]] = getattr(self, name)
+
+    # ---- plumbing ----
+    def _write_client(self, msg: dict) -> None:
+        self._writer.write(encode_message(msg))
+
+    def _write_rdbg(self, msg: dict) -> None:
+        if self._rdbg_writer is not None:
+            self._rdbg_writer.write(encode_message(msg))
+
+    def _spawn_task(self, coro) -> asyncio.Future:
+        t = asyncio.ensure_future(coro)
+        self._tasks.add(t)
+        t.add_done_callback(self._tasks.discard)
+        return t
+
+    def send_response(self, request: dict, body: dict | None = None) -> None:
+        msg: dict = {
+            "seq": self._seqs.next_client_seq(),
+            "type": "response",
+            "request_seq": request["seq"],
+            "command": request["command"],
+            "success": True,
+        }
+        if body:
+            msg["body"] = body
+        self._write_client(msg)
+
+    def send_error(self, request: dict, message: str) -> None:
+        self._write_client(
+            {
+                "seq": self._seqs.next_client_seq(),
+                "type": "response",
+                "request_seq": request["seq"],
+                "command": request["command"],
+                "success": False,
+                "message": message,
+            }
+        )
+
+    def send_event(self, event: str, body: dict | None = None) -> None:
+        msg: dict = {
+            "seq": self._seqs.next_client_seq(),
+            "type": "event",
+            "event": event,
+        }
+        if body:
+            msg["body"] = body
+        self._write_client(msg)
+
+    # ---- main loop (client stdio side) ----
+    async def run(self) -> None:
+        try:
+            while not self._done.is_set():
+                try:
+                    msg = await read_message(self._reader)
+                except (ConnectionError, asyncio.IncompleteReadError, EOFError):
+                    break
+                await self._dispatch_client_message(msg)
+                await self._writer.drain()
+        finally:
+            await self._cancel_launch_task()
+            await self._ensure_rdbg_dead()
+            if self._transport is not None:
+                self._transport.cleanup()
+            await self._writer.drain()
+
+    async def _dispatch_client_message(self, msg: dict) -> None:
+        mtype = msg.get("type")
+        if mtype == "response":
+            if self._reverse.route(parse_message(msg)):
+                return
+            fwd = self._seqs.client_response_to_rdbg(msg)
+            if fwd is not None:
+                self._write_rdbg(fwd)
+            return
+        if mtype != "request":
+            return
+        handler = self.handlers.get(msg["command"])
+        if handler is not None:
+            try:
+                await handler(msg)
+            except Exception as e:
+                log.exception("handler %s failed", msg["command"])
+                self.send_error(msg, str(e))
+            return
+        if self._rdbg_writer is None:
+            self.send_error(msg, "no debug session")
+            return
+        self._write_rdbg(self._seqs.client_request_to_rdbg(msg))
+
+    # ---- rdbg socket side ----
+    async def _pump_rdbg(self, reader: asyncio.StreamReader) -> None:
+        while True:
+            try:
+                msg = await read_message(reader)
+            except (ConnectionError, asyncio.IncompleteReadError, EOFError):
+                return
+            mtype = msg.get("type")
+            if mtype == "event":
+                if self._note_and_filter_event(msg):
+                    continue
+                self._write_client(self._seqs.rdbg_event_to_client(msg))
+            elif mtype == "response":
+                out = self._seqs.rdbg_response_to_client(msg)
+                if out is None:
+                    continue  # reply to a proxy-originated request
+                if out["request_seq"] == self._start_client_seq:
+                    # the client sent `launch`; rdbg answered the
+                    # translated `attach` — restamp the command so the
+                    # client's launch future matches.
+                    out["command"] = "launch"
+                self._write_client(out)
+            elif mtype == "request":
+                self._write_client(self._seqs.rdbg_request_to_client(msg))
+            await self._writer.drain()
+
+    def _note_and_filter_event(self, msg: dict) -> bool:
+        """Track exit/stop state; True -> swallow the event."""
+        event = msg.get("event")
+        body = msg.get("body") or {}
+        if event == "output":
+            if body.get("category") == "console" and str(
+                body.get("output", "")
+            ).startswith(_REPL_NOTICE):
+                return True
+        elif event == "stopped":
+            if self._entry_stop_pending:
+                # rdbg reports the post-configurationDone entry stop as
+                # "pause"; tdb (like debugpy) expects "entry".
+                self._entry_stop_pending = False
+                body["reason"] = "entry"
+                msg["body"] = body
+        elif event == "exited":
+            self._sent_exited = True
+        elif event == "terminated":
+            self._sent_terminated = True
+        return False
+
+    async def _pump_output(self, stream: asyncio.StreamReader, category: str) -> None:
+        while True:
+            line = await stream.readline()
+            if not line:
+                return
+            text = line.decode("utf-8", errors="replace")
+            if category == "stderr" and text.startswith(_BANNER_PREFIX):
+                continue
+            self.send_event("output", {"category": category, "output": text})
+            await self._writer.drain()
+
+    async def _watch_exit(self) -> None:
+        assert self._proc is not None
+        code = await self._proc.wait()
+        # let the pipe pumps drain the output tail before exit events
+        if self._pump_tasks:
+            await asyncio.wait(self._pump_tasks, timeout=2.0)
+        if not self._launched:
+            return  # pre-handshake death is reported via the launch error
+        if not self._sent_exited:
+            self.send_event("exited", {"exitCode": code})
+        if not self._sent_terminated:
+            self.send_event("terminated")
+        await self._writer.drain()
+
+    # ---- lifecycle handlers ----
+    async def _on_initialize(self, request: dict) -> None:
+        self._client_init_args = dict(request.get("arguments") or {})
+        self._client_supports_run_in_terminal = bool(
+            self._client_init_args.get("supportsRunInTerminalRequest")
+        )
+        self.send_response(request, CAPABILITIES)
+
+    async def _on_launch(self, request: dict) -> None:
+        args = request.get("arguments") or {}
+        program = args.get("program", "")
+        if not os.path.isfile(program):
+            self.send_error(request, f"program not found: {program}")
+            return
+        rdbg = args.get("rdbg") or shutil.which("rdbg")
+        if rdbg is None:
+            self.send_error(request, RDBG_HINT)
+            return
+        try:
+            version = await _rdbg_version(rdbg)
+        except (OSError, RuntimeError) as e:
+            self.send_error(request, f"cannot run {rdbg!r}: {e} — {RDBG_HINT}")
+            return
+        if version < MIN_DEBUG_GEM:
+            self.send_error(
+                request,
+                f"debug gem {version[0]}.{version[1]} is too old — tdb "
+                f"needs >= {MIN_DEBUG_GEM[0]}.{MIN_DEBUG_GEM[1]} "
+                f"(`gem install debug`)",
+            )
+            return
+        self._stop_on_entry = bool(args.get("stopOnEntry", True))
+        self._transport = pick_transport()
+        cmd = [
+            rdbg,
+            "--open",
+            *self._transport.rdbg_args,
+            "--",
+            program,
+            *[str(a) for a in (args.get("args") or [])],
+        ]
+        if args.get("console") == "externalTerminal":
+            if not self._client_supports_run_in_terminal:
+                self.send_error(
+                    request,
+                    "externalTerminal launch requires a client that "
+                    "supports the runInTerminal reverse request",
+                )
+                return
+            # session-launch awaits the runInTerminal reply, which only
+            # run()'s read loop can route — but run() is what's calling
+            # this handler and it awaits handlers inline. Awaiting here
+            # would deadlock; run the rest as a background task (strong
+            # ref, per the repo's task-GC pitfall) so run() goes back to
+            # reading. Same shape as the bash server's _on_launch.
+            self._launch_task = asyncio.ensure_future(
+                self._finish_launch(request, cmd, args, terminal=True)
+            )
+            return
+        await self._finish_launch(request, cmd, args, terminal=False)
+
+    async def _finish_launch(
+        self, request: dict, cmd: list[str], args: dict, *, terminal: bool
+    ) -> None:
+        cwd = args.get("cwd") or os.getcwd()
+        env = {**os.environ, **(args.get("env") or {})}
+        try:
+            if terminal:
+                await self._reverse.request(
+                    "runInTerminal",
+                    {
+                        "kind": "external",
+                        "title": "tdb ruby debuggee",
+                        "cwd": cwd,
+                        "args": cmd,
+                        "env": args.get("env") or {},
+                    },
+                )
+            else:
+                popen_kwargs: dict[str, Any] = {}
+                if os.name == "nt":
+                    # Ctrl-C isolation, same as the perl/bash spawn path
+                    popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+                else:
+                    popen_kwargs["start_new_session"] = True
+                self._proc = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    cwd=cwd,
+                    env=env,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    **popen_kwargs,
+                )
+            reader, writer = await self._connect_with_retry()
+        except asyncio.CancelledError:
+            raise  # disconnect/terminate cancelling us — they clean up
+        except Exception as e:
+            detail = await self._collect_early_stderr()
+            await self._ensure_rdbg_dead()
+            if not isinstance(
+                e, (OSError, TimeoutError, RuntimeError, ReverseRequestError)
+            ):
+                log.exception("ruby launch failed unexpectedly")
+            self.send_error(request, f"{e}\n{detail}".strip())
+            await self._writer.drain()
+            return
+        self._rdbg_writer = writer
+        self._launched = True
+        self._entry_stop_pending = self._stop_on_entry
+        self._start_client_seq = request["seq"]
+        if self._proc is not None:
+            self._pump_tasks = [
+                self._spawn_task(self._pump_output(self._proc.stdout, "stdout")),
+                self._spawn_task(self._pump_output(self._proc.stderr, "stderr")),
+            ]
+            self._spawn_task(self._watch_exit())
+        self._spawn_task(self._pump_rdbg(reader))
+        # rdbg needs its own initialize first. Proxy-originated (no
+        # client mapping) -> its response is swallowed by the translator;
+        # rdbg's `initialized` event passes through to the client and
+        # triggers its setBreakpoints/configurationDone sequence.
+        self._write_rdbg(
+            {
+                "seq": self._seqs.next_rdbg_seq(),
+                "type": "request",
+                "command": "initialize",
+                "arguments": dict(self._client_init_args),
+            }
+        )
+        # Forward the client's launch AS an rdbg `attach` (see module
+        # docstring): nonstop honors stopOnEntry, localfs=true because
+        # rdbg runs on this same machine.
+        fwd = self._seqs.client_request_to_rdbg(request)
+        fwd["command"] = "attach"
+        fwd["arguments"] = {
+            "localfs": True,
+            "nonstop": not self._stop_on_entry,
+        }
+        self._write_rdbg(fwd)
+        await self._writer.drain()
+
+    async def _connect_with_retry(
+        self, timeout: float = 30.0
+    ) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
+        assert self._transport is not None
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout
+        while True:
+            try:
+                return await self._transport.connect()
+            except (ConnectionError, FileNotFoundError, OSError):
+                if self._proc is not None and self._proc.returncode is not None:
+                    raise RuntimeError(
+                        f"rdbg exited with code {self._proc.returncode} "
+                        f"before accepting a connection"
+                    )
+                if loop.time() > deadline:
+                    raise TimeoutError("timed out waiting for rdbg's DAP socket")
+                await asyncio.sleep(0.1)
+
+    async def _collect_early_stderr(self) -> str:
+        """Salvage rdbg's stderr for a failed-launch message (pumps have
+        not started yet on this path)."""
+        if self._proc is None or self._proc.stderr is None:
+            return ""
+        try:
+            data = await asyncio.wait_for(self._proc.stderr.read(4096), 0.5)
+        except (asyncio.TimeoutError, OSError):
+            return ""
+        lines = [
+            ln
+            for ln in data.decode("utf-8", "replace").splitlines()
+            if not ln.startswith(_BANNER_PREFIX)
+        ]
+        return "\n".join(lines)
+
+    # ---- teardown ----
+    async def _cancel_launch_task(self) -> None:
+        """Cancel an in-flight externalTerminal launch continuation before
+        teardown (same rationale as the bash server's method of the same
+        name: the continuation could assign session state after our
+        checks already ran)."""
+        task, self._launch_task = self._launch_task, None
+        if task is None or task.done():
+            return
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            log.exception("launch task raised during cancellation")
+
+    def _kill_rdbg_group(self, sig_kill: bool = False) -> None:
+        proc = self._proc
+        if proc is None or proc.returncode is not None:
+            return
+        try:
+            if os.name == "nt":
+                proc.kill() if sig_kill else proc.terminate()
+            else:
+                os.killpg(proc.pid, signal.SIGKILL if sig_kill else signal.SIGTERM)
+        except (ProcessLookupError, OSError):
+            pass
+
+    async def _ensure_rdbg_dead(self, grace: float = 2.0) -> None:
+        proc = self._proc
+        if proc is None or proc.returncode is not None:
+            return
+        self._kill_rdbg_group()
+        try:
+            await asyncio.wait_for(proc.wait(), grace)
+        except asyncio.TimeoutError:
+            self._kill_rdbg_group(sig_kill=True)
+            await proc.wait()
+
+    async def _on_disconnect(self, request: dict) -> None:
+        await self._cancel_launch_task()
+        if self._rdbg_writer is not None:
+            # graceful first (kills a terminal-mode debuggee the proxy
+            # has no process handle for); proxy-originated -> swallowed
+            self._write_rdbg(
+                {
+                    "seq": self._seqs.next_rdbg_seq(),
+                    "type": "request",
+                    "command": "terminate",
+                    "arguments": {},
+                }
+            )
+        await self._ensure_rdbg_dead()
+        self.send_response(request)
+        self._done.set()
+
+    async def _on_terminate(self, request: dict) -> None:
+        await self._cancel_launch_task()
+        if self._rdbg_writer is not None:
+            self._write_rdbg(
+                {
+                    "seq": self._seqs.next_rdbg_seq(),
+                    "type": "request",
+                    "command": "terminate",
+                    "arguments": {},
+                }
+            )
+        await self._ensure_rdbg_dead()
+        self.send_response(request)
