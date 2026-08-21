@@ -753,3 +753,14 @@ def test_remote_attach_allowed_for_perl():
 def test_remote_attach_still_rejected_for_cpp():
     with pytest.raises(SystemExit):
         parse_args(["--lang", "cpp", "-r", "5678"])
+
+
+def test_remote_attach_allows_ruby():
+    args = parse_args(["-r", "5678", "--lang", "ruby"])
+    assert args.profile.id == "ruby"
+    assert args.profile.adapter.id == "rdbg"
+
+
+def test_remote_attach_still_rejects_bash():
+    with pytest.raises(SystemExit):
+        parse_args(["-r", "5678", "--lang", "bash"])

@@ -420,10 +420,10 @@ def _resolve_language(
                 f"--no-subprocess is debugpy-specific (detected language: {profile.id})"
             )
 
-    if args.remote_attach and profile.id not in ("python", "perl"):
+    if args.remote_attach and profile.id not in ("python", "perl", "ruby"):
         parser.error(
-            f"--remote-attach supports Python and Perl debuggees only "
-            f"(detected language: {profile.id})"
+            f"--remote-attach supports Python, Perl, and Ruby debuggees "
+            f"only (detected language: {profile.id})"
         )
 
     # gdb's DAP mode has no terminal integration (see GdbDapAdapter.launch_body,
