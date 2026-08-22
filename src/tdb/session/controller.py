@@ -824,6 +824,22 @@ class DebugController:
             return
         await self.fetch_scopes_and_variables(frame_id)
 
+    def _initial_frame(self, frames):
+        """First frame worth landing on after a stop.
+
+        Skips frames the language profile marks opaque (no inspectable
+        locals — e.g. rdbg's "[C] Kernel#sleep" native frames, where a
+        pause inside a blocking call would otherwise open the Variables
+        view on a scope holding only %self). Falls back to the top frame
+        when every frame is opaque.
+        """
+        opaque = self.profile.capabilities.opaque_frame
+        if opaque is not None:
+            for frame in frames:
+                if not opaque(frame.name):
+                    return frame
+        return frames[0]
+
     async def switch_active_thread(self, thread_id: int) -> None:
         """Re-point the main views at the given thread on the parent client.
 
@@ -835,9 +851,12 @@ class DebugController:
             self._active_client = self.client
             self.state.current_thread_id = thread_id
             frames = await self.client.stack_trace(thread_id)
-            self.state.set_stack(frames)
             if frames:
-                await self.fetch_scopes_and_variables(frames[0].id)
+                initial = self._initial_frame(frames)
+                self.state.set_stack(frames, current_frame_id=initial.id)
+                await self.fetch_scopes_and_variables(initial.id)
+            else:
+                self.state.set_stack(frames)
         except Exception:
             log.exception("switch_active_thread(%s) failed", thread_id)
 
@@ -862,9 +881,12 @@ class DebugController:
             main_tid = threads[0].id
             self.state.current_thread_id = main_tid
             frames = await child.stack_trace(main_tid)
-            self.state.set_stack(frames)
             if frames:
-                await self.fetch_scopes_and_variables(frames[0].id)
+                initial = self._initial_frame(frames)
+                self.state.set_stack(frames, current_frame_id=initial.id)
+                await self.fetch_scopes_and_variables(initial.id)
+            else:
+                self.state.set_stack(frames)
         except Exception:
             log.exception("switch_active_process(pid=%s) failed", pid)
 
@@ -897,12 +919,15 @@ class DebugController:
             except Exception:
                 log.exception("Error fetching stack trace")
                 frames = []
-            self.state.set_stack(frames)
             if frames:
+                initial = self._initial_frame(frames)
+                self.state.set_stack(frames, current_frame_id=initial.id)
                 try:
-                    await self.fetch_scopes_and_variables(frames[0].id)
+                    await self.fetch_scopes_and_variables(initial.id)
                 except Exception:
                     log.exception("Error fetching scopes/variables")
+            else:
+                self.state.set_stack(frames)
 
     async def fetch_scopes_and_variables(self, frame_id: int) -> None:
         ac = self._active_client

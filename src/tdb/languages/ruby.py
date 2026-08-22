@@ -86,6 +86,12 @@ class RdbgAdapter(AdapterSpec):
         return []
 
 
+def _is_c_frame(name: str) -> bool:
+    """rdbg labels native frames "[C] Kernel#sleep" etc.; their locals
+    scope holds only %self, so there is nothing to inspect there."""
+    return name.startswith("[C] ")
+
+
 def build_ruby_profile(
     adapter: str | None = None, adapter_paths: dict[str, str] | None = None
 ) -> LanguageProfile:
@@ -102,5 +108,8 @@ def build_ruby_profile(
             parse_error=parse_ruby_error,
             frame_placeholder="<main>",
         ),
-        capabilities=ProfileCapabilities(pause_while_running=True),
+        capabilities=ProfileCapabilities(
+            pause_while_running=True,
+            opaque_frame=_is_c_frame,
+        ),
     )
