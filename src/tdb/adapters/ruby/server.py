@@ -53,7 +53,7 @@ CAPABILITIES = {
     "supportsFunctionBreakpoints": True,
     "supportsExceptionFilterOptions": True,
     "supportsTerminateRequest": True,
-    "supportTerminateDebuggee": True,
+    "supportsTerminateDebuggee": True,
     "exceptionBreakpointFilters": [
         {
             "filter": "any",
