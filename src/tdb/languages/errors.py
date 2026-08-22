@@ -240,7 +240,7 @@ def parse_perl_error(stderr: str, exit_code: int | None = None) -> ParsedError |
 #   /w/boom.rb:2:in `inner': divided by 0 (ZeroDivisionError)
 # Ruby <= 3.3 quotes the method as `inner'; >= 3.4 as 'Object#inner'.
 _RUBY_HEAD_RE = re.compile(
-    r"^(?P<path>.+?):(?P<line>\d+):in [`'](?P<func>[^`']+)'"
+    r"^(?P<path>.+):(?P<line>\d+):in [`'](?P<func>[^`']+)'"
     r": (?P<msg>.+) \((?P<cls>[A-Z]\w*(?:::\w+)*)\)\s*$"
 )
 
