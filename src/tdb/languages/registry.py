@@ -56,6 +56,7 @@ _EXTENSION_MAP = {
     ".pl": "perl",
     ".pm": "perl",
     ".t": "perl",
+    ".rb": "ruby",
     ".sh": "bash",
     ".bash": "bash",
     ".csh": "tcsh",
@@ -106,6 +107,8 @@ def detect(program: str | None) -> str:
         return "python"
     if head.startswith(b"#!") and b"perl" in head.splitlines()[0]:
         return "perl"
+    if head.startswith(b"#!") and b"ruby" in head.splitlines()[0]:
+        return "ruby"
     if head.startswith(b"#!") and b"bash" in head.splitlines()[0]:
         return "bash"
     # "csh" matches both #!/bin/csh and #!/bin/tcsh; checked after bash
@@ -116,6 +119,24 @@ def detect(program: str | None) -> str:
         f"cannot determine the language of {program!r} — pass --lang "
         f"(supported: {', '.join(known_languages())})"
     )
+
+
+def extensions_for(lang_id: str) -> tuple[str, ...]:
+    """Extensions mapped to `lang_id`, for UI file filters (File > Open).
+
+    Empty for languages detected by other means (cpp: binary magic
+    bytes) — callers treat empty as "show all files".
+    """
+    return tuple(sorted(ext for ext, lang in _EXTENSION_MAP.items() if lang == lang_id))
+
+
+def matches_language(path: str, lang_id: str) -> bool:
+    """True when `path` detects as `lang_id` (File > Open's
+    same-language guard). Detection failure counts as a mismatch."""
+    try:
+        return detect(path) == lang_id
+    except LanguageNotSupportedError:
+        return False
 
 
 register("python", build_python_profile)
@@ -135,3 +156,7 @@ register("bash", build_bash_profile)
 from tdb.languages.tcsh import build_tcsh_profile  # noqa: E402
 
 register("tcsh", build_tcsh_profile)
+
+from tdb.languages.ruby import build_ruby_profile  # noqa: E402
+
+register("ruby", build_ruby_profile)

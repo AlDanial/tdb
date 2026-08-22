@@ -229,15 +229,22 @@ class _StepModeModal(ModalScreen[None]):
         self.dismiss(None)
 
 
-class _PyFileTree(DirectoryTree):
-    """DirectoryTree that only shows directories and .py files."""
+class _SourceFileTree(DirectoryTree):
+    """DirectoryTree showing directories plus files matching `suffixes`
+    (all files when `suffixes` is empty — cpp binaries have none)."""
+
+    def __init__(self, path: str, suffixes: tuple[str, ...] = (), **kwargs) -> None:
+        self._suffixes = suffixes
+        super().__init__(path, **kwargs)
 
     def filter_paths(self, paths):
-        return [p for p in paths if p.is_dir() or p.suffix == ".py"]
+        if not self._suffixes:
+            return list(paths)
+        return [p for p in paths if p.is_dir() or p.suffix.lower() in self._suffixes]
 
 
 class _OpenFileModal(ModalScreen[str | None]):
-    """Modal file picker for selecting a .py file to debug."""
+    """Modal file picker for selecting a source file to debug."""
 
     DEFAULT_CSS = """
     _OpenFileModal {
@@ -287,20 +294,24 @@ class _OpenFileModal(ModalScreen[str | None]):
         Binding("backspace", "go_up", "Parent", show=False),
     ]
 
-    def __init__(self, initial_path: str) -> None:
+    def __init__(self, initial_path: str, suffixes: tuple[str, ...] = ()) -> None:
         super().__init__()
         self._current_path = Path(initial_path).resolve()
+        self._suffixes = suffixes
 
     def compose(self):
         with Vertical(id="dialog"):
+            kinds = ", ".join(self._suffixes) if self._suffixes else "all"
             yield Static(
-                "[bold]Open file to debug[/bold]  (.py files only)",
+                f"[bold]Open file to debug[/bold]  ({kinds} files)",
                 id="open-header",
                 markup=True,
             )
             yield Static(str(self._current_path), id="open-path")
             yield Label(" ⬆  .. (parent directory) ", id="up-dir")
-            yield _PyFileTree(str(self._current_path), id="file-tree")
+            yield _SourceFileTree(
+                str(self._current_path), suffixes=self._suffixes, id="file-tree"
+            )
             yield Static(
                 "[dim]Enter: open   Backspace: up a directory   ESC: cancel[/dim]",
                 id="open-footer",
@@ -308,14 +319,14 @@ class _OpenFileModal(ModalScreen[str | None]):
             )
 
     def on_mount(self) -> None:
-        self.query_one("#file-tree", _PyFileTree).focus()
+        self.query_one("#file-tree", _SourceFileTree).focus()
 
     def on_directory_tree_file_selected(
         self,
         event: DirectoryTree.FileSelected,
     ) -> None:
         path = Path(event.path)
-        if path.suffix == ".py":
+        if not self._suffixes or path.suffix.lower() in self._suffixes:
             self.dismiss(str(path))
 
     def on_click(self, event) -> None:
@@ -329,7 +340,7 @@ class _OpenFileModal(ModalScreen[str | None]):
         if parent == self._current_path:
             return
         self._current_path = parent
-        tree = self.query_one("#file-tree", _PyFileTree)
+        tree = self.query_one("#file-tree", _SourceFileTree)
         tree.path = str(parent)
         tree.reload()
         tree.focus()

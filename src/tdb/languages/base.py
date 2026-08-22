@@ -184,6 +184,15 @@ class ProfileCapabilities:
     # its pause handler; gdb/lldb-dap pending verification.
     pause_while_running: bool = False
 
+    # Predicate over a stack frame's name marking frames that have no
+    # inspectable locals (e.g. rdbg reports native frames like
+    # "[C] Kernel#sleep" when a pause lands inside a C call, with a
+    # locals scope holding only %self). After a stop, the initial frame
+    # selection skips these so the Variables view opens on a frame that
+    # actually has locals; the Stack view still shows the full stack.
+    # None -> every frame is selectable (current behavior).
+    opaque_frame: Callable[[str], bool] | None = None
+
 
 @dataclass(frozen=True)
 class LanguageProfile:

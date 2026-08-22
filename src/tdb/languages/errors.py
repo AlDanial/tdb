@@ -233,3 +233,98 @@ def parse_perl_error(stderr: str, exit_code: int | None = None) -> ParsedError |
     return ParsedError(
         header="Perl error:", message=message, frames=frames, detail=detail
     )
+
+
+# First line of a fatal ruby exception (pipe/non-tty output is always
+# bottom-up), e.g.
+#   /w/boom.rb:2:in `inner': divided by 0 (ZeroDivisionError)
+# Ruby <= 3.3 quotes the method as `inner'; >= 3.4 as 'Object#inner'.
+_RUBY_HEAD_RE = re.compile(
+    r"^(?P<path>.+):(?P<line>\d+):in [`'](?P<func>[^`']+)'"
+    r": (?P<msg>.+) \((?P<cls>[A-Z]\w*(?:::\w+)*)\)\s*$"
+)
+
+# A "\tfrom FILE:LINE:in `func'" backtrace frame (innermost-caller-first).
+_RUBY_FRAME_RE = re.compile(
+    r"^\s*from (?P<path>.+?):(?P<line>\d+):in [`'](?P<func>[^`']+)'\s*$"
+)
+
+# Syntax errors have no exception-style head line:
+#   /w/bad.rb:3: syntax error, unexpected end-of-input        (<= 3.3)
+#   /w/bad.rb:2: syntax error found (SyntaxError)             (>= 3.4)
+_RUBY_SYNTAX_RE = re.compile(r"^(?P<path>.+?):(?P<line>\d+): (?P<msg>syntax error.*)$")
+
+
+def _ruby_func(name: str) -> str:
+    # "" lets Presentation.frame_placeholder ("<main>") label the frame.
+    return "" if name == "<main>" else name
+
+
+def parse_ruby_error(stderr: str, exit_code: int | None = None) -> ParsedError | None:
+    """Parse a fatal Ruby exception or syntax error out of raw stderr.
+
+    ``exit_code`` is accepted for signature parity with the other
+    parsers but ignored: the ``FILE:LINE:in `meth': msg (Class)`` head
+    line is an unambiguous fatal-error signal on its own (Ruby prints
+    it only for exceptions that terminate the process; rescued
+    exceptions produce no such stderr line unless the program prints
+    one itself, which is the same accepted ambiguity Python's parser
+    has with `traceback.print_exc()`).
+    """
+    lines = stderr.splitlines()
+    head = None
+    head_idx = 0
+    for i, ln in enumerate(lines):
+        m = _RUBY_HEAD_RE.match(ln)
+        if m:
+            head, head_idx = m, i
+            break
+    if head is None:
+        for i, ln in enumerate(lines):
+            m = _RUBY_SYNTAX_RE.match(ln)
+            if m:
+                return ParsedError(
+                    header="Ruby error:",
+                    message=m.group("msg"),
+                    frames=[
+                        ErrorFrame(
+                            path=m.group("path"),
+                            line=int(m.group("line")),
+                            func="",
+                        )
+                    ],
+                    # keep the caret/source context lines that follow
+                    detail="\n".join(lines[i:]).rstrip(),
+                )
+        return None
+
+    call_frames: list[ErrorFrame] = []
+    detail_lines = [lines[head_idx]]
+    for ln in lines[head_idx + 1 :]:
+        fm = _RUBY_FRAME_RE.match(ln)
+        if not fm:
+            break  # e.g. a "... N levels..." truncation marker ends frames
+        call_frames.append(
+            ErrorFrame(
+                path=fm.group("path"),
+                line=int(fm.group("line")),
+                func=_ruby_func(fm.group("func")),
+            )
+        )
+        detail_lines.append(ln)
+
+    # Ruby prints innermost-first; ParsedError wants OUTERMOST-first
+    # with the failing frame last (same reordering as perl's parser).
+    frames = list(reversed(call_frames)) + [
+        ErrorFrame(
+            path=head.group("path"),
+            line=int(head.group("line")),
+            func=_ruby_func(head.group("func")),
+        )
+    ]
+    return ParsedError(
+        header="Ruby error:",
+        message=f"{head.group('msg')} ({head.group('cls')})",
+        frames=frames,
+        detail="\n".join(detail_lines),
+    )

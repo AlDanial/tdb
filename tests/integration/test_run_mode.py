@@ -13,6 +13,7 @@ import pytest
 from tdb import run_mode
 from tdb.persist import TdbConfig
 from tdb.session.state import SessionPhase
+from tests.integration.ruby_adapter_harness import rdbg_ok
 
 pytestmark = pytest.mark.skipif(
     os.name == "nt", reason="signal-driven run mode tests are POSIX-only"
@@ -22,6 +23,10 @@ perl_available = pytest.mark.skipif(
     shutil.which("perl") is None
     or subprocess.run(["perl", "-e", "require v5.18"]).returncode != 0,
     reason="perl >= 5.18 required",
+)
+
+ruby_available = pytest.mark.skipif(
+    not rdbg_ok(), reason="needs rdbg (debug gem >= 1.9)"
 )
 
 
@@ -172,3 +177,43 @@ async def test_run_cleans_up_when_tui_episode_raises(tmp_path):
     finally:
         pulse_task.cancel()
     assert box["controller"].state.is_terminated
+
+
+@ruby_available
+async def test_ruby_runs_headless_without_tui_episode(tmp_path, capfd):
+    from tdb.languages.ruby import build_ruby_profile
+
+    p = tmp_path / "hello.rb"
+    p.write_text('puts "rhello"\n')
+    episodes = []
+
+    async def fake_episode(controller, handler, console, config, program):
+        episodes.append(controller.state.phase)
+        return False
+
+    code = await asyncio.wait_for(
+        run_mode.run(
+            program=str(p),
+            config=TdbConfig(),
+            profile=build_ruby_profile(),
+            tui_episode=fake_episode,
+        ),
+        timeout=60.0,
+    )
+    assert episodes == [], "spurious TUI episode during headless ruby run"
+    assert code == 0
+    assert "rhello" in capfd.readouterr().out
+
+
+@ruby_available
+async def test_ruby_exit_code_passthrough(tmp_path, capfd):
+    from tdb.languages.ruby import build_ruby_profile
+
+    p = tmp_path / "exit7.rb"
+    p.write_text('puts "rbye"\n$stdout.flush\nexit 7\n')
+    code = await asyncio.wait_for(
+        run_mode.run(program=str(p), config=TdbConfig(), profile=build_ruby_profile()),
+        timeout=60.0,
+    )
+    assert code == 7
+    assert "rbye" in capfd.readouterr().out

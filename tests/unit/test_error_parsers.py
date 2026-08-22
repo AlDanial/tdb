@@ -1,5 +1,6 @@
 """Language-specific fatal-error parsers behind Presentation.parse_error."""
 
+from tdb.languages.base import ErrorFrame
 from tdb.languages.errors import parse_perl_error, parse_python_error
 
 SIMPLE = """Traceback (most recent call last):
@@ -163,3 +164,73 @@ def test_presentation_exposes_parser_for_perl():
     profile = registry.resolve("perl")
     assert profile.presentation.parse_error is not None
     assert profile.presentation.parse_error(PERL_RUNTIME) is not None
+
+
+# ---- ruby ----
+
+from tdb.languages.errors import parse_ruby_error  # noqa: E402
+
+RUBY_CLASSIC = """\
+/w/boom.rb:2:in `inner': divided by 0 (ZeroDivisionError)
+\tfrom /w/boom.rb:6:in `outer'
+\tfrom /w/boom.rb:9:in `<main>'
+"""
+
+RUBY_34_QUOTING = """\
+/w/boom.rb:2:in 'Object#inner': divided by 0 (ZeroDivisionError)
+\tfrom /w/boom.rb:6:in 'Object#outer'
+\tfrom /w/boom.rb:9:in '<main>'
+"""
+
+
+def test_ruby_classic_traceback():
+    parsed = parse_ruby_error(RUBY_CLASSIC, 1)
+    assert parsed is not None
+    assert parsed.header == "Ruby error:"
+    assert parsed.message == "divided by 0 (ZeroDivisionError)"
+    # OUTERMOST-first, failing frame last
+    assert [(f.path, f.line, f.func) for f in parsed.frames] == [
+        ("/w/boom.rb", 9, ""),  # <main> -> "" so frame_placeholder applies
+        ("/w/boom.rb", 6, "outer"),
+        ("/w/boom.rb", 2, "inner"),
+    ]
+    assert "divided by 0" in parsed.detail
+    assert "from /w/boom.rb:6" in parsed.detail
+
+
+def test_ruby_34_quoting_variant():
+    parsed = parse_ruby_error(RUBY_34_QUOTING, 1)
+    assert parsed is not None
+    assert [f.func for f in parsed.frames] == ["", "Object#outer", "Object#inner"]
+
+
+def test_ruby_error_amid_earlier_stderr_noise():
+    parsed = parse_ruby_error("some warning\n" + RUBY_CLASSIC, 1)
+    assert parsed is not None
+    assert parsed.message == "divided by 0 (ZeroDivisionError)"
+
+
+def test_ruby_single_frame_error():
+    parsed = parse_ruby_error("/w/x.rb:3:in `<main>': boom (RuntimeError)\n", 1)
+    assert parsed is not None
+    assert parsed.frames == [ErrorFrame(path="/w/x.rb", line=3, func="")]
+
+
+def test_ruby_syntax_error_old_shape():
+    parsed = parse_ruby_error("/w/bad.rb:3: syntax error, unexpected end-of-input\n", 1)
+    assert parsed is not None
+    assert parsed.frames == [ErrorFrame(path="/w/bad.rb", line=3, func="")]
+    assert "syntax error" in parsed.message
+
+
+def test_ruby_syntax_error_34_shape():
+    text = "/w/bad.rb:2: syntax error found (SyntaxError)\n  1 | x = 1\n> 2 | if\n"
+    parsed = parse_ruby_error(text, 1)
+    assert parsed is not None
+    assert parsed.frames[0].line == 2
+    assert "> 2 | if" in parsed.detail
+
+
+def test_ruby_garbage_returns_none():
+    assert parse_ruby_error("plain stderr chatter\n", 1) is None
+    assert parse_ruby_error("", None) is None
