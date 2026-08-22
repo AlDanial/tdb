@@ -54,20 +54,23 @@ RUN ["uv", "sync", "--all-extras"]
 RUN ["uv", "pip", "install", "-e", "."]
 
 # - - - - - test target
-# NOTE (OCaml native / lldb-dap): a plain `docker build --target test .`
-# (what .github/workflows/test.yml currently runs) denies lldb-dap the
-# personality()/ptrace syscalls it needs to launch a native debuggee --
-# BuildKit's default RUN sandbox has no CAP_SYS_PTRACE and no way to opt
-# in without BuildKit's "insecure" entitlement. That fails the 5 native
-# OCaml lldb-dap tests (and, now that `lldb` is installed for OCaml, the
-# previously-dormant cpp lldb-dap test) here even though the toolchain
-# itself is correct: verified working via
-#   docker run --rm --init --cap-add=SYS_PTRACE --security-opt seccomp=unconfined \
-#     tdb-base uv run pytest tests/integration -k ocaml -v
-# (7 passed, 1 xfailed -- matches Task 10's expected result exactly).
-# CI needs those same flags, which means running pytest via `docker run`
-# against the `base` target (as this file's top-of-file comment already
-# does for tcsh) instead of baking it into this `test` target's `RUN`.
+# NOTE (OCaml native / lldb-dap): this target's build-time `RUN` below
+# fails on the 5 native OCaml lldb-dap tests (and the cpp lldb-dap pause
+# test) if you build it directly with plain `docker build --target test .`
+# -- BuildKit's default RUN sandbox has no CAP_SYS_PTRACE and denies the
+# personality()/ptrace syscalls lldb-dap needs to launch a native
+# debuggee, with no opt-in short of BuildKit's "insecure" entitlement
+# (not used here). This is why CI (.github/workflows/test.yml) does NOT
+# use this target: it builds only through `base`, then runs pytest via a
+# separate `docker run --cap-add=SYS_PTRACE --security-opt
+# seccomp=unconfined ... uv run pytest` step instead, which grants those
+# syscalls (verified: 7 passed, 1 xfailed for `-k ocaml` alone; full
+# suite passes with these tests included). This target is kept for local
+# convenience only (`docker build --target test .`); it will still hit
+# the same native-lldb-dap failures unless you build+run it the same way
+# CI does, e.g. `docker build --target base -t tdb-test . && docker run
+# --rm --cap-add=SYS_PTRACE --security-opt seccomp=unconfined tdb-test
+# uv run pytest`.
 FROM base AS test
 RUN ["uv", "run", "pytest"]
 # - - - - -
