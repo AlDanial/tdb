@@ -174,3 +174,7 @@ register("tcsh", build_tcsh_profile)
 from tdb.languages.ruby import build_ruby_profile  # noqa: E402
 
 register("ruby", build_ruby_profile)
+
+from tdb.languages.ocaml import build_ocaml_profile  # noqa: E402
+
+register("ocaml", build_ocaml_profile)
