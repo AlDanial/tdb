@@ -506,13 +506,22 @@ class RubyDapServer:
         self._launched = True
         self._entry_stop_pending = self._stop_on_entry
         self._start_client_seq = request["seq"]
+        rdbg_pump_task = self._spawn_task(self._pump_rdbg(reader))
         if self._proc is not None:
+            # _watch_exit's synthesize decision reads _sent_exited/
+            # _sent_terminated, which only the rdbg-socket pump sets — it
+            # must be in this wait set too, not just the stdout/stderr
+            # pumps, or a child-exit callback that wins the race against
+            # the socket-readable callback can see stale flags and emit a
+            # duplicate/misreported exited+terminated pair. Spawn (above)
+            # and register it here BEFORE _watch_exit starts so the list
+            # it reads is already complete.
             self._pump_tasks = [
                 self._spawn_task(self._pump_output(self._proc.stdout, "stdout")),
                 self._spawn_task(self._pump_output(self._proc.stderr, "stderr")),
+                rdbg_pump_task,
             ]
             self._spawn_task(self._watch_exit())
-        self._spawn_task(self._pump_rdbg(reader))
         # rdbg needs its own initialize first. Proxy-originated (no
         # client mapping) -> its response is swallowed by the translator;
         # rdbg's `initialized` event passes through to the client and
