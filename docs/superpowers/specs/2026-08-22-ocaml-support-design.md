@@ -340,19 +340,29 @@ instantly** when the parent is a shell (`< file`, a FIFO held open, or
 `stopped`/`threads`/`continue` all round-tripped normally — see Q4). Ruled
 out as the cause: stdin EOF (FIFO-held-open case still works), "just
 needs more time" (30s+ waits from Python never respond), pipe-vs-pty
-(both hang from Python). Root cause not identified within this task's
-scope. **Implication for Task 5**: the direct-stdio-spawn design
-(`EarlybirdAdapter` spawning `ocamlearlybird debug` the same way
-`DebugpyAdapter` spawns `debugpy`) will hang tdb's own controller the
-first time it talks to earlybird. This is exactly the kind of
-protocol/process-level misbehavior the design's escalation clause
-anticipated for lldb-dap — it needs to be extended to earlybird too:
-Task 5 should budget time to either (a) root-cause the Python-subprocess
-incompatibility properly, or (b) fall back to a thin non-Python relay
-(a small Node or shell-spawned shim proxying stdio, mirroring the
-perl/ruby proxy-shim pattern) fronting `ocamlearlybird debug`. Do not
-proceed with a naive direct `asyncio.create_subprocess_exec` adapter
-without first re-testing against whatever mitigation is chosen.
+(both hang from Python).
+
+**Root cause (found by a follow-up investigation, after this report was
+first written).** earlybird's DAP framing parser (the opam `dap`
+library it's built on) misparses a message body containing the byte
+sequence `": "` — the key/value separator `json.dumps` emits by default
+between every JSON key and its value — consuming it as though it were
+additional Content-Length-style header lines and blocking forever
+waiting for a blank-line terminator that never comes. Emitting *compact*
+JSON (`json.dumps(msg, separators=(",", ":"))`, which never produces
+`": "`) round-trips instantly and interactively from Python — this
+committed probe (`tests/integration/ocaml_probe.py`) was fixed to use
+compact framing and now reproduces the earlybird session correctly (see
+the Q1/Q4 findings above, re-run below). **Implication for Task 5/6**:
+tdb's production DAP client already sends compact JSON
+(`src/tdb/dap/protocol.py`), so the direct `EarlybirdAdapter`
+stdio-spawn design (spawning `ocamlearlybird debug` the same way
+`DebugpyAdapter` spawns `debugpy`) is unaffected by this bug in
+production — no proxy shim is needed, and Task 5/6 proceeded with the
+direct-spawn design as originally planned. The historical observations
+above (strace behavior, the ruled-out causes, Node/shell working) remain
+accurate as recorded; they were pointing at a JSON-formatting bug in the
+client, not a process- or transport-level incompatibility.
 
 *Follow-up controller-side experiments (post-report, attributed to
 follow-up controller probes, not the committed script): the same
@@ -366,8 +376,17 @@ over a **socketpair**-based stdio spawn from Python. Meanwhile a Node.js
 full batch responses. So the failure tracks the **client process**
 (Python vs. Node/shell), not the transport or file-descriptor type
 (pipe, pty, socketpair, and TCP all reproduce it from Python; pipe and
-FIFO both work from Node/shell). Root cause is still unknown; a separate
-investigation is in progress.*
+FIFO both work from Node/shell). **Root cause: the same framing-parser
+bug identified above** — earlybird's `dap`-library parser misparses a
+non-compact JSON body's `": "` separator regardless of transport
+(pipe/pty/socketpair/TCP all carry the same bytes to the same broken
+parser). Node's `JSON.stringify` and the hand-assembled shell/FIFO batch
+files happened not to trigger it because neither emits that separator by
+default — the failure tracked "client encodes non-compact JSON" the
+whole time, which correlated with "Python" only because `json.dumps`'s
+default separators are the culprit. Switching to compact JSON framing
+resolves it uniformly across every transport tried here, not just the
+original stdio-pipe case.*
 
 **Q2 — DWARF locals lldb actually sees, per frame (native).** Stopped at
 a breakpoint on `Atomic.incr counter` (ocaml_domains.ml line 5, hit inside
