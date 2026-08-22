@@ -800,6 +800,32 @@ class RubyDapServer:
         self._rdbg_pump_task = None
         await self._ensure_rdbg_dead()
         self._proc = None
+        if self._rdbg_writer is not None:
+            # Best-effort graceful kill before losing the only handle to
+            # this attempt's rdbg process. For a proxy-owned launch
+            # (`self._proc` was set) `_ensure_rdbg_dead` above already
+            # killed it via the OS process group, so this is a harmless
+            # no-op there. For a failed externalTerminal launch there is
+            # NO process handle at all — this `terminate` request (same
+            # shape as `_on_disconnect`/`_on_terminate`) is the only
+            # channel that can ask a terminal-mode debuggee to exit.
+            # Without it, a failed handshake on that path orphaned the
+            # rdbg process (and the debuggee under it) running forever in
+            # the user's terminal, surviving both this retry and the
+            # eventual client disconnect.
+            self._write_rdbg(
+                {
+                    "seq": self._seqs.next_rdbg_seq(),
+                    "type": "request",
+                    "command": "terminate",
+                    "arguments": {},
+                }
+            )
+            try:
+                await self._rdbg_writer.drain()
+            except (ConnectionError, OSError):
+                pass
+            self._rdbg_writer.close()
         self._rdbg_writer = None
         if self._transport is not None:
             self._transport.cleanup()

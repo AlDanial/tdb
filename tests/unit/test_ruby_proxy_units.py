@@ -384,3 +384,78 @@ async def test_reset_for_retry_cancels_rdbg_pump_task_even_without_owned_proc():
 
     assert task.cancelled()
     assert server._rdbg_pump_task is None
+
+
+class FakeRdbgWriter:
+    """Stands in for `self._rdbg_writer` -- the write side of the socket
+    to rdbg, distinct from `self._writer` (the client's stdio)."""
+
+    def __init__(self):
+        self.chunks: list[bytes] = []
+        self.closed = False
+        self.drain_calls = 0
+
+    def write(self, data: bytes) -> None:
+        self.chunks.append(data)
+
+    async def drain(self) -> None:
+        self.drain_calls += 1
+
+    def close(self) -> None:
+        self.closed = True
+
+
+async def test_reset_for_retry_sends_terminate_and_closes_writer_for_terminal_launch():
+    """Regression test (review finding on commit dce6700): externalTerminal
+    launches have no `_proc`, so `_ensure_rdbg_dead` is a no-op --
+    `_on_disconnect`/`_on_terminate`'s own comment names the
+    proxy-originated `terminate` request as "the only channel that kills a
+    terminal-mode debuggee the proxy has no process handle for". The
+    original fix nulled `_rdbg_writer` in `_reset_for_retry` without ever
+    using it, silently removing that channel: a failed terminal-mode
+    handshake left the rdbg process (and the debuggee under it) running
+    forever in the user's terminal, surviving both the retry and the
+    eventual client disconnect (which finds `_rdbg_writer` already `None`
+    and so sends nothing either). `_reset_for_retry` must send `terminate`
+    over the writer -- same shape as `_on_disconnect`/`_on_terminate` --
+    and close it, before losing the handle."""
+    server = _server()
+    server._proc = None  # externalTerminal: no owned child process
+    rdbg_writer = FakeRdbgWriter()
+    server._rdbg_writer = rdbg_writer
+
+    await server._reset_for_retry()
+
+    assert rdbg_writer.closed is True
+    assert rdbg_writer.drain_calls >= 1
+    sent = _messages(rdbg_writer)
+    terminate_msgs = [m for m in sent if m.get("command") == "terminate"]
+    assert len(terminate_msgs) == 1
+    assert terminate_msgs[0]["type"] == "request"
+    assert server._rdbg_writer is None
+
+
+async def test_reset_for_retry_closes_rdbg_writer_for_proxy_owned_launch_too():
+    """The writer-close fix applies unconditionally, not just to the
+    externalTerminal path: a proxy-owned launch's `_rdbg_writer` must also
+    be closed on retry, or the old (now-dead) socket's asyncio
+    StreamWriter is left for GC to eventually close instead of being torn
+    down deterministically."""
+    server = _server()
+
+    class FakeProc:
+        pid = 424242
+        returncode = 0  # already dead -- keeps _ensure_rdbg_dead a no-op
+
+        async def wait(self):
+            return 0
+
+    server._proc = FakeProc()
+    rdbg_writer = FakeRdbgWriter()
+    server._rdbg_writer = rdbg_writer
+
+    await server._reset_for_retry()
+
+    assert rdbg_writer.closed is True
+    sent = _messages(rdbg_writer)
+    assert any(m.get("command") == "terminate" for m in sent)
