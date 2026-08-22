@@ -15,8 +15,20 @@ from tdb.widgets.variable_view import VariableView
 
 if TYPE_CHECKING:
     from tdb.dap.types import Scope, StackFrame, Thread, Variable
+    from tdb.languages.base import ThreadDecoration
 
 log = logging.getLogger(__name__)
+
+
+def visible_threads(
+    decorations: "list[ThreadDecoration] | None", show_all: bool
+) -> "list[ThreadDecoration] | None":
+    """Decorations to display (None -> language has no classifier)."""
+    if decorations is None:
+        return None
+    if show_all:
+        return list(decorations)
+    return [d for d in decorations if not d.hidden]
 
 
 class ThreadsModal(_InspectableListModal["Thread"]):
@@ -24,24 +36,53 @@ class ThreadsModal(_InspectableListModal["Thread"]):
 
     KIND_LABEL = "Threads"
     TABLE_COLUMNS = ("ID", "Name")
-    FOOTER_HINT = "ESC close  |  r refresh  |  Enter/double-click jump to thread"
+    FOOTER_HINT = (
+        "ESC close  |  r refresh  |  a all threads  |  "
+        "Enter/double-click jump to thread"
+    )
+    BINDINGS = _InspectableListModal.BINDINGS + [
+        ("a", "toggle_all", "All threads"),
+    ]
 
     def __init__(
         self,
         threads: list[Thread],
         current_thread_id: int | None = None,
         frame_name: Callable[[str], str] | None = None,
+        decorations: "list[ThreadDecoration] | None" = None,
     ) -> None:
         super().__init__()
-        self._items: list[Thread] = threads
         self._current_thread_id = current_thread_id
         self._frame_name = frame_name
+        self._decorations = decorations
+        self._show_all = False
+        self._all_threads: list[Thread] = threads
+        self._labels: dict[int, str] = {}
+        self._apply_visibility()
+
+    def _apply_visibility(self) -> None:
+        """Re-derive `self._items` (and label overrides) from
+        `self._all_threads` + `self._decorations` + `self._show_all`."""
+        vis = visible_threads(self._decorations, self._show_all)
+        if vis is None:
+            self._items = list(self._all_threads)
+            self._labels = {}
+        else:
+            self._items = [d.thread for d in vis]
+            self._labels = {d.thread.id: d.label for d in vis if d.label}
+
+    def action_toggle_all(self) -> None:
+        if self._decorations is None:
+            return
+        self._show_all = not self._show_all
+        self._apply_visibility()
+        self._reload_after_items_change()
 
     # --- Row + detail rendering ---------------------------------------
 
     def _format_row(self, thread: Thread) -> tuple:
         tid = Text(str(thread.id))
-        name = Text(thread.name)
+        name = Text(self._labels.get(thread.id, thread.name))
         # Bold the current thread so it stands out without the user
         # having to remember which one debugpy reported as the stop.
         if thread.id == self._current_thread_id:
@@ -54,7 +95,7 @@ class ThreadsModal(_InspectableListModal["Thread"]):
         content.append("Thread ID: ", style="bold")
         content.append(str(thread.id) + "\n")
         content.append("Name:      ", style="bold")
-        content.append(thread.name + "\n")
+        content.append(self._labels.get(thread.id, thread.name) + "\n")
         if thread.id == self._current_thread_id:
             content.append("(current thread)\n", style="dim italic")
         content.append("\n")
@@ -118,7 +159,7 @@ class ThreadsModal(_InspectableListModal["Thread"]):
         content.append("Thread ID: ", style="bold")
         content.append(str(thread.id) + "\n")
         content.append("Name:      ", style="bold")
-        content.append(thread.name + "\n")
+        content.append(self._labels.get(thread.id, thread.name) + "\n")
         if thread.id == self._current_thread_id:
             content.append("(current thread)\n", style="dim italic")
         content.append("\n")
@@ -150,8 +191,11 @@ class ThreadsModal(_InspectableListModal["Thread"]):
         self,
         threads: list[Thread],
         current_thread_id: int | None = None,
+        decorations: "list[ThreadDecoration] | None" = None,
     ) -> None:
         """Replace thread list and refresh the display."""
-        self._items = threads
+        self._all_threads = threads
         self._current_thread_id = current_thread_id
+        self._decorations = decorations
+        self._apply_visibility()
         self._reload_after_items_change()
