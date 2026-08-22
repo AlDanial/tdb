@@ -220,10 +220,12 @@ async def test_domains_visible_at_breakpoint(session, ocaml_domains_binary):
         f"{[(d.label, d.hidden) for d in decorations]}, "
         f"thread_count={len(threads)}"
     )
-    # By construction of `achieved`, we have main + >=1 other visible
-    # domain + >=1 hidden backup thread: >= 4 total lines up with the
-    # probe's "4-5 threads for 3 spawned domains" observation.
-    assert len(threads) >= 4
+    # By construction of `achieved`, we have main (Domain 0) + >=1 other
+    # visible domain + >=1 hidden backup thread: >= 3 total. This is the
+    # minimum `achieved` actually guarantees; the real spec requirement
+    # (>=2 visible "Domain N" decorations + >=1 hidden) is already
+    # enforced by the `achieved` assertion above.
+    assert len(threads) >= 3
 
     # The stopped thread's top demangled frame is the worker function.
     assert ctrl.state.stack_frames, "expected a populated stack at the stop"
