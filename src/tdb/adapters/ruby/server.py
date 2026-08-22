@@ -70,6 +70,14 @@ CAPABILITIES = {
 
 MIN_DEBUG_GEM = (1, 9)
 
+# Client-initiated requests that resume execution — rdbg may not always
+# emit a "continued" event for these (unlike a genuine multi-client
+# "someone else resumed" case), so the proxy invalidates its own
+# last-stopped-thread cache proactively here too, not just on rdbg's
+# resume-implying events. "pause" is deliberately excluded: it *stops*
+# execution, it doesn't resume it.
+_RESUME_COMMANDS = {"continue", "next", "stepIn", "stepOut"}
+
 RDBG_HINT = (
     "rdbg not found on PATH — install Ruby's debug gem "
     '(`gem install debug`), or set {"adapters": {"rdbg": '
@@ -227,7 +235,14 @@ class RubyDapServer:
         # Last thread rdbg reported stopped — used to default `frameId`
         # on evaluate/completions requests (see _default_frame_id): rdbg's
         # DAP evaluate hard-fails ("can't evaluate") without a frameId,
-        # unlike debugpy, which treats it as optional.
+        # unlike debugpy, which treats it as optional. Invalidated (set
+        # back to None) on anything that resumes execution — rdbg's own
+        # "continued"/"exited"/"terminated" events in
+        # _note_and_filter_event, and client-initiated resume commands in
+        # _dispatch_client_message (_RESUME_COMMANDS) — so a stray
+        # evaluate/completions with no frameId while the program is
+        # running falls through to plain passthrough instead of probing
+        # a thread that's no longer actually stopped.
         self._last_stopped_thread_id: int | None = None
         # Proxy-originated rdbg requests awaiting a reply (rdbg-side seq
         # -> future), e.g. the synthetic stackTrace above. Distinct from
@@ -330,6 +345,8 @@ class RubyDapServer:
         if self._rdbg_writer is None:
             self.send_error(msg, "no debug session")
             return
+        if msg["command"] in _RESUME_COMMANDS:
+            self._last_stopped_thread_id = None
         self._write_rdbg(self._seqs.client_request_to_rdbg(msg))
 
     # ---- rdbg socket side ----
@@ -380,10 +397,14 @@ class RubyDapServer:
                 self._entry_stop_pending = False
                 body["reason"] = "entry"
                 msg["body"] = body
+        elif event == "continued":
+            self._last_stopped_thread_id = None
         elif event == "exited":
             self._sent_exited = True
+            self._last_stopped_thread_id = None
         elif event == "terminated":
             self._sent_terminated = True
+            self._last_stopped_thread_id = None
         return False
 
     async def _pump_output(self, stream: asyncio.StreamReader, category: str) -> None:
@@ -619,10 +640,18 @@ class RubyDapServer:
         seq = self._seqs.next_rdbg_seq()
         fut: asyncio.Future = asyncio.get_running_loop().create_future()
         self._proxy_requests[seq] = fut
-        self._write_rdbg(
-            {"seq": seq, "type": "request", "command": command, "arguments": arguments}
-        )
         try:
+            # Inside the try: if write() ever raises synchronously (e.g.
+            # the writer is already closed), the finally below still pops
+            # the just-registered future instead of leaking it.
+            self._write_rdbg(
+                {
+                    "seq": seq,
+                    "type": "request",
+                    "command": command,
+                    "arguments": arguments,
+                }
+            )
             await self._rdbg_writer.drain()
             return await asyncio.wait_for(fut, timeout)
         except (asyncio.TimeoutError, ConnectionError, OSError):

@@ -74,6 +74,13 @@ async def test_completions():
             {"text": "tot", "column": 4, "frameId": frame_id},
         )
         assert resp["success"]
+        # No frameId: the proxy must default to the last-stopped thread's
+        # top frame (rdbg's completions, like evaluate, hard-fails
+        # without one).
+        resp_no_frame = await client.request(
+            "completions", {"text": "tot", "column": 4}
+        )
+        assert resp_no_frame["success"]
         await client.request(
             "setBreakpoints", {"source": {"path": VARS}, "breakpoints": []}
         )
