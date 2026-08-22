@@ -121,6 +121,24 @@ def detect(program: str | None) -> str:
     )
 
 
+def extensions_for(lang_id: str) -> tuple[str, ...]:
+    """Extensions mapped to `lang_id`, for UI file filters (File > Open).
+
+    Empty for languages detected by other means (cpp: binary magic
+    bytes) — callers treat empty as "show all files".
+    """
+    return tuple(sorted(ext for ext, lang in _EXTENSION_MAP.items() if lang == lang_id))
+
+
+def matches_language(path: str, lang_id: str) -> bool:
+    """True when `path` detects as `lang_id` (File > Open's
+    same-language guard). Detection failure counts as a mismatch."""
+    try:
+        return detect(path) == lang_id
+    except LanguageNotSupportedError:
+        return False
+
+
 register("python", build_python_profile)
 
 from tdb.languages.cpp import build_cpp_profile  # noqa: E402

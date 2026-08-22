@@ -298,15 +298,9 @@ class TdbApp(_AppMessageRoutes, App):
         if self.controller.profile.capabilities.task_inspection:
             action_labels["processes-label"] = "Processes"
             action_labels["async-tasks-label"] = "Async Tasks"
-        # File > Open only makes sense for Python: the picker filters to
-        # .py files and relaunches through the *current* profile, so
-        # offering it for a cpp/other session would either hide the
-        # picker's real files or silently relaunch under the wrong
-        # adapter. Hide the label for non-Python profiles (the action
-        # handler also no-ops, so a keybinding can't reach it either).
-        leading_action_labels = {}
-        if self.controller.profile.id == "python":
-            leading_action_labels["open-file-label"] = "File"
+        # File > Open is language-aware: the picker filters to the
+        # profile's extensions and validates the pick (action_open_file).
+        leading_action_labels = {"open-file-label": "File"}
         yield MenuBar(
             {
                 "Configure": ["Color Theme", "Keybindings", "Step Mode"],
@@ -1386,24 +1380,38 @@ class TdbApp(_AppMessageRoutes, App):
         event.stop()
 
     def action_open_file(self) -> None:
-        if self.controller.profile.id != "python":
-            # No-op guard mirroring the hidden menu label above — reached
-            # directly by the Alt+F keybinding (action_menu_file), which
-            # bypasses the label entirely.
+        if not self.controller.supports_restart:
+            # File > Open relaunches via _restart_session, which has
+            # nothing to relaunch in remote-attach / tdb.breakpoint()
+            # sessions (mirrors _restart_session's own R-key guard).
             self.notify(
-                "File > Open is only available for Python sessions.",
+                "File > Open is not available in remote-attach mode.",
                 severity="warning",
             )
             return
+        from tdb.languages import registry
+
+        profile = self.controller.profile
         initial = self._cwd or (
             str(Path(self._program).parent) if self._program else str(Path.cwd())
         )
 
         def on_dismiss(path: str | None) -> None:
-            if path:
-                self._restart_session(new_program=path, start_immediately=False)
+            if not path:
+                return
+            if not registry.matches_language(path, profile.id):
+                self.notify(
+                    f"{Path(path).name} is not a {profile.display_name} "
+                    f"program — this session debugs {profile.display_name}.",
+                    severity="warning",
+                )
+                return
+            self._restart_session(new_program=path, start_immediately=False)
 
-        self.push_screen(_OpenFileModal(initial), callback=on_dismiss)
+        self.push_screen(
+            _OpenFileModal(initial, suffixes=registry.extensions_for(profile.id)),
+            callback=on_dismiss,
+        )
 
     def action_color_theme(self) -> None:
         # Opens textual's built-in fuzzy-search theme palette. The watch_theme
