@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import select
 import shutil
 import subprocess
@@ -122,23 +123,23 @@ class RawDap:
         msg = {"seq": self.seq, "type": "request", "command": command}
         if arguments is not None:
             msg["arguments"] = arguments
-        raw = json.dumps(msg).encode()
+        # Compact JSON (no space after ":"/",") — earlybird's DAP framing
+        # parser (the opam `dap` library) misparses a body containing the
+        # `": "` separator json.dumps emits by default, consuming it as
+        # more header lines and blocking forever (see the spec's Critical
+        # caveat / follow-up root-cause paragraphs). Compact framing avoids
+        # that byte sequence entirely and round-trips instantly.
+        raw = json.dumps(msg, separators=(",", ":")).encode()
         self.proc.stdin.write(b"Content-Length: %d\r\n\r\n%s" % (len(raw), raw))
         self.proc.stdin.flush()
         return self.seq
 
     def recv(self, timeout: float = 15.0) -> dict:
-        # select()-bounded framed read. NOT purely cosmetic: probing found
-        # that ocamlearlybird 1.3.6, when spawned via Python's subprocess
-        # module (sync Popen *and* asyncio.create_subprocess_exec, plain
-        # pipes and a pty both tried), never produces a response to
-        # `initialize` even though `strace` shows its internal reader
-        # thread genuinely read() the request bytes off fd 0. The same
-        # exchange succeeds instantly via a shell redirect/FIFO or via
-        # Node's child_process.spawn. Root cause not identified (ruled
-        # out: EOF-on-stdin, pipe-vs-pty, "just slow" -- 30s+ waits still
-        # never respond). Without a timeout this call blocks forever;
-        # with it, the probe still terminates and reports the finding.
+        # select()-bounded framed read. Kept even though the root cause is
+        # now known and fixed (see `send()`'s compact-JSON comment): a
+        # malformed/non-compact framing from some other code path would
+        # otherwise hang this call forever, so the timeout stays as a
+        # belt-and-suspenders guard rather than something to rely on.
         deadline = time.monotonic() + timeout
         header = b""
         while b"\r\n\r\n" not in header:
@@ -152,12 +153,24 @@ class RawDap:
             r, _, _ = select.select([self.proc.stdout], [], [], remaining)
             if not r:
                 continue
-            b1 = self.proc.stdout.read(1)
+            # Read the raw fd (not self.proc.stdout.read()): a
+            # BufferedReader drains the whole pending pipe buffer into
+            # its own userspace buffer on the first read, returning only
+            # the 1 byte asked for -- so a later select() on the fd sees
+            # "not ready" (already drained at the OS level) even though
+            # more bytes are sitting unread in the Python buffer, and
+            # this loop would spin on `continue` until timeout. Reading
+            # the fd directly keeps select() and read() at the same
+            # layer.
+            b1 = os.read(self.proc.stdout.fileno(), 1)
             if not b1:
                 raise EOFError(self.proc.stderr.read().decode())
             header += b1
         length = int(header.split(b"Content-Length:")[1].split(b"\r\n")[0])
-        return json.loads(self.proc.stdout.read(length))
+        body = b""
+        while len(body) < length:
+            body += os.read(self.proc.stdout.fileno(), length - len(body))
+        return json.loads(body)
 
     def recv_until(self, pred) -> dict:
         while True:
@@ -222,18 +235,15 @@ def probe_earlybird() -> None:
                 )
             )
     except TimeoutError as e:
-        print(f"  Q1/Q4 BLOCKED: {e}")
-        print(
-            "  Confirmed separately: `ocamlearlybird debug` responds "
-            "correctly to the same bytes when driven via a shell "
-            "redirect/FIFO or Node's child_process.spawn, and `strace` "
-            "shows its reader thread does read() the request -- but it "
-            "never responds when spawned from Python (subprocess.Popen "
-            "*and* asyncio.create_subprocess_exec, plain pipe or pty). "
-            "This blocks Approach A (direct stdio spawn from tdb, a "
-            "Python asyncio process) for the earlybird adapter as "
-            "currently designed; see the spec's Probe-verified facts."
-        )
+        # This used to be the expected, documented outcome: earlybird's
+        # DAP framing parser (the opam `dap` library) misparses a body
+        # containing json.dumps's default `": "` separator, so it never
+        # answered `initialize` when driven from Python. `send()` now
+        # emits compact JSON (no `": "` byte sequence), which fixes that
+        # -- so reaching this branch again means something NEW is wrong,
+        # not the historical framing bug. See the spec's Critical caveat
+        # / follow-up root-cause paragraphs for the full story.
+        print(f"  Q1/Q4 BLOCKED (unexpected -- framing fix did not help): {e}")
     finally:
         dap.proc.kill()
 

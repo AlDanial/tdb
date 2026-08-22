@@ -87,7 +87,15 @@ def _profile_from_header(header: dict):
     config = load_config()
     lang = header.get("language") or "python"
     adapter = header.get("adapter") or config.default_adapters.get(lang)
-    return registry.resolve(lang, adapter=adapter, adapter_paths=config.adapters)
+    # header.get, not header[...]: attach-mode headers have no "program"
+    # key (see _ATTACH_REQUIRED) -- resolve() already treats program=None
+    # as "no local target", same as the CLI's attach path.
+    return registry.resolve(
+        lang,
+        adapter=adapter,
+        adapter_paths=config.adapters,
+        program=header.get("program"),
+    )
 
 
 def _print_command(echo, rec: dict, success: bool, value: str) -> None:
