@@ -1,6 +1,7 @@
 """File->Open ungating: extension filters + same-language validation."""
 
 from pathlib import Path
+from types import SimpleNamespace
 
 from tdb.languages import registry
 from tdb.widgets.modals import _SourceFileTree
@@ -32,14 +33,18 @@ def test_source_tree_filters_by_suffix(tmp_path):
     (tmp_path / "a.rb").write_text("")
     (tmp_path / "b.py").write_text("")
     (tmp_path / "sub").mkdir()
-    tree = _SourceFileTree(str(tmp_path), suffixes=(".rb",))
-    kept = {p.name for p in tree.filter_paths(tmp_path.iterdir())}
+    # filter_paths only reads self._suffixes, so exercise it unbound
+    # with a stub self — constructing a real _SourceFileTree outside a
+    # running Textual app leaves DirectoryTree.watch_path's coroutine
+    # un-awaited (RuntimeWarning: coroutine was never awaited).
+    stub = SimpleNamespace(_suffixes=(".rb",))
+    kept = {p.name for p in _SourceFileTree.filter_paths(stub, tmp_path.iterdir())}
     assert kept == {"a.rb", "sub"}
 
 
 def test_source_tree_empty_suffixes_shows_everything(tmp_path):
     (tmp_path / "a.rb").write_text("")
     (tmp_path / "binary").write_text("")
-    tree = _SourceFileTree(str(tmp_path), suffixes=())
-    kept = {p.name for p in tree.filter_paths(tmp_path.iterdir())}
+    stub = SimpleNamespace(_suffixes=())
+    kept = {p.name for p in _SourceFileTree.filter_paths(stub, tmp_path.iterdir())}
     assert kept == {"a.rb", "binary"}

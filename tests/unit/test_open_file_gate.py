@@ -97,3 +97,33 @@ async def test_action_open_file_dismiss_rejects_mismatched_language(
         assert restarted == []
         assert len(notified) == 1
         assert notified[0][1] == "warning"
+
+
+async def test_action_open_file_dismiss_relaunches_matching_language(
+    monkeypatch, tmp_path
+):
+    """A pick that matches the current profile's language reaches
+    _restart_session — the mirror image of the mismatch test above."""
+    app = TdbApp(program="", config=TdbConfig())
+    async with app.run_test() as pilot:
+        await pilot.pause()
+
+        restarted = []
+        notified = []
+        monkeypatch.setattr(app, "_restart_session", lambda **kw: restarted.append(kw))
+        app.notify = lambda msg, **kw: notified.append((msg, kw.get("severity")))
+
+        captured_callback = {}
+
+        def fake_push_screen(screen, callback=None):
+            captured_callback["cb"] = callback
+
+        app.push_screen = fake_push_screen
+
+        app.action_open_file()
+        right = tmp_path / "other.py"
+        right.write_text("x = 1\n")
+        captured_callback["cb"](str(right))
+
+        assert notified == []
+        assert restarted == [{"new_program": str(right), "start_immediately": False}]
