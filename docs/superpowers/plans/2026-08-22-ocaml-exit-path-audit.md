@@ -19,15 +19,20 @@ PIDs not present in a pre-run baseline snapshot, AND (b) direct children
 of the audit's own process (matching on adapter comm name / our own
 scratch-dir binaries) — never touching the unrelated, pre-existing
 `lldb-server` (tdb_rust_support) or other concurrent agents' processes
-also running on this shared machine. All 16 scripted checks passed
-clean; a full run of `tests/unit` (1469 passed, 1 skipped) confirms no
-regression.
+also running on this shared machine. A full run of `tests/unit` (1469
+passed, 1 skipped) confirms no regression.
 
-**Result: no product bugs found.** Every exit/lifecycle path already
-does the right thing. Every failure hit while building the audit script
-was a bug in the *script* (documented under each row's Notes), not in
-tdb — root-caused and fixed in the script; no tdb source changes were
-needed, so there are no separate fix commits for this task.
+**Result: no product bugs found.** The table below has 18 data rows: 17
+resolve to PASS with scripted or cited evidence, and 1 (the Threads
+modal's `a`-toggle cursor-reset row, one of the two rows carried over
+from Task 9's review) resolves to a documented observation rather than a
+pass/fail verdict — it isn't a bug, just a pre-existing, shared
+behavior worth recording rather than silently dropping. Every
+exit/lifecycle path already does the right thing. Every failure hit
+while building the audit script was a bug in the *script* (documented
+under each row's Notes), not in tdb — root-caused and fixed in the
+script; no tdb source changes were needed, so there are no separate fix
+commits for this task.
 
 | Path | Action | Expected | How verified | Result | Notes |
 |---|---|---|---|---|---|
@@ -38,7 +43,7 @@ needed, so there are no separate fix commits for this task.
 | ESC modals | open Threads modal (incl. `a` toggle), ESC | modal closes, main views intact | Scripted: `app.action_menu_threads()`, wait for `ThreadsModal`, press `a`, press `escape`, assert modal gone and `controller.state.can_step` still true (session intact) | PASS | Cursor-reset-to-row-0 sub-observation below. |
 | *(carried over)* `a` toggle cursor reset | after pressing `a` in the Threads modal | — | Scripted: asserted `DataTable.cursor_row == 0` immediately after the `a` toggle | Observation, not a bug | Confirmed in source: `_InspectableListModal._reload_after_items_change` (`src/tdb/widgets/_inspection_modal.py`) always calls `self._show_detail(0)` after any item-list change — pre-existing, shared base-class behavior used by every inspection modal (Threads, Breakpoints, etc.), not something Task 8-10's OCaml work introduced. UX call: mildly jarring on a long thread list but consistent everywhere else in the app; no fix needed unless a future UX pass wants "preserve cursor by ID across a filter toggle" as a general `_InspectableListModal` improvement (out of scope here). |
 | *(carried over)* stopped thread hidden from filtered list | Threads modal opens while the current/stopped thread is classified hidden | modal opens sanely (cursor valid, current-thread bolding simply absent) | Scripted, modal-level (no live adapter needed): built a `ThreadsModal` directly with 2 threads where the "current" thread is the hidden one; asserted the hidden thread is excluded from `_items` and `_initial_cursor_index()` falls back to `0` without raising | PASS | `_initial_cursor_index` degrades correctly: loops over the *visible* items looking for `current_thread_id`, falls through to `0` when absent. |
-| menu quit | "File menu → Quit" | clean exit | Scripted: `Ctrl+Q` (labeled "Quit", shown in the Footer) at a breakpoint → app exits directly | PASS | There is **no literal "File → Quit" dropdown item** in this codebase: the menu bar has only "Configure" (Color Theme/Keybindings/Step Mode) and "Help" (Documentation/About) dropdowns, plus quick-action buttons (File opens the file picker directly, not a submenu; Threads/Processes/Async Tasks are quick jumps). `Ctrl+Q` is the closest menu-equivalent "Quit" command. Unlike `q` (which routes through `_QuitConfirmModal`'s "hit q again" confirmation for a non-adopted session), `Ctrl+Q` (`action_quit_debugger`) quits **directly, with no confirmation dialog** — both paths correctly call `await self.controller.stop()` before `self.exit()` (`src/tdb/app.py`). This is pre-existing, language-agnostic app behavior, not OCaml-specific, but confirmed here against a real OCaml lldb-dap session. |
+| menu quit | "File menu → Quit" | clean exit | Scripted: `Ctrl+Q` (labeled "Quit", shown in the Footer) at a breakpoint → app exits directly | PASS | There is **no literal "File → Quit" dropdown item** in this codebase: the menu bar has only "Configure" (Color Theme/Keybindings/Step Mode) and "Help" (Documentation/About) dropdowns, plus quick-action buttons (File opens the file picker directly, not a submenu; Threads/Processes/Async Tasks are quick jumps). `Ctrl+Q` is the closest menu-equivalent "Quit" command. Unlike `q` (which routes through `_QuitConfirmModal`'s "hit q again" confirmation for a non-adopted session), `Ctrl+Q` (`action_quit_debugger`) quits **directly, with no confirmation dialog** — both paths correctly call `await self.controller.stop()` before `self.exit()` (`src/tdb/app.py`). The row above exercises a **non-adopted** session specifically: per `action_quit_debugger`, the direct-quit-with-no-confirmation behavior is conditional on `not self._adopted` — an adopted session (`tdb --run`) gets the detach/terminate confirm dialog instead on the very same `Ctrl+Q`/`q` keys, which is covered separately by `tests/unit/test_app_adopted_session.py` (not re-derived here since it's adapter-agnostic). This is pre-existing, language-agnostic app behavior, not OCaml-specific, but confirmed here against a real OCaml lldb-dap session. |
 | `--run` | `tdb --run ./spin.exe`, then a real `SIGUSR1` | pause lands on a VISIBLE thread (Task 8) | Scripted: `run_mode.run()` with the real OCaml lldb-dap profile, a custom `tui_episode` callback, and a genuine `os.kill(os.getpid(), signal.SIGUSR1)` fired from a concurrent task (mirrors `tests/integration/test_run_mode.py`'s own pattern) — episode asserts `console.last_stop`'s thread id is a member of `classify_ocaml_threads(...)`'s visible-id set | PASS | — |
 | `--terminal` | debuggee I/O in external terminal (lldb-dap `runInTerminal`) | works | Scripted: real `DebugController` + `OCamlLldbAdapter`, `terminal="fakeem"` with `_TERMINAL_SPECS` monkeypatched to a fake emulator script (same trick as `tests/unit/test_terminal_launcher.py`), breakpoint hit through the fake terminal, `argv.log` confirms `runInTerminal` invoked the emulator with `-e`, then continue-to-exit shows `sum=6 total=300000` | PASS | Exercises the real, unmocked lldb-dap `runInTerminal` reverse-request handshake end-to-end (no GUI/X11 needed — the "terminal" is a `/bin/sh` script that `exec`s the given command, exactly mirroring what a real terminal emulator does for `TerminalLauncher.handle_run_in_terminal`). |
 | natural exit | let the program run to completion | exit code + `sum=6` in console, no hang | Cited: `tests/integration/test_ocaml_native_session.py::test_step_and_continue_at_domain_breakpoint` (existing, asserts `"sum=6" in handler.drain_output()` after removing the breakpoint and continuing to termination). Also independently reconfirmed as a side effect of the `--terminal` row above (`sum=6 total=300000` printed) and the bytecode natural-exit row below | PASS | — |
