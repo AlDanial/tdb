@@ -160,3 +160,7 @@ register("tcsh", build_tcsh_profile)
 from tdb.languages.ruby import build_ruby_profile  # noqa: E402
 
 register("ruby", build_ruby_profile)
+
+from tdb.languages.rust import build_rust_profile  # noqa: E402
+
+register("rust", build_rust_profile)

@@ -429,8 +429,8 @@ def _resolve_language(
     # gdb's DAP mode has no terminal integration (see GdbDapAdapter.launch_body,
     # which raises the same error as a backstop if this guard is ever
     # bypassed). Catches both `--adapter gdb` explicitly and the implicit
-    # default (no --adapter given for a cpp debuggee resolves to gdb).
-    if args.terminal and profile.id == "cpp" and profile.adapter.id == "gdb":
+    # default for every profile that selects gdb.
+    if args.terminal and profile.adapter.id == "gdb":
         parser.error(
             "--terminal is not supported with the gdb adapter (gdb's DAP "
             "mode has no terminal integration) — use `--adapter lldb-dap`"

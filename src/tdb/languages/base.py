@@ -184,6 +184,10 @@ class ProfileCapabilities:
     # its pause handler; gdb/lldb-dap pending verification.
     pause_while_running: bool = False
 
+    # "rust" -> Rust-specific concurrency inspection is available.
+    # None -> no language-specific concurrency inspection support.
+    concurrency_inspection: str | None = None
+
     # Predicate over a stack frame's name marking frames that have no
     # inspectable locals (e.g. rdbg reports native frames like
     # "[C] Kernel#sleep" when a pause lands inside a C call, with a

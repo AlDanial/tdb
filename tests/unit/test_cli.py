@@ -203,6 +203,15 @@ def test_terminal_rejected_for_cpp_with_explicit_gdb_adapter(tmp_path, monkeypat
         )
 
 
+def test_terminal_rejected_for_rust_with_gdb_adapter(tmp_path, monkeypatch):
+    binary = _write_elf(tmp_path)
+    monkeypatch.setattr("shutil.which", lambda name: f"/usr/bin/{name}")
+    with pytest.raises(SystemExit):
+        parse_args(
+            ["--lang", "rust", "--adapter", "gdb", "--terminal", "xterm", str(binary)]
+        )
+
+
 def test_terminal_allowed_for_cpp_with_lldb_dap_adapter(tmp_path, monkeypatch):
     binary = _write_elf(tmp_path)
     monkeypatch.setattr("shutil.which", lambda name: f"/usr/bin/{name}")
