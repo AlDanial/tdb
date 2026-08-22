@@ -13,6 +13,7 @@ from importlib import resources
 from pathlib import Path
 from typing import Any
 
+from tdb.dap.types import StackFrame, Thread
 from tdb.languages.base import (
     AdapterNotFoundError,
     AdapterQuirks,
@@ -21,6 +22,7 @@ from tdb.languages.base import (
     LanguageProfile,
     Presentation,
     ProfileCapabilities,
+    ThreadDecoration,
 )
 from tdb.languages.cpp import GdbDapAdapter, LldbDapAdapter
 from tdb.languages.errors import parse_ocaml_error
@@ -103,6 +105,49 @@ def _scan_for_caml_marker(path: Path, size: int) -> bool:
     except OSError:
         pass
     return False
+
+
+# Marker frames observed under lldb (probe Q3). Substring match on frame
+# names; tolerant of symbol prefixes/suffixes across OCaml versions.
+_BACKUP_FRAME_MARKERS = ("backup_thread_func", "caml_thread_condwait")
+_DOMAIN_FRAME_MARKERS = (
+    "domain_thread_func",
+    "caml_start_program",
+    "caml_domain_spawn",
+)
+
+
+def _stack_matches(frames: list[StackFrame], markers: tuple[str, ...]) -> bool:
+    return any(m in f.name for f in frames for m in markers)
+
+
+def classify_ocaml_threads(
+    threads: list[Thread], stacks: dict[int, list[StackFrame]]
+) -> list[ThreadDecoration]:
+    """Label domain threads "Domain N" (creation order; the first thread
+    is always Domain 0/main) and hide runtime backup threads. A thread
+    with no stack info stays visible under the adapter's name."""
+    decorations: list[ThreadDecoration] = []
+    domain_no = 0
+    for i, t in enumerate(threads):
+        frames = stacks.get(t.id, [])
+        if i == 0:
+            decorations.append(ThreadDecoration(t, "Domain 0 (main)", False))
+            domain_no = 1
+            continue
+        if (
+            frames
+            and _stack_matches(frames, _BACKUP_FRAME_MARKERS)
+            and not _stack_matches(frames, _DOMAIN_FRAME_MARKERS)
+        ):
+            decorations.append(ThreadDecoration(t, None, True))
+            continue
+        if frames and _stack_matches(frames, _DOMAIN_FRAME_MARKERS):
+            decorations.append(ThreadDecoration(t, f"Domain {domain_no}", False))
+            domain_no += 1
+            continue
+        decorations.append(ThreadDecoration(t, None, False))
+    return decorations
 
 
 # --- Adapters + profile builder (Task 6) -----------------------------------
@@ -255,5 +300,6 @@ def build_ocaml_profile(
             # lldb-dap/gdb pause verified for cpp (test_cpp_pause.py);
             # earlybird per probe Q4 (default False until verified True).
             pause_while_running=native,
+            classify_threads=classify_ocaml_threads if native else None,
         ),
     )
