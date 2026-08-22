@@ -403,8 +403,25 @@ class RubyDapServer:
             self._sent_exited = True
             self._last_stopped_thread_id = None
         elif event == "terminated":
-            self._sent_terminated = True
             self._last_stopped_thread_id = None
+            if self._proc is not None:
+                # rdbg sends its own "terminated" over the DAP socket
+                # the instant it decides the session is over — which
+                # races ahead of the debuggee's stdout/stderr pipes (a
+                # separate OS-level channel _pump_output is still
+                # draining) and of `_watch_exit` learning the real exit
+                # code. Forwarding it immediately let a headless client
+                # see "terminated" before the program's own
+                # output/exit-code events, which reads as "no output,
+                # exit code 0" (run-mode's ConsoleRunHandler tears down
+                # on the first of exited/terminated). Swallow it here;
+                # `_watch_exit` (only spawned when we own the child
+                # process — see `_finish_launch`) sends the
+                # correctly-ordered exited-then-terminated pair once the
+                # pumps have drained. externalTerminal launches have no
+                # `_proc` and no local pumps to race against, so the
+                # native event is forwarded as-is.
+                return True
         return False
 
     async def _pump_output(self, stream: asyncio.StreamReader, category: str) -> None:
