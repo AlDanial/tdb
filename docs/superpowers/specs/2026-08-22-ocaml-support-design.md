@@ -284,9 +284,22 @@ pinning or `--best-effort` required — **earlybird 1.3.6 supports OCaml
 5.4.0 out of the box** (risk 2 is not a blocker on this toolchain
 combination).
 
-**Q1 — earlybird invocation + launch-body fields.** `ocamlearlybird debug`
-is the correct stdio-DAP subcommand (siblings: `serve`, a socket-listening
-mode not used here). `initialize` response capabilities:
+**Q1 — earlybird invocation + launch-body fields.** *Attribution: the
+committed `tests/integration/ocaml_probe.py` deadlocks on `initialize`
+against this earlybird build (see the Critical caveat below) and cannot
+reproduce any of the facts in this paragraph. Every fact below was
+observed out-of-band, not via the committed script: the `initialize`
+capabilities and the full `launch`/`configurationDone`/`stopped`/
+`threads` sequence came from an ad-hoc, uncommitted **Node.js**
+`child_process.spawn` DAP session (interactive, stdin held open across
+the whole exchange); a couple of individual responses (e.g. the raw
+`initialize` capabilities body) were cross-checked via ad-hoc shell runs
+that batch all requests into stdin up front and close it (`< file` / a
+FIFO), which also get correct responses. Neither of those scripts is
+checked in — treat this paragraph as validated protocol knowledge, not as
+something the committed probe will reproduce if you run it.* `ocamlearlybird
+debug` is the correct stdio-DAP subcommand (siblings: `serve`, a
+socket-listening mode not used here). `initialize` response capabilities:
 `supportsConfigurationDoneRequest`, `supportsValueFormattingOptions`,
 `supportsDelayedStackTraceLoading`, `supportsLoadedSourcesRequest`,
 `supportsTerminateRequest`, `supportsBreakpointLocationsRequest` — all
@@ -340,6 +353,21 @@ incompatibility properly, or (b) fall back to a thin non-Python relay
 perl/ruby proxy-shim pattern) fronting `ocamlearlybird debug`. Do not
 proceed with a naive direct `asyncio.create_subprocess_exec` adapter
 without first re-testing against whatever mitigation is chosen.
+
+*Follow-up controller-side experiments (post-report, attributed to
+follow-up controller probes, not the committed script): the same
+deadlock reproduces from Python over **TCP** against
+`ocamlearlybird serve --port N` — `initialize` is never answered over a
+plain TCP socket, across every framing variant tried (split header/body
+writes, byte-by-byte writes, LF-only line endings) — and also reproduces
+over a **socketpair**-based stdio spawn from Python. Meanwhile a Node.js
+`child_process.spawn` with stdin held open gets an instant interactive
+`initialize` response, and a shell file-redirect (stdin closed/EOF) gets
+full batch responses. So the failure tracks the **client process**
+(Python vs. Node/shell), not the transport or file-descriptor type
+(pipe, pty, socketpair, and TCP all reproduce it from Python; pipe and
+FIFO both work from Node/shell). Root cause is still unknown; a separate
+investigation is in progress.*
 
 **Q2 — DWARF locals lldb actually sees, per frame (native).** Stopped at
 a breakpoint on `Atomic.incr counter` (ocaml_domains.ml line 5, hit inside
@@ -416,9 +444,16 @@ frame signatures observed (top of stack, native lldb-dap, per role):
   nondeterminism, not a bug; the hook must tolerate a partial/still-
   growing set.
 
-**Q4 — earlybird `pause` support.** Confirmed via a full DAP session
-(launch a busy-loop `.byte` with `stopOnEntry: false`, let it run,
-`pause`): the `pause` request returns `{"success": true}` immediately,
+**Q4 — earlybird `pause` support.** *Attribution: like Q1, this finding
+comes from the same ad-hoc, uncommitted Node.js interactive DAP session,
+not from the committed probe (which deadlocks before it can reach
+`launch`). The program used was a throwaway busy-loop `.byte`
+(`let () = let i = ref 0 in while true do incr i; if !i mod 100_000_000
+= 0 then Printf.printf "tick %d\n%!" !i done`) written ad-hoc for this
+one check — it is not a committed fixture.* Confirmed via a full DAP
+session (launch the busy-loop `.byte` with `stopOnEntry: false`, let it
+run, `pause`): the `pause` request returns `{"success": true}`
+immediately,
 but **no `stopped` event ever follows** — the program keeps running and
 producing output past the pause request (observed continuing `tick N`
 stdout events for 15s+ after `pause` was ack'd). **`pause` is a no-op
