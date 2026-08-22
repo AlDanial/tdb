@@ -224,6 +224,15 @@ class RubyDapServer:
         self._sent_exited = False
         self._sent_terminated = False
         self._reverse = ReverseRequester(self._write_client, self._seqs.next_client_seq)
+        # Last thread rdbg reported stopped — used to default `frameId`
+        # on evaluate/completions requests (see _default_frame_id): rdbg's
+        # DAP evaluate hard-fails ("can't evaluate") without a frameId,
+        # unlike debugpy, which treats it as optional.
+        self._last_stopped_thread_id: int | None = None
+        # Proxy-originated rdbg requests awaiting a reply (rdbg-side seq
+        # -> future), e.g. the synthetic stackTrace above. Distinct from
+        # _seqs' client<->rdbg maps: these have no client-side seq at all.
+        self._proxy_requests: dict[int, asyncio.Future] = {}
         # Strong refs: asyncio only weakly references bare tasks (repo
         # pitfall) — a GC'd pump silently loses program output.
         self._tasks: set[asyncio.Future] = set()
@@ -336,6 +345,11 @@ class RubyDapServer:
                     continue
                 self._write_client(self._seqs.rdbg_event_to_client(msg))
             elif mtype == "response":
+                pending = self._proxy_requests.pop(msg.get("request_seq", -1), None)
+                if pending is not None:
+                    if not pending.done():
+                        pending.set_result(msg)
+                    continue
                 out = self._seqs.rdbg_response_to_client(msg)
                 if out is None:
                     continue  # reply to a proxy-originated request
@@ -359,6 +373,7 @@ class RubyDapServer:
             ).startswith(_REPL_NOTICE):
                 return True
         elif event == "stopped":
+            self._last_stopped_thread_id = body.get("threadId")
             if self._entry_stop_pending:
                 # rdbg reports the post-configurationDone entry stop as
                 # "pause"; tdb (like debugpy) expects "entry".
@@ -481,10 +496,18 @@ class RubyDapServer:
                     popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
                 else:
                     popen_kwargs["start_new_session"] = True
+                # stdin=DEVNULL: left unset, rdbg would inherit *our*
+                # stdin — the pipe the client is actively writing DAP
+                # requests into. Under rapid back-to-back launches that
+                # race let rdbg's startup occasionally consume/contend
+                # for bytes never meant for it, wedging its DAP socket
+                # thread before it ever answered `initialize` (client
+                # then hung ~30s on the "initialized" event).
                 self._proc = await asyncio.create_subprocess_exec(
                     *cmd,
                     cwd=cwd,
                     env=env,
+                    stdin=asyncio.subprocess.DEVNULL,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                     **popen_kwargs,
@@ -580,6 +603,72 @@ class RubyDapServer:
             if not ln.startswith(_BANNER_PREFIX)
         ]
         return "\n".join(lines)
+
+    # ---- request default-framing (evaluate/completions) ----
+    async def _rdbg_request(
+        self, command: str, arguments: dict, timeout: float = 5.0
+    ) -> dict | None:
+        """Issue a proxy-originated request to rdbg and await its reply.
+
+        Distinct from the client<->rdbg forwarding path: this has no
+        client-side seq to restamp back to, so the response is routed
+        through `_proxy_requests` instead of `SeqTranslator`.
+        """
+        if self._rdbg_writer is None:
+            return None
+        seq = self._seqs.next_rdbg_seq()
+        fut: asyncio.Future = asyncio.get_running_loop().create_future()
+        self._proxy_requests[seq] = fut
+        self._write_rdbg(
+            {"seq": seq, "type": "request", "command": command, "arguments": arguments}
+        )
+        try:
+            await self._rdbg_writer.drain()
+            return await asyncio.wait_for(fut, timeout)
+        except (asyncio.TimeoutError, ConnectionError, OSError):
+            return None
+        finally:
+            self._proxy_requests.pop(seq, None)
+
+    async def _default_frame_id(self) -> int | None:
+        """Top frameId of the last-stopped thread, fetched on demand.
+
+        rdbg's DAP evaluate/completions hard-fail without a frameId
+        ("can't evaluate") even for frame-independent expressions —
+        debugpy treats frameId as optional and defaults to the topmost
+        frame of the current thread. This restores that parity so a
+        client that (per the DAP spec) omits frameId still works.
+        """
+        if self._last_stopped_thread_id is None:
+            return None
+        resp = await self._rdbg_request(
+            "stackTrace",
+            {"threadId": self._last_stopped_thread_id, "startFrame": 0, "levels": 1},
+        )
+        if resp is None or not resp.get("success"):
+            return None
+        frames = (resp.get("body") or {}).get("stackFrames") or []
+        return frames[0]["id"] if frames else None
+
+    async def _forward_with_default_frame(self, request: dict) -> None:
+        """Passthrough for evaluate/completions, filling in `frameId`
+        when the client omitted it (see `_default_frame_id`)."""
+        if self._rdbg_writer is None:
+            self.send_error(request, "no debug session")
+            return
+        args = dict(request.get("arguments") or {})
+        if "frameId" not in args:
+            frame_id = await self._default_frame_id()
+            if frame_id is not None:
+                args["frameId"] = frame_id
+                request = {**request, "arguments": args}
+        self._write_rdbg(self._seqs.client_request_to_rdbg(request))
+
+    async def _on_evaluate(self, request: dict) -> None:
+        await self._forward_with_default_frame(request)
+
+    async def _on_completions(self, request: dict) -> None:
+        await self._forward_with_default_frame(request)
 
     # ---- teardown ----
     async def _cancel_launch_task(self) -> None:
