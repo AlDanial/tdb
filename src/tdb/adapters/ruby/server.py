@@ -91,6 +91,30 @@ _BANNER_PREFIX = "DEBUGGER: "
 # rdbg greets DAP clients with a "Ruby REPL: ..." console output event.
 _REPL_NOTICE = "Ruby REPL:"
 
+# debug gem 1.11's UI_ServerBase (server.rb) has a startup data race,
+# confirmed against the installed gem's source (lib/debug/server.rb):
+# `UI_ServerBase#activate` sets `@sock = server` *inside* the
+# `@accept_m.synchronize` block *before* calling `greeting`, which is what
+# decides DAP-vs-REPL mode (`@repl = false`, `Content-Length:` branch).
+# Meanwhile `UI_ServerBase#sock` — used by `readline`/`puts`/`ask` — opens
+# with `if s = @sock` (no mutex): once `@sock` is non-nil, ANY caller gets
+# the fast path immediately, without waiting for `greeting` to finish
+# deciding `@repl`. If the debuggee's SESSION thread makes its first
+# `readline` call in that window (which can happen as soon as `--open`'s
+# implicit entry breakpoint fires — independent of our stopOnEntry/nonstop
+# choice) while `@repl` is still its default `true`, `readline` writes a
+# raw "input <pid>" REPL-protocol line onto what should be a pure DAP
+# socket, corrupting the handshake: either the stream is unrecoverably
+# garbled (rdbg_pump_task ends with a framing error) or the write lands
+# where nothing is listening and the handshake just never completes (no
+# response, no event, no EOF, ever). The full investigation and evidence
+# trail lives in the git history of this file (see the commit that
+# introduced this retry logic). A single fresh rdbg process almost always
+# avoids the window on retry, so bound the wait and retry once instead of
+# hanging for the client's full 30s timeout.
+_HANDSHAKE_TIMEOUT = 5.0
+_MAX_LAUNCH_ATTEMPTS = 2
+
 
 class SeqTranslator:
     """Renumber seq/request_seq between the two sides of the proxy.
@@ -263,6 +287,17 @@ class RubyDapServer:
         # `run()`'s teardown can explicitly await it — see
         # `_await_watch_exit`.
         self._watch_exit_task: asyncio.Future | None = None
+        # Set (by _finish_launch) while a launch handshake is in flight;
+        # _note_and_filter_event signals it the moment rdbg's "initialized"
+        # event is actually forwarded to the client — the proof the
+        # handshake race (see _HANDSHAKE_TIMEOUT) didn't bite this attempt.
+        self._handshake_event: asyncio.Event | None = None
+        # The current attempt's rdbg-socket pump, tracked unconditionally
+        # (unlike `_pump_tasks`, which is only populated for proxy-owned
+        # launches — see `_finish_launch`) so `_reset_for_retry` can find
+        # and cancel it even for an externalTerminal launch, which has no
+        # `_proc` and so never populates `_pump_tasks`.
+        self._rdbg_pump_task: asyncio.Future | None = None
         self.handlers: dict[str, Callable[[dict], Awaitable[None]]] = {}
         for name in dir(self):
             if name.startswith("_on_"):
@@ -367,6 +402,21 @@ class RubyDapServer:
                 msg = await read_message(reader)
             except (ConnectionError, asyncio.IncompleteReadError, EOFError):
                 return
+            except Exception:
+                # rdbg wrote something that isn't a well-formed DAP frame.
+                # Observed cause: debug gem 1.11's UI_ServerBase#readline
+                # race (see _HANDSHAKE_TIMEOUT) writing a raw REPL-protocol
+                # line onto what should be a pure DAP socket. The stream is
+                # unrecoverable past this point (frame boundaries are lost)
+                # — treat it the same as a dead connection so the launch
+                # watchdog (or, post-handshake, the client's own timeouts)
+                # notices instead of this task dying silently with an
+                # unretrieved exception.
+                log.warning(
+                    "rdbg wrote a malformed DAP frame; treating the connection as dead",
+                    exc_info=True,
+                )
+                return
             mtype = msg.get("type")
             if mtype == "event":
                 if self._note_and_filter_event(msg):
@@ -400,6 +450,15 @@ class RubyDapServer:
                 body.get("output", "")
             ).startswith(_REPL_NOTICE):
                 return True
+        elif event == "initialized":
+            # Proof the launch handshake actually completed (see
+            # _HANDSHAKE_TIMEOUT / _await_handshake) — rdbg only sends this
+            # once its own `initialize` was answered over an uncorrupted
+            # DAP stream. Not swallowed: still forwarded to the client,
+            # which is what triggers its setBreakpoints/configurationDone
+            # sequence.
+            if self._handshake_event is not None:
+                self._handshake_event.set()
         elif event == "stopped":
             self._last_stopped_thread_id = body.get("threadId")
             if self._entry_stop_pending:
@@ -492,15 +551,6 @@ class RubyDapServer:
             )
             return
         self._stop_on_entry = bool(args.get("stopOnEntry", True))
-        self._transport = pick_transport()
-        cmd = [
-            rdbg,
-            "--open",
-            *self._transport.rdbg_args,
-            "--",
-            program,
-            *[str(a) for a in (args.get("args") or [])],
-        ]
         if args.get("console") == "externalTerminal":
             if not self._client_supports_run_in_terminal:
                 self.send_error(
@@ -516,107 +566,244 @@ class RubyDapServer:
             # ref, per the repo's task-GC pitfall) so run() goes back to
             # reading. Same shape as the bash server's _on_launch.
             self._launch_task = asyncio.ensure_future(
-                self._finish_launch(request, cmd, args, terminal=True)
+                self._finish_launch(request, rdbg, program, args, terminal=True)
             )
             return
-        await self._finish_launch(request, cmd, args, terminal=False)
+        await self._finish_launch(request, rdbg, program, args, terminal=False)
+
+    def _build_rdbg_cmd(self, rdbg: str, program: str, args: dict) -> list[str]:
+        """Build the rdbg command line against `self._transport` (must
+        already be picked — fresh per launch attempt, see _finish_launch)."""
+        assert self._transport is not None
+        return [
+            rdbg,
+            "--open",
+            *self._transport.rdbg_args,
+            "--",
+            program,
+            *[str(a) for a in (args.get("args") or [])],
+        ]
 
     async def _finish_launch(
-        self, request: dict, cmd: list[str], args: dict, *, terminal: bool
+        self, request: dict, rdbg: str, program: str, args: dict, *, terminal: bool
     ) -> None:
         cwd = args.get("cwd") or os.getcwd()
         env = {**os.environ, **(args.get("env") or {})}
-        try:
-            if terminal:
-                await self._reverse.request(
-                    "runInTerminal",
-                    {
-                        "kind": "external",
-                        "title": "tdb ruby debuggee",
-                        "cwd": cwd,
-                        "args": cmd,
-                        "env": args.get("env") or {},
-                    },
-                )
-            else:
-                popen_kwargs: dict[str, Any] = {}
-                if os.name == "nt":
-                    # Ctrl-C isolation, same as the perl/bash spawn path
-                    popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+        # externalTerminal launches hand the debuggee to the client's own
+        # terminal — retrying would pop a second visible terminal window,
+        # so only the proxy-owned spawn path gets the handshake retry.
+        max_attempts = 1 if terminal else _MAX_LAUNCH_ATTEMPTS
+        for attempt in range(1, max_attempts + 1):
+            self._transport = pick_transport()
+            cmd = self._build_rdbg_cmd(rdbg, program, args)
+            try:
+                if terminal:
+                    await self._reverse.request(
+                        "runInTerminal",
+                        {
+                            "kind": "external",
+                            "title": "tdb ruby debuggee",
+                            "cwd": cwd,
+                            "args": cmd,
+                            "env": args.get("env") or {},
+                        },
+                    )
                 else:
-                    popen_kwargs["start_new_session"] = True
-                # stdin=DEVNULL: left unset, rdbg would inherit *our*
-                # stdin — the pipe the client is actively writing DAP
-                # requests into. Under rapid back-to-back launches that
-                # race let rdbg's startup occasionally consume/contend
-                # for bytes never meant for it, wedging its DAP socket
-                # thread before it ever answered `initialize` (client
-                # then hung ~30s on the "initialized" event).
-                self._proc = await asyncio.create_subprocess_exec(
-                    *cmd,
-                    cwd=cwd,
-                    env=env,
-                    stdin=asyncio.subprocess.DEVNULL,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                    **popen_kwargs,
-                )
-            reader, writer = await self._connect_with_retry()
-        except asyncio.CancelledError:
-            raise  # disconnect/terminate cancelling us — they clean up
-        except Exception as e:
-            detail = await self._collect_early_stderr()
-            await self._ensure_rdbg_dead()
-            if not isinstance(
-                e, (OSError, TimeoutError, RuntimeError, ReverseRequestError)
-            ):
-                log.exception("ruby launch failed unexpectedly")
-            self.send_error(request, f"{e}\n{detail}".strip())
-            await self._writer.drain()
-            return
-        self._rdbg_writer = writer
-        self._launched = True
-        self._entry_stop_pending = self._stop_on_entry
-        self._start_client_seq = request["seq"]
-        rdbg_pump_task = self._spawn_task(self._pump_rdbg(reader))
-        if self._proc is not None:
-            # _watch_exit's synthesize decision reads _sent_exited/
-            # _sent_terminated, which only the rdbg-socket pump sets — it
-            # must be in this wait set too, not just the stdout/stderr
-            # pumps, or a child-exit callback that wins the race against
-            # the socket-readable callback can see stale flags and emit a
-            # duplicate/misreported exited+terminated pair. Spawn (above)
-            # and register it here BEFORE _watch_exit starts so the list
-            # it reads is already complete.
-            self._pump_tasks = [
-                self._spawn_task(self._pump_output(self._proc.stdout, "stdout")),
-                self._spawn_task(self._pump_output(self._proc.stderr, "stderr")),
-                rdbg_pump_task,
-            ]
-            self._watch_exit_task = self._spawn_task(self._watch_exit())
-        # rdbg needs its own initialize first. Proxy-originated (no
-        # client mapping) -> its response is swallowed by the translator;
-        # rdbg's `initialized` event passes through to the client and
-        # triggers its setBreakpoints/configurationDone sequence.
-        self._write_rdbg(
-            {
-                "seq": self._seqs.next_rdbg_seq(),
-                "type": "request",
-                "command": "initialize",
-                "arguments": dict(self._client_init_args),
+                    popen_kwargs: dict[str, Any] = {}
+                    if os.name == "nt":
+                        # Ctrl-C isolation, same as the perl/bash spawn path
+                        popen_kwargs["creationflags"] = (
+                            subprocess.CREATE_NEW_PROCESS_GROUP
+                        )
+                    else:
+                        popen_kwargs["start_new_session"] = True
+                    # stdin=DEVNULL: left unset, rdbg would inherit *our*
+                    # stdin — the pipe the client is actively writing DAP
+                    # requests into. Under rapid back-to-back launches that
+                    # race let rdbg's startup occasionally consume/contend
+                    # for bytes never meant for it, wedging its DAP socket
+                    # thread before it ever answered `initialize` (client
+                    # then hung ~30s on the "initialized" event).
+                    self._proc = await asyncio.create_subprocess_exec(
+                        *cmd,
+                        cwd=cwd,
+                        env=env,
+                        stdin=asyncio.subprocess.DEVNULL,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                        **popen_kwargs,
+                    )
+                reader, writer = await self._connect_with_retry()
+            except asyncio.CancelledError:
+                raise  # disconnect/terminate cancelling us — they clean up
+            except Exception as e:
+                detail = await self._collect_early_stderr()
+                await self._ensure_rdbg_dead()
+                if not isinstance(
+                    e, (OSError, TimeoutError, RuntimeError, ReverseRequestError)
+                ):
+                    log.exception("ruby launch failed unexpectedly")
+                self.send_error(request, f"{e}\n{detail}".strip())
+                await self._writer.drain()
+                return
+            self._rdbg_writer = writer
+            self._launched = True
+            self._entry_stop_pending = self._stop_on_entry
+            self._start_client_seq = request["seq"]
+            handshake_event = asyncio.Event()
+            self._handshake_event = handshake_event
+            rdbg_pump_task = self._spawn_task(self._pump_rdbg(reader))
+            # Tracked unconditionally (not just via `_pump_tasks`, which
+            # is only populated `if self._proc is not None` below) so
+            # `_reset_for_retry` can still find and cancel it for a failed
+            # externalTerminal handshake, where there's no owned `_proc`
+            # and `_pump_tasks` stays empty.
+            self._rdbg_pump_task = rdbg_pump_task
+            if self._proc is not None:
+                # _watch_exit's synthesize decision reads _sent_exited/
+                # _sent_terminated, which only the rdbg-socket pump sets — it
+                # must be in this wait set too, not just the stdout/stderr
+                # pumps, or a child-exit callback that wins the race against
+                # the socket-readable callback can see stale flags and emit a
+                # duplicate/misreported exited+terminated pair. Spawn (above)
+                # and register it here BEFORE _watch_exit starts so the list
+                # it reads is already complete.
+                self._pump_tasks = [
+                    self._spawn_task(self._pump_output(self._proc.stdout, "stdout")),
+                    self._spawn_task(self._pump_output(self._proc.stderr, "stderr")),
+                    rdbg_pump_task,
+                ]
+                self._watch_exit_task = self._spawn_task(self._watch_exit())
+            # rdbg needs its own initialize first. Proxy-originated (no
+            # client mapping) -> its response is swallowed by the translator;
+            # rdbg's `initialized` event passes through to the client and
+            # triggers its setBreakpoints/configurationDone sequence.
+            self._write_rdbg(
+                {
+                    "seq": self._seqs.next_rdbg_seq(),
+                    "type": "request",
+                    "command": "initialize",
+                    "arguments": dict(self._client_init_args),
+                }
+            )
+            # Forward the client's launch AS an rdbg `attach` (see module
+            # docstring): nonstop honors stopOnEntry, localfs=true because
+            # rdbg runs on this same machine.
+            fwd = self._seqs.client_request_to_rdbg(request)
+            fwd["command"] = "attach"
+            fwd["arguments"] = {
+                "localfs": True,
+                "nonstop": not self._stop_on_entry,
             }
+            self._write_rdbg(fwd)
+            await self._writer.drain()
+
+            handshake_ok = await self._await_handshake(handshake_event, rdbg_pump_task)
+            self._handshake_event = None
+            if handshake_ok:
+                return
+
+            log.warning(
+                "ruby launch handshake did not complete on attempt %d/%d "
+                "(rdbg connection %s) — retrying with a fresh rdbg process",
+                attempt,
+                max_attempts,
+                "ended" if rdbg_pump_task.done() else "timed out",
+            )
+            await self._reset_for_retry()
+
+        self.send_error(
+            request,
+            "rdbg never completed its DAP handshake after "
+            f"{max_attempts} attempt(s) — this looks like a known startup "
+            "race in the debug gem's socket handshake (see this proxy "
+            "module's comments), not a tdb bug",
         )
-        # Forward the client's launch AS an rdbg `attach` (see module
-        # docstring): nonstop honors stopOnEntry, localfs=true because
-        # rdbg runs on this same machine.
-        fwd = self._seqs.client_request_to_rdbg(request)
-        fwd["command"] = "attach"
-        fwd["arguments"] = {
-            "localfs": True,
-            "nonstop": not self._stop_on_entry,
-        }
-        self._write_rdbg(fwd)
         await self._writer.drain()
+
+    async def _await_handshake(
+        self,
+        handshake_event: asyncio.Event,
+        rdbg_pump_task: asyncio.Future,
+        timeout: float = _HANDSHAKE_TIMEOUT,
+    ) -> bool:
+        """Wait for rdbg's `initialized` event to actually reach the client
+        (proof the handshake completed), or for the rdbg-socket pump to end
+        first (EOF/malformed frame — see `_pump_rdbg`), whichever comes
+        first, bounded by `timeout`.
+
+        This is the observable signature of the debug gem 1.11 startup race
+        documented in the comment above `_HANDSHAKE_TIMEOUT`: `UI_ServerBase`
+        (server.rb) sets `@sock` before `greeting` finishes deciding
+        DAP-vs-REPL mode, so the SESSION thread's first `readline` can, in a
+        narrow window, write a raw REPL-protocol line onto what should be a
+        pure DAP socket — corrupting the stream (rdbg_pump_task ends with a
+        framing error) or, if the write lands where nothing is listening,
+        the handshake silently never completes (timeout, no `initialized`
+        event, no EOF).
+        """
+        waiter = asyncio.ensure_future(handshake_event.wait())
+        try:
+            await asyncio.wait(
+                {waiter, rdbg_pump_task},
+                timeout=timeout,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+        finally:
+            if not waiter.done():
+                waiter.cancel()
+                # Await the cancellation instead of firing and forgetting
+                # it: otherwise `waiter` can still be pending when this
+                # method returns, which under GC can log a "Task was
+                # destroyed but it is pending" warning.
+                try:
+                    await waiter
+                except asyncio.CancelledError:
+                    pass
+        return handshake_event.is_set()
+
+    async def _reset_for_retry(self) -> None:
+        """Tear down a launch attempt whose handshake didn't complete, so
+        the next attempt starts from a clean slate (fresh rdbg process,
+        fresh socket/port, no leftover pump/watch tasks, no stale exit
+        bookkeeping).
+
+        Cancelling a task only *requests* cancellation — the
+        CancelledError isn't actually delivered (and the task doesn't
+        finish unwinding) until the event loop next resumes it, which
+        doesn't necessarily happen before this coroutine's next line
+        runs. Without awaiting that unwind, a cancelled `_watch_exit`
+        (whose `_proc.wait()` future gets cancelled *and completes*
+        promptly) could still reach its exited/terminated synthesis and
+        write those events onto the client stream after the next attempt
+        has already started — a spurious "your session ended" while
+        attempt 2 is still trying. Gathering with `return_exceptions=True`
+        both guarantees that unwind happened and retrieves any exception
+        the task raised (e.g. an unhandled bug in `_pump_rdbg`'s message
+        handling), so nothing is left to surface later as an "exception
+        was never retrieved" warning.
+        """
+        self._launched = False
+        self._handshake_event = None
+        self._sent_exited = False
+        self._sent_terminated = False
+        self._last_stopped_thread_id = None
+        stale = {self._watch_exit_task, self._rdbg_pump_task, *self._pump_tasks}
+        stale.discard(None)
+        for task in stale:
+            if not task.done():
+                task.cancel()
+        if stale:
+            await asyncio.gather(*stale, return_exceptions=True)
+        self._pump_tasks = []
+        self._watch_exit_task = None
+        self._rdbg_pump_task = None
+        await self._ensure_rdbg_dead()
+        self._proc = None
+        self._rdbg_writer = None
+        if self._transport is not None:
+            self._transport.cleanup()
+        self._transport = None
 
     async def _connect_with_retry(
         self, timeout: float = 30.0
