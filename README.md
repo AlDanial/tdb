@@ -585,7 +585,12 @@ the Threads modal (`Alt+T` or the **Threads (N)** menu label) as `Domain 0
 "backup thread" (one per domain, used for I/O blocking) is hidden by
 default since it's never running user code; press `a` in the Threads
 modal to reveal it alongside the domains. Breakpoints, stepping, continue,
-and pause all work normally against any domain.
+and pause all work normally against any domain. In both the Stack view
+and the Threads modal, OCaml frame names are demangled from the
+runtime's raw `camlModule__name_NNN` convention into readable
+`Module.name` form (e.g. `camlOcaml_domains.worker_297` displays as
+`Ocaml_domains.worker`); runtime C frames (`caml_start_program`,
+`caml_callback_exn`, and the like) are shown as-is, unchanged.
 
 **Variables view (native):** stock OCaml 5.4 native DWARF exposes **no
 named locals** — the `scopes`/`variables` round trip succeeds, but every
