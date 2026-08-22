@@ -56,6 +56,24 @@ def test_earlybird_launch_body_injects_runparam_even_with_no_env():
     assert body["env"] == {"OCAMLRUNPARAM": "b"}
 
 
+def test_earlybird_launch_body_rejects_external_terminal():
+    # Backstop for the cli.py up-front gate: earlybird has no terminal
+    # integration (it always ran with console: internalConsole and
+    # silently ignored the caller's console param), so if the gate is
+    # ever bypassed this must fail loudly instead of launching with no
+    # external terminal and no error.
+    with pytest.raises(LanguageNotSupportedError, match="ocamlearlybird"):
+        EarlybirdAdapter().launch_body(
+            program="/x/add.byte",
+            args=[],
+            cwd="/x",
+            env=None,
+            stop_on_entry=True,
+            console="externalTerminal",
+            opts={},
+        )
+
+
 def test_runparam_merge_preserves_user_flags():
     assert _with_runparam(None) == {"OCAMLRUNPARAM": "b"}
     assert _with_runparam({"OCAMLRUNPARAM": "v=61"}) == {"OCAMLRUNPARAM": "v=61,b"}

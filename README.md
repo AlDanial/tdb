@@ -1112,12 +1112,13 @@ tdb --terminal xterm my_tui_app.py
 
 `--terminal` works for every language `tdb` can *launch* (as opposed to
 attach to): Python, Perl, Bash, Tcsh, Ruby, and C/C++ or native OCaml
-sessions via `--adapter lldb-dap`. The default C/C++ adapter, `gdb -i dap`,
-has no terminal integration -- `tdb` rejects `--terminal` up front with an
-error pointing at `--adapter lldb-dap` instead. `--terminal` also only
-applies when `tdb` launches the program itself; it is rejected for
-remote-attach (`-r`), since there's no program for `tdb` to spawn a
-terminal around.
+sessions via `--adapter lldb-dap`. Neither `gdb -i dap` (the default C/C++
+adapter, and an alternate for native OCaml) nor `ocamlearlybird` (the
+bytecode OCaml adapter) has any terminal integration -- `tdb` rejects
+`--terminal` up front for both, with an error pointing at `--adapter
+lldb-dap` instead. `--terminal` also only applies when `tdb` launches the
+program itself; it is rejected for remote-attach (`-r`), since there's no
+program for `tdb` to spawn a terminal around.
 
 The debuggee runs in a separate window of the specified terminal, including
 all of its stdin/stdout/stderr -- keyboard input, program output, and

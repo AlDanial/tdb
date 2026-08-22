@@ -245,6 +245,11 @@ class EarlybirdAdapter(AdapterSpec):
     def launch_body(
         self, *, program, args, cwd, env, stop_on_entry, console, opts: dict[str, Any]
     ) -> dict[str, Any]:
+        if console == "externalTerminal":
+            raise LanguageNotSupportedError(
+                "--terminal is not supported with the ocamlearlybird "
+                "adapter (earlybird has no terminal integration)"
+            )
         body: dict[str, Any] = {
             "type": "ocaml",
             "request": "launch",
