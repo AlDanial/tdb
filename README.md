@@ -8,6 +8,7 @@ with a Debug Adapter Protocol (DAP) implementation.  In addition to Python,
 - Perl (via `perl -d`)
 - Bash (via bash's own `DEBUG` trap; bash ≥ 4.4)
 - Tcsh (via source instrumentation of a stock `tcsh`)
+- Ruby (via the [debug gem](https://github.com/ruby/debug)'s `rdbg`; debug ≥ 1.9)
 
 `tdb` is built with [textual](https://github.com/Textualize/textual) and speaks
 DAP to a pluggable debug adapter: [debugpy](https://github.com/microsoft/debugpy)
@@ -29,8 +30,8 @@ MIT License.  Copyright 2026 by Al Danial.
 
 - debugs multiple languages through the Debug Adapter Protocol: Python (via `debugpy`,
 the richest feature set), C/C++ (via `gdb -i dap` or `lldb-dap`), Perl (via `perl -d`),
-Bash (via bash's own `DEBUG` trap), and Tcsh (via source instrumentation of a
-stock `tcsh`), with the language
+Bash (via bash's own `DEBUG` trap), Tcsh (via source instrumentation of a
+stock `tcsh`), and Ruby (via the debug gem's `rdbg`), with the language
 auto-detected from the target (ref. [Multi-Language Debugging](#multi-language-debugging)).
 
 - supports debugging of synchronous, asynchronous, multi-threaded, and multi-process Python code.
@@ -178,7 +179,7 @@ python -m tdb my_program.py
 
 ## Multi-Language Debugging
 
-`tdb` debugs any language that has a Debug Adapter Protocol backend. Five
+`tdb` debugs any language that has a Debug Adapter Protocol backend. Six
 languages are supported out of the box:
 
 | Language | Adapter(s) | Dependencies           | Feature level |
@@ -188,16 +189,17 @@ languages are supported out of the box:
 | Perl | perl-tdb (bundled) | perl ≥ 5.18 on PATH  | core debugging + remote attach |
 | Bash | bash-tdb (bundled) | bash ≥ 4.4 on PATH  | core debugging (no remote attach) |
 | Tcsh | tcsh-tdb (bundled) | tcsh on PATH | core debugging (no remote attach, no conditional breakpoints, no pause) |
+| Ruby | `rdbg` (the [debug gem](https://github.com/ruby/debug)) | debug ≥ 1.9 on PATH | core debugging + remote attach |
 
 ### Language detection and selection
 
 The language is auto-detected from the debug target:
 
 1. File extension: `.py` → Python; `.pl` / `.pm` / `.t` → Perl; `.sh` / `.bash`
-   → Bash; `.csh` / `.tcsh` → Tcsh.
+   → Bash; `.csh` / `.tcsh` → Tcsh; `.rb` → Ruby.
 2. Native executables (ELF, Mach-O, PE magic bytes) → C/C++.
-3. A `#!...python`, `#!...perl`, `#!...bash`, or `#!...csh`/`#!...tcsh`
-   shebang → Python / Perl / Bash / Tcsh respectively.
+3. A `#!...python`, `#!...perl`, `#!...bash`, `#!...csh`/`#!...tcsh`, or
+   `#!...ruby` shebang → Python / Perl / Bash / Tcsh / Ruby respectively.
 4. C/C++/Rust *source* files (`.c`, `.cpp`, `.rs`, …) produce an error with a
    hint: compile with debug info (`g++ -g -O0`) and debug the binary.
 5. Anything else produces an error naming the `--lang` override.
@@ -236,10 +238,11 @@ process inspectors and wait graph, the evaluate console's trailing-`?` help,
 `--python`/`--pv`, `--no-subprocess`, automatic child-process attachment, and
 the post-mortem / `tdb.breakpoint()` hooks (those hooks live inside Python
 programs by nature). Remote attach (`-r`) also works for Perl (see
-[Perl](#perl), `Devel::TdbRemote` in place of `debugpy.listen()`), but not
+[Perl](#perl), `Devel::TdbRemote` in place of `debugpy.listen()`) and Ruby
+(see [Ruby](#ruby), `rdbg --open` in place of `debugpy.listen()`), but not
 for C/C++, Bash, or Tcsh. `--terminal` works for every launch-mode
-language — Python, Perl, Bash, Tcsh, and C/C++ via `--adapter lldb-dap` —
-see [External Terminal Support](#external-terminal-support).
+language — Python, Perl, Bash, Tcsh, Ruby, and C/C++ via `--adapter lldb-dap`
+— see [External Terminal Support](#external-terminal-support).
 
 **Bash limitations (v1):** the bash adapter uses bash's own `DEBUG` trap and
 has a smaller feature envelope than Python/Perl:
@@ -481,6 +484,33 @@ text directly in the paused shell. It can inspect *and mutate* state
 (`set name = value` takes effect immediately), and a syntax error in
 evaluated text can terminate the debuggee; there is no isolation.
 
+### Ruby
+
+tdb debugs Ruby via the [debug gem](https://github.com/ruby/debug)'s
+`rdbg` (Ruby >= 3.1 ships it; otherwise `gem install debug`; tdb needs
+debug >= 1.9). `rdbg` must be on PATH, or point tdb at it with
+`{"adapters": {"rdbg": "/path/to/rdbg"}}` in config.json.
+
+```bash
+tdb script.rb                # launch, stop at first line
+tdb --run script.rb          # run immediately, debug on demand
+tdb --terminal script.rb     # program I/O in its own terminal
+```
+
+Remote attach: start the program with
+`rdbg --open --port 5678 --host 0.0.0.0 script.rb` (add `--nonstop` to
+let it run before you attach), then `tdb -r HOST:5678 --lang ruby`.
+Note: rdbg's `--cookie` authentication is not part of DAP and is not
+supported — bind to localhost and tunnel over SSH instead.
+`--local-root`/`--remote-root` path mappings are not supported for Ruby
+yet. Bundler projects work when your environment resolves `rdbg`
+(`gem install debug` into the project's Ruby); there is no `bundle
+exec` integration yet.
+
+> **Startup note:** the debug gem's `rdbg` has an occasional handshake
+> race on launch; tdb detects a stalled/corrupted handshake and retries
+> once automatically with a fresh `rdbg`, so this is usually invisible.
+
 ## Layout
 
 ```
@@ -535,6 +565,11 @@ A cursor line (blue) tracks your position; the current execution line is highlig
 | `Alt+P` | Processes |
 | `Alt+A` | Async Tasks |
 | `Alt+H` | Help (Documentation, About) |
+
+File > Open works for every supported language: the file picker filters to
+the current session's language (by extension) and refuses a pick that
+detects as a different language, so you can only switch to another script
+written in the same language as the one currently being debugged.
 
 **Navigation (vim-style by default):**
 
@@ -960,7 +995,7 @@ tdb --terminal xterm my_tui_app.py
 ```
 
 `--terminal` works for every language `tdb` can *launch* (as opposed to
-attach to): Python, Perl, Bash, Tcsh, and C/C++ via `--adapter lldb-dap`.
+attach to): Python, Perl, Bash, Tcsh, Ruby, and C/C++ via `--adapter lldb-dap`.
 The default C/C++ adapter, `gdb -i dap`, has no terminal integration --
 `tdb` rejects `--terminal` up front with an error pointing at
 `--adapter lldb-dap` instead. `--terminal` also only applies when `tdb`
@@ -1016,7 +1051,7 @@ nonzero `sys.exit()`, which `debugpy` treats as an uncaught `SystemExit` -- `tdb
 the TUI at the point of failure instead of exiting silently, so you can inspect the
 crash. Exit-code passthrough applies only to a clean exit during the headless phase.
 
-Supported languages: Python, Perl, Bash, Tcsh, and C/C++ (both `gdb` and `lldb-dap`).
+Supported languages: Python, Perl, Bash, Tcsh, Ruby, and C/C++ (both `gdb` and `lldb-dap`).
 `--run` is rejected up front for any other language.
 
 **Limitation:** pausing is cooperative. If the debuggee is blocked inside a single
@@ -1340,6 +1375,7 @@ fires as expected.
 - [textual](https://github.com/Textualize/textual) : TUI framework
 - [debugpy](https://github.com/microsoft/debugpy) : Debug Adapter Protocol implementation for Python
 - [gdb](https://sourceware.org/gdb/) / [lldb-dap](https://lldb.llvm.org/resources/lldbdap.html) : optional, user-installed DAP adapters for C/C++
+- [debug gem](https://github.com/ruby/debug) (`rdbg`) : optional, user-installed DAP adapter for Ruby
 - [pygments](https://pygments.org/) : Syntax highlighting
 - [FastAPI](https://fastapi.tiangolo.com/) + [uvicorn](https://www.uvicorn.org/) : JSON-RPC server
 

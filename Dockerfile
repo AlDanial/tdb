@@ -13,9 +13,10 @@
 
 
 FROM ghcr.io/astral-sh/uv:python3.14-alpine AS base
-# perl powers the Perl DAP adapter; without it the perl test suite
-# silently skips in CI (and one launch-preflight test used to fail).
-RUN apk add --no-cache perl bash tcsh
+# perl/bash/tcsh power their DAP adapters; ruby + the debug gem power
+# the rdbg proxy (the gem has a C extension, hence the build deps).
+RUN apk add --no-cache perl bash tcsh ruby ruby-dev make gcc musl-dev \
+ && gem install debug --no-document
 RUN adduser -D appuser
 ENV PATH="/app/.venv/bin:$PATH"
 
