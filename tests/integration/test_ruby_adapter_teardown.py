@@ -70,6 +70,7 @@ async def test_terminate_kills_rdbg_and_reports_termination():
         await launch_stopped(client, SLEEPER, stop_on_entry=False)
         await asyncio.sleep(0.3)
         children = await _rdbg_pids_of(client.proc.pid)
+        assert children, "expected a live rdbg child"
         resp = await client.request("terminate", {})
         assert resp["success"]
         await client.wait_event("terminated")
@@ -84,12 +85,14 @@ async def test_terminate_kills_rdbg_and_reports_termination():
 async def test_proxy_death_kills_rdbg():
     """The run() finally-block must reap rdbg when tdb kills the proxy."""
     client = await start_ruby_adapter()
-    await launch_stopped(client, SLEEPER, stop_on_entry=False)
-    await asyncio.sleep(0.3)
-    children = await _rdbg_pids_of(client.proc.pid)
-    assert children
-    client.proc.stdin.close()  # EOF -> run() exits -> finally kills group
-    await asyncio.sleep(1.5)
-    for pid in children:
-        assert _process_is_gone(pid), f"rdbg {pid} survived proxy stdin EOF"
-    await client.stop()
+    try:
+        await launch_stopped(client, SLEEPER, stop_on_entry=False)
+        await asyncio.sleep(0.3)
+        children = await _rdbg_pids_of(client.proc.pid)
+        assert children, "expected a live rdbg child"
+        client.proc.stdin.close()  # EOF -> run() exits -> finally kills group
+        await asyncio.sleep(1.5)
+        for pid in children:
+            assert _process_is_gone(pid), f"rdbg {pid} survived proxy stdin EOF"
+    finally:
+        await client.stop()
