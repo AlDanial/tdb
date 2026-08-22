@@ -328,3 +328,46 @@ def parse_ruby_error(stderr: str, exit_code: int | None = None) -> ParsedError |
         frames=frames,
         detail="\n".join(detail_lines),
     )
+
+
+# --- OCaml ----------------------------------------------------------------
+#
+# With OCAMLRUNPARAM=b (injected by the OCaml adapters) an uncaught
+# exception prints, on stderr, identically for native and bytecode:
+#
+#   Fatal error: exception Failure("boom")
+#   Raised at Stdlib.failwith in file "stdlib.ml", line 29, characters 17-33
+#   Called from Fatal.middle in file "ocaml_fatal.ml", line 2, characters ...
+#
+# Without -g the backtrace lines are absent — header-only modal plus a hint.
+
+_OCAML_FATAL_RE = re.compile(r"^Fatal error: exception (?P<msg>.+?)\s*$", re.MULTILINE)
+_OCAML_FRAME_RE = re.compile(
+    r"^(?:Raised at|Raised by primitive operation at|Re-raised at"
+    r"|Called from) (?P<func>.+?) in file \"(?P<path>[^\"]+)\""
+    r"(?: \(inlined\))?, line (?P<line>\d+)",
+    re.MULTILINE,
+)
+
+
+def parse_ocaml_error(stderr: str, exit_code: int | None = None) -> ParsedError | None:
+    """Parse OCaml's fatal-error output. The header line is an unambiguous
+    signal, so `exit_code` is accepted and ignored (python-style)."""
+    fatal = _OCAML_FATAL_RE.search(stderr)
+    if fatal is None:
+        return None
+    header = fatal.group(0).strip()
+    tail = stderr[fatal.start() :]
+    frames = [
+        ErrorFrame(
+            path=m.group("path"), line=int(m.group("line")), func=m.group("func")
+        )
+        for m in _OCAML_FRAME_RE.finditer(tail)
+    ]
+    frames.reverse()  # OCaml prints innermost-first; ParsedError wants outermost-first
+    detail = tail.rstrip("\n")
+    if not frames:
+        detail += "\n\n(no backtrace — compile with -g, e.g. dune's dev profile)"
+    return ParsedError(
+        header=header, message=fatal.group("msg"), frames=frames, detail=detail
+    )
