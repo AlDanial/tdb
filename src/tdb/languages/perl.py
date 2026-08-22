@@ -85,7 +85,9 @@ class PerlAdapter(AdapterSpec):
 
 
 def build_perl_profile(
-    adapter: str | None = None, adapter_paths: dict[str, str] | None = None
+    adapter: str | None = None,
+    adapter_paths: dict[str, str] | None = None,
+    program: str | None = None,
 ) -> LanguageProfile:
     if adapter not in (None, "perl-tdb"):
         raise LanguageNotSupportedError(

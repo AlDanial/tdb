@@ -135,7 +135,9 @@ class GdbDapAdapter(AdapterSpec):
 
 
 def build_cpp_profile(
-    adapter: str | None = None, adapter_paths: dict[str, str] | None = None
+    adapter: str | None = None,
+    adapter_paths: dict[str, str] | None = None,
+    program: str | None = None,
 ) -> LanguageProfile:
     adapters: dict[str, type[AdapterSpec]] = {
         "lldb-dap": LldbDapAdapter,

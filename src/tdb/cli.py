@@ -403,7 +403,10 @@ def _resolve_language(
         lang_id = args.lang or registry.detect(args.program)
         adapter = args.adapter or config.default_adapters.get(lang_id)
         profile = registry.resolve(
-            lang_id, adapter=adapter, adapter_paths=config.adapters
+            lang_id,
+            adapter=adapter,
+            adapter_paths=config.adapters,
+            program=args.program,
         )
     except LanguageNotSupportedError as e:
         parser.error(str(e))
