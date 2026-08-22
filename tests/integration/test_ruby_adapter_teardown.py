@@ -56,6 +56,14 @@ async def test_disconnect_kills_rdbg():
         assert children, "expected a live rdbg child"
         resp = await client.request("disconnect", {})
         assert resp["success"]
+        # Regression: for a proxy-owned launch, rdbg's native
+        # "terminated" is swallowed (_note_and_filter_event) and
+        # `_watch_exit`'s post-drain synthesis is the sole source of
+        # the event. `run()`'s teardown must await that synthesis
+        # (_await_watch_exit) before the client loop ends, or
+        # asyncio.run's task cleanup cancels it mid-flight and the
+        # client never sees "terminated" at all.
+        await client.wait_event("terminated")
         await asyncio.sleep(0.5)
         for pid in children:
             assert _process_is_gone(pid), f"rdbg {pid} survived disconnect"

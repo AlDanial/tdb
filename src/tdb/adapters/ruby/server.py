@@ -230,6 +230,12 @@ class RubyDapServer:
         self._start_client_seq: int | None = None
         self._launched = False
         self._sent_exited = False
+        # Only ever set True by rdbg's native "exited"/"terminated"
+        # passthrough for externalTerminal launches (no `_proc`, no
+        # `_watch_exit`) — for proxy-owned launches the native
+        # "terminated" is swallowed (see `_note_and_filter_event`), so
+        # this stays False and `_watch_exit` is always the one to send
+        # it.
         self._sent_terminated = False
         self._reverse = ReverseRequester(self._write_client, self._seqs.next_client_seq)
         # Last thread rdbg reported stopped — used to default `frameId`
@@ -253,6 +259,10 @@ class RubyDapServer:
         self._tasks: set[asyncio.Future] = set()
         self._pump_tasks: list[asyncio.Future] = []
         self._launch_task: asyncio.Future | None = None
+        # Separate handle (in addition to `_tasks`' GC-safety ref) so
+        # `run()`'s teardown can explicitly await it — see
+        # `_await_watch_exit`.
+        self._watch_exit_task: asyncio.Future | None = None
         self.handlers: dict[str, Callable[[dict], Awaitable[None]]] = {}
         for name in dir(self):
             if name.startswith("_on_"):
@@ -319,6 +329,7 @@ class RubyDapServer:
         finally:
             await self._cancel_launch_task()
             await self._ensure_rdbg_dead()
+            await self._await_watch_exit()
             if self._transport is not None:
                 self._transport.cleanup()
             await self._writer.drain()
@@ -582,7 +593,7 @@ class RubyDapServer:
                 self._spawn_task(self._pump_output(self._proc.stderr, "stderr")),
                 rdbg_pump_task,
             ]
-            self._spawn_task(self._watch_exit())
+            self._watch_exit_task = self._spawn_task(self._watch_exit())
         # rdbg needs its own initialize first. Proxy-originated (no
         # client mapping) -> its response is swallowed by the translator;
         # rdbg's `initialized` event passes through to the client and
@@ -732,6 +743,32 @@ class RubyDapServer:
             pass
         except Exception:
             log.exception("launch task raised during cancellation")
+
+    async def _await_watch_exit(self, timeout: float = 4.0) -> None:
+        """Give a proxy-owned launch's `_watch_exit` a bounded chance to
+        finish before `run()` returns.
+
+        Since `_note_and_filter_event` now swallows rdbg's native
+        `terminated` event for proxy-owned launches (see that method),
+        `_watch_exit`'s post-drain exited/terminated synthesis is the
+        SOLE source of those events for the client. Without this,
+        disconnect/terminate/EOF-driven teardown can kill rdbg and let
+        `run()`'s loop end while `_watch_exit` is still mid-flight (e.g.
+        inside its own bounded pump-drain wait) — `run()` returning lets
+        the enclosing `asyncio.run()` cancel that still-pending task
+        before it ever sends `exited`/`terminated`, so the client would
+        get neither event at all. No-op for externalTerminal launches
+        (no `_proc`, so `_watch_exit_task` is never set).
+        """
+        task = self._watch_exit_task
+        if task is None or task.done():
+            return
+        try:
+            await asyncio.wait_for(task, timeout)
+        except asyncio.TimeoutError:
+            log.warning("_watch_exit did not finish within %.1fs of teardown", timeout)
+        except Exception:
+            log.exception("_watch_exit failed during teardown")
 
     def _kill_rdbg_group(self, sig_kill: bool = False) -> None:
         proc = self._proc
