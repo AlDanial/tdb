@@ -226,7 +226,11 @@ class InspectionWorkflows:
         if not threads:
             self.app.notify("No threads found", title="Threads")
             return
-        modal = ThreadsModal(threads, ctrl.state.current_thread_id)
+        modal = ThreadsModal(
+            threads,
+            ctrl.state.current_thread_id,
+            frame_name=ctrl.profile.presentation.frame_name,
+        )
         self.app.panels.threads = modal
         self.app.push_screen(modal, callback=self._on_threads_dismissed)
 

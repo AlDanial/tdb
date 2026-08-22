@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 from rich.text import Text
 from textual.message import Message
@@ -30,10 +30,12 @@ class ThreadsModal(_InspectableListModal["Thread"]):
         self,
         threads: list[Thread],
         current_thread_id: int | None = None,
+        frame_name: Callable[[str], str] | None = None,
     ) -> None:
         super().__init__()
         self._items: list[Thread] = threads
         self._current_thread_id = current_thread_id
+        self._frame_name = frame_name
 
     # --- Row + detail rendering ---------------------------------------
 
@@ -129,7 +131,8 @@ class ThreadsModal(_InspectableListModal["Thread"]):
                     loc = f" at {Path(frame.source.path).name}:{frame.line}"
                 elif frame.source and frame.source.name:
                     loc = f" at {frame.source.name}:{frame.line}"
-                content.append(f"  #{i} {frame.name}{loc}\n")
+                name = self._frame_name(frame.name) if self._frame_name else frame.name
+                content.append(f"  #{i} {name}{loc}\n")
         else:
             content.append("No stack frames available\n", style="dim")
 

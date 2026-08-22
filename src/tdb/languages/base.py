@@ -160,6 +160,11 @@ class Presentation:
     # match that instead of showing Python's "<module>").
     frame_placeholder: str = "<module>"
 
+    # Rewrite a stack frame's display name (e.g. demangle OCaml's
+    # "camlMain__worker_271" -> "Main.worker"). Display-only: DAP frame
+    # ids/sources are untouched. None -> show adapter names verbatim.
+    frame_name: Callable[[str], str] | None = None
+
 
 @dataclass(frozen=True)
 class ProfileCapabilities:

@@ -1,10 +1,12 @@
 """The OCaml language profile (built up across Tasks 2-7).
 
-This task: executable-flavor sniffing used by registry.detect().
+This task: executable-flavor sniffing used by registry.detect(), plus
+frame-name demangling for Presentation.frame_name.
 """
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 _BYTECODE_TRAILER_MARK = b"Caml1999"  # e.g. b"Caml1999X033" at file end
@@ -42,6 +44,33 @@ def ocaml_flavor(program: str) -> str | None:
         if _scan_for_caml_marker(path, size):
             return "native"
     return None
+
+
+_MANGLED_SUFFIX_RE = re.compile(r"_\d+$")
+# "caml" followed by an uppercase letter marks a mangled OCaml symbol
+# (camlMain__worker_271, camlOcaml_domains.worker_297). Runtime C symbols
+# (caml_apply2, caml_start_program) have a lowercase/underscore letter
+# right after "caml" and must be left untouched.
+_CAML_MANGLED_PREFIX_RE = re.compile(r"^caml[A-Z]")
+
+
+def demangle_frame_name(name: str) -> str:
+    """ "camlFoo__Bar__run_17" -> "Foo.Bar.run"; anything else unchanged.
+
+    lldb's OCaml 5.x symbol display separates module-path segments with
+    "__" but a module and its function with "." (e.g.
+    "camlOcaml_domains.worker_297" -> "Ocaml_domains.worker",
+    "camlStdlib__Domain.body_757" -> "Stdlib.Domain.body"), so both
+    separators are normalized to ".". Runtime C symbols (caml_apply2,
+    caml_start_program) don't match the mangled-prefix shape and pass
+    through unchanged.
+    """
+    if not _CAML_MANGLED_PREFIX_RE.match(name) or (
+        "__" not in name and "." not in name
+    ):
+        return name
+    body = _MANGLED_SUFFIX_RE.sub("", name[len("caml") :])
+    return body.replace("__", ".")
 
 
 def _scan_for_caml_marker(path: Path, size: int) -> bool:
