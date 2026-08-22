@@ -103,25 +103,30 @@ sources.
 variables, jump-to-thread), breakpoints from any domain, all-stop,
 `state.threads` refresh after stop.
 
-**New `ProfileCapabilities` hooks** (data/callables, consumers gate with
-`is not None`, same pattern as `opaque_frame`):
+**New `ProfileCapabilities` hook** (data/callable, consumers gate with
+`is not None`, same pattern as `opaque_frame`).
 
-- `thread_label: Callable[[Thread, list[StackFrame] | None], str | None]`
-  — display label ("Domain 0 (main)", "Domain 3") or None to keep the
-  adapter's name. Signal: frames rooted in
-  `caml_start_program`/`domain_thread_func`, and/or OS thread names if
-  the runtime sets them — exact signal confirmed by Task 0.
-- `hide_thread: Callable[[Thread, list[StackFrame] | None], bool]` — True
-  for runtime service threads (backup threads parked in a recognizable
-  `sigwait`/`backup_thread_func` frame; tick thread). Hidden threads are
+*Amended at planning time (2026-08-22):* the originally sketched pair of
+per-thread hooks (`thread_label`/`hide_thread`) is consolidated into ONE
+list-in/list-out hook, because numbering domains ("Domain 0 (main)",
+"Domain 1", ...) needs the whole thread list at once:
+
+- `classify_threads: Callable[[list[Thread], dict[int, list[StackFrame]]],
+  list[ThreadDecoration]]` — receives all threads plus per-thread stacks
+  (the dict may be missing entries) and returns, in the same order,
+  `ThreadDecoration(thread, label: str | None, hidden: bool)`.
+  Labels: "Domain N" in creation order, first thread = "Domain 0 (main)".
+  Hidden: runtime service threads (backup threads parked in a
+  recognizable `sigwait`/`backup_thread_func` frame; tick thread) —
   dropped from ThreadsModal and never auto-selected on stop; a modal
-  toggle (`a` = show all) reveals them.
+  toggle (`a` = show all) reveals them. Exact frame/name signals
+  confirmed by Task 0.
 
 Consumers: ThreadsModal (labels + filter + toggle) and the controller's
 stopped-thread selection (a stop landing on a hidden thread prefers the
-nearest visible one, same spirit as `opaque_frame`). Both hooks tolerate
-`stack=None`: labeling falls back to the raw adapter name — the feature
-degrades to "all threads shown, adapter names", never breaks.
+nearest visible one, same spirit as `opaque_frame`). The hook tolerates
+missing stacks: such threads stay visible under the raw adapter name —
+the feature degrades to "all threads shown, adapter names", never breaks.
 
 **Frame-name demangling.** New `Presentation` callable
 `frame_name: Callable[[str], str] | None`, applied by
@@ -226,7 +231,7 @@ Protocol-level lldb-dap misbehavior triggers the proxy-shim escalation.
 ELF+marker, plain ELF stays cpp, `.ml` error); `launch_body` for both
 adapters (initCommands, `OCAMLRUNPARAM=b` merge, env list-vs-mapping);
 `parse_ocaml_error` variants; demangling; formatter decode functions with
-a fake `read_memory`; thread label/hide hooks against canned fixtures.
+a fake `read_memory`; `classify_threads` against canned fixtures.
 
 **Integration tests** (`tests/integration/test_ocaml_*.py`, skip-gated on
 `ocamlfind`/`dune` + adapter availability, same pattern as
