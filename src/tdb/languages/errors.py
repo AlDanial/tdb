@@ -352,7 +352,10 @@ _OCAML_FRAME_RE = re.compile(
 
 def parse_ocaml_error(stderr: str, exit_code: int | None = None) -> ParsedError | None:
     """Parse OCaml's fatal-error output. The header line is an unambiguous
-    signal, so `exit_code` is accepted and ignored (python-style)."""
+    signal, so `exit_code` is accepted and ignored (python-style).
+
+    Detail (the modal body below the header) excludes the header line itself,
+    following the same pattern as parse_python_error."""
     fatal = _OCAML_FATAL_RE.search(stderr)
     if fatal is None:
         return None
@@ -365,9 +368,14 @@ def parse_ocaml_error(stderr: str, exit_code: int | None = None) -> ParsedError 
         for m in _OCAML_FRAME_RE.finditer(tail)
     ]
     frames.reverse()  # OCaml prints innermost-first; ParsedError wants outermost-first
-    detail = tail.rstrip("\n")
+
+    # Detail starts after the header line's newline (matches parse_python_error pattern)
+    header_end = tail.index("\n") + 1 if "\n" in tail else len(tail)
+    detail = tail[header_end:].rstrip("\n")
+
     if not frames:
-        detail += "\n\n(no backtrace — compile with -g, e.g. dune's dev profile)"
+        detail = "(no backtrace — compile with -g, e.g. dune's dev profile)"
+
     return ParsedError(
         header=header, message=fatal.group("msg"), frames=frames, detail=detail
     )

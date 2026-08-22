@@ -319,3 +319,30 @@ def test_ocaml_native_with_inlined_and_bare_module_name():
     assert err.frames[0].line == 3
     assert err.frames[1].line == 2
     assert err.frames[2].line == 1
+
+
+# --- Regression tests for detail contract (excludes header line) ---
+
+
+def test_ocaml_error_detail_excludes_header_with_backtrace():
+    # Regression: detail should NOT contain the header line ("Fatal error:")
+    # it starts after the header line's newline. The modal displays header
+    # and detail as separate fields, so including header in detail would
+    # show it twice.
+    err = parse_ocaml_error(OCAML_WITH_BACKTRACE, 2)
+    assert err is not None
+    # Header is shown separately in the modal, so detail must not include it
+    assert "Fatal error:" not in err.detail
+    # Detail's first line should be the first backtrace line
+    detail_lines = err.detail.split("\n")
+    assert detail_lines[0].startswith("Raised at")
+
+
+def test_ocaml_error_detail_excludes_header_without_backtrace():
+    # Regression: for no-backtrace case, detail is ONLY the hint,
+    # no header line, no leading blank lines.
+    err = parse_ocaml_error(OCAML_NO_BACKTRACE, 2)
+    assert err is not None
+    assert "Fatal error:" not in err.detail
+    # Detail should be exactly the hint text
+    assert err.detail == "(no backtrace — compile with -g, e.g. dune's dev profile)"
