@@ -125,7 +125,7 @@ def test_min_debug_gem():
     assert MIN_DEBUG_GEM == (1, 9)
 
 
-# ---- launch-handshake retry machinery (task F: rdbg handshake stall) ----
+# ---- launch-handshake retry machinery (rdbg handshake stall fix) ----
 #
 # rdbg (debug gem 1.11) has a startup race in UI_ServerBase (server.rb):
 # `activate` sets `@sock` *inside* the `@accept_m.synchronize` block
@@ -314,12 +314,13 @@ async def test_reset_for_retry_awaits_task_cancellation_before_returning():
 async def test_reset_for_retry_does_not_let_a_cancelled_watch_exit_emit_stray_events(
     monkeypatch,
 ):
-    """Regression test for the task-F fix: without awaiting the
-    cancelled `_watch_exit` task's unwind, killing the stuck rdbg process
-    (below) can make its `proc.wait()` resolve and let it race ahead to
-    send exited/terminated for the ABANDONED attempt -- which the client
-    would see as "your session just ended" while the retry is still
-    setting up the next attempt. _reset_for_retry must prevent that."""
+    """Regression test for the launch-handshake retry fix: without
+    awaiting the cancelled `_watch_exit` task's unwind, killing the stuck
+    rdbg process (below) can make its `proc.wait()` resolve and let it
+    race ahead to send exited/terminated for the ABANDONED attempt --
+    which the client would see as "your session just ended" while the
+    retry is still setting up the next attempt. _reset_for_retry must
+    prevent that."""
     server = _server()
     server._launched = True
 
@@ -459,3 +460,130 @@ async def test_reset_for_retry_closes_rdbg_writer_for_proxy_owned_launch_too():
     assert rdbg_writer.closed is True
     sent = _messages(rdbg_writer)
     assert any(m.get("command") == "terminate" for m in sent)
+
+
+# ---- native exited/terminated swallow symmetry (final-review minor #2) ----
+
+
+async def test_note_and_filter_event_swallows_native_exited_for_proxy_owned_launch():
+    """Symmetric with "terminated": a native "exited" for a proxy-owned
+    launch must be swallowed too, or it races ahead of the debuggee's
+    stdout/stderr pipes and `_watch_exit` learning the real exit code --
+    recreating the exact ordering problem the "terminated" swallow
+    exists to fix."""
+    server = _server()
+    server._proc = object()  # any non-None sentinel -- proxy-owned
+    swallowed = server._note_and_filter_event(
+        {"type": "event", "event": "exited", "body": {"exitCode": 0}}
+    )
+    assert swallowed is True
+    # Must NOT be marked sent: `_watch_exit`'s own `if not
+    # self._sent_exited` check is what must send the real,
+    # correctly-ordered one -- if this swallowed one marked it sent,
+    # `_watch_exit` would wrongly skip sending any "exited" event at all.
+    assert server._sent_exited is False
+
+
+async def test_note_and_filter_event_forwards_and_marks_native_exited_for_terminal_launch():
+    server = _server()
+    server._proc = None  # externalTerminal: no `_watch_exit` to defer to
+    swallowed = server._note_and_filter_event(
+        {"type": "event", "event": "exited", "body": {"exitCode": 0}}
+    )
+    assert swallowed is False
+    assert server._sent_exited is True
+
+
+async def test_note_and_filter_event_swallows_native_terminated_for_proxy_owned_launch():
+    server = _server()
+    server._proc = object()
+    swallowed = server._note_and_filter_event({"type": "event", "event": "terminated"})
+    assert swallowed is True
+    assert server._sent_terminated is False
+
+
+async def test_note_and_filter_event_forwards_and_marks_native_terminated_for_terminal_launch():
+    server = _server()
+    server._proc = None
+    swallowed = server._note_and_filter_event({"type": "event", "event": "terminated"})
+    assert swallowed is False
+    assert server._sent_terminated is True
+
+
+# ---- _pump_rdbg synthesizes `terminated` on socket death (final-review
+# important #1: a terminal-mode session with no native farewell, e.g. the
+# user closes the terminal window and SIGHUP kills rdbg, must not leave
+# tdb showing a "running" session forever) ----
+
+
+async def test_pump_rdbg_synthesizes_terminated_on_socket_death_for_terminal_launch():
+    server = _server()
+    server._proc = None  # externalTerminal
+    server._launched = True
+    server._handshake_event = None  # handshake already completed
+
+    reader = asyncio.StreamReader()
+    reader.feed_eof()  # socket died with no farewell, no data at all
+
+    await server._pump_rdbg(reader)
+
+    out = _messages(server._writer)
+    terminated = [m for m in out if m.get("event") == "terminated"]
+    assert len(terminated) == 1
+    assert server._sent_terminated is True
+
+
+async def test_pump_rdbg_does_not_synthesize_terminated_mid_handshake():
+    """Must not fire while a handshake is still in flight for this
+    attempt -- that outcome belongs to `_await_handshake`/
+    `_reset_for_retry`/the eventual `send_error`, not this method."""
+    server = _server()
+    server._proc = None
+    server._launched = True
+    server._handshake_event = asyncio.Event()  # still mid-handshake
+
+    reader = asyncio.StreamReader()
+    reader.feed_eof()
+
+    await server._pump_rdbg(reader)
+
+    out = _messages(server._writer)
+    assert not any(m.get("event") == "terminated" for m in out)
+
+
+async def test_pump_rdbg_does_not_synthesize_terminated_for_proxy_owned_launch():
+    """Proxy-owned launches have `_watch_exit` as the sole exited/
+    terminated source (see `_await_watch_exit`'s docstring) -- `_pump_rdbg`
+    must not also send one."""
+    server = _server()
+    server._proc = object()  # proxy-owned sentinel
+    server._launched = True
+    server._handshake_event = None
+
+    reader = asyncio.StreamReader()
+    reader.feed_eof()
+
+    await server._pump_rdbg(reader)
+
+    out = _messages(server._writer)
+    assert not any(m.get("event") == "terminated" for m in out)
+
+
+async def test_pump_rdbg_does_not_duplicate_a_terminated_already_sent_natively():
+    """If rdbg's native "terminated" already went out (see
+    `_note_and_filter_event`) just before the socket EOFs -- the normal
+    case, rdbg closes the socket right after saying goodbye -- the
+    post-loop synthesis must not send a second one."""
+    server = _server()
+    server._proc = None
+    server._launched = True
+    server._handshake_event = None
+    server._sent_terminated = True  # native passthrough already sent it
+
+    reader = asyncio.StreamReader()
+    reader.feed_eof()
+
+    await server._pump_rdbg(reader)
+
+    out = _messages(server._writer)
+    assert not any(m.get("event") == "terminated" for m in out)

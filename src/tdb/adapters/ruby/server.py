@@ -254,12 +254,16 @@ class RubyDapServer:
         self._start_client_seq: int | None = None
         self._launched = False
         self._sent_exited = False
-        # Only ever set True by rdbg's native "exited"/"terminated"
-        # passthrough for externalTerminal launches (no `_proc`, no
-        # `_watch_exit`) — for proxy-owned launches the native
-        # "terminated" is swallowed (see `_note_and_filter_event`), so
-        # this stays False and `_watch_exit` is always the one to send
-        # it.
+        # True once "exited"/"terminated" has actually reached the
+        # client. For a proxy-owned launch (`_proc` set) rdbg's native
+        # events are swallowed (see `_note_and_filter_event`) and
+        # `_watch_exit` is always the one to actually send them and mark
+        # these flags. For an externalTerminal launch (no `_proc`, no
+        # `_watch_exit`) rdbg's native events are forwarded as-is instead
+        # — `_note_and_filter_event` sets these flags at that point.
+        # `_sent_terminated` is also read by `_pump_rdbg`'s post-loop
+        # synthesis (see there) so a socket death that happens *after* a
+        # real `terminated` already went out doesn't send a duplicate.
         self._sent_terminated = False
         self._reverse = ReverseRequester(self._write_client, self._seqs.next_client_seq)
         # Last thread rdbg reported stopped — used to default `frameId`
@@ -397,6 +401,40 @@ class RubyDapServer:
 
     # ---- rdbg socket side ----
     async def _pump_rdbg(self, reader: asyncio.StreamReader) -> None:
+        try:
+            await self._pump_rdbg_loop(reader)
+        finally:
+            # externalTerminal launches have no `_proc` and so no
+            # `_watch_exit` (see `_finish_launch`) — rdbg's own native
+            # "terminated" event, forwarded as-is by
+            # `_note_and_filter_event`, is normally their only "session
+            # over" signal. But if the socket itself dies without rdbg
+            # ever sending it — EOF, a connection error, or an
+            # unparseable frame; e.g. the user closes the terminal
+            # window, SIGHUP kills rdbg with no DAP farewell — this loop
+            # just returns above, and without this, tdb would show that
+            # session as running forever (the spec: "socket death
+            # mid-session -> terminated to tdb ... never a hang").
+            # Guarded so this only fires for a session that actually
+            # reached a running state (`_launched`), isn't mid-handshake
+            # (`_handshake_event is not None` means `_await_handshake`/
+            # `_reset_for_retry`/the eventual `send_error` own the
+            # outcome of a dead pump instead — see `_reset_for_retry`,
+            # which clears `_launched` before it ever cancels this task,
+            # so a cancelled-mid-handshake pump can't reach here either),
+            # and hasn't already sent `terminated` via the native
+            # passthrough moments earlier.
+            if (
+                self._proc is None
+                and self._launched
+                and self._handshake_event is None
+                and not self._sent_terminated
+            ):
+                self._sent_terminated = True
+                self.send_event("terminated")
+                await self._writer.drain()
+
+    async def _pump_rdbg_loop(self, reader: asyncio.StreamReader) -> None:
         while True:
             try:
                 msg = await read_message(reader)
@@ -470,8 +508,21 @@ class RubyDapServer:
         elif event == "continued":
             self._last_stopped_thread_id = None
         elif event == "exited":
-            self._sent_exited = True
             self._last_stopped_thread_id = None
+            if self._proc is not None:
+                # Symmetric with "terminated" below, same rationale:
+                # rdbg's native "exited" races ahead of the debuggee's
+                # stdout/stderr pipes and of `_watch_exit` learning the
+                # real exit code. Swallow it here too — do NOT also set
+                # `_sent_exited` (it must stay False so `_watch_exit`'s
+                # own `if not self._sent_exited` still sends the
+                # correctly-ordered, real one instead of assuming this
+                # swallowed one already went out).
+                return True
+            # externalTerminal: no `_proc`, no `_watch_exit` — this
+            # native event IS the exited signal for this session,
+            # forwarded below.
+            self._sent_exited = True
         elif event == "terminated":
             self._last_stopped_thread_id = None
             if self._proc is not None:
@@ -484,14 +535,21 @@ class RubyDapServer:
                 # see "terminated" before the program's own
                 # output/exit-code events, which reads as "no output,
                 # exit code 0" (run-mode's ConsoleRunHandler tears down
-                # on the first of exited/terminated). Swallow it here;
-                # `_watch_exit` (only spawned when we own the child
-                # process — see `_finish_launch`) sends the
+                # on the first of exited/terminated). Swallow it here (do
+                # NOT set `_sent_terminated` — see the "exited" branch
+                # above for why); `_watch_exit` (only spawned when we own
+                # the child process — see `_finish_launch`) sends the
                 # correctly-ordered exited-then-terminated pair once the
                 # pumps have drained. externalTerminal launches have no
                 # `_proc` and no local pumps to race against, so the
-                # native event is forwarded as-is.
+                # native event is forwarded as-is — and IS this session's
+                # terminated signal, so mark it sent: `_pump_rdbg`'s
+                # post-loop synthesis (see there) reads this flag to
+                # avoid re-sending a duplicate once the socket EOFs right
+                # after, which it normally does the instant rdbg decides
+                # the session is over.
                 return True
+            self._sent_terminated = True
         return False
 
     async def _pump_output(self, stream: asyncio.StreamReader, category: str) -> None:
@@ -512,7 +570,14 @@ class RubyDapServer:
         if self._pump_tasks:
             await asyncio.wait(self._pump_tasks, timeout=2.0)
         if not self._launched:
-            return  # pre-handshake death is reported via the launch error
+            # Load-bearing, not dead code: pre-handshake death is reported
+            # via the launch error, but this guard is ALSO what stops a
+            # cancelled-but-still-resolving `_watch_exit` from a failed
+            # attempt (see `_reset_for_retry`, which clears `_launched`
+            # before it cancels this task) from reaching the
+            # exited/terminated synthesis below after the retry has
+            # already moved on.
+            return
         if not self._sent_exited:
             self.send_event("exited", {"exitCode": code})
         if not self._sent_terminated:
@@ -703,21 +768,38 @@ class RubyDapServer:
             if handshake_ok:
                 return
 
-            log.warning(
-                "ruby launch handshake did not complete on attempt %d/%d "
-                "(rdbg connection %s) — retrying with a fresh rdbg process",
-                attempt,
-                max_attempts,
-                "ended" if rdbg_pump_task.done() else "timed out",
-            )
+            reason = "ended" if rdbg_pump_task.done() else "timed out"
+            if attempt < max_attempts:
+                log.warning(
+                    "ruby launch handshake did not complete on attempt "
+                    "%d/%d (rdbg connection %s) — retrying with a fresh "
+                    "rdbg process",
+                    attempt,
+                    max_attempts,
+                    reason,
+                )
+            else:
+                # No retry follows this one — either it was the last of
+                # several attempts, or (externalTerminal) max_attempts is
+                # 1 and there was never going to be a retry. Don't claim
+                # one is coming.
+                log.warning(
+                    "ruby launch handshake did not complete on attempt "
+                    "%d/%d (rdbg connection %s) — no attempts left",
+                    attempt,
+                    max_attempts,
+                    reason,
+                )
             await self._reset_for_retry()
 
         self.send_error(
             request,
-            "rdbg never completed its DAP handshake after "
-            f"{max_attempts} attempt(s) — this looks like a known startup "
-            "race in the debug gem's socket handshake (see this proxy "
-            "module's comments), not a tdb bug",
+            "rdbg did not send its DAP `initialized` event within "
+            f"{_HANDSHAKE_TIMEOUT:.0f}s on {max_attempts} attempt(s). "
+            "Most often this is a known debug-gem socket-handshake "
+            "startup race, but it can also just mean rdbg was slow to "
+            "start. Try launching again; tdb's log file has more detail "
+            "if it keeps happening",
         )
         await self._writer.drain()
 
