@@ -82,3 +82,16 @@ def test_unreadable_pointer_degrades():
     summary, children = describe_value(0x7000, lambda a, s: None)
     assert "0x7000" in summary  # falls back to the raw pointer
     assert children == []
+
+
+def test_forward_chain_truncation():
+    """Regression test: self-referential Forward block must not infinite-loop."""
+    m = FakeMemory()
+    # Create a Forward block (tag 250) at 0x8000 that points to itself
+    addr = 0x8000
+    m.mem[addr - 8] = struct.pack("<Q", (1 << 10) | 250)  # Forward block with 1 field
+    m.mem[addr] = struct.pack("<Q", addr)  # points to itself
+    summary, children = describe_value(addr, m.read)
+    # Must complete without RecursionError and mention forward/truncation
+    assert "forward" in summary.lower() or "truncated" in summary.lower()
+    assert children == []

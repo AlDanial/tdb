@@ -79,12 +79,16 @@ def describe_value(
     if tag == _LAZY_TAG:
         return "lazy", []
     if tag == _FORWARD_TAG:
+        if depth >= MAX_DEPTH:
+            return "<forward chain truncated>", []
         raw = read_memory(ptr, WORD)
         if raw is not None:
-            return describe_value(struct.unpack("<Q", raw)[0], read_memory, depth)
+            return describe_value(struct.unpack("<Q", raw)[0], read_memory, depth + 1)
         return f"<forward {hex(ptr)}>", []
 
     # Plain structured block: tuple / record / constructor with args.
+    # Children are returned as undecoded (name, word) pairs; depth guard exists
+    # for future consumers that expand children with depth+1.
     children: list[tuple[str, int]] = []
     if depth < MAX_DEPTH:
         for i in range(min(size, MAX_FIELDS)):
@@ -111,10 +115,10 @@ def _decode_string(ptr: int, size: int, read_memory: ReadMemory) -> str:
 
 
 def _read_via_process(process):
-    import lldb  # noqa: F401  (import here: absent under pytest)
+    import lldb  # import here: absent under pytest
 
     def read(addr: int, size: int):
-        err = __import__("lldb").SBError()
+        err = lldb.SBError()
         data = process.ReadMemory(addr, size, err)
         return data if err.Success() else None
 
