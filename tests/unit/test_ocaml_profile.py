@@ -4,6 +4,7 @@ import pytest
 
 from tdb.languages.base import LanguageNotSupportedError
 from tdb.languages.ocaml import (
+    EarlybirdAdapter,
     OCamlLldbAdapter,
     _with_runparam,
     build_ocaml_profile,
@@ -34,6 +35,25 @@ def test_lldb_launch_body_injects_formatters_and_runparam():
         "caml_fatal_uncaught_exception" in c for c in body.get("preRunCommands", [])
     )
     assert "OCAMLRUNPARAM=b" in body["env"]  # lldb-dap env is a list
+
+
+def test_earlybird_launch_body_injects_runparam_even_with_no_env():
+    # Regression: DebugController.start() never forwards an `env` kwarg
+    # through client.launch(), so `env` is always None on the production
+    # path. A naive `if env: body["env"] = ...` guard (as this adapter
+    # used to have) means the merge never runs and OCAMLRUNPARAM=b is
+    # never injected — silently breaking the parse-on-exit error modal
+    # for earlybird sessions. Must inject unconditionally.
+    body = EarlybirdAdapter().launch_body(
+        program="/x/add.byte",
+        args=[],
+        cwd="/x",
+        env=None,
+        stop_on_entry=True,
+        console="internalConsole",
+        opts={},
+    )
+    assert body["env"] == {"OCAMLRUNPARAM": "b"}
 
 
 def test_runparam_merge_preserves_user_flags():

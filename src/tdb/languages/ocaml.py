@@ -254,8 +254,15 @@ class EarlybirdAdapter(AdapterSpec):
             "stopOnEntry": stop_on_entry,
             "console": "internalConsole",
         }
-        if env:
-            body["env"] = _with_runparam(env)
+        # Unconditional merge (unlike a plain `if env:` gate): DebugController
+        # never passes an `env` kwarg through client.launch(), so `env` is
+        # always None on the production path. OCamlLldbAdapter/OCamlGdbAdapter
+        # avoid this by pre-merging before their superclass's own `if env:`
+        # check; this adapter builds its body directly, so it must merge
+        # unconditionally itself or OCAMLRUNPARAM=b (needed for the
+        # parse-on-exit error modal, per parse_ocaml_error) is silently
+        # never injected.
+        body["env"] = _with_runparam(env)
         return body
 
     def attach_body(self, *, host, port, opts) -> dict[str, Any]:
