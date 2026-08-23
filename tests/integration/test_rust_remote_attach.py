@@ -7,10 +7,15 @@ import pytest
 from tests.integration.rust_adapter_harness import (
     available_rust_adapters,
     remote_attach_probe,
-    rust_debug_binary as _rust_debug_binary,  # noqa: F401 - registers fixture
+    _rust_debug_binary,  # noqa: F401 - registers rust_debug_binary fixture
 )
 
 
 @pytest.mark.parametrize("adapter", available_rust_adapters())
 async def test_remote_stub_attach_exposes_rust_stack(adapter, rust_debug_binary):
-    assert await remote_attach_probe(rust_debug_binary("park", adapter), adapter)
+    target = rust_debug_binary("park", adapter)
+    evidence = await remote_attach_probe(target, adapter)
+
+    assert any("rust_concurrency" in name for name in evidence.frame_names)
+    assert str(target.source_path) in evidence.source_paths
+    assert target.compiled_source_path.parent != target.source_path.parent

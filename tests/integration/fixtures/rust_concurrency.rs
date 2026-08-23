@@ -1,13 +1,17 @@
 //! Deterministic blocking scenarios for real Rust debugger integrations.
 
-use std::env;
 use std::hint::black_box;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
+use std::process;
 use std::sync::{mpsc, Arc, Barrier, Condvar, Mutex, RwLock};
 use std::thread;
 
-const CASE: &str = env!("TDB_RUST_CASE");
+struct FixtureArgs {
+    scenario: String,
+    ready_port: Option<u16>,
+    control: bool,
+}
 
 fn park_forever() -> ! {
     loop {
@@ -15,12 +19,32 @@ fn park_forever() -> ! {
     }
 }
 
-fn announce_ready() {
-    println!("READY:{CASE}");
-    std::io::stdout().flush().unwrap();
-    if let Some(port) = env::args().nth(1) {
-        let mut stream = TcpStream::connect(("127.0.0.1", port.parse().unwrap())).unwrap();
-        stream.write_all(CASE.as_bytes()).unwrap();
+fn announce_ready(args: &FixtureArgs) {
+    if let Some(port) = args.ready_port {
+        let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
+        stream.write_all(args.scenario.as_bytes()).unwrap();
+        stream.flush().unwrap();
+        let mut proof = [0_u8; 1];
+        stream.read_exact(&mut proof).unwrap();
+        assert_eq!(proof[0], b'A', "debugger wait proof was not acknowledged");
+        println!("READY:{}", args.scenario);
+        std::io::stdout().flush().unwrap();
+        stream.write_all(b"R").unwrap();
+        stream.flush().unwrap();
+        if args.control {
+            thread::Builder::new()
+                .name("fixture-control".into())
+                .spawn(move || {
+                    let mut command = [0_u8; 1];
+                    if stream.read_exact(&mut command).is_ok() && command[0] == b'X' {
+                        process::exit(0);
+                    }
+                })
+                .unwrap();
+        }
+    } else {
+        println!("READY:{}", args.scenario);
+        std::io::stdout().flush().unwrap();
     }
 }
 
@@ -30,7 +54,7 @@ fn wait_for_workers(ready: mpsc::Receiver<()>, count: usize) {
     }
 }
 
-fn join_wait() -> ! {
+fn join_wait(args: &FixtureArgs) -> ! {
     let barrier = Arc::new(Barrier::new(3));
     let (ready_tx, ready_rx) = mpsc::channel();
     let target_barrier = Arc::clone(&barrier);
@@ -54,11 +78,11 @@ fn join_wait() -> ! {
         .unwrap();
     barrier.wait();
     wait_for_workers(ready_rx, 2);
-    announce_ready();
+    announce_ready(args);
     park_forever();
 }
 
-fn mutex_wait() -> ! {
+fn mutex_wait(args: &FixtureArgs) -> ! {
     let mutex = Arc::new(Mutex::new(()));
     let barrier = Arc::new(Barrier::new(3));
     let (ready_tx, ready_rx) = mpsc::channel();
@@ -88,11 +112,11 @@ fn mutex_wait() -> ! {
         .unwrap();
     barrier.wait();
     wait_for_workers(ready_rx, 2);
-    announce_ready();
+    announce_ready(args);
     park_forever();
 }
 
-fn rwlock_read_wait() -> ! {
+fn rwlock_read_wait(args: &FixtureArgs) -> ! {
     let lock = Arc::new(RwLock::new(()));
     let barrier = Arc::new(Barrier::new(3));
     let (ready_tx, ready_rx) = mpsc::channel();
@@ -122,11 +146,11 @@ fn rwlock_read_wait() -> ! {
         .unwrap();
     barrier.wait();
     wait_for_workers(ready_rx, 2);
-    announce_ready();
+    announce_ready(args);
     park_forever();
 }
 
-fn rwlock_write_wait() -> ! {
+fn rwlock_write_wait(args: &FixtureArgs) -> ! {
     let lock = Arc::new(RwLock::new(()));
     let barrier = Arc::new(Barrier::new(3));
     let (ready_tx, ready_rx) = mpsc::channel();
@@ -156,11 +180,11 @@ fn rwlock_write_wait() -> ! {
         .unwrap();
     barrier.wait();
     wait_for_workers(ready_rx, 2);
-    announce_ready();
+    announce_ready(args);
     park_forever();
 }
 
-fn condvar_wait() -> ! {
+fn condvar_wait(args: &FixtureArgs) -> ! {
     let pair = Arc::new((Mutex::new(()), Condvar::new()));
     let barrier = Arc::new(Barrier::new(2));
     let (ready_tx, ready_rx) = mpsc::channel();
@@ -179,12 +203,12 @@ fn condvar_wait() -> ! {
         .unwrap();
     barrier.wait();
     wait_for_workers(ready_rx, 1);
-    announce_ready();
+    announce_ready(args);
     black_box(&pair);
     park_forever();
 }
 
-fn mpsc_send_wait() -> ! {
+fn mpsc_send_wait(args: &FixtureArgs) -> ! {
     let (sender, receiver) = mpsc::sync_channel::<u8>(0);
     let barrier = Arc::new(Barrier::new(2));
     let (ready_tx, ready_rx) = mpsc::channel();
@@ -200,12 +224,12 @@ fn mpsc_send_wait() -> ! {
         .unwrap();
     barrier.wait();
     wait_for_workers(ready_rx, 1);
-    announce_ready();
+    announce_ready(args);
     black_box(&receiver);
     park_forever();
 }
 
-fn mpsc_recv_wait() -> ! {
+fn mpsc_recv_wait(args: &FixtureArgs) -> ! {
     let (sender, receiver) = mpsc::channel::<u8>();
     let barrier = Arc::new(Barrier::new(2));
     let (ready_tx, ready_rx) = mpsc::channel();
@@ -221,12 +245,12 @@ fn mpsc_recv_wait() -> ! {
         .unwrap();
     barrier.wait();
     wait_for_workers(ready_rx, 1);
-    announce_ready();
+    announce_ready(args);
     black_box(&sender);
     park_forever();
 }
 
-fn park_wait() -> ! {
+fn park_wait(args: &FixtureArgs) -> ! {
     let barrier = Arc::new(Barrier::new(2));
     let (ready_tx, ready_rx) = mpsc::channel();
     let worker_barrier = Arc::clone(&barrier);
@@ -240,11 +264,11 @@ fn park_wait() -> ! {
         .unwrap();
     barrier.wait();
     wait_for_workers(ready_rx, 1);
-    announce_ready();
+    announce_ready(args);
     park_forever();
 }
 
-fn cycle_wait() -> ! {
+fn cycle_wait(args: &FixtureArgs) -> ! {
     let first = Arc::new(Mutex::new(()));
     let second = Arc::new(Mutex::new(()));
     let barrier = Arc::new(Barrier::new(3));
@@ -281,11 +305,11 @@ fn cycle_wait() -> ! {
 
     barrier.wait();
     wait_for_workers(ready_rx, 2);
-    announce_ready();
+    announce_ready(args);
     park_forever();
 }
 
-fn incomplete_cycle_wait() -> ! {
+fn incomplete_cycle_wait(args: &FixtureArgs) -> ! {
     let mutex = Arc::new(Mutex::new(()));
     let barrier = Arc::new(Barrier::new(3));
     let (ready_tx, ready_rx) = mpsc::channel();
@@ -315,11 +339,11 @@ fn incomplete_cycle_wait() -> ! {
         .unwrap();
     barrier.wait();
     wait_for_workers(ready_rx, 2);
-    announce_ready();
+    announce_ready(args);
     park_forever();
 }
 
-fn healthy_blocked() -> ! {
+fn healthy_blocked(args: &FixtureArgs) -> ! {
     let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
     let barrier = Arc::new(Barrier::new(2));
     let (ready_tx, ready_rx) = mpsc::channel();
@@ -334,24 +358,30 @@ fn healthy_blocked() -> ! {
         .unwrap();
     barrier.wait();
     wait_for_workers(ready_rx, 1);
-    announce_ready();
+    announce_ready(args);
     black_box(listener.accept().unwrap());
     park_forever();
 }
 
 fn main() {
-    match CASE {
-        "join" => join_wait(),
-        "mutex" => mutex_wait(),
-        "rwlock-read" => rwlock_read_wait(),
-        "rwlock-write" => rwlock_write_wait(),
-        "condvar" => condvar_wait(),
-        "mpsc-send" => mpsc_send_wait(),
-        "mpsc-recv" => mpsc_recv_wait(),
-        "park" => park_wait(),
-        "cycle" => cycle_wait(),
-        "incomplete-cycle" => incomplete_cycle_wait(),
-        "healthy-blocked" => healthy_blocked(),
-        _ => panic!("unknown Rust concurrency scenario: {CASE}"),
+    let mut values = std::env::args().skip(1);
+    let args = FixtureArgs {
+        scenario: values.next().expect("scenario argument is required"),
+        ready_port: values.next().map(|value| value.parse().unwrap()),
+        control: matches!(values.next().as_deref(), Some("control")),
+    };
+    match args.scenario.as_str() {
+        "join" => join_wait(&args),
+        "mutex" => mutex_wait(&args),
+        "rwlock-read" => rwlock_read_wait(&args),
+        "rwlock-write" => rwlock_write_wait(&args),
+        "condvar" => condvar_wait(&args),
+        "mpsc-send" => mpsc_send_wait(&args),
+        "mpsc-recv" => mpsc_recv_wait(&args),
+        "park" => park_wait(&args),
+        "cycle" => cycle_wait(&args),
+        "incomplete-cycle" => incomplete_cycle_wait(&args),
+        "healthy-blocked" => healthy_blocked(&args),
+        _ => panic!("unknown Rust concurrency scenario: {}", args.scenario),
     }
 }

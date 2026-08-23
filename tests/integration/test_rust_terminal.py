@@ -6,7 +6,7 @@ import pytest
 
 from tests.integration.rust_adapter_harness import (
     lldb_dap_available,
-    rust_debug_binary as _rust_debug_binary,  # noqa: F401 - registers fixture
+    _rust_debug_binary,  # noqa: F401 - registers rust_debug_binary fixture
     terminal_launch_probe,
 )
 
