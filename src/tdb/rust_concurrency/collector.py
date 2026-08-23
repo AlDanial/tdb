@@ -120,7 +120,10 @@ class RustConcurrencyCollector:
                     len(values),
                     f"scope {scope.name} variables unavailable: {exc}",
                 )
-            values.extend(_raw_variable(variable) for variable in variables)
+            capacity = remaining - len(values)
+            values.extend(
+                _raw_variable(variable) for variable in variables[:capacity]
+            )
         return tuple(values), len(values), None
 
     async def _collect_thread(
@@ -152,8 +155,9 @@ class RustConcurrencyCollector:
         phase = controller.state.phase
         generation = getattr(controller.state, "generation", None)
         client = controller.client
-        threads = list(await client.threads())[: self.max_threads]
-        threads.sort(key=lambda thread: thread.id)
+        threads = sorted(await client.threads(), key=lambda thread: thread.id)[
+            : self.max_threads
+        ]
         collected: dict[int, RawThread] = {}
         warnings: list[str] = []
 
@@ -213,6 +217,7 @@ class RustConcurrencyCollector:
 
     async def collect_and_analyze(self, controller: Any):
         raw = await self.collect(controller)
+        stop_generation = getattr(controller.state, "generation", None)
         probe: ProbeResult | None = None
         warnings = list(raw.warnings)
         if self.probe is not None:
@@ -226,6 +231,11 @@ class RustConcurrencyCollector:
                 raise
             except Exception as exc:
                 warnings.append(f"probe failed: {exc}")
+        self._gate(controller)
+        if getattr(controller.state, "generation", None) != stop_generation:
+            from tdb.session.inspect_service import SessionGateError
+
+            raise SessionGateError("running")
         if tuple(warnings) != raw.warnings:
             raw = replace(raw, warnings=tuple(sorted(warnings)))
         return analyze(raw, probe)

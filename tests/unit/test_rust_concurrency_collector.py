@@ -114,6 +114,39 @@ async def test_probe_timeout_preserves_base_snapshot():
     assert "probe timed out" in snapshot.warnings[0]
 
 
+async def test_collector_discards_result_if_session_resumes_during_probe():
+    client = _client()
+    controller = _controller(client)
+
+    async def resuming_probe(_client):
+        controller.state.transition_to(SessionPhase.RUNNING)
+        return None
+
+    with pytest.raises(SessionGateError, match="running"):
+        await RustConcurrencyCollector(probe=resuming_probe).collect_and_analyze(controller)
+
+
+async def test_collector_enforces_variable_cap_when_adapter_over_returns():
+    client = _client()
+    client.variables.return_value = [
+        Variable("first", "0x10", "Mutex<u8>"),
+        Variable("second", "0x20", "Mutex<u8>"),
+    ]
+
+    raw = await RustConcurrencyCollector(max_variables=1).collect(_controller(client))
+
+    assert [variable.name for variable in raw.threads[0].frames[0].variables] == ["first"]
+
+
+async def test_collector_sorts_threads_before_applying_cap():
+    client = _client()
+    client.threads.return_value = [Thread(3, "three"), Thread(1, "one"), Thread(2, "two")]
+
+    raw = await RustConcurrencyCollector(max_threads=2).collect(_controller(client))
+
+    assert [thread.thread_id for thread in raw.threads] == [1, 2]
+
+
 async def test_collector_propagates_cancellation():
     client = _client()
     controller = _controller(client)
