@@ -48,6 +48,11 @@ def raw_with_top_frame(
     [
         ("std::thread::JoinHandle<T>::join", "join", PrimitiveKind.THREAD),
         (
+            "std::thread::join_handle::JoinHandle<()>::join<()>",
+            "join",
+            PrimitiveKind.THREAD,
+        ),
+        (
             "std::sync::poison::mutex::Mutex<T>::lock",
             "mutex-lock",
             PrimitiveKind.MUTEX,
@@ -74,6 +79,7 @@ def raw_with_top_frame(
             PrimitiveKind.CHANNEL,
         ),
         ("std::thread::park", "park", PrimitiveKind.PARKER),
+        ("std::thread::functions::park", "park", PrimitiveKind.PARKER),
     ],
 )
 def test_classifies_supported_waits(frame_name, expected_operation, expected_kind):

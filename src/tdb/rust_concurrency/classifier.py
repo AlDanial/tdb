@@ -60,11 +60,17 @@ _FRAME_RULES = (
         PrimitiveKind.CONDVAR,
     ),
     _FrameRule(
-        re.compile(r"^std::thread::JoinHandle::join$"),
+        re.compile(
+            r"^std::thread::(?:join_handle::)?JoinHandle::join$"
+        ),
         "join",
         PrimitiveKind.THREAD,
     ),
-    _FrameRule(re.compile(r"^std::thread::park$"), "park", PrimitiveKind.PARKER),
+    _FrameRule(
+        re.compile(r"^std::thread::(?:functions::)?park$"),
+        "park",
+        PrimitiveKind.PARKER,
+    ),
 )
 
 _HEX_TOKEN = re.compile(r"(?<![0-9A-Za-z_])0x[0-9a-fA-F]+(?![0-9A-Za-z_])")
