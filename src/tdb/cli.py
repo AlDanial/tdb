@@ -403,7 +403,10 @@ def _resolve_language(
         lang_id = args.lang or registry.detect(args.program)
         adapter = args.adapter or config.default_adapters.get(lang_id)
         profile = registry.resolve(
-            lang_id, adapter=adapter, adapter_paths=config.adapters
+            lang_id,
+            adapter=adapter,
+            adapter_paths=config.adapters,
+            program=args.program,
         )
     except LanguageNotSupportedError as e:
         parser.error(str(e))
@@ -428,12 +431,25 @@ def _resolve_language(
 
     # gdb's DAP mode has no terminal integration (see GdbDapAdapter.launch_body,
     # which raises the same error as a backstop if this guard is ever
-    # bypassed). Catches both `--adapter gdb` explicitly and the implicit
-    # default (no --adapter given for a cpp debuggee resolves to gdb).
-    if args.terminal and profile.id == "cpp" and profile.adapter.id == "gdb":
+    # bypassed). Checked on the adapter id alone (not profile.id) since
+    # both cpp and ocaml resolve to the same GdbDapAdapter/OCamlGdbAdapter;
+    # catches both `--adapter gdb` explicitly and the implicit default (no
+    # --adapter given for a cpp debuggee resolves to gdb).
+    if args.terminal and profile.adapter.id == "gdb":
         parser.error(
             "--terminal is not supported with the gdb adapter (gdb's DAP "
             "mode has no terminal integration) — use `--adapter lldb-dap`"
+        )
+
+    # ocamlearlybird has no terminal integration either (see
+    # EarlybirdAdapter.launch_body, which raises the same error as a
+    # backstop if this guard is ever bypassed) — it always launches with
+    # console: internalConsole regardless of the requested console.
+    if args.terminal and profile.adapter.id == "ocamlearlybird":
+        parser.error(
+            "--terminal is not supported with the ocamlearlybird adapter "
+            "(earlybird has no terminal integration) — use "
+            "`--adapter lldb-dap`"
         )
 
 

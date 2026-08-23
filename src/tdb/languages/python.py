@@ -90,11 +90,13 @@ class DebugpyAdapter(AdapterSpec):
 
 
 def build_python_profile(
-    adapter: str | None = None, adapter_paths: dict[str, str] | None = None
+    adapter: str | None = None,
+    adapter_paths: dict[str, str] | None = None,
+    program: str | None = None,
 ) -> LanguageProfile:
-    """Registry builder. `adapter`/`adapter_paths` exist for signature
-    parity with other languages; Python has exactly one adapter and it
-    always runs on tdb's own interpreter."""
+    """Registry builder. `adapter`/`adapter_paths`/`program` exist for
+    signature parity with other languages; Python has exactly one
+    adapter and it always runs on tdb's own interpreter."""
     if adapter not in (None, "debugpy"):
         raise LanguageNotSupportedError(
             f"unknown adapter {adapter!r} for python (known: debugpy)"

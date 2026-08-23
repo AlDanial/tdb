@@ -333,6 +333,8 @@ class TdbApp(_AppMessageRoutes, App):
         code_view = self.query_one("#code-view", CodeView)
         code_view.keybindings = KeybindingConfig.from_scheme(self._config.keybindings)
         code_view.lexer_name = self.controller.profile.presentation.lexer
+        stack_view = self.query_one("#stack-view", StackView)
+        stack_view.name_filter = self.controller.profile.presentation.frame_name
         self._update_code_title(code_view)
         self.sub_title = f"{self.controller.profile.display_name} Debugger"
 

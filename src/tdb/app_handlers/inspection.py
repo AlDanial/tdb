@@ -36,6 +36,8 @@ _TASK_FRAME_RE = re.compile(r"^(.+) at (.+):(\d+)$")
 
 if TYPE_CHECKING:
     from tdb.app import TdbApp
+    from tdb.dap.types import Thread
+    from tdb.languages.base import ThreadDecoration
 
 log = logging.getLogger(__name__)
 
@@ -206,6 +208,29 @@ class InspectionWorkflows:
         else:
             menu_bar.update_action_label("threads-label", "Threads")
 
+    async def _classify_threads(
+        self, threads: list[Thread]
+    ) -> list[ThreadDecoration] | None:
+        """Build ThreadDecorations for `threads` when the active profile
+        supports classification (OCaml native domains today), else None.
+
+        Fetches each thread's stack via `thread_frames` (stack only, no
+        scopes/variables — cheap). Probe-verified: lldb-dap's thread list
+        right after a stop can be briefly incomplete (~1-2s); the modal's
+        `r` refresh re-fetches, so we don't poll here.
+        """
+        ctrl = self.app.controller
+        classify = ctrl.profile.capabilities.classify_threads
+        if classify is None:
+            return None
+        stacks = {}
+        for t in threads:
+            try:
+                stacks[t.id] = await self._svc.thread_frames(t.id)
+            except Exception:
+                log.debug("stack fetch for thread %d failed", t.id)
+        return classify(threads, stacks)
+
     async def open_threads(self) -> None:
         """Fetch threads and open the modal."""
         ctrl = self.app.controller
@@ -226,7 +251,13 @@ class InspectionWorkflows:
         if not threads:
             self.app.notify("No threads found", title="Threads")
             return
-        modal = ThreadsModal(threads, ctrl.state.current_thread_id)
+        decorations = await self._classify_threads(threads)
+        modal = ThreadsModal(
+            threads,
+            ctrl.state.current_thread_id,
+            frame_name=ctrl.profile.presentation.frame_name,
+            decorations=decorations,
+        )
         self.app.panels.threads = modal
         self.app.push_screen(modal, callback=self._on_threads_dismissed)
 
@@ -300,9 +331,11 @@ class InspectionWorkflows:
             log.exception("Error refreshing threads")
             return
         if self.app.panels.threads is not None:
+            decorations = await self._classify_threads(threads)
             self.app.panels.threads.update_threads(
                 threads,
                 ctrl.state.current_thread_id,
+                decorations=decorations,
             )
 
     # --- Processes ------------------------------------------------------

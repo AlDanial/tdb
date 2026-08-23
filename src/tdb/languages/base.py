@@ -19,7 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
-from tdb.dap.types import Capabilities
+from tdb.dap.types import Capabilities, StackFrame, Thread
 
 
 class AdapterNotFoundError(Exception):
@@ -117,6 +117,15 @@ class ErrorFrame:
 
 
 @dataclass(frozen=True)
+class ThreadDecoration:
+    """Display decision for one DAP thread (see classify_threads)."""
+
+    thread: Thread
+    label: str | None  # display override; None -> adapter's name
+    hidden: bool  # runtime service thread: hidden unless "show all"
+
+
+@dataclass(frozen=True)
 class ParsedError:
     """A language's fatal-error text, parsed into modal-ready pieces."""
 
@@ -160,6 +169,11 @@ class Presentation:
     # match that instead of showing Python's "<module>").
     frame_placeholder: str = "<module>"
 
+    # Rewrite a stack frame's display name (e.g. demangle OCaml's
+    # "camlMain__worker_271" -> "Main.worker"). Display-only: DAP frame
+    # ids/sources are untouched. None -> show adapter names verbatim.
+    frame_name: Callable[[str], str] | None = None
+
 
 @dataclass(frozen=True)
 class ProfileCapabilities:
@@ -192,6 +206,16 @@ class ProfileCapabilities:
     # actually has locals; the Stack view still shows the full stack.
     # None -> every frame is selectable (current behavior).
     opaque_frame: Callable[[str], bool] | None = None
+
+    # Classify the debuggee's threads for display: label domains, hide
+    # runtime service threads (OCaml backup threads). Receives all
+    # threads plus per-thread stacks (dict may be missing entries —
+    # classify without them). Returns decorations in the same order.
+    # None -> every thread shown with the adapter's name.
+    classify_threads: (
+        Callable[[list[Thread], dict[int, list[StackFrame]]], list[ThreadDecoration]]
+        | None
+    ) = None
 
 
 @dataclass(frozen=True)

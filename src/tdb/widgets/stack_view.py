@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 from textual.message import Message
 from textual.widgets import DataTable
@@ -37,6 +37,7 @@ class StackView(DataTable):
         self._frames: list[StackFrame] = []
         self._updating: bool = False
         self._current_frame_id: int | None = None
+        self.name_filter: Callable[[str], str] | None = None
 
     def on_mount(self) -> None:
         self.add_columns("#", "Function", "Location")
@@ -58,7 +59,10 @@ class StackView(DataTable):
                 elif frame.source and frame.source.name:
                     source_name = f"{frame.source.name}:{frame.line}"
 
-                self.add_row(str(i), frame.name, source_name, key=str(frame.id))
+                display_name = (
+                    self.name_filter(frame.name) if self.name_filter else frame.name
+                )
+                self.add_row(str(i), display_name, source_name, key=str(frame.id))
                 self._frame_ids.append(frame.id)
 
             # Select current frame
