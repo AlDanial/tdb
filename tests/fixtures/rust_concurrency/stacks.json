@@ -7,12 +7,12 @@
     "std::sync::poison::condvar::Condvar::wait",
     "std::sync::mpsc::Receiver<T>::recv",
     "std::sync::mpsc::SyncSender<T>::send",
-    "std::sync::mpsc::Sender<T>::send",
     "std::thread::park"
   ],
   "non_rust_wait_frames": [
     "my_app::parking_lot::park",
     "futex_waitv",
-    "_RNvNtCs7R42Foo4main4park"
+    "_RNvNtCs7R42Foo4main4park",
+    "std::sync::mpsc::Sender<T>::send"
   ]
 }

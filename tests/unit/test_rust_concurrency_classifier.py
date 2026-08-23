@@ -73,11 +73,6 @@ def raw_with_top_frame(
             "mpsc-send",
             PrimitiveKind.CHANNEL,
         ),
-        (
-            "std::sync::mpsc::Sender<T>::send",
-            "mpsc-send",
-            PrimitiveKind.CHANNEL,
-        ),
         ("std::thread::park", "park", PrimitiveKind.PARKER),
     ],
 )
@@ -98,6 +93,7 @@ def test_classifies_supported_waits(frame_name, expected_operation, expected_kin
         "futex_waitv",
         "_RNvNtCs7R42Foo4main4park",
         "std::::thread::park",
+        "std::sync::mpsc::Sender<T>::send",
     ],
 )
 def test_unrecognized_application_and_platform_frames_are_not_waits(frame_name):
@@ -205,5 +201,38 @@ def test_platform_wait_only_corroborates_an_already_recognized_rust_wait():
             Confidence.PROBABLE,
             "platform-wait",
             "futex_wait",
+        ),
+    )
+
+
+def test_application_frame_named_like_futex_does_not_corroborate_a_rust_wait():
+    raw = RawSnapshot(
+        adapter="gdb",
+        platform="linux",
+        rust_version="1.98.0",
+        threads=(
+            RawThread(
+                thread_id=7,
+                name="worker",
+                frames=(
+                    RawFrame(1, "my_app::futex_wait", None, 0),
+                    RawFrame(
+                        2,
+                        "std::sync::poison::mutex::Mutex<T>::lock",
+                        None,
+                        0,
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    _, _, edges = classify_snapshot(raw)
+
+    assert edges[0].evidence == (
+        Evidence(
+            Confidence.UNKNOWN,
+            "stack",
+            "std::sync::poison::mutex::Mutex<T>::lock",
         ),
     )

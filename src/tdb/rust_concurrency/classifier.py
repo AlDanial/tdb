@@ -35,11 +35,6 @@ _FRAME_RULES = (
         PrimitiveKind.CHANNEL,
     ),
     _FrameRule(
-        re.compile(r"^std::sync::mpsc::Sender::send$"),
-        "mpsc-send",
-        PrimitiveKind.CHANNEL,
-    ),
-    _FrameRule(
         re.compile(r"^std::sync::mpsc::Receiver::recv$"),
         "mpsc-recv",
         PrimitiveKind.CHANNEL,
@@ -74,8 +69,13 @@ _FRAME_RULES = (
 
 _HEX_TOKEN = re.compile(r"(?<![0-9A-Za-z_])0x[0-9a-fA-F]+(?![0-9A-Za-z_])")
 _LEGACY_HASH_SUFFIX = re.compile(r"::h[0-9a-fA-F]+$")
-_PLATFORM_WAIT_FRAME = re.compile(
-    r"(?:^|::)(?:_*futex(?:_|$)|_*pthread(?:_|$)|__?ulock(?:_|$)|__psynch(?:_|$))"
+_PLATFORM_WAIT_FRAMES = (
+    re.compile(r"^futex_wait(?:v)?$"),
+    re.compile(r"^__futex(?:_abstimed_wait_common(?:64)?|_wait)$"),
+    re.compile(r"^pthread_(?:cond|mutex)_wait$"),
+    re.compile(r"^__pthread_cond_wait_common$"),
+    re.compile(r"^__ulock_wait$"),
+    re.compile(r"^__psynch_cvwait$"),
 )
 
 
@@ -119,12 +119,18 @@ def _address_from(frame: RawFrame) -> tuple[str | None, str | None]:
     return None, None
 
 
+def _is_platform_wait_frame(frame: RawFrame) -> bool:
+    """Recognize only known native wait symbols, never application lookalikes."""
+    name = _normalize_frame_name(frame.name)
+    return any(pattern.fullmatch(name) is not None for pattern in _PLATFORM_WAIT_FRAMES)
+
+
 def _classify_wait(thread: RawThread) -> _Wait | None:
     platform_wait = next(
         (
             frame
             for frame in thread.frames
-            if _PLATFORM_WAIT_FRAME.search(_normalize_frame_name(frame.name))
+            if _is_platform_wait_frame(frame)
         ),
         None,
     )
