@@ -42,6 +42,60 @@ _CONFIDENCE_RANK = {
 MAX_WAIT_CYCLES = 256
 
 
+def _cyclic_components(adjacency: dict[int, list[WaitEdge]]) -> tuple[frozenset[int], ...]:
+    """Return deterministic strongly connected components that can contain cycles."""
+    nodes = sorted(
+        set(adjacency)
+        | {
+            edge.owner_thread_id
+            for outgoing in adjacency.values()
+            for edge in outgoing
+            if edge.owner_thread_id is not None
+        }
+    )
+    index = 0
+    indexes: dict[int, int] = {}
+    lowlinks: dict[int, int] = {}
+    stack: list[int] = []
+    on_stack: set[int] = set()
+    components: list[frozenset[int]] = []
+
+    def connect(node: int) -> None:
+        nonlocal index
+        indexes[node] = index
+        lowlinks[node] = index
+        index += 1
+        stack.append(node)
+        on_stack.add(node)
+        for edge in adjacency.get(node, ()):
+            owner = edge.owner_thread_id
+            assert owner is not None
+            if owner not in indexes:
+                connect(owner)
+                lowlinks[node] = min(lowlinks[node], lowlinks[owner])
+            elif owner in on_stack:
+                lowlinks[node] = min(lowlinks[node], indexes[owner])
+        if lowlinks[node] != indexes[node]:
+            return
+        component: set[int] = set()
+        while True:
+            member = stack.pop()
+            on_stack.remove(member)
+            component.add(member)
+            if member == node:
+                break
+        has_self_loop = any(
+            edge.owner_thread_id == node for edge in adjacency.get(node, ())
+        )
+        if len(component) > 1 or has_self_loop:
+            components.append(frozenset(component))
+
+    for node in nodes:
+        if node not in indexes:
+            connect(node)
+    return tuple(sorted(components, key=lambda component: tuple(sorted(component))))
+
+
 def _strongest_confidence(evidence: tuple[Evidence, ...]) -> Confidence:
     """Return the strongest direct observation without discarding evidence."""
     if not evidence:
@@ -75,6 +129,22 @@ def _find_cycles(
         outgoing.sort(
             key=lambda edge: (edge.owner_thread_id, edge.primitive_id, edge.operation)
         )
+
+    component_by_node = {
+        node: component
+        for component in _cyclic_components(adjacency)
+        for node in component
+    }
+    adjacency = {
+        waiter: [
+            edge
+            for edge in outgoing
+            if edge.owner_thread_id in component_by_node
+            and component_by_node.get(waiter) == component_by_node[edge.owner_thread_id]
+        ]
+        for waiter, outgoing in adjacency.items()
+        if waiter in component_by_node
+    }
 
     active: list[int] = []
     active_edges: list[WaitEdge] = []

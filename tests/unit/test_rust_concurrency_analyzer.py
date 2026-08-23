@@ -317,3 +317,16 @@ def test_dense_owner_graph_caps_cycles_and_warns():
 
     assert len(snapshot.confirmed_deadlocks) == 256
     assert "Wait-cycle analysis truncated after 256 cycles." in snapshot.warnings
+
+
+def test_dense_acyclic_owner_graph_has_no_cycles_or_truncation_warning():
+    from tdb.rust_concurrency.models import WaitEdge
+
+    confirmed = (Evidence(Confidence.CONFIRMED, "probe-owner", "owner"),)
+    edges = tuple(
+        WaitEdge(waiter, f"mutex:{waiter}:{owner}", owner, "mutex-lock", confirmed)
+        for waiter in range(1, 19)
+        for owner in range(waiter + 1, 19)
+    )
+
+    assert find_confirmed_cycles(edges) == ()
