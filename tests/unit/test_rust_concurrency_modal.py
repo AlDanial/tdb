@@ -231,3 +231,61 @@ def test_edge_label_uses_strongest_evidence():
 
     modal = object.__new__(RustConcurrencyModal)
     assert "[confirmed]" in str(modal._edge_label(mixed))
+
+
+async def test_enter_outside_the_tables_does_not_select_a_thread():
+    """Enter on the tab bar (initial focus) must not close/re-target via
+    a surprise SelectThread — it belongs to whichever widget has focus."""
+    app = _ModalApp()
+    async with app.run_test() as pilot:
+        modal = RustConcurrencyModal(sample_snapshot(), current_thread_id=1)
+        messages = []
+        original_post_message = modal.post_message
+
+        def record(message):
+            messages.append(message)
+            return original_post_message(message)
+
+        modal.post_message = record  # type: ignore[method-assign]
+        app.push_screen(modal)
+        await pilot.pause()
+
+        assert modal.focused is not modal.query_one("#threads-table")
+        await pilot.press("enter")
+        await pilot.pause()
+
+        assert not any(
+            isinstance(message, RustConcurrencyModal.SelectThread)
+            for message in messages
+        )
+
+
+async def test_dismiss_removes_workspace_even_under_a_stacked_overlay():
+    """Screen.dismiss() pops the TOP screen, so lifecycle cleanup must
+    first unwind anything stacked above the workspace (e.g. a
+    full-contents modal) instead of destroying it and leaking the
+    workspace."""
+    from textual.screen import Screen
+
+    from tdb.app_handlers.ui_panels import UIPanels
+
+    class _Overlay(Screen[None]):
+        pass
+
+    app = _ModalApp()
+    async with app.run_test() as pilot:
+        modal = RustConcurrencyModal(sample_snapshot(), current_thread_id=1)
+        panels = UIPanels()
+        panels.rust_concurrency = modal
+        app.push_screen(modal)
+        await pilot.pause()
+        overlay = _Overlay()
+        app.push_screen(overlay)
+        await pilot.pause()
+
+        panels.dismiss_rust_concurrency()
+        await pilot.pause()
+
+        assert panels.rust_concurrency is None
+        assert modal not in app.screen_stack
+        assert overlay not in app.screen_stack

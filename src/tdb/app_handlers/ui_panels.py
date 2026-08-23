@@ -66,7 +66,24 @@ class UIPanels:
         if modal is None:
             return
         try:
-            modal.dismiss()
+            app = modal.app
+            stack = app.screen_stack
+        except Exception:
+            app = stack = None
+        try:
+            if app is None or stack is None:
+                modal.dismiss()
+                return
+            # Screen.dismiss() pops whichever screen is topmost, so a modal
+            # stacked above the workspace (e.g. FullContentsModal opened
+            # from the variables tree) must be popped first or dismiss()
+            # would destroy IT and leak the workspace. Anything above the
+            # workspace is rendering the same stale stop, so closing it
+            # too is correct.
+            while modal in app.screen_stack and app.screen is not modal:
+                app.pop_screen()
+            if app.screen is modal:
+                modal.dismiss()
         except Exception:
             # The registry's cleanup guarantee is more important than a
             # best-effort notification to an already-unmounted screen.

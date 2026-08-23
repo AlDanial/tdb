@@ -397,12 +397,18 @@ class RustConcurrencyModal(ModalScreen[None]):
         self.post_message(self.RefreshSnapshot())
 
     def action_select_current(self) -> None:
+        # Only act when one of the two tables holds focus. With focus
+        # anywhere else (tab bar, wait-graph tree, variables view) Enter
+        # must fall through to that widget — selecting the threads-table
+        # row from the tab bar would close the workspace and re-target the
+        # session as a surprise side effect of tab navigation.
         frames = self.query_one("#frames-table", DataTable)
         if self.focused is frames:
             self._select_frame_at(frames.cursor_row)
             return
         table = self.query_one("#threads-table", DataTable)
-        self._select_thread_at(table.cursor_row)
+        if self.focused is table:
+            self._select_thread_at(table.cursor_row)
 
     def _select_thread_at(self, row: int | None) -> None:
         if row is None or not (0 <= row < len(self._thread_ids)):

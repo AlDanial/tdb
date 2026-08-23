@@ -242,8 +242,11 @@ class InspectionWorkflows:
             self.app.notify("Program is running — pause first", title="Threads")
             return
         if ctrl.profile.capabilities.concurrency_inspection == "rust":
-            await self.open_rust_concurrency()
-            return
+            if await self.open_rust_concurrency():
+                return
+            # Snapshot collection failed (probe/collector error, not a
+            # session gate): fall through to the generic thread list so a
+            # Rust session never loses its threads view entirely.
         try:
             threads = await self._svc.list_threads()
         except SessionGateError:
@@ -268,20 +271,29 @@ class InspectionWorkflows:
     def _on_threads_dismissed(self, _result: object) -> None:
         self.app.panels.threads = None
 
-    async def open_rust_concurrency(self) -> None:
-        """Collect Rust's immutable wait-graph snapshot and open its workspace."""
+    async def open_rust_concurrency(self) -> bool:
+        """Collect Rust's immutable wait-graph snapshot and open its workspace.
+
+        Returns False only when snapshot collection itself failed — the
+        caller then falls back to the generic Threads modal. Session-gate
+        refusals return True: the generic list would be gated identically.
+        """
         ctrl = self.app.controller
         try:
             snapshot = await self._svc.collect_rust_concurrency()
         except SessionGateError:
-            return
+            return True
         except Exception:
             log.exception("Error collecting Rust concurrency")
-            self.app.notify("Failed to inspect Rust concurrency", title="Threads")
-            return
+            self.app.notify(
+                "Rust concurrency snapshot failed — showing plain thread list",
+                title="Threads",
+            )
+            return False
         modal = RustConcurrencyModal(snapshot, ctrl.state.current_thread_id)
         self.app.panels.rust_concurrency = modal
         self.app.push_screen(modal, callback=self._on_rust_concurrency_dismissed)
+        return True
 
     def _on_rust_concurrency_dismissed(self, _result: object) -> None:
         self.app.panels.rust_concurrency = None
@@ -291,9 +303,15 @@ class InspectionWorkflows:
         try:
             snapshot = await self._svc.collect_rust_concurrency()
         except SessionGateError:
+            # Resume/termination is already closing the workspace; no
+            # notification needed for the race.
             return
         except Exception:
             log.exception("Error refreshing Rust concurrency")
+            self.app.notify(
+                "Refresh failed — showing the previous snapshot",
+                title="Rust Concurrency",
+            )
             return
         modal = self.app.panels.rust_concurrency
         if modal is not None:
