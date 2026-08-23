@@ -353,7 +353,9 @@ picture:
 ### Rust
 
 Rust debugging is intentionally explicit: build a normal debug executable,
-leave it unmodified, and pass that executable with `--lang rust`. `tdb` does
+leave it unmodified, and pass that executable with `--lang rust`. Linux and
+macOS are supported; Windows is not yet (MSVC-toolchain binaries carry PDB
+debug info that neither `gdb -i dap` nor this release's probes read). `tdb` does
 not compile, instrument, or auto-detect Rust programs. Core debugging
 (breakpoints, stepping, stacks, variables, remote attach) works with any
 rustc that emits debug info; the concurrency inspector's layout-specific
