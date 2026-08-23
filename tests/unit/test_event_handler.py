@@ -136,3 +136,31 @@ def test_continued_dismisses_rust_workspace():
     assert modal.dismiss_calls == 1
     assert app.panels.rust_concurrency is None
     assert app.ui_state_updates == 1
+
+
+def test_exited_dismisses_rust_workspace_without_terminated_event():
+    """Exited-only adapters must not retain stale Rust snapshot screens."""
+    class _App:
+        def __init__(self) -> None:
+            self.controller = DebugController(ServerEventHandler())
+            self._stderr_buffer: list[str] = []
+            self.panels = UIPanels()
+
+        def query_one(self, selector, _type=None):
+            raise AssertionError("console output is irrelevant to lifecycle cleanup")
+
+    class _Modal:
+        def __init__(self) -> None:
+            self.dismiss_calls = 0
+
+        def dismiss(self) -> None:
+            self.dismiss_calls += 1
+
+    app = _App()
+    modal = _Modal()
+    app.panels.rust_concurrency = modal  # type: ignore[assignment]
+
+    DapEventCoordinator(app).on_exited(0)  # type: ignore[arg-type]
+
+    assert modal.dismiss_calls == 1
+    assert app.panels.rust_concurrency is None

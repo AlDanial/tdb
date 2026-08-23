@@ -282,6 +282,20 @@ class InspectionWorkflows:
             frames, scopes, variables = [], [], {}
         modal.show_thread_detail(thread_id, frames, scopes, variables)
 
+    async def load_rust_thread_detail(self, thread_id: int) -> None:
+        """Populate a Rust workspace's selected thread with live DAP detail."""
+        modal = self.app.panels.rust_concurrency
+        if modal is None:
+            return
+        try:
+            frames, scopes, variables = await self._svc.thread_stack(thread_id)
+        except SessionGateError:
+            return
+        except Exception:
+            log.debug("Failed to fetch Rust thread detail for %d", thread_id)
+            frames, scopes, variables = [], [], {}
+        modal.show_thread_detail(thread_id, frames, scopes, variables)
+
     # --- Full-Contents (variable subtree pre-fetch) --------------------
 
     async def load_full_variable(self, ref: int, label: str):

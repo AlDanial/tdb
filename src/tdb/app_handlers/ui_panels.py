@@ -54,11 +54,29 @@ class UIPanels:
     last_can_restart: bool = False
     last_header: str | None = None
 
+    def dismiss_rust_concurrency(self) -> None:
+        """Safely close the live Rust workspace and drop its stale reference.
+
+        Lifecycle code may arrive after Textual has already removed the
+        screen, so clearing the reference first keeps restart/termination
+        cleanup idempotent even if dismissal itself cannot complete.
+        """
+        modal = self.rust_concurrency
+        self.rust_concurrency = None
+        if modal is None:
+            return
+        try:
+            modal.dismiss()
+        except Exception:
+            # The registry's cleanup guarantee is more important than a
+            # best-effort notification to an already-unmounted screen.
+            pass
+
     def clear(self) -> None:
         """Drop all modal refs and reset transient flags. Called on
         session restart so stale modal instances aren't kept alive."""
         self.threads = None
-        self.rust_concurrency = None
+        self.dismiss_rust_concurrency()
         self.processes = None
         self.async_tasks = None
         self.exception_modal_shown = False

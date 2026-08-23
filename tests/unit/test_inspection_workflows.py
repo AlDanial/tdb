@@ -97,6 +97,32 @@ async def test_non_rust_threads_action_keeps_generic_threads_modal(monkeypatch):
     assert app.panels.rust_concurrency is None
 
 
+async def test_rust_thread_detail_uses_live_inspect_service(monkeypatch):
+    """Rust snapshots are immutable analysis, so frame locals come from DAP detail."""
+    workflow, app = _wf(profile=build_rust_profile(adapter="lldb-dap"))
+
+    class _Modal:
+        details = []
+
+        def show_thread_detail(self, *detail) -> None:
+            self.details.append(detail)
+
+    modal = _Modal()
+    app.panels.rust_concurrency = modal  # type: ignore[assignment]
+
+    async def thread_stack(thread_id):
+        assert thread_id == 1
+        return ["frames"], ["scopes"], {3: ["variables"]}
+
+    monkeypatch.setattr(workflow._svc, "thread_stack", thread_stack)
+
+    await workflow.load_rust_thread_detail(1)
+
+    assert modal.details == [
+        (1, ["frames"], ["scopes"], {3: ["variables"]}),
+    ]
+
+
 # --- State guards ------------------------------------------------------
 
 

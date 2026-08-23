@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from textual.app import App
 
+from tdb.dap.types import Scope, Source, StackFrame, Variable
+
 from tdb.rust_concurrency.models import (
     ConcurrencySnapshot,
     Confidence,
@@ -85,3 +87,73 @@ async def test_modal_has_three_tabs():
         assert modal.query_one("#threads-tab")
         assert modal.query_one("#wait-graph-tab")
         assert modal.query_one("#findings-tab")
+
+
+async def test_thread_highlight_requests_live_detail():
+    """Removing live-detail loading would leave the locals pane permanently empty."""
+    app = _ModalApp()
+    async with app.run_test() as pilot:
+        modal = RustConcurrencyModal(sample_snapshot(), current_thread_id=1)
+        messages = []
+        original_post_message = modal.post_message
+
+        def record(message):
+            messages.append(message)
+            return original_post_message(message)
+
+        modal.post_message = record  # type: ignore[method-assign]
+        app.push_screen(modal)
+        await pilot.pause()
+
+        assert any(
+            isinstance(message, RustConcurrencyModal.LoadThreadDetail)
+            and message.thread_id == 1
+            for message in messages
+        )
+
+
+async def test_live_detail_populates_locals_and_frame_selection_posts_message():
+    """A Rust workspace frame must be selectable, not just painted as text."""
+    app = _ModalApp()
+    async with app.run_test() as pilot:
+        modal = RustConcurrencyModal(sample_snapshot(), current_thread_id=1)
+        messages = []
+        original_post_message = modal.post_message
+
+        def record(message):
+            messages.append(message)
+            return original_post_message(message)
+
+        modal.post_message = record  # type: ignore[method-assign]
+        app.push_screen(modal)
+        await pilot.pause()
+
+        modal.show_thread_detail(
+            1,
+            [
+                StackFrame(
+                    id=41,
+                    name="wait_for_work",
+                    source=Source(path="/src/main.rs"),
+                    line=12,
+                )
+            ],
+            [Scope(name="Locals", variables_reference=9)],
+            {9: [Variable(name="guard", value="MutexGuard", variables_reference=0)]},
+        )
+        frames = modal.query_one("#frames-table")
+        frames.focus()
+        await pilot.press("enter")
+        await pilot.pause()
+
+        variables = modal.query_one("#vars")
+        scope = next(
+            node for node in variables.root.children if "Locals" in str(node.label)
+        )
+        assert any("guard" in str(node.label) for node in scope.children)
+        assert any(
+            isinstance(message, RustConcurrencyModal.SelectFrame)
+            and message.thread_id == 1
+            and message.frame_id == 41
+            for message in messages
+        )

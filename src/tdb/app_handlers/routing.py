@@ -178,6 +178,12 @@ class _AppMessageRoutes:
     ) -> None:
         await self._inspection.refresh_rust_concurrency()
 
+    async def on_rust_concurrency_modal_load_thread_detail(
+        self,
+        message: RustConcurrencyModal.LoadThreadDetail,
+    ) -> None:
+        await self._inspection.load_rust_thread_detail(message.thread_id)
+
     async def on_rust_concurrency_modal_select_thread(
         self,
         message: RustConcurrencyModal.SelectThread,

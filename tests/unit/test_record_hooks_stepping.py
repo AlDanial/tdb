@@ -1,6 +1,7 @@
 """Stepping/continue/pause/stack/restart/quit gestures produce records."""
 
 import pytest
+from unittest.mock import Mock
 
 from tdb.app import TdbApp
 from tdb.persist import TdbConfig
@@ -106,6 +107,19 @@ async def test_restart_unsupported_records_nothing(app_cap, monkeypatch):
     worker = app._restart_session()
     await worker.wait()
     assert cap.records == []
+
+
+async def test_restart_dismisses_live_rust_workspace(app_cap, monkeypatch):
+    """Restart cleanup must close the screen as well as forget its reference."""
+    app, _, _ = app_cap
+    modal = Mock()
+    app.panels.rust_concurrency = modal
+    monkeypatch.setattr(app.controller, "stop", _noop)
+    worker = app._restart_session(start_immediately=False)
+    await worker.wait()
+
+    modal.dismiss.assert_called_once_with()
+    assert app.panels.rust_concurrency is None
 
 
 async def test_file_open_restart_not_recorded_but_notifies(
