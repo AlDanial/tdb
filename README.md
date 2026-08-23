@@ -199,11 +199,11 @@ The language is auto-detected from the debug target:
 
 1. File extension: `.py` → Python; `.pl` / `.pm` / `.t` → Perl; `.sh` / `.bash`
    → Bash; `.csh` / `.tcsh` → Tcsh; `.rb` → Ruby. (`.ml` / `.mli` do *not*
-   auto-select OCaml — see point 5.)
+   auto-select OCaml, see point 5.)
 2. Native executables (ELF, Mach-O, PE magic bytes) → C/C++, unless
-   byte-sniffing finds an OCaml marker — a native binary's
+   byte-sniffing finds an OCaml marker, either a native binary's
    `caml_program`/`caml_startup` runtime symbols, a bytecode file's
-   trailing `Caml1999` marker, or a `#!...ocamlrun` shebang — in which case
+   trailing `Caml1999` marker, or a `#!...ocamlrun` shebang, in which case
    → OCaml (native or bytecode respectively). A stripped native OCaml
    binary that byte-sniffing can't identify falls back to C/C++; force it
    with `--lang ocaml`.
@@ -212,7 +212,7 @@ The language is auto-detected from the debug target:
 4. C/C++/Rust *source* files (`.c`, `.cpp`, `.rs`, …) produce an error with a
    hint: compile with debug info (`g++ -g -O0`) and debug the binary.
 5. `.ml` / `.mli` (OCaml source) produce an error too: build the project
-   first — dune's dev profile keeps debug info — and pass the **built
+   first (dune's dev profile keeps debug info) and pass the **built
    executable** to `tdb` (`tdb ./_build/default/bin/main.exe`), never the
    `.ml` file.
 6. Anything else produces an error naming the `--lang` override.
@@ -254,8 +254,8 @@ programs by nature). Remote attach (`-r`) also works for Perl (see
 [Perl](#perl), `Devel::TdbRemote` in place of `debugpy.listen()`) and Ruby
 (see [Ruby](#ruby), `rdbg --open` in place of `debugpy.listen()`), but not
 for C/C++, Bash, Tcsh, or OCaml. `--terminal` works for every launch-mode
-language — Python, Perl, Bash, Tcsh, Ruby, and C/C++ or OCaml native
-sessions via `--adapter lldb-dap` — see
+language--Python, Perl, Bash, Tcsh, Ruby, and C/C++ or OCaml native
+sessions via `--adapter lldb-dap`, ref.
 [External Terminal Support](#external-terminal-support).
 
 **Bash limitations (v1):** the bash adapter uses bash's own `DEBUG` trap and
@@ -304,11 +304,11 @@ paths and line numbers are preserved in everything tdb displays):
 See [Tcsh](#tcsh) below for launch details.
 
 **OCaml limitations (v1):** OCaml has two independent adapters with
-different, non-overlapping gaps — see [OCaml](#ocaml) below for the full
+different, non-overlapping gaps; see [OCaml](#ocaml) below for the full
 picture:
 
 - **Native (`lldb-dap`/`gdb`):** the Variables view shows no named OCaml
-  locals in an OCaml frame (only a `Registers` scope) — this is an
+  locals in an OCaml frame (only a `Registers` scope). This is an
   upstream OCaml/DWARF limitation on stock OCaml 5.4, not a `tdb` bug; use
   the bytecode adapter when you need to inspect locals. The evaluate
   console evaluates lldb/C-level expressions (runtime spelunking), not
@@ -318,7 +318,7 @@ picture:
   never gets a response for any expression (an `ocamlearlybird` 1.3.6
   limitation); and the fatal-error modal doesn't appear for an uncaught
   exception (`ocamlearlybird` swallows the real exception text before it
-  reaches `tdb`) — run the program outside the debugger to see the
+  reaches `tdb`). Run the program outside the debugger to see the
   backtrace instead.
 - No Windows support, no remote attach, and a stripped native binary that
   byte-sniffing can't identify needs `--lang ocaml`.
@@ -536,7 +536,7 @@ Remote attach: start the program with
 `rdbg --open --port 5678 --host 0.0.0.0 script.rb` (add `--nonstop` to
 let it run before you attach), then `tdb -r HOST:5678 --lang ruby`.
 Note: rdbg's `--cookie` authentication is not part of DAP and is not
-supported — bind to localhost and tunnel over SSH instead.
+supported; bind to localhost and tunnel over SSH instead.
 `--local-root`/`--remote-root` path mappings are not supported for Ruby
 yet. Bundler projects work when your environment resolves `rdbg`
 (`gem install debug` into the project's Ruby); there is no `bundle
@@ -558,7 +558,7 @@ from how the executable was built:
 
 **Build requirement:** compile with `-g` (dune's dev profile already
 does). Always pass the **built executable** to `tdb`, never the `.ml`
-source — `tdb ./_build/default/bin/main.exe`, not `tdb main.ml` (which
+source, as in `tdb ./_build/default/bin/main.exe`, not `tdb main.ml` (which
 errors with this exact guidance).
 
 ```bash
@@ -592,24 +592,24 @@ runtime's raw `camlModule__name_NNN` convention into readable
 `Ocaml_domains.worker`); runtime C frames (`caml_start_program`,
 `caml_callback_exn`, and the like) are shown as-is, unchanged.
 
-**Variables view (native):** stock OCaml 5.4 native DWARF exposes **no
-named locals** — the `scopes`/`variables` round trip succeeds, but every
+**Variables view (native):** stock OCaml 5.4 native DWARF shows **no
+named locals**. The `scopes`/`variables` round trip succeeds, but every
 OCaml frame's `Locals` and `Globals` scopes come back empty; only a
 `Registers` scope has data (the raw register file, not decoded OCaml
 values). This is an upstream OCaml compiler/DWARF limitation on the
-verified toolchain (OCaml 5.4.0 / lldb 21), not a `tdb` bug — if you need
+verified toolchain (OCaml 5.4.0 / lldb 21), not a `tdb` bug. If you need
 to inspect local variables, use the bytecode adapter instead.
 
 **Variables view (bytecode):** `ocamlearlybird` reports real local names
 and values, exactly like Python locals.
 
 **Evaluate console:** the two adapters give fundamentally different
-consoles. Native (`lldb-dap`) evaluates **lldb/C-level expressions** —
-this is runtime spelunking (registers, raw memory, C symbol names), not
+consoles. Native (`lldb-dap`) evaluates **lldb/C-level expressions**.
+This is runtime spelunking (registers, raw memory, C symbol names), not
 OCaml expression evaluation. Bytecode (`ocamlearlybird`) is meant to
 evaluate real OCaml expressions in scope, but in the verified
 `ocamlearlybird` 1.3.6 release its `evaluate` request never responds (a
-confirmed upstream limitation, not specific to `tdb`) — the console
+confirmed upstream limitation, not specific to `tdb`); the console
 silently returns nothing for any expression.
 
 **Uncaught exceptions:** native sessions set a breakpoint on
@@ -619,12 +619,12 @@ environment once the process exits, opening the same error modal Python
 tracebacks get. Bytecode sessions do **not** get this: `ocamlearlybird`
 intercepts the uncaught exception itself and only reports a generic
 "Program exited due to Uncaught_exc" message, so the real exception text
-never reaches `tdb` — run the program outside the debugger
+never reaches `tdb`. Run the program outside the debugger
 (`OCAMLRUNPARAM=b ./main.byte`) to see its backtrace.
 
 **Limitations (v1):** no Windows support; no remote attach; bytecode
 sessions can't `pause` a running program (so `--run` is unavailable for
-bytecode — native sessions support `--run` normally); `Unix.fork` and Eio
+bytecode. Native sessions support `--run` normally); `Unix.fork` and Eio
 fibers are out of scope (only OCaml 5 domains are presented as threads).
 
 ## Layout
