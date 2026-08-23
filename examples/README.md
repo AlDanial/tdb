@@ -18,7 +18,10 @@ tdb --lang rust --adapter lldb-dap --terminal xterm target/debug/app
 tdb --lang rust --adapter gdb --remote-attach host:2345 target/debug/app
 ```
 
-Rust 1.98 is the supported current-stable layout. Linux supports GDB and
+Core debugging works with any rustc that emits debug info; the concurrency
+inspector's ownership evidence requires the stable Rust 1.98 standard-library
+layout (other versions degrade to stack-based classification with a
+warning). Linux supports GDB and
 `lldb-dap`; macOS uses `lldb-dap`. `--terminal` requires `lldb-dap`. Remote
 attach requires the matching local executable with debug symbols; use an SSH
 tunnel rather than exposing the debug-server port. The Rust Concurrency view

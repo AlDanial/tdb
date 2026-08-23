@@ -10,6 +10,13 @@ from tests.integration.rust_adapter_harness import (
     _rust_debug_binary,  # noqa: F401 - registers rust_debug_binary fixture
 )
 
+# With no adapter installed the parametrize lists below would be empty
+# and pytest's default 'empty parameter set' skip hides the real reason.
+pytestmark = pytest.mark.skipif(
+    not available_rust_adapters(),
+    reason="Rust debugging requires gdb >= 14 or lldb-dap (LLVM >= 17)",
+)
+
 
 @pytest.mark.parametrize("adapter", available_rust_adapters())
 async def test_remote_stub_attach_exposes_rust_stack(adapter, rust_debug_binary):

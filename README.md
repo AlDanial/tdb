@@ -354,9 +354,14 @@ picture:
 
 Rust debugging is intentionally explicit: build a normal debug executable,
 leave it unmodified, and pass that executable with `--lang rust`. `tdb` does
-not compile, instrument, or auto-detect Rust programs. This release supports
-the current stable Rust **1.98** standard-library layouts only. Build with
-debug information and no optimization for the most useful source locations:
+not compile, instrument, or auto-detect Rust programs. Core debugging
+(breakpoints, stepping, stacks, variables, remote attach) works with any
+rustc that emits debug info; the concurrency inspector's layout-specific
+*ownership evidence* additionally requires the current stable Rust
+**1.98** standard-library layout — on other versions the workspace still
+opens with stack-based wait classification and a compatibility warning.
+Build with debug information and no optimization for the most useful
+source locations:
 
 ```bash
 cargo rustc -- -C debuginfo=2 -C opt-level=0
@@ -390,7 +395,8 @@ When source paths differ, pair `--local-root` with `--remote-root`. Do not
 expose the remote debug port to an untrusted network: prefer an SSH tunnel,
 for example `ssh -L 2345:127.0.0.1:2345 host`, then attach to `127.0.0.1:2345`.
 
-Press the Rust concurrency action while the debuggee is stopped to open a
+In a Rust session the Threads action (`Alt+T`, or the Threads menu entry)
+opens the Rust Concurrency workspace while the debuggee is stopped — a
 fresh, bounded snapshot of threads, wait edges, and findings. The graph is
 best effort: `confirmed` evidence is directly observed by the debugger,
 `probable` is a supported inference, and `unknown` means ownership could not
@@ -1285,7 +1291,9 @@ Both the interactive TUI and the JSON-RPC server run simultaneously.
 ### RPC Protocol
 
 Send POST requests with `{"action": "...", "params": [...]}`. Responses return
-`{"timestamp": "...", "success": true/false, "value": "..."}`.
+`{"timestamp": "...", "success": true/false, "value": "..."}`. Actions with a
+structured result (today only `rust_concurrency`) additionally carry a `data`
+object holding the full JSON payload; `value` then holds a one-line summary.
 
 ```bash
 # Check status
@@ -1343,6 +1351,7 @@ curl -s -X POST http://127.0.0.1:8150/rpc \
 | `list_tasks` | `[]` | List all asyncio tasks |
 | `inspect_task` | `["task_name"]` | Inspect a specific asyncio task |
 | `wait_graph` | `[]` | Show wait graph + any deadlock cycles |
+| `rust_concurrency` | `[]` | Structured Rust thread/wait/deadlock snapshot in `data` (Rust sessions, stopped) |
 | `restart` | `[]` | Restart session (preserves breakpoints) |
 | `quit` | `[]` | Shut down |
 
@@ -1447,7 +1456,7 @@ CLI's `--lang`/`--adapter`; when omitted, the language is auto-detected from
 exception is Rust: compiled native binaries require explicit `lang="rust"`.
 The `tasks`/`processes`/`wait_graph` tools stay registered for every language but
 return a structured "not supported when debugging C/C++"-style error for
-non-Python debuggees.
+non-Python debuggees; `rust_concurrency` does the same for non-Rust debuggees.
 
 ### Agent flow for a long-running step
 

@@ -54,7 +54,15 @@ class RustcRelease:
         return f"{base}-{self.channel}" if self.channel else base
 
 
-SUPPORTED_RUST_VERSION = RustcRelease(1, 98, 0, None)
+# Derived from the probes' constant so a version bump in src cannot
+# silently disable this whole suite instead of failing loudly.
+from tdb.rust_concurrency.probes.gdb import (  # noqa: E402
+    SUPPORTED_RUST_VERSION as _SUPPORTED_RUST_VERSION_STR,
+)
+
+SUPPORTED_RUST_VERSION = RustcRelease(
+    *(int(part) for part in _SUPPORTED_RUST_VERSION_STR.split(".")), None
+)
 
 
 @dataclass(frozen=True)
