@@ -68,6 +68,36 @@ class RustGdbAdapter(GdbDapAdapter):
 class RustLldbAdapter(LldbDapAdapter):
     quirks = AdapterQuirks(attach_via_adapter=True)
 
+    @staticmethod
+    def _probe_init_commands() -> list[str]:
+        script_path = resources.files("tdb.rust_concurrency.probes").joinpath(
+            "lldb_script.py"
+        )
+        return [f"command script import {_gdb_string(str(script_path))}"]
+
+    def launch_body(
+        self,
+        *,
+        program: str,
+        args: list[str],
+        cwd: str,
+        env: dict[str, str] | None,
+        stop_on_entry: bool,
+        console: str,
+        opts: dict[str, Any],
+    ) -> dict[str, Any]:
+        body = super().launch_body(
+            program=program,
+            args=args,
+            cwd=cwd,
+            env=env,
+            stop_on_entry=stop_on_entry,
+            console=console,
+            opts=opts,
+        )
+        body["initCommands"] = list(body.get("initCommands", ())) + self._probe_init_commands()
+        return body
+
     def attach_body(
         self, *, host: str, port: int, opts: dict[str, Any]
     ) -> dict[str, Any]:
@@ -79,6 +109,7 @@ class RustLldbAdapter(LldbDapAdapter):
         mappings = opts.get("path_mappings") or []
         if mappings:
             body["sourceMap"] = [[remote, local] for local, remote in mappings]
+        body["initCommands"] = list(opts.get("initCommands", ())) + self._probe_init_commands()
         return body
 
 

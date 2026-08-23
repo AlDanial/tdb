@@ -127,12 +127,15 @@ async def test_gdb_probe_sends_only_the_fixed_snapshot_command():
     assert result.rust_version == "1.98.0"
 
 
-def test_probe_factory_selects_only_gdb():
+def test_probe_factory_selects_gdb_and_rejects_unknown_adapters():
     assert isinstance(probe_for_adapter("gdb"), GdbEvidenceProbe)
-    assert probe_for_adapter("lldb-dap") is None
+    assert probe_for_adapter("unknown") is None
 
 
-async def test_collector_uses_the_selected_adapter_probe_by_default(monkeypatch):
+@pytest.mark.parametrize("adapter_id", ["gdb", "lldb-dap"])
+async def test_collector_uses_the_selected_adapter_probe_by_default(
+    monkeypatch, adapter_id
+):
     from tdb.dap.types import StackFrame, Thread
     from tdb.languages.rust import build_rust_profile
     from tdb.rust_concurrency.collector import RustConcurrencyCollector
@@ -152,12 +155,18 @@ async def test_collector_uses_the_selected_adapter_probe_by_default(monkeypatch)
     controller = type(
         "Controller",
         (),
-        {"client": client, "state": state, "profile": build_rust_profile("gdb")},
+        {
+            "client": client,
+            "state": state,
+            "profile": build_rust_profile(adapter_id),
+        },
     )()
     probe = type("Probe", (), {"collect": AsyncMock(return_value=ProbeResult("1.98.0"))})()
     monkeypatch.setattr(
         "tdb.rust_concurrency.collector.probe_for_adapter",
-        lambda adapter_id: probe if adapter_id == "gdb" else None,
+        lambda selected_adapter_id: probe
+        if selected_adapter_id == adapter_id
+        else None,
     )
 
     snapshot = await RustConcurrencyCollector().collect_and_analyze(controller)

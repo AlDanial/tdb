@@ -1,0 +1,1 @@
+TDB_RUST_JSON:{"rust_version":"1.98.0","threads":[{"dap_thread_hint":"thread #1","os_thread_id":"101"}],"primitive_states":[{"primitive_id":"mutex:0x10","owner_os_thread_ids":["101"],"raw_state":"locked","evidence":[{"confidence":"confirmed","source":"lldb","detail":"owner"}]}],"warnings":[]}
