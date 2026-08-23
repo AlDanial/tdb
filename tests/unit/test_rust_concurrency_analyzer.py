@@ -9,6 +9,7 @@ from tdb.rust_concurrency.models import (
     FindingKind,
     ProbePrimitiveState,
     ProbeResult,
+    ProbeThread,
     RawFrame,
     RawSnapshot,
     RawThread,
@@ -242,3 +243,48 @@ def test_snapshot_graph_order_is_independent_of_debugger_thread_order():
 
     assert [thread.thread_id for thread in snapshot.threads] == [1, 2]
     assert [edge.waiter_thread_id for edge in snapshot.edges] == [1, 2]
+
+
+def test_confirmed_cycle_search_keeps_alternate_cycles_through_shared_nodes():
+    from tdb.rust_concurrency.models import WaitEdge
+
+    confirmed = (Evidence(Confidence.CONFIRMED, "probe-owner", "owner"),)
+    edges = tuple(
+        WaitEdge(waiter, f"mutex:0x{index}", owner, "mutex-lock", confirmed)
+        for index, (waiter, owner) in enumerate(
+            ((1, 2), (1, 3), (2, 3), (3, 1)), start=1
+        )
+    )
+
+    findings = find_confirmed_cycles(edges)
+
+    assert {finding.thread_ids for finding in findings} == {(1, 2, 3), (1, 3)}
+
+
+def test_duplicate_thread_names_do_not_resolve_probe_owner_hint():
+    raw = RawSnapshot(
+        adapter="gdb",
+        platform="linux",
+        rust_version="1.98.0",
+        threads=(
+            RawThread(1, "worker", frames=_mutex_thread(1, "0x10").frames),
+            RawThread(2, "worker", frames=_mutex_thread(2, "0x20").frames),
+        ),
+    )
+    probe = ProbeResult(
+        rust_version="1.98.0",
+        threads=(ProbeThread("worker", "os-owner"),),
+        primitive_states=(
+            ProbePrimitiveState(
+                primitive_id="mutex:0x10",
+                owner_os_thread_ids=("os-owner",),
+                raw_state="locked",
+                evidence=(Evidence(Confidence.CONFIRMED, "probe-owner", "owner"),),
+            ),
+        ),
+    )
+
+    snapshot = analyze(raw, probe)
+
+    assert snapshot.edges[0].owner_thread_id is None
+    assert snapshot.confirmed_deadlocks == ()

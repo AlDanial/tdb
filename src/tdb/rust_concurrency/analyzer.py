@@ -70,14 +70,12 @@ def _find_cycles(edges: Iterable[WaitEdge]) -> tuple[tuple[tuple[int, ...], tupl
             key=lambda edge: (edge.owner_thread_id, edge.primitive_id, edge.operation)
         )
 
-    visited: set[int] = set()
     active: list[int] = []
     active_edges: list[WaitEdge] = []
     active_index: dict[int, int] = {}
     found: dict[tuple[int, ...], tuple[WaitEdge, ...]] = {}
 
     def visit(thread_id: int) -> None:
-        visited.add(thread_id)
         active_index[thread_id] = len(active)
         active.append(thread_id)
         for edge in adjacency.get(thread_id, ()):
@@ -88,16 +86,21 @@ def _find_cycles(edges: Iterable[WaitEdge]) -> tuple[tuple[tuple[int, ...], tupl
                 cycle_ids = _canonical_cycle(tuple(active[index:]))
                 cycle_edges = tuple(active_edges[index:] + [edge])
                 found.setdefault(cycle_ids, cycle_edges)
-            elif owner not in visited:
+            else:
                 active_edges.append(edge)
                 visit(owner)
                 active_edges.pop()
         active.pop()
         del active_index[thread_id]
 
-    for thread_id in sorted(set(adjacency) | {edge.owner_thread_id for values in adjacency.values() for edge in values if edge.owner_thread_id is not None}):
-        if thread_id not in visited:
-            visit(thread_id)
+    nodes = set(adjacency) | {
+        edge.owner_thread_id
+        for values in adjacency.values()
+        for edge in values
+        if edge.owner_thread_id is not None
+    }
+    for thread_id in sorted(nodes):
+        visit(thread_id)
 
     return tuple((thread_ids, found[thread_ids]) for thread_ids in sorted(found))
 
@@ -234,10 +237,14 @@ def _thread_ids_by_os_id(raw: RawSnapshot, probe: ProbeResult | None) -> dict[st
     if probe is None:
         return ids
 
+    candidates: dict[str, set[int]] = {}
+    for thread in raw.threads:
+        for hint in (thread.name, str(thread.thread_id), f"thread #{thread.thread_id}"):
+            candidates.setdefault(hint, set()).add(thread.thread_id)
     by_hint = {
-        hint: thread.thread_id
-        for thread in raw.threads
-        for hint in (thread.name, str(thread.thread_id), f"thread #{thread.thread_id}")
+        hint: next(iter(thread_ids))
+        for hint, thread_ids in candidates.items()
+        if len(thread_ids) == 1
     }
     for probe_thread in probe.threads:
         thread_id = by_hint.get(probe_thread.dap_thread_hint)
