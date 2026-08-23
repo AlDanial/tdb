@@ -63,6 +63,7 @@ class DebugState:
     # is_terminated / etc. — those are derived. Mutate only through
     # `transition_to(...)`.
     phase: SessionPhase = SessionPhase.NOT_STARTED
+    generation: int = 0
 
     # Reason for the last stop (breakpoint / step / exception / pause / etc.).
     stop_reason: str | None = None
@@ -100,6 +101,7 @@ class DebugState:
         (e.g., post-mortem load wants the frame data preserved).
         """
         self.phase = phase
+        self.generation += 1
 
     def enter_stop(
         self,

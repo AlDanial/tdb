@@ -48,6 +48,8 @@ from tdb.inspection import (
     parse_process_json,
     parse_task_json,
 )
+from tdb.rust_concurrency.collector import RustConcurrencyCollector
+from tdb.rust_concurrency.models import ConcurrencySnapshot
 
 if TYPE_CHECKING:
     from tdb.session.controller import DebugController
@@ -86,6 +88,7 @@ class InspectService:
 
     def __init__(self, controller_provider: Callable[[], "DebugController"]) -> None:
         self._provider = controller_provider
+        self._rust_collector = RustConcurrencyCollector()
 
     @property
     def _ctrl(self) -> "DebugController":
@@ -104,6 +107,10 @@ class InspectService:
         the debuggee via DAP evaluate; only profiles that opt in
         (Python/asyncio today) support it."""
         if not self._ctrl.profile.capabilities.task_inspection:
+            raise SessionGateError("unsupported")
+
+    def _require_concurrency_inspection(self) -> None:
+        if self._ctrl.profile.capabilities.concurrency_inspection != "rust":
             raise SessionGateError("unsupported")
 
     # --- asyncio tasks ---------------------------------------------------
@@ -164,6 +171,12 @@ class InspectService:
         """List the debuggee's threads. Raises on gate or DAP failure."""
         self._gate()
         return await self._ctrl.client.threads()
+
+    async def collect_rust_concurrency(self) -> ConcurrencySnapshot:
+        """Collect the Rust wait graph while the debuggee is stopped."""
+        self._require_concurrency_inspection()
+        self._gate()
+        return await self._rust_collector.collect_and_analyze(self._ctrl)
 
     async def thread_stack(self, thread_id: int) -> StackDetail:
         """Fetch a thread's stack, plus scopes + variables of its top frame.
