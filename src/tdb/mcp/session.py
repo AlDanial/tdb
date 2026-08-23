@@ -215,7 +215,10 @@ class McpSession:
         lang_id = lang or registry.detect(program)
         resolved_adapter = adapter or config.default_adapters.get(lang_id)
         profile = registry.resolve(
-            lang_id, adapter=resolved_adapter, adapter_paths=config.adapters
+            lang_id,
+            adapter=resolved_adapter,
+            adapter_paths=config.adapters,
+            program=program,
         )
         if profile.id != "python" and python is not None:
             raise ValueError(

@@ -251,6 +251,47 @@ def test_terminal_allowed_for_cpp_with_lldb_dap_adapter(tmp_path, monkeypatch):
     assert args.profile.adapter.id == "lldb-dap"
 
 
+def test_terminal_rejected_for_ocaml_with_explicit_gdb_adapter(tmp_path, monkeypatch):
+    """OCaml's gdb adapter is the same GdbDapAdapter as cpp's -- no terminal
+    integration -- so the up-front gate must catch it too, not just cpp."""
+    binary = _write_elf(tmp_path)
+    monkeypatch.setattr("shutil.which", lambda name: f"/usr/bin/{name}")
+    with pytest.raises(SystemExit):
+        parse_args(
+            ["--lang", "ocaml", "--adapter", "gdb", "--terminal", "xterm", str(binary)]
+        )
+
+
+def test_terminal_rejected_for_ocaml_with_earlybird_adapter(tmp_path, monkeypatch):
+    """ocamlearlybird has no terminal integration either (it hardcodes
+    console: internalConsole) -- must be rejected up front, same as gdb."""
+    binary = _write_elf(tmp_path)
+    monkeypatch.setattr("shutil.which", lambda name: f"/usr/bin/{name}")
+    with pytest.raises(SystemExit):
+        parse_args(
+            [
+                "--lang",
+                "ocaml",
+                "--adapter",
+                "ocamlearlybird",
+                "--terminal",
+                "xterm",
+                str(binary),
+            ]
+        )
+
+
+def test_terminal_allowed_for_ocaml_with_lldb_dap_adapter(tmp_path, monkeypatch):
+    binary = _write_elf(tmp_path)
+    monkeypatch.setattr("shutil.which", lambda name: f"/usr/bin/{name}")
+    args = parse_args(
+        ["--lang", "ocaml", "--adapter", "lldb-dap", "--terminal", "xterm", str(binary)]
+    )
+    assert args.terminal == "xterm"
+    assert args.profile.id == "ocaml"
+    assert args.profile.adapter.id == "lldb-dap"
+
+
 def test_headless_implies_server(tmp_path):
     prog = tmp_path / "x.py"
     prog.write_text("\n")

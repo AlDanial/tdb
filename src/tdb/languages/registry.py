@@ -33,12 +33,15 @@ def resolve(
     lang_id: str,
     adapter: str | None = None,
     adapter_paths: dict[str, str] | None = None,
+    program: str | None = None,
 ) -> LanguageProfile:
     """Build the profile for a detected/requested language id.
 
     ``adapter_paths`` (TdbConfig.adapters: adapter id -> executable
     path) is forwarded to the builder, which resolves the override for
-    whichever adapter it actually selects.
+    whichever adapter it actually selects. ``program`` is forwarded
+    too, for builders that need the debug target (e.g. OCaml's
+    native/bytecode flavor); other builders ignore it.
     """
     builder = _BUILDERS.get(lang_id)
     if builder is None:
@@ -46,7 +49,7 @@ def resolve(
             f"language '{lang_id}' is not supported yet "
             f"(supported: {', '.join(known_languages())})"
         )
-    return builder(adapter=adapter, adapter_paths=adapter_paths)
+    return builder(adapter=adapter, adapter_paths=adapter_paths, program=program)
 
 
 _EXTENSION_MAP = {
@@ -65,7 +68,7 @@ _EXTENSION_MAP = {
 
 # Source files for compiled languages: debugging the source is a user
 # error — you debug the built executable.
-_COMPILED_SOURCE_EXTS = {".c", ".cc", ".cpp", ".cxx", ".c++", ".rs"}
+_COMPILED_SOURCE_EXTS = {".c", ".cc", ".cpp", ".cxx", ".c++", ".rs", ".ml", ".mli"}
 
 
 def reject_compiled_source(program: str | None) -> None:
@@ -80,6 +83,12 @@ def reject_compiled_source(program: str | None) -> None:
             f"{program!r} is Rust source — build a debug executable "
             f"(e.g. `rustc -g {program}` or `cargo build`) and run "
             "`tdb --lang rust ./binary`"
+        )
+    if extension in (".ml", ".mli"):
+        raise LanguageNotSupportedError(
+            f"{program!r} is OCaml source — build it first (dune's dev "
+            f"profile keeps debug info) and run "
+            f"`tdb ./_build/default/.../main.exe`"
         )
     raise LanguageNotSupportedError(
         f"{program!r} is source for a compiled language — compile "
@@ -109,6 +118,11 @@ def detect(program: str | None) -> str:
     ext = path.suffix.lower()
     if ext in _EXTENSION_MAP:
         return _EXTENSION_MAP[ext]
+
+    from tdb.languages.ocaml import ocaml_flavor  # lazy: avoid import cycle
+
+    if ocaml_flavor(program) is not None:
+        return "ocaml"
     head = b""
     try:
         with open(path, "rb") as f:
@@ -175,6 +189,10 @@ register("tcsh", build_tcsh_profile)
 from tdb.languages.ruby import build_ruby_profile  # noqa: E402
 
 register("ruby", build_ruby_profile)
+
+from tdb.languages.ocaml import build_ocaml_profile  # noqa: E402
+
+register("ocaml", build_ocaml_profile)
 
 from tdb.languages.rust import build_rust_profile  # noqa: E402
 

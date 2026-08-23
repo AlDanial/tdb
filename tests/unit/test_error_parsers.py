@@ -234,3 +234,115 @@ def test_ruby_syntax_error_34_shape():
 def test_ruby_garbage_returns_none():
     assert parse_ruby_error("plain stderr chatter\n", 1) is None
     assert parse_ruby_error("", None) is None
+
+
+# ---- ocaml ----
+
+from tdb.languages.errors import parse_ocaml_error  # noqa: E402
+
+OCAML_WITH_BACKTRACE = """\
+Fatal error: exception Failure("boom")
+Raised at Stdlib.failwith in file "stdlib.ml", line 29, characters 17-33
+Called from Fatal.boom in file "ocaml_fatal.ml", line 1, characters 15-31
+Called from Fatal.middle in file "ocaml_fatal.ml", line 2, characters 18-25
+Called from Fatal in file "ocaml_fatal.ml", line 3, characters 9-18
+"""
+
+OCAML_NO_BACKTRACE = 'Fatal error: exception Failure("boom")\n'
+
+
+def test_ocaml_error_with_backtrace():
+    err = parse_ocaml_error(OCAML_WITH_BACKTRACE, 2)
+    assert err is not None
+    assert err.header == 'Fatal error: exception Failure("boom")'
+    assert err.message == 'Failure("boom")'
+    # OUTERMOST-first (source order), like python's parser
+    assert [f.func for f in err.frames] == [
+        "Fatal",
+        "Fatal.middle",
+        "Fatal.boom",
+        "Stdlib.failwith",
+    ]
+    assert err.frames[0].path == "ocaml_fatal.ml"
+    assert err.frames[0].line == 3
+    assert "Raised at Stdlib.failwith" in err.detail
+
+
+def test_ocaml_error_without_backtrace_has_hint():
+    err = parse_ocaml_error(OCAML_NO_BACKTRACE, 2)
+    assert err is not None
+    assert err.frames == []
+    assert "compile with -g" in err.detail
+
+
+def test_ocaml_error_none_on_clean_output():
+    assert parse_ocaml_error("all good\n", 0) is None
+    assert parse_ocaml_error("", None) is None
+
+
+def test_ocaml_reraised_and_inlined_frames():
+    text = (
+        "Fatal error: exception Not_found\n"
+        'Raised by primitive operation at M.find in file "m.ml" (inlined),'
+        " line 7, characters 1-9\n"
+        'Re-raised at M.wrap in file "m.ml", line 12, characters 4-11\n'
+    )
+    err = parse_ocaml_error(text, 2)
+    assert err is not None
+    assert [f.func for f in err.frames] == ["M.wrap", "M.find"]
+    assert err.frames[0].line == 12
+
+
+# Test with real native output from Task 1 probe (Bonus finding):
+# native compiles have (inlined) markers and bare module names
+OCAML_NATIVE_WITH_INLINED = """\
+Fatal error: exception Failure("boom")
+Raised at Stdlib.failwith in file "stdlib.ml", line 29, characters 17-33
+Called from Ocaml_fatal.boom in file "ocaml_fatal.ml" (inlined), line 1, characters 14-29
+Called from Ocaml_fatal.middle in file "ocaml_fatal.ml" (inlined), line 2, characters 16-23
+Called from Ocaml_fatal in file "ocaml_fatal.ml", line 3, characters 9-18
+"""
+
+
+def test_ocaml_native_with_inlined_and_bare_module_name():
+    err = parse_ocaml_error(OCAML_NATIVE_WITH_INLINED, 2)
+    assert err is not None
+    assert err.header == 'Fatal error: exception Failure("boom")'
+    assert err.message == 'Failure("boom")'
+    # OUTERMOST-first: bare module name first, then inlined functions, then innermost
+    assert [f.func for f in err.frames] == [
+        "Ocaml_fatal",
+        "Ocaml_fatal.middle",
+        "Ocaml_fatal.boom",
+        "Stdlib.failwith",
+    ]
+    assert err.frames[0].line == 3
+    assert err.frames[1].line == 2
+    assert err.frames[2].line == 1
+
+
+# --- Regression tests for detail contract (excludes header line) ---
+
+
+def test_ocaml_error_detail_excludes_header_with_backtrace():
+    # Regression: detail should NOT contain the header line ("Fatal error:")
+    # it starts after the header line's newline. The modal displays header
+    # and detail as separate fields, so including header in detail would
+    # show it twice.
+    err = parse_ocaml_error(OCAML_WITH_BACKTRACE, 2)
+    assert err is not None
+    # Header is shown separately in the modal, so detail must not include it
+    assert "Fatal error:" not in err.detail
+    # Detail's first line should be the first backtrace line
+    detail_lines = err.detail.split("\n")
+    assert detail_lines[0].startswith("Raised at")
+
+
+def test_ocaml_error_detail_excludes_header_without_backtrace():
+    # Regression: for no-backtrace case, detail is ONLY the hint,
+    # no header line, no leading blank lines.
+    err = parse_ocaml_error(OCAML_NO_BACKTRACE, 2)
+    assert err is not None
+    assert "Fatal error:" not in err.detail
+    # Detail should be exactly the hint text
+    assert err.detail == "(no backtrace — compile with -g, e.g. dune's dev profile)"

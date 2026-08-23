@@ -10,6 +10,7 @@ with a Debug Adapter Protocol (DAP) implementation.  In addition to Python,
 - Bash (via bash's own `DEBUG` trap; bash ≥ 4.4)
 - Tcsh (via source instrumentation of a stock `tcsh`)
 - Ruby (via the [debug gem](https://github.com/ruby/debug)'s `rdbg`; debug ≥ 1.9)
+- OCaml (native via `lldb-dap`/`gdb`, bytecode via [ocamlearlybird](https://github.com/hackwaly/ocamlearlybird))
 
 `tdb` is built with [textual](https://github.com/Textualize/textual) and speaks
 DAP to a pluggable debug adapter.
@@ -30,7 +31,8 @@ MIT License.  Copyright 2026 by Al Danial.
 the richest feature set), C/C++ (via `gdb -i dap` or `lldb-dap`), Rust (via `gdb` or
 `lldb-dap`), Perl (via `perl -d`),
 Bash (via bash's own `DEBUG` trap), Tcsh (via source instrumentation of a
-stock `tcsh`), and Ruby (via the debug gem's `rdbg`). Most languages are
+stock `tcsh`), Ruby (via the debug gem's `rdbg`), and OCaml (native via
+`lldb-dap`/`gdb`, bytecode via ocamlearlybird). Most languages are
 auto-detected from the target; Rust intentionally requires `--lang rust`
 (ref. [Multi-Language Debugging](#multi-language-debugging)).
 
@@ -180,32 +182,45 @@ python -m tdb my_program.py
 
 ## Multi-Language Debugging
 
-`tdb` debugs any language that has a Debug Adapter Protocol backend. Seven
+`tdb` debugs any language that has a Debug Adapter Protocol backend. Eight
 languages are supported out of the box:
 
 | Language | Adapter(s) | Dependencies           | Feature level |
 |----------|------------|------------------------|---------------|
 | Python | `debugpy` (default) | Python ≥ 3.11 | everything in this README |
 | C / C++ (any native binary) | `gdb` (default), `lldb-dap` (alternate) | `gdb -i dap` requires GDB ≥ 14; `lldb-dap` ships with LLVM ≥ 17 (e.g. `apt install lldb`) | core debugging: breakpoints, stepping, stack, variables, evaluate console |
-| Rust (explicit `--lang rust`) | `gdb` (Linux default), `lldb-dap` (macOS default) | current stable Rust 1.98 only; GDB ≥ 14 or LLVM `lldb-dap` ≥ 17 | core debugging + best-effort Rust concurrency inspection + remote attach |
+| Rust (explicit `--lang rust`) | `gdb` (Linux default), `lldb-dap` (macOS default) | any rustc building with debug info; GDB ≥ 14 or LLVM `lldb-dap` ≥ 17 (concurrency ownership evidence additionally requires stable Rust 1.98) | core debugging + best-effort Rust concurrency inspection + remote attach |
 | Perl | perl-tdb (bundled) | perl ≥ 5.18 on PATH  | core debugging + remote attach |
 | Bash | bash-tdb (bundled) | bash ≥ 4.4 on PATH  | core debugging (no remote attach) |
 | Tcsh | tcsh-tdb (bundled) | tcsh on PATH | core debugging (no remote attach, no conditional breakpoints, no pause) |
 | Ruby | `rdbg` (the [debug gem](https://github.com/ruby/debug)) | `rdbg` ≥ 1.9 on PATH | core debugging + remote attach |
+| OCaml (native executable) | `lldb-dap` (default), `gdb` (alternate) | `lldb-dap` ships with LLVM ≥ 17; `gdb -i dap` requires GDB ≥ 14 | core debugging + domains-as-threads; Variables view shows no OCaml locals (upstream DWARF limitation); evaluate console is lldb/C-level, not OCaml |
+| OCaml (bytecode executable) | `ocamlearlybird` (default) | `opam install earlybird` | core debugging + rich OCaml locals; no pause/`--run`, no evaluate responses, no fatal-error modal (ocamlearlybird 1.3.6 limitations); single-domain only |
 
 ### Language detection and selection
 
 The language is auto-detected from the debug target:
 
 1. File extension: `.py` → Python; `.pl` / `.pm` / `.t` → Perl; `.sh` / `.bash`
-   → Bash; `.csh` / `.tcsh` → Tcsh; `.rb` → Ruby.
-2. Native executables (ELF, Mach-O, PE magic bytes) → C/C++. Rust is never
-   inferred from an executable; select it explicitly with `--lang rust`.
+   → Bash; `.csh` / `.tcsh` → Tcsh; `.rb` → Ruby. (`.ml` / `.mli` do *not*
+   auto-select OCaml, see point 5.)
+2. Native executables (ELF, Mach-O, PE magic bytes) → C/C++, unless
+   byte-sniffing finds an OCaml marker, either a native binary's
+   `caml_program`/`caml_startup` runtime symbols, a bytecode file's
+   trailing `Caml1999` marker, or a `#!...ocamlrun` shebang, in which case
+   → OCaml (native or bytecode respectively). A stripped native OCaml
+   binary that byte-sniffing can't identify falls back to C/C++; force it
+   with `--lang ocaml`. Rust is never inferred from an executable; select
+   it explicitly with `--lang rust`.
 3. A `#!...python`, `#!...perl`, `#!...bash`, `#!...csh`/`#!...tcsh`, or
    `#!...ruby` shebang → Python / Perl / Bash / Tcsh / Ruby respectively.
 4. C/C++/Rust *source* files (`.c`, `.cpp`, `.rs`, …) produce an error with a
    hint: compile with debug info (`g++ -g -O0`) and debug the binary.
-5. Anything else produces an error naming the `--lang` override.
+5. `.ml` / `.mli` (OCaml source) produce an error too: build the project
+   first (dune's dev profile keeps debug info) and pass the **built
+   executable** to `tdb` (`tdb ./_build/default/bin/main.exe`), never the
+   `.ml` file.
+6. Anything else produces an error naming the `--lang` override.
 
 `--lang` forces the language; `--adapter` picks a non-default adapter within
 it (`tdb --lang cpp --adapter lldb-dap ./myprog`). Rust always requires the
@@ -245,9 +260,10 @@ programs by nature). Remote attach (`-r`) also works for Perl (see
 [Perl](#perl), `Devel::TdbRemote` in place of `debugpy.listen()`), Ruby
 (see [Ruby](#ruby), `rdbg --open` in place of `debugpy.listen()`), and Rust
 (with a local symbol-bearing executable; see [Rust](#rust)), but not for
-C/C++, Bash, or Tcsh. `--terminal` works for every launch-mode language —
-Python, Perl, Bash, Tcsh, Ruby, C/C++ via `--adapter lldb-dap`, and Rust via
-`--adapter lldb-dap` — see [External Terminal Support](#external-terminal-support).
+C/C++, Bash, Tcsh, or OCaml. `--terminal` works for every launch-mode
+language — Python, Perl, Bash, Tcsh, Ruby, and C/C++, OCaml native, or Rust
+sessions via `--adapter lldb-dap` — see
+[External Terminal Support](#external-terminal-support).
 
 **Bash limitations (v1):** the bash adapter uses bash's own `DEBUG` trap and
 has a smaller feature set than Python:
@@ -293,6 +309,26 @@ paths and line numbers are preserved in everything tdb displays):
 - Requires Python ≥ 3.11.
 
 See [Tcsh](#tcsh) below for launch details.
+
+**OCaml limitations (v1):** OCaml has two independent adapters with
+different, non-overlapping gaps; see [OCaml](#ocaml) below for the full
+picture:
+
+- **Native (`lldb-dap`/`gdb`):** the Variables view shows no named OCaml
+  locals in an OCaml frame (only a `Registers` scope). This is an
+  upstream OCaml/DWARF limitation on stock OCaml 5.4, not a `tdb` bug; use
+  the bytecode adapter when you need to inspect locals. The evaluate
+  console evaluates lldb/C-level expressions (runtime spelunking), not
+  OCaml expressions.
+- **Bytecode (`ocamlearlybird`):** single-domain only (no multicore); no
+  `pause` while running (so `--run` is unavailable); the evaluate console
+  never gets a response for any expression (an `ocamlearlybird` 1.3.6
+  limitation); and the fatal-error modal doesn't appear for an uncaught
+  exception (`ocamlearlybird` swallows the real exception text before it
+  reaches `tdb`). Run the program outside the debugger to see the
+  backtrace instead.
+- No Windows support, no remote attach, and a stripped native binary that
+  byte-sniffing can't identify needs `--lang ocaml`.
 
 ### C/C++ tips
 
@@ -561,7 +597,7 @@ Remote attach: start the program with
 `rdbg --open --port 5678 --host 0.0.0.0 script.rb` (add `--nonstop` to
 let it run before you attach), then `tdb -r HOST:5678 --lang ruby`.
 Note: rdbg's `--cookie` authentication is not part of DAP and is not
-supported — bind to localhost and tunnel over SSH instead.
+supported; bind to localhost and tunnel over SSH instead.
 `--local-root`/`--remote-root` path mappings are not supported for Ruby
 yet. Bundler projects work when your environment resolves `rdbg`
 (`gem install debug` into the project's Ruby); there is no `bundle
@@ -570,6 +606,87 @@ exec` integration yet.
 > **Startup note:** the debug gem's `rdbg` has an occasional handshake
 > race on launch; tdb detects a stalled/corrupted handshake and retries
 > once automatically with a fresh `rdbg`, so this is usually invisible.
+
+### OCaml
+
+`tdb` debugs OCaml through two independent adapters, chosen automatically
+from how the executable was built:
+
+- **Native** (`ocamlopt`/dune's default build) → **`lldb-dap`** (default;
+  `--adapter gdb` also works). OCaml 5's domains show up as threads.
+- **Bytecode** (`ocamlc -g`) → **`ocamlearlybird`** (`opam install
+  earlybird`). Single-domain only, but with rich, real OCaml locals.
+
+**Build requirement:** compile with `-g` (dune's dev profile already
+does). Always pass the **built executable** to `tdb`, never the `.ml`
+source, as in `tdb ./_build/default/bin/main.exe`, not `tdb main.ml` (which
+errors with this exact guidance).
+
+```bash
+tdb ./_build/default/bin/main.exe          # native, lldb-dap
+tdb --adapter gdb ./_build/default/bin/main.exe   # native, gdb
+tdb ./_build/default/bin/main.byte         # bytecode, ocamlearlybird
+```
+
+A stripped native binary that byte-sniffing can't identify as OCaml falls
+back to C/C++; force it with `--lang ocaml`. Override the adapter or point
+at a non-`PATH` install in `config.json` (see
+[Configuration](#configuration)):
+
+```json
+{
+  "adapters": {"ocamlearlybird": "/path/to/ocamlearlybird"},
+  "default_adapters": {"ocaml": "gdb"}
+}
+```
+
+**Domains as threads (native only):** OCaml 5's domains are presented in
+the Threads modal (`Alt+T` or the **Threads (N)** menu label) as `Domain 0
+(main)`, `Domain 1`, and so on, in creation order. The runtime's internal
+"backup thread" (one per domain, used for I/O blocking) is hidden by
+default since it's never running user code; press `a` in the Threads
+modal to reveal it alongside the domains. Breakpoints, stepping, continue,
+and pause all work normally against any domain. In both the Stack view
+and the Threads modal, OCaml frame names are demangled from the
+runtime's raw `camlModule__name_NNN` convention into readable
+`Module.name` form (e.g. `camlOcaml_domains.worker_297` displays as
+`Ocaml_domains.worker`); runtime C frames (`caml_start_program`,
+`caml_callback_exn`, and the like) are shown as-is, unchanged.
+
+**Variables view (native):** stock OCaml 5.4 native DWARF shows **no
+named locals**. The `scopes`/`variables` round trip succeeds, but every
+OCaml frame's `Locals` and `Globals` scopes come back empty; only a
+`Registers` scope has data (the raw register file, not decoded OCaml
+values). This is an upstream OCaml compiler/DWARF limitation on the
+verified toolchain (OCaml 5.4.0 / lldb 21), not a `tdb` bug. If you need
+to inspect local variables, use the bytecode adapter instead.
+
+**Variables view (bytecode):** `ocamlearlybird` reports real local names
+and values, exactly like Python locals.
+
+**Evaluate console:** the two adapters give fundamentally different
+consoles. Native (`lldb-dap`) evaluates **lldb/C-level expressions**.
+This is runtime spelunking (registers, raw memory, C symbol names), not
+OCaml expression evaluation. Bytecode (`ocamlearlybird`) is meant to
+evaluate real OCaml expressions in scope, but in the verified
+`ocamlearlybird` 1.3.6 release its `evaluate` request never responds (a
+confirmed upstream limitation, not specific to `tdb`); the console
+silently returns nothing for any expression.
+
+**Uncaught exceptions:** native sessions set a breakpoint on
+`caml_fatal_uncaught_exception` so the debugger stops there, and `tdb`
+also parses the `OCAMLRUNPARAM=b` backtrace it injects into the debuggee's
+environment once the process exits, opening the same error modal Python
+tracebacks get. Bytecode sessions do **not** get this: `ocamlearlybird`
+intercepts the uncaught exception itself and only reports a generic
+"Program exited due to Uncaught_exc" message, so the real exception text
+never reaches `tdb`. Run the program outside the debugger
+(`OCAMLRUNPARAM=b ./main.byte`) to see its backtrace.
+
+**Limitations (v1):** no Windows support; no remote attach; bytecode
+sessions can't `pause` a running program (so `--run` is unavailable for
+bytecode. Native sessions support `--run` normally); `Unix.fork` and Eio
+fibers are out of scope (only OCaml 5 domains are presented as threads).
 
 ## Layout
 
@@ -1055,12 +1172,14 @@ tdb --terminal xterm my_tui_app.py
 ```
 
 `--terminal` works for every language `tdb` can *launch* (as opposed to
-attach to): Python, Perl, Bash, Tcsh, Ruby, and C/C++ via `--adapter lldb-dap`.
-The default C/C++ adapter, `gdb -i dap`, has no terminal integration --
-`tdb` rejects `--terminal` up front with an error pointing at
-`--adapter lldb-dap` instead. `--terminal` also only applies when `tdb`
-launches the program itself; it is rejected for remote-attach (`-r`), since
-there's no program for `tdb` to spawn a terminal around.
+attach to): Python, Perl, Bash, Tcsh, Ruby, and C/C++ or native OCaml
+sessions via `--adapter lldb-dap`. Neither `gdb -i dap` (the default C/C++
+adapter, and an alternate for native OCaml) nor `ocamlearlybird` (the
+bytecode OCaml adapter) has any terminal integration -- `tdb` rejects
+`--terminal` up front for both, with an error pointing at `--adapter
+lldb-dap` instead. `--terminal` also only applies when `tdb` launches the
+program itself; it is rejected for remote-attach (`-r`), since there's no
+program for `tdb` to spawn a terminal around.
 
 The debuggee runs in a separate window of the specified terminal, including
 all of its stdin/stdout/stderr -- keyboard input, program output, and
@@ -1119,8 +1238,10 @@ nonzero `sys.exit()`, which `debugpy` treats as an uncaught `SystemExit` -- `tdb
 the TUI at the point of failure instead of exiting silently, so you can inspect the
 crash. Exit-code passthrough applies only to a clean exit during the headless phase.
 
-Supported languages: Python, Perl, Bash, Tcsh, Ruby, and C/C++ (both `gdb` and `lldb-dap`).
-`--run` is rejected up front for any other language.
+Supported languages: Python, Perl, Bash, Tcsh, Ruby, C/C++ (both `gdb` and
+`lldb-dap`), and native OCaml (both `gdb` and `lldb-dap`; bytecode/
+`ocamlearlybird` sessions don't support pause, so `--run` is unavailable
+for those). `--run` is rejected up front for any other language.
 
 **Limitation:** pausing is cooperative. If the debuggee is blocked inside a single
 blocking external call or syscall, the pause can't land until that call returns --
@@ -1445,6 +1566,7 @@ fires as expected.
 - [debugpy](https://github.com/microsoft/debugpy) : Debug Adapter Protocol implementation for Python
 - [gdb](https://sourceware.org/gdb/) / [lldb-dap](https://lldb.llvm.org/resources/lldbdap.html) : optional, user-installed DAP adapters for C/C++
 - [debug gem](https://github.com/ruby/debug) (`rdbg`) : optional, user-installed DAP adapter for Ruby
+- [ocamlearlybird](https://github.com/hackwaly/ocamlearlybird) : optional, user-installed DAP adapter for OCaml bytecode (native OCaml reuses `gdb`/`lldb-dap`)
 - [pygments](https://pygments.org/) : Syntax highlighting
 - [FastAPI](https://fastapi.tiangolo.com/) + [uvicorn](https://www.uvicorn.org/) : JSON-RPC server
 

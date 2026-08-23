@@ -87,7 +87,9 @@ class TcshAdapter(AdapterSpec):
 
 
 def build_tcsh_profile(
-    adapter: str | None = None, adapter_paths: dict[str, str] | None = None
+    adapter: str | None = None,
+    adapter_paths: dict[str, str] | None = None,
+    program: str | None = None,
 ) -> LanguageProfile:
     if adapter not in (None, "tcsh-tdb"):
         raise LanguageNotSupportedError(

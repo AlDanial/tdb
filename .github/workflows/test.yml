@@ -15,7 +15,19 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Build and run tests
-        # This targets your "test" stage. 
-        # If pytest fails, this build step fails.
-        run: docker build --target test .
+      - name: Build test image
+        # Builds only through the "base" stage (not "test"): pytest now
+        # runs via `docker run` below, not baked into a build-time RUN.
+        # lldb-dap (native C/C++ and OCaml debugging) needs the
+        # personality()/ptrace syscalls to launch a debuggee, which
+        # BuildKit's default RUN sandbox denies and has no opt-in for
+        # short of its "insecure" entitlement (not used here) -- `docker
+        # run --cap-add=SYS_PTRACE --security-opt seccomp=unconfined`
+        # grants them instead.
+        run: docker build --target base -t tdb-test .
+
+      - name: Run tests
+        # If pytest fails, this step fails and the job fails.
+        run: |
+          docker run --rm --cap-add=SYS_PTRACE --security-opt seccomp=unconfined \
+            tdb-test uv run pytest

@@ -856,6 +856,33 @@ class DebugController:
                     return frame
         return frames[0]
 
+    async def _prefer_visible_thread(self, ac) -> None:
+        """If the profile classifies the stopped thread as a hidden
+        runtime thread (OCaml backup threads), re-point
+        state.current_thread_id at the first visible thread. Best-effort:
+        any DAP failure leaves the selection unchanged."""
+        classify = self.profile.capabilities.classify_threads
+        if classify is None or self.state.current_thread_id is None:
+            return
+        threads = self.state.threads
+        if not threads:
+            return
+        try:
+            stacks = {}
+            for t in threads:
+                stacks[t.id] = await ac.stack_trace(t.id, levels=8)
+            decorations = classify(threads, stacks)
+            by_id = {d.thread.id: d for d in decorations}
+            current = by_id.get(self.state.current_thread_id)
+            if current is None or not current.hidden:
+                return
+            for d in decorations:
+                if not d.hidden:
+                    self.state.current_thread_id = d.thread.id
+                    return
+        except Exception:
+            log.exception("visible-thread preference failed; keeping stop thread")
+
     async def switch_active_thread(self, thread_id: int) -> None:
         """Re-point the main views at the given thread on the parent client.
 
@@ -928,6 +955,8 @@ class DebugController:
             self.state.threads = await ac.threads()
         except Exception:
             log.exception("Error fetching threads")
+
+        await self._prefer_visible_thread(ac)
 
         if self.state.current_thread_id is not None:
             try:
