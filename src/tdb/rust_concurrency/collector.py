@@ -10,6 +10,7 @@ from typing import Any
 
 from tdb.dap.types import StackFrame, Variable
 from tdb.rust_concurrency.analyzer import analyze
+from tdb.rust_concurrency.probes import probe_for_adapter
 from tdb.rust_concurrency.models import (
     ProbeResult,
     RawFrame,
@@ -206,10 +207,10 @@ class RustConcurrencyCollector:
             warnings=tuple(sorted(warnings)),
         )
 
-    async def _run_probe(self, client: Any) -> ProbeResult | None:
-        if self.probe is None:
+    async def _run_probe(self, probe: Any, client: Any) -> ProbeResult | None:
+        if probe is None:
             return None
-        target = self.probe.collect if hasattr(self.probe, "collect") else self.probe
+        target = probe.collect if hasattr(probe, "collect") else probe
         result = target(client)
         if inspect.isawaitable(result):
             return await result
@@ -220,10 +221,14 @@ class RustConcurrencyCollector:
         stop_generation = getattr(controller.state, "generation", None)
         probe: ProbeResult | None = None
         warnings = list(raw.warnings)
-        if self.probe is not None:
+        evidence_probe = (
+            self.probe if self.probe is not None else probe_for_adapter(raw.adapter)
+        )
+        if evidence_probe is not None:
             try:
                 probe = await asyncio.wait_for(
-                    self._run_probe(controller.client), timeout=self.probe_timeout
+                    self._run_probe(evidence_probe, controller.client),
+                    timeout=self.probe_timeout,
                 )
             except asyncio.TimeoutError:
                 warnings.append(f"probe timed out after {self.probe_timeout:g}s")

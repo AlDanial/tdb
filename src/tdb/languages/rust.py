@@ -8,6 +8,7 @@ configuration without changing the C/C++ profile.
 from __future__ import annotations
 
 import sys
+from importlib import resources
 from typing import Any
 
 from tdb.languages.base import (
@@ -36,6 +37,13 @@ def _gdb_string(value: str) -> str:
 
 class RustGdbAdapter(GdbDapAdapter):
     quirks = AdapterQuirks(attach_via_adapter=True)
+
+    def command(self) -> list[str]:
+        command = super().command()
+        script_path = resources.files("tdb.rust_concurrency.probes").joinpath(
+            "gdb_script.py"
+        )
+        return [command[0], "-iex", f"source {script_path}", "-i", "dap"]
 
     def attach_body(
         self, *, host: str, port: int, opts: dict[str, Any]
