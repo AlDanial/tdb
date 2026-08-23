@@ -28,6 +28,7 @@ from tdb.session.inspect_service import InspectService, SessionGateError
 from tdb.widgets.async_tasks_modal import AsyncTasksModal
 from tdb.widgets.menu_bar import MenuBar
 from tdb.widgets.processes_modal import ProcessesModal
+from tdb.widgets.rust_concurrency_modal import RustConcurrencyModal
 from tdb.widgets.threads_modal import ThreadsModal
 
 # Format of each AsyncTaskInfo.stack entry (see tdb/inspection.py
@@ -215,6 +216,9 @@ class InspectionWorkflows:
         if ctrl.state.is_running:
             self.app.notify("Program is running — pause first", title="Threads")
             return
+        if ctrl.profile.capabilities.concurrency_inspection == "rust":
+            await self.open_rust_concurrency()
+            return
         try:
             threads = await self._svc.list_threads()
         except SessionGateError:
@@ -232,6 +236,37 @@ class InspectionWorkflows:
 
     def _on_threads_dismissed(self, _result: object) -> None:
         self.app.panels.threads = None
+
+    async def open_rust_concurrency(self) -> None:
+        """Collect Rust's immutable wait-graph snapshot and open its workspace."""
+        ctrl = self.app.controller
+        try:
+            snapshot = await self._svc.collect_rust_concurrency()
+        except SessionGateError:
+            return
+        except Exception:
+            log.exception("Error collecting Rust concurrency")
+            self.app.notify("Failed to inspect Rust concurrency", title="Threads")
+            return
+        modal = RustConcurrencyModal(snapshot, ctrl.state.current_thread_id)
+        self.app.panels.rust_concurrency = modal
+        self.app.push_screen(modal, callback=self._on_rust_concurrency_dismissed)
+
+    def _on_rust_concurrency_dismissed(self, _result: object) -> None:
+        self.app.panels.rust_concurrency = None
+
+    async def refresh_rust_concurrency(self) -> None:
+        """Replace every Rust workspace tab from one fresh service snapshot."""
+        try:
+            snapshot = await self._svc.collect_rust_concurrency()
+        except SessionGateError:
+            return
+        except Exception:
+            log.exception("Error refreshing Rust concurrency")
+            return
+        modal = self.app.panels.rust_concurrency
+        if modal is not None:
+            modal.update_snapshot(snapshot)
 
     async def load_thread_detail(self, thread_id: int) -> None:
         """Fetch stack trace and variables for a thread."""

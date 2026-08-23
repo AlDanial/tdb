@@ -12,10 +12,15 @@ from types import SimpleNamespace
 
 from tdb.app_handlers.inspection import InspectionWorkflows
 from tdb.app_handlers.ui_panels import UIPanels
+from tdb.dap.types import Thread
+from tdb.languages.rust import build_rust_profile
 from tdb.server.event_handler import ServerEventHandler
 from tdb.session.controller import DebugController
 from tdb.session.inspect_service import SessionGateError
 from tdb.session.state import SessionPhase
+from tdb.widgets.rust_concurrency_modal import RustConcurrencyModal
+from tdb.widgets.threads_modal import ThreadsModal
+from tests.unit.test_rust_concurrency_modal import sample_snapshot
 
 
 class _StubMenuBar:
@@ -55,6 +60,41 @@ class _StubApp:
 def _wf(profile=None) -> tuple[InspectionWorkflows, _StubApp]:
     app = _StubApp(profile=profile)
     return InspectionWorkflows(app), app
+
+
+async def test_rust_threads_action_opens_concurrency_workspace(monkeypatch):
+    """Rust's advertised concurrency capability must bypass ThreadsModal."""
+    workflow, app = _wf(profile=build_rust_profile(adapter="lldb-dap"))
+    snapshot = sample_snapshot()
+
+    async def collect_rust_concurrency():
+        return snapshot
+
+    monkeypatch.setattr(
+        workflow._svc,
+        "collect_rust_concurrency",
+        collect_rust_concurrency,
+    )
+
+    await workflow.open_threads()
+
+    assert isinstance(app.panels.rust_concurrency, RustConcurrencyModal)
+    assert app.panels.threads is None
+
+
+async def test_non_rust_threads_action_keeps_generic_threads_modal(monkeypatch):
+    """A capability check, not a binary heuristic, preserves every fallback profile."""
+    workflow, app = _wf()
+
+    async def list_threads():
+        return [Thread(id=1, name="MainThread")]
+
+    monkeypatch.setattr(workflow._svc, "list_threads", list_threads)
+
+    await workflow.open_threads()
+
+    assert isinstance(app.panels.threads, ThreadsModal)
+    assert app.panels.rust_concurrency is None
 
 
 # --- State guards ------------------------------------------------------

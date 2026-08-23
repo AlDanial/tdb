@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from tdb.widgets.rust_concurrency_modal import RustConcurrencyModal
     from tdb.widgets.async_tasks_modal import AsyncTasksModal
     from tdb.widgets.processes_modal import ProcessesModal
     from tdb.widgets.threads_modal import ThreadsModal
@@ -35,6 +36,7 @@ class UIPanels:
     """Live references to TdbApp's modal singletons + ephemeral UI flags."""
 
     threads: "ThreadsModal | None" = None
+    rust_concurrency: "RustConcurrencyModal | None" = None
     processes: "ProcessesModal | None" = None
     async_tasks: "AsyncTasksModal | None" = None
     # True after `_show_exception_modal` opens the traceback modal for
@@ -56,6 +58,7 @@ class UIPanels:
         """Drop all modal refs and reset transient flags. Called on
         session restart so stale modal instances aren't kept alive."""
         self.threads = None
+        self.rust_concurrency = None
         self.processes = None
         self.async_tasks = None
         self.exception_modal_shown = False

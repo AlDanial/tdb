@@ -42,6 +42,7 @@ from tdb.session.messages import (
 from tdb.widgets.async_tasks_modal import AsyncTasksModal
 from tdb.widgets.code_view import CodeView
 from tdb.widgets.processes_modal import ProcessesModal
+from tdb.widgets.rust_concurrency_modal import RustConcurrencyModal
 from tdb.widgets.threads_modal import ThreadsModal
 
 if TYPE_CHECKING:
@@ -166,6 +167,35 @@ class _AppMessageRoutes:
         if isinstance(self.screen, ThreadsModal):  # type: ignore[attr-defined]
             self.screen.dismiss(None)  # type: ignore[attr-defined]
         await self.controller.switch_active_thread(message.thread_id)
+        self._sync_views_to_top_frame()
+        self.query_one("#code-view", CodeView).focus()  # type: ignore[attr-defined]
+
+    # --- Modal: Rust concurrency -------------------------------------
+
+    async def on_rust_concurrency_modal_refresh_snapshot(
+        self,
+        message: RustConcurrencyModal.RefreshSnapshot,
+    ) -> None:
+        await self._inspection.refresh_rust_concurrency()
+
+    async def on_rust_concurrency_modal_select_thread(
+        self,
+        message: RustConcurrencyModal.SelectThread,
+    ) -> None:
+        if isinstance(self.screen, RustConcurrencyModal):  # type: ignore[attr-defined]
+            self.screen.dismiss(None)  # type: ignore[attr-defined]
+        await self.controller.switch_active_thread(message.thread_id)
+        self._sync_views_to_top_frame()
+        self.query_one("#code-view", CodeView).focus()  # type: ignore[attr-defined]
+
+    async def on_rust_concurrency_modal_select_frame(
+        self,
+        message: RustConcurrencyModal.SelectFrame,
+    ) -> None:
+        if isinstance(self.screen, RustConcurrencyModal):  # type: ignore[attr-defined]
+            self.screen.dismiss(None)  # type: ignore[attr-defined]
+        await self.controller.switch_active_thread(message.thread_id)
+        await self.controller.select_frame(message.frame_id)
         self._sync_views_to_top_frame()
         self.query_one("#code-view", CodeView).focus()  # type: ignore[attr-defined]
 
