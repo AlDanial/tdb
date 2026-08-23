@@ -5,3 +5,4 @@ htmlcov/
 build/
 src/textual_debugger.egg-info/
 .worktrees/
+.superpowers/

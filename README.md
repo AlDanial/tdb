@@ -5,6 +5,7 @@ a full-featured terminal-based debugger for Python and other languages
 with a Debug Adapter Protocol (DAP) implementation.  In addition to Python,
 `tdb` comes with built-in support for
 - C and C++ (via `gdb` or `lldb-dap`)
+- Rust (via `gdb` or `lldb-dap`, selected explicitly)
 - Perl (via `perl -d`)
 - Bash (via bash's own `DEBUG` trap; bash ≥ 4.4)
 - Tcsh (via source instrumentation of a stock `tcsh`)
@@ -26,7 +27,8 @@ MIT License.  Copyright 2026 by Al Danial.
 `tdb`:
 
 - debugs multiple languages through the Debug Adapter Protocol: Python (via `debugpy`,
-the richest feature set), C/C++ (via `gdb -i dap` or `lldb-dap`), Perl (via `perl -d`),
+the richest feature set), C/C++ (via `gdb -i dap` or `lldb-dap`), Rust (via `gdb` or
+`lldb-dap`), Perl (via `perl -d`),
 Bash (via bash's own `DEBUG` trap), Tcsh (via source instrumentation of a
 stock `tcsh`), and Ruby (via the debug gem's `rdbg`), with the language
 auto-detected from the target (ref. [Multi-Language Debugging](#multi-language-debugging)).
@@ -177,13 +179,14 @@ python -m tdb my_program.py
 
 ## Multi-Language Debugging
 
-`tdb` debugs any language that has a Debug Adapter Protocol backend. Six
+`tdb` debugs any language that has a Debug Adapter Protocol backend. Seven
 languages are supported out of the box:
 
 | Language | Adapter(s) | Dependencies           | Feature level |
 |----------|------------|------------------------|---------------|
 | Python | `debugpy` (default) | Python ≥ 3.11 | everything in this README |
 | C / C++ (any native binary) | `gdb` (default), `lldb-dap` (alternate) | `gdb -i dap` requires GDB ≥ 14; `lldb-dap` ships with LLVM ≥ 17 (e.g. `apt install lldb`) | core debugging: breakpoints, stepping, stack, variables, evaluate console |
+| Rust (explicit `--lang rust`) | `gdb` (Linux default), `lldb-dap` (macOS default) | current stable Rust 1.98 only; GDB ≥ 14 or LLVM `lldb-dap` ≥ 17 | core debugging + best-effort Rust concurrency inspection + remote attach |
 | Perl | perl-tdb (bundled) | perl ≥ 5.18 on PATH  | core debugging + remote attach |
 | Bash | bash-tdb (bundled) | bash ≥ 4.4 on PATH  | core debugging (no remote attach) |
 | Tcsh | tcsh-tdb (bundled) | tcsh on PATH | core debugging (no remote attach, no conditional breakpoints, no pause) |
@@ -195,7 +198,8 @@ The language is auto-detected from the debug target:
 
 1. File extension: `.py` → Python; `.pl` / `.pm` / `.t` → Perl; `.sh` / `.bash`
    → Bash; `.csh` / `.tcsh` → Tcsh; `.rb` → Ruby.
-2. Native executables (ELF, Mach-O, PE magic bytes) → C/C++.
+2. Native executables (ELF, Mach-O, PE magic bytes) → C/C++. Rust is never
+   inferred from an executable; select it explicitly with `--lang rust`.
 3. A `#!...python`, `#!...perl`, `#!...bash`, `#!...csh`/`#!...tcsh`, or
    `#!...ruby` shebang → Python / Perl / Bash / Tcsh / Ruby respectively.
 4. C/C++/Rust *source* files (`.c`, `.cpp`, `.rs`, …) produce an error with a
@@ -203,7 +207,8 @@ The language is auto-detected from the debug target:
 5. Anything else produces an error naming the `--lang` override.
 
 `--lang` forces the language; `--adapter` picks a non-default adapter within
-it (`tdb --lang cpp --adapter lldb-dap ./myprog`).
+it (`tdb --lang cpp --adapter lldb-dap ./myprog`). Rust always requires the
+explicit language selection (`tdb --lang rust target/debug/app`).
 
 > **Migration note:** extensionless Python scripts without a `python` shebang
 > were previously assumed to be Python; they now require `--lang python`.
@@ -236,11 +241,12 @@ process inspectors and wait graph, the evaluate console's trailing-`?` help,
 `--python`/`--pv`, `--no-subprocess`, automatic child-process attachment, and
 the post-mortem / `tdb.breakpoint()` hooks (those hooks live inside Python
 programs by nature). Remote attach (`-r`) also works for Perl (see
-[Perl](#perl), `Devel::TdbRemote` in place of `debugpy.listen()`) and Ruby
-(see [Ruby](#ruby), `rdbg --open` in place of `debugpy.listen()`), but not
-for C/C++, Bash, or Tcsh. `--terminal` works for every launch-mode
-language — Python, Perl, Bash, Tcsh, Ruby, and C/C++ via `--adapter lldb-dap`
-— see [External Terminal Support](#external-terminal-support).
+[Perl](#perl), `Devel::TdbRemote` in place of `debugpy.listen()`), Ruby
+(see [Ruby](#ruby), `rdbg --open` in place of `debugpy.listen()`), and Rust
+(with a local symbol-bearing executable; see [Rust](#rust)), but not for
+C/C++, Bash, or Tcsh. `--terminal` works for every launch-mode language —
+Python, Perl, Bash, Tcsh, Ruby, C/C++ via `--adapter lldb-dap`, and Rust via
+`--adapter lldb-dap` — see [External Terminal Support](#external-terminal-support).
 
 **Bash limitations (v1):** the bash adapter uses bash's own `DEBUG` trap and
 has a smaller feature set than Python:
@@ -306,6 +312,60 @@ See [Tcsh](#tcsh) below for launch details.
 - `--terminal` (see [External Terminal Support](#external-terminal-support))
   requires `--adapter lldb-dap`; GDB's DAP mode has no terminal integration
   and `tdb` refuses `--terminal` with the default `gdb` adapter.
+
+### Rust
+
+Rust debugging is intentionally explicit: build a normal debug executable,
+leave it unmodified, and pass that executable with `--lang rust`. `tdb` does
+not compile, instrument, or auto-detect Rust programs. This release supports
+the current stable Rust **1.98** standard-library layouts only. Build with
+debug information and no optimization for the most useful source locations:
+
+```bash
+cargo rustc -- -C debuginfo=2 -C opt-level=0
+# Equivalent direct rustc settings: rustc -C debuginfo=2 -C opt-level=0 src/main.rs
+```
+
+The common commands are:
+
+```bash
+cargo build
+tdb --lang rust target/debug/app
+tdb --lang rust --adapter lldb-dap --run target/debug/app
+tdb --lang rust --adapter lldb-dap --terminal xterm target/debug/app
+tdb --lang rust --adapter gdb --remote-attach host:2345 target/debug/app
+```
+
+`--run` and normal stopped-on-entry launch work with both adapters. On Linux,
+use GDB (the default) or `lldb-dap`; on macOS, use `lldb-dap` (the default).
+External terminals are LLDB-only: GDB's DAP mode cannot provide terminal
+integration. The mode/platform matrix is:
+
+| Platform | Normal / `--run` | `--terminal` | `--remote-attach` |
+|----------|------------------|--------------|-------------------|
+| Linux | GDB or `lldb-dap` | `lldb-dap` only | GDB or `lldb-dap` |
+| macOS | `lldb-dap` | `lldb-dap` only | `lldb-dap` |
+
+Remote attach connects to a GDB-remote server already running on the target.
+Pass the matching **local, unmodified executable with debug symbols** as the
+program argument; `tdb` requires it for symbols and Rust concurrency evidence.
+When source paths differ, pair `--local-root` with `--remote-root`. Do not
+expose the remote debug port to an untrusted network: prefer an SSH tunnel,
+for example `ssh -L 2345:127.0.0.1:2345 host`, then attach to `127.0.0.1:2345`.
+
+Press the Rust concurrency action while the debuggee is stopped to open a
+fresh, bounded snapshot of threads, wait edges, and findings. The graph is
+best effort: `confirmed` evidence is directly observed by the debugger,
+`probable` is a supported inference, and `unknown` means ownership could not
+be established. A deadlock is confirmed only when every edge in its cycle is
+confirmed. A suspected cycle or whole-program stall is a diagnostic lead, not
+a proof: it means a cycle has incomplete evidence, or all observed application
+threads are blocked while the graph cannot safely invent an owner. Refresh
+after the next stop to collect a new snapshot.
+
+The built-in evidence recognizes current `std` synchronization layouts. A
+future helper crate may expose stable, application-provided synchronization
+metadata for broader primitives and stronger ownership evidence.
 
 ### Perl
 

@@ -1,7 +1,15 @@
+from importlib import resources
+
 import pytest
 
 from tdb.languages.base import LanguageNotSupportedError
 from tdb.languages.rust import RustGdbAdapter, RustLldbAdapter, build_rust_profile
+
+
+def test_probe_scripts_are_package_resources():
+    root = resources.files("tdb.rust_concurrency.probes")
+    assert root.joinpath("gdb_script.py").is_file()
+    assert root.joinpath("lldb_script.py").is_file()
 
 
 def test_rust_profile_defaults_by_platform(monkeypatch):

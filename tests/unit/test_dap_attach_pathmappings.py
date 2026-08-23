@@ -9,6 +9,7 @@ in the attach arguments; this file pins that contract.
 from __future__ import annotations
 
 import asyncio
+from importlib import resources
 from unittest.mock import AsyncMock
 
 import pytest
@@ -92,6 +93,10 @@ async def test_attach_threads_program_to_rust_adapter():
         "gdb-remote-host": "devbox",
         "gdb-remote-port": 2345,
         "sourceMap": [["/remote/src", "/local/src"]],
+        "initCommands": [
+            "command script import "
+            f'"{resources.files("tdb.rust_concurrency.probes").joinpath("lldb_script.py")}"'
+        ],
     }
 
 
