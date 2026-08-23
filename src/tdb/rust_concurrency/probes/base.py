@@ -76,12 +76,16 @@ def _parse_primitive_states(value: object) -> tuple[ProbePrimitiveState, ...]:
     if not isinstance(value, list):
         raise _InvalidEnvelope("primitive_states must be an array")
     parsed: list[ProbePrimitiveState] = []
+    primitive_ids: set[str] = set()
     for item in value:
         state = _mapping(item, "primitive state")
         primitive_id = state.get("primitive_id")
         raw_state = state.get("raw_state")
         if not _is_string(primitive_id) or not _PRIMITIVE_ID.fullmatch(primitive_id):
             raise _InvalidEnvelope("primitive_id must contain a full hexadecimal address")
+        if primitive_id in primitive_ids:
+            raise _InvalidEnvelope(f"duplicate primitive_id {primitive_id}")
+        primitive_ids.add(primitive_id)
         if not _is_string(raw_state):
             raise _InvalidEnvelope("raw_state must be a string")
         parsed.append(

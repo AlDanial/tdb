@@ -85,6 +85,20 @@ def test_invalid_probe_envelopes_degrade_to_warnings(raw: str):
     assert result.warnings
 
 
+def test_duplicate_primitive_ids_are_rejected():
+    state = {
+        "primitive_id": "mutex:0x10",
+        "owner_os_thread_ids": [],
+        "raw_state": "locked",
+        "evidence": [],
+    }
+
+    result = parse_probe_output(_envelope(primitive_states=[state, state]))
+
+    assert result.primitive_states == ()
+    assert "duplicate primitive_id" in result.warnings[0]
+
+
 def test_unsupported_rust_version_disables_layout_evidence():
     result = parse_probe_output(load_fixture("gdb/rust-1.97.json"))
 
@@ -159,3 +173,17 @@ def test_rust_gdb_sources_probe_script_before_starting_dap():
     assert command[1] == "-iex"
     assert command[2].startswith("source ")
     assert command[-2:] == ["-i", "dap"]
+
+
+def test_rust_gdb_quotes_probe_script_path(monkeypatch):
+    class ResourcePath:
+        def joinpath(self, _name):
+            return "/tmp/tdb package/gdb_script.py"
+
+    monkeypatch.setattr(
+        "tdb.languages.rust.resources.files", lambda _package: ResourcePath()
+    )
+
+    command = RustGdbAdapter(executable="gdb").command()
+
+    assert command[2] == 'source "/tmp/tdb package/gdb_script.py"'

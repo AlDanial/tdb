@@ -43,7 +43,13 @@ class RustGdbAdapter(GdbDapAdapter):
         script_path = resources.files("tdb.rust_concurrency.probes").joinpath(
             "gdb_script.py"
         )
-        return [command[0], "-iex", f"source {script_path}", "-i", "dap"]
+        return [
+            command[0],
+            "-iex",
+            f"source {_gdb_string(str(script_path))}",
+            "-i",
+            "dap",
+        ]
 
     def attach_body(
         self, *, host: str, port: int, opts: dict[str, Any]

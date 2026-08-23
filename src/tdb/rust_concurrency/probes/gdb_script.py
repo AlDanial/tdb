@@ -83,29 +83,52 @@ if gdb is not None:  # pragma: no branch - command registration happens in GDB.
             inferior = gdb.selected_inferior()
             selected_thread = gdb.selected_thread()
             threads = []
-            states = []
-            for thread in inferior.threads():
-                threads.append(
-                    {
-                        "dap_thread_hint": str(getattr(thread, "global_num", thread.num)),
-                        "os_thread_id": _os_thread_id(thread),
-                    }
-                )
-                try:
-                    thread.switch()
-                    frame = gdb.newest_frame()
-                    primitive = _frame_primitive(frame) if frame is not None else None
-                except gdb.error:
-                    primitive = None
-                if primitive is not None:
-                    states.append(primitive)
-            if selected_thread is not None:
-                selected_thread.switch()
+            states_by_id = {}
+            warnings = []
+            rust_version = None
+            try:
+                inferior_threads = inferior.threads()
+                for thread in inferior_threads:
+                    threads.append(
+                        {
+                            "dap_thread_hint": str(
+                                getattr(thread, "global_num", thread.num)
+                            ),
+                            "os_thread_id": _os_thread_id(thread),
+                        }
+                    )
+                    try:
+                        thread.switch()
+                        if rust_version is None:
+                            rust_version = _rust_version()
+                        frame = gdb.newest_frame()
+                        primitive = (
+                            _frame_primitive(frame) if frame is not None else None
+                        )
+                    except (gdb.error, RuntimeError, ValueError, AttributeError) as exc:
+                        warnings.append(
+                            f"thread {_os_thread_id(thread)} evidence unavailable: {exc}"
+                        )
+                        primitive = None
+                    if primitive is not None:
+                        states_by_id.setdefault(primitive["primitive_id"], primitive)
+            except (gdb.error, RuntimeError, ValueError, AttributeError) as exc:
+                warnings.append(f"thread enumeration unavailable: {exc}")
+            finally:
+                if selected_thread is not None:
+                    try:
+                        selected_thread.switch()
+                    except (gdb.error, RuntimeError, ValueError, AttributeError) as exc:
+                        warnings.append(f"selected thread restoration failed: {exc}")
+            if rust_version is None:
+                warnings.append("Rust DW_AT_producer version unavailable")
             payload = {
-                "rust_version": _rust_version(),
+                "rust_version": rust_version,
                 "threads": threads,
-                "primitive_states": states,
-                "warnings": [],
+                "primitive_states": [
+                    states_by_id[key] for key in sorted(states_by_id)
+                ],
+                "warnings": warnings,
             }
             print(_MARKER + json.dumps(payload, sort_keys=True, separators=(",", ":")))
 
