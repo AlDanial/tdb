@@ -854,7 +854,7 @@ class DebugController:
         try:
             stacks = {}
             for t in threads:
-                stacks[t.id] = await ac.stack_trace(t.id)
+                stacks[t.id] = await ac.stack_trace(t.id, levels=8)
             decorations = classify(threads, stacks)
             by_id = {d.thread.id: d for d in decorations}
             current = by_id.get(self.state.current_thread_id)
