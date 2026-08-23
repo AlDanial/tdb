@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 
 import uvicorn
 
+from tdb.languages.base import AdapterNotFoundError
 from tdb.session.controller import DebugController
 from .app import create_app
 from .event_handler import ServerEventHandler
@@ -68,6 +69,9 @@ async def setup_headless_session(
                 path_mappings=path_mappings,
                 program=program,
             )
+        except AdapterNotFoundError as exc:
+            print(f"tdb: {exc.hint}", file=sys.stderr)
+            sys.exit(2)
         except OSError as exc:
             # No server listening, route unreachable, DNS failure, etc.
             # Mirror the TUI's failure mode: clear message on stderr,
@@ -80,8 +84,6 @@ async def setup_headless_session(
             sys.exit(2)
     else:
         assert program is not None
-        from tdb.languages.base import AdapterNotFoundError
-
         try:
             await controller.start(
                 program=program,
