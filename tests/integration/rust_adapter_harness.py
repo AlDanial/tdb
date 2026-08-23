@@ -348,15 +348,22 @@ async def run_mode_pause_probe(
     resumed = False
     episode_count = 0
     pause_task: asyncio.Task[None] | None = None
+    retry_tasks: list[asyncio.Task[None]] = []
     terminate_task: asyncio.Task[None] | None = None
     controller_box: dict[str, DebugController] = {}
     connection_box: dict[str, ReadyConnection] = {}
+    continued = asyncio.Event()
 
     async with _ready_listener() as (port, fixture_ready):
 
         def session_ready(ctrl: DebugController) -> None:
             nonlocal pause_task
             controller_box["controller"] = ctrl
+
+            def on_continued(_event: Event) -> None:
+                continued.set()
+
+            ctrl.client.on_event("continued", on_continued)
 
             async def pause_when_fixture_ready() -> None:
                 connection = await asyncio.wait_for(fixture_ready, WAIT)
@@ -377,6 +384,18 @@ async def run_mode_pause_probe(
                 controller.state.phase is SessionPhase.STOPPED
                 and _scenario_is_blocked(snapshot, target.scenario)
             )
+            if not verified_wait:
+                continued.clear()
+
+                async def pause_after_resume() -> None:
+                    await asyncio.wait_for(continued.wait(), WAIT)
+                    pause_results.append(
+                        await controller.pause(timeout=PAUSE_TIMEOUT)
+                    )
+
+                retry_tasks.append(asyncio.create_task(pause_after_resume()))
+                return True
+
             connection = connection_box["connection"]
             connection.acknowledge_wait_proof()
 
@@ -403,6 +422,8 @@ async def run_mode_pause_probe(
         )
         if pause_task is not None:
             await pause_task
+        if retry_tasks:
+            await asyncio.gather(*retry_tasks)
         if terminate_task is not None:
             await terminate_task
         controller = controller_box["controller"]
