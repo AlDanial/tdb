@@ -114,6 +114,7 @@ class RpcHandlers:
         "list_tasks",
         "inspect_task",
         "wait_graph",
+        "rust_concurrency",
         "restart",
         "status",
         "quit",
@@ -143,6 +144,7 @@ class RpcHandlers:
         "list_tasks": "params: []  -- list all asyncio tasks",
         "inspect_task": 'params: ["task_name"]  -- inspect a specific asyncio task',
         "wait_graph": "params: []  -- show task wait-graph and any deadlock cycles",
+        "rust_concurrency": "params: []  -- show Rust thread and synchronization findings",
         "restart": "params: []",
         "status": "params: []",
         "quit": "params: []",
@@ -220,6 +222,7 @@ class RpcHandlers:
             "list_tasks": self.action_list_tasks,
             "inspect_task": self.action_inspect_task,
             "wait_graph": self.action_wait_graph,
+            "rust_concurrency": self.action_rust_concurrency,
             "restart": self.action_restart,
             "status": self.action_status,
             "quit": self.action_quit,
@@ -690,6 +693,18 @@ class RpcHandlers:
                     lines.append(f"  - {' <-> '.join(cycle)}")
 
         return RpcResponse.ok("\n".join(lines).rstrip())
+
+    async def action_rust_concurrency(self, params: list[Any]) -> RpcResponse:
+        """Return the stopped Rust concurrency snapshot as structured JSON data."""
+        if params:
+            return RpcResponse.error("rust_concurrency does not accept parameters")
+        try:
+            snapshot = await self._inspect.collect_rust_concurrency()
+        except SessionGateError as e:
+            return self._gate_error(e, "inspect Rust concurrency")
+        except Exception as e:
+            return RpcResponse.error(f"Failed to collect Rust concurrency: {e}")
+        return RpcResponse.ok_data(snapshot.to_dict())
 
     async def action_list_threads(self, params: list[Any]) -> RpcResponse:
         try:

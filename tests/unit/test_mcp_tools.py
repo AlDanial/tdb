@@ -46,6 +46,7 @@ EXPECTED_TOOL_NAMES = {
     "tasks",
     "processes",
     "wait_graph",
+    "rust_concurrency",
 }
 
 
@@ -114,6 +115,12 @@ def test_format_success_with_empty_value_returns_ok():
     """RpcResponse.ok() (no value) returns "" — agents shouldn't see
     a blank string and assume failure; surface a benign 'ok'."""
     assert _format(RpcResponse.ok()) == "ok"
+
+
+def test_format_structured_response_returns_stable_json():
+    assert _format(RpcResponse.ok_data({"warnings": [], "threads": []})) == (
+        '{"threads": [], "warnings": []}'
+    )
 
 
 def test_format_error_prefixes_with_error_keyword():

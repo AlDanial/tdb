@@ -18,6 +18,7 @@ extensions, etc. typically prompt before invoking tools).
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Literal
 
@@ -39,6 +40,8 @@ def _format(rsp: RpcResponse) -> str:
     """Render an RpcResponse as the string an MCP tool returns. Errors
     are prefixed `Error:` so agents distinguish failure from success
     payloads (e.g. the "still running" sentinel returned by `control`)."""
+    if rsp.success and rsp.data is not None:
+        return json.dumps(rsp.data, sort_keys=True)
     if rsp.success:
         return rsp.value or "ok"
     return f"Error: {rsp.value}"
@@ -308,6 +311,16 @@ def build_mcp(session: McpSession | None = None) -> FastMCP:
         identified holders, plus any deadlock cycles. The single best
         tool for diagnosing async hangs from an agent."""
         return _format(await sess._call("wait_graph", []))
+
+    @mcp.tool(
+        description=(
+            "Show Rust threads, synchronization waits, and evidence-backed "
+            "deadlock or stall findings."
+        )
+    )
+    async def rust_concurrency() -> str:
+        """Return a structured Rust concurrency snapshot for a stopped session."""
+        return _format(await sess._call("rust_concurrency", []))
 
     return mcp
 

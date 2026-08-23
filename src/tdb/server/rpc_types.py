@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import json
 from typing import Any
 
 from pydantic import BaseModel
@@ -17,6 +18,7 @@ class RpcResponse(BaseModel):
     timestamp: str
     success: bool
     value: str = ""
+    data: dict[str, Any] | None = None
 
     @classmethod
     def ok(cls, value: str = "") -> RpcResponse:
@@ -24,6 +26,16 @@ class RpcResponse(BaseModel):
             timestamp=datetime.now(timezone.utc).isoformat(),
             success=True,
             value=value,
+        )
+
+    @classmethod
+    def ok_data(cls, data: dict[str, Any]) -> RpcResponse:
+        """Return structured data while preserving legacy string clients."""
+        return cls(
+            timestamp=datetime.now(timezone.utc).isoformat(),
+            success=True,
+            value=json.dumps(data, sort_keys=True),
+            data=data,
         )
 
     @classmethod
