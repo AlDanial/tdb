@@ -39,6 +39,7 @@ _CONFIDENCE_RANK = {
     Confidence.PROBABLE: 1,
     Confidence.CONFIRMED: 2,
 }
+MAX_WAIT_CYCLES = 256
 
 
 def _strongest_confidence(evidence: tuple[Evidence, ...]) -> Confidence:
@@ -58,7 +59,12 @@ def _canonical_cycle(thread_ids: tuple[int, ...]) -> tuple[int, ...]:
     return thread_ids[start:] + thread_ids[:start]
 
 
-def _find_cycles(edges: Iterable[WaitEdge]) -> tuple[tuple[tuple[int, ...], tuple[WaitEdge, ...]], ...]:
+def _find_cycles(
+    edges: Iterable[WaitEdge],
+) -> tuple[
+    tuple[tuple[tuple[int, ...], tuple[WaitEdge, ...]], ...],
+    bool,
+]:
     """Find deterministic directed cycles using sorted depth-first traversal."""
     adjacency: dict[int, list[WaitEdge]] = {}
     for edge in edges:
@@ -74,8 +80,10 @@ def _find_cycles(edges: Iterable[WaitEdge]) -> tuple[tuple[tuple[int, ...], tupl
     active_edges: list[WaitEdge] = []
     active_index: dict[int, int] = {}
     found: dict[tuple[int, ...], tuple[WaitEdge, ...]] = {}
+    truncated = False
 
-    def visit(thread_id: int) -> None:
+    def visit(thread_id: int) -> bool:
+        nonlocal truncated
         active_index[thread_id] = len(active)
         active.append(thread_id)
         for edge in adjacency.get(thread_id, ()):
@@ -86,12 +94,23 @@ def _find_cycles(edges: Iterable[WaitEdge]) -> tuple[tuple[tuple[int, ...], tupl
                 cycle_ids = _canonical_cycle(tuple(active[index:]))
                 cycle_edges = tuple(active_edges[index:] + [edge])
                 found.setdefault(cycle_ids, cycle_edges)
+                if len(found) > MAX_WAIT_CYCLES:
+                    del found[cycle_ids]
+                    truncated = True
+                    active.pop()
+                    del active_index[thread_id]
+                    return False
             else:
                 active_edges.append(edge)
-                visit(owner)
+                if not visit(owner):
+                    active_edges.pop()
+                    active.pop()
+                    del active_index[thread_id]
+                    return False
                 active_edges.pop()
         active.pop()
         del active_index[thread_id]
+        return True
 
     nodes = set(adjacency) | {
         edge.owner_thread_id
@@ -100,9 +119,11 @@ def _find_cycles(edges: Iterable[WaitEdge]) -> tuple[tuple[tuple[int, ...], tupl
         if edge.owner_thread_id is not None
     }
     for thread_id in sorted(nodes):
-        visit(thread_id)
+        if not visit(thread_id):
+            break
 
-    return tuple((thread_ids, found[thread_ids]) for thread_ids in sorted(found))
+    cycles = tuple((thread_ids, found[thread_ids]) for thread_ids in sorted(found))
+    return cycles, truncated
 
 
 def _deadlock_finding(thread_ids: tuple[int, ...]) -> Finding:
@@ -119,7 +140,7 @@ def find_confirmed_cycles(edges: tuple[WaitEdge, ...]) -> tuple[Finding, ...]:
     confirmed_edges = tuple(edge for edge in edges if _is_confirmed(edge))
     return tuple(
         _deadlock_finding(thread_ids)
-        for thread_ids, _ in _find_cycles(confirmed_edges)
+        for thread_ids, _ in _find_cycles(confirmed_edges)[0]
     )
 
 
@@ -182,7 +203,7 @@ def find_suspected_stalls(
     """Report evidence-incomplete cycles and all-blocked application snapshots."""
     confirmed_thread_sets = {finding.thread_ids for finding in confirmed}
     suspected: list[Finding] = []
-    for thread_ids, cycle_edges in _find_cycles(edges):
+    for thread_ids, cycle_edges in _find_cycles(edges)[0]:
         if thread_ids in confirmed_thread_sets:
             continue
         gaps = _cycle_gaps(cycle_edges)
@@ -344,7 +365,10 @@ def analyze(raw: RawSnapshot, probe: ProbeResult | None = None) -> ConcurrencySn
         platform=raw.platform,
         adapter=raw.adapter,
     )
+    cycle_truncated = _find_cycles(edges)[1]
     warnings = raw.warnings + (probe.warnings if probe is not None else ())
+    if cycle_truncated:
+        warnings += (f"Wait-cycle analysis truncated after {MAX_WAIT_CYCLES} cycles.",)
     return ConcurrencySnapshot(
         rust_version=(probe.rust_version if probe and probe.rust_version else raw.rust_version),
         adapter=raw.adapter,

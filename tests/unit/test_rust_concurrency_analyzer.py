@@ -288,3 +288,32 @@ def test_duplicate_thread_names_do_not_resolve_probe_owner_hint():
 
     assert snapshot.edges[0].owner_thread_id is None
     assert snapshot.confirmed_deadlocks == ()
+
+
+def test_dense_owner_graph_caps_cycles_and_warns():
+    size = 8
+    raw = RawSnapshot(
+        adapter="gdb",
+        platform="linux",
+        rust_version="1.98.0",
+        threads=tuple(_mutex_thread(index, f"0x{index:x}") for index in range(1, size + 1)),
+    )
+    owners = tuple(str(index) for index in range(1, size + 1))
+    confirmed = (Evidence(Confidence.CONFIRMED, "probe-owner", "owner set"),)
+    probe = ProbeResult(
+        rust_version="1.98.0",
+        primitive_states=tuple(
+            ProbePrimitiveState(
+                primitive_id=f"mutex:0x{index:x}",
+                owner_os_thread_ids=owners,
+                raw_state="locked",
+                evidence=confirmed,
+            )
+            for index in range(1, size + 1)
+        ),
+    )
+
+    snapshot = analyze(raw, probe)
+
+    assert len(snapshot.confirmed_deadlocks) == 256
+    assert "Wait-cycle analysis truncated after 256 cycles." in snapshot.warnings
