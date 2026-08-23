@@ -161,6 +161,28 @@ async def test_rust_concurrency_action_rejects_parameters(handlers):
     assert "does not accept parameters" in response.value
 
 
+async def test_rpc_endpoint_retains_structured_rust_data(handlers, monkeypatch):
+    import httpx
+
+    from tdb.server.app import create_app
+
+    monkeypatch.setattr(
+        handlers._inspect,
+        "collect_rust_concurrency",
+        AsyncMock(return_value=_sample_rust_snapshot()),
+    )
+    app = create_app(handlers)
+    transport = httpx.ASGITransport(app=app)
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/rpc", json={"action": "rust_concurrency", "params": []}
+        )
+
+    assert response.status_code == 200
+    assert response.json()["data"]["threads"][0]["name"] == "main"
+
+
 # --- Breakpoint actions (no DAP needed once is_terminated guards trip) --
 
 

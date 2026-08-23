@@ -11,6 +11,12 @@ def test_unknown_action_returns_error(headless_server):
     assert "Unknown action" in body["value"]
 
 
+def test_legacy_rpc_response_omits_structured_data_field(headless_server):
+    body = headless_server.call("not-an-action")
+
+    assert "data" not in body
+
+
 def test_help_lists_known_actions(headless_server):
     out = headless_server.ok("help")
     # A few representative actions should appear in the listing.
