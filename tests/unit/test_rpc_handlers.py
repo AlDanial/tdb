@@ -144,7 +144,10 @@ async def test_rust_concurrency_action_returns_structured_snapshot(
     assert response.success is True
     assert response.data is not None
     assert response.data["threads"][0]["name"] == "main"
-    assert _json.loads(response.value) == response.data
+    # `value` is the short legacy-client summary, not a second copy of
+    # the payload.
+    assert response.value.startswith("rust concurrency: ")
+    assert "1 thread(s)" in response.value
 
 
 async def test_rust_concurrency_action_gates_non_rust(handlers):

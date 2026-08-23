@@ -29,12 +29,17 @@ class RpcResponse(BaseModel):
         )
 
     @classmethod
-    def ok_data(cls, data: dict[str, Any]) -> RpcResponse:
-        """Return structured data while preserving legacy string clients."""
+    def ok_data(cls, data: dict[str, Any], value: str = "") -> RpcResponse:
+        """Return a structured payload in ``data``.
+
+        ``value`` stays the short human-readable line legacy string
+        clients render; duplicating the whole payload there would double
+        every response body for no consumer.
+        """
         return cls(
             timestamp=datetime.now(timezone.utc).isoformat(),
             success=True,
-            value=json.dumps(data, sort_keys=True),
+            value=value or json.dumps(data, sort_keys=True),
             data=data,
         )
 

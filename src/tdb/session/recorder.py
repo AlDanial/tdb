@@ -94,6 +94,9 @@ def build_header(args, config) -> dict:
             host=args.attach_host,
             port=args.attach_port,
             path_mappings=[list(pm) for pm in (args.path_mappings or [])],
+            # Rust native remote attach needs the local symbol-bearing
+            # executable; None for languages that attach without one.
+            program=args.program,
         )
     else:
         header.update(

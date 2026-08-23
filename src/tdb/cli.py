@@ -98,7 +98,8 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="LANGUAGE",
         help="Debuggee language (default: auto-detect from the program "
-        "target — .py -> python, native executables -> cpp).",
+        "target — .py -> python, native executables -> cpp). Rust binaries "
+        "auto-detect as cpp; pass `--lang rust` to enable Rust support.",
     )
     parser.add_argument(
         "--adapter",
@@ -424,19 +425,22 @@ def _resolve_language(
                 f"--no-subprocess is debugpy-specific (detected language: {profile.id})"
             )
 
-    if args.remote_attach and profile.id not in ("python", "perl", "ruby"):
-        if profile.id == "rust":
-            if args.program is None:
-                parser.error("Rust remote attach requires a local program")
-            program_path = Path(args.program).resolve()
-            if not program_path.exists():
-                parser.error(f"File not found: {args.program}")
-            args.program = str(program_path)
-        else:
+    if args.remote_attach:
+        if profile.id not in ("python", "perl", "ruby", "rust"):
             parser.error(
                 f"--remote-attach supports Python, Perl, Ruby, and Rust debuggees "
                 f"only (detected language: {profile.id})"
             )
+        if profile.id == "rust":
+            # Native remote attach drives gdbserver/lldb-server through a
+            # local adapter, which needs the local symbol-bearing copy of
+            # the remote executable.
+            if args.program is None:
+                parser.error("Rust remote attach requires a local program")
+            program_path = Path(args.program).resolve()
+            if not program_path.is_file():
+                parser.error(f"File not found: {args.program}")
+            args.program = str(program_path)
 
     # gdb's DAP mode has no terminal integration (see GdbDapAdapter.launch_body,
     # which raises the same error as a backstop if this guard is ever

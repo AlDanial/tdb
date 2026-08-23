@@ -123,7 +123,24 @@ def test_build_header_remote_attach():
     assert h["host"] == "10.0.0.5"
     assert h["port"] == 5678
     assert h["path_mappings"] == [["/local", "/remote"]]
-    assert "program" not in h
+    assert h["program"] is None
+
+
+def test_build_header_remote_attach_keeps_rust_local_program():
+    # Rust native remote attach replays need the local symbol-bearing
+    # executable, so attach headers persist it.
+    h = build_header(
+        _ns(
+            attach_host="10.0.0.5",
+            attach_port=2345,
+            path_mappings=[],
+            profile=SimpleNamespace(id="rust"),
+            program="/abs/target/debug/app",
+        ),
+        SimpleNamespace(step_mode="line"),
+    )
+    assert h["mode"] == "remote-attach"
+    assert h["program"] == "/abs/target/debug/app"
 
 
 def test_build_header_tolerates_missing_profile():

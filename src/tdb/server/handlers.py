@@ -704,7 +704,13 @@ class RpcHandlers:
             return self._gate_error(e, "inspect Rust concurrency")
         except Exception as e:
             return RpcResponse.error(f"Failed to collect Rust concurrency: {e}")
-        return RpcResponse.ok_data(snapshot.to_dict())
+        summary = (
+            f"rust concurrency: {len(snapshot.threads)} thread(s), "
+            f"{len(snapshot.edges)} wait edge(s), "
+            f"{len(snapshot.confirmed_deadlocks)} confirmed deadlock(s), "
+            f"{len(snapshot.suspected_stalls)} suspected stall(s)"
+        )
+        return RpcResponse.ok_data(snapshot.to_dict(), summary)
 
     async def action_list_threads(self, params: list[Any]) -> RpcResponse:
         try:

@@ -18,6 +18,7 @@ from tdb.rust_concurrency.models import (
     RawThread,
     RawVariable,
 )
+from tdb.session.errors import SessionGateError
 from tdb.session.state import SessionPhase
 
 # This is deliberately a cheap prefilter.  It prevents expanding locals for
@@ -94,8 +95,6 @@ class RustConcurrencyCollector:
                 await asyncio.sleep(0.01)
                 self._gate(controller)
                 if getattr(controller.state, "generation", None) != generation:
-                    from tdb.session.inspect_service import SessionGateError
-
                     raise SessionGateError("running")
 
         guard = asyncio.create_task(resumed())
@@ -119,10 +118,6 @@ class RustConcurrencyCollector:
 
     @staticmethod
     def _gate(controller: Any) -> None:
-        # Import lazily to avoid coupling the Rust package to the inspection
-        # service during module initialization.
-        from tdb.session.inspect_service import SessionGateError
-
         state = controller.state
         if state.is_terminated:
             raise SessionGateError("terminated")
@@ -283,8 +278,6 @@ class RustConcurrencyCollector:
             controller.state.phase is not phase
             or getattr(controller.state, "generation", None) != generation
         ):
-            from tdb.session.inspect_service import SessionGateError
-
             raise SessionGateError("running")
         return RawSnapshot(
             adapter=getattr(controller.profile.adapter, "id", ""),
@@ -336,8 +329,6 @@ class RustConcurrencyCollector:
                 warnings.append(f"probe failed: {exc}")
         self._gate(controller)
         if getattr(controller.state, "generation", None) != stop_generation:
-            from tdb.session.inspect_service import SessionGateError
-
             raise SessionGateError("running")
         if tuple(warnings) != raw.warnings:
             raw = replace(raw, warnings=tuple(sorted(warnings)))

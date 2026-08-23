@@ -39,7 +39,9 @@ _session = McpSession()
 def _format(rsp: RpcResponse) -> str:
     """Render an RpcResponse as the string an MCP tool returns. Errors
     are prefixed `Error:` so agents distinguish failure from success
-    payloads (e.g. the "still running" sentinel returned by `control`)."""
+    payloads (e.g. the "still running" sentinel returned by `control`).
+    A response carrying structured `data` (today only `rust_concurrency`)
+    returns it as stable sorted JSON instead of the prose `value`."""
     if rsp.success and rsp.data is not None:
         return json.dumps(rsp.data, sort_keys=True)
     if rsp.success:
@@ -136,7 +138,14 @@ def build_mcp(session: McpSession | None = None) -> FastMCP:
             adapter=adapter,
         )
 
-    @mcp.tool(description="Attach to a remote debuggee at host:port.")
+    @mcp.tool(
+        description=(
+            "Attach to a remote debuggee at host:port. Rust needs "
+            'lang="rust" plus program=<local unstripped copy of the '
+            "remote executable> — a native binary is otherwise treated "
+            "as C/C++."
+        )
+    )
     async def debug_attach(
         host: str,
         port: int,
@@ -315,7 +324,9 @@ def build_mcp(session: McpSession | None = None) -> FastMCP:
     @mcp.tool(
         description=(
             "Show Rust threads, synchronization waits, and evidence-backed "
-            "deadlock or stall findings."
+            "deadlock or stall findings. Rust sessions only, while stopped; "
+            "returns a JSON snapshot (threads, primitives, edges, findings, "
+            "warnings) rather than prose."
         )
     )
     async def rust_concurrency() -> str:
