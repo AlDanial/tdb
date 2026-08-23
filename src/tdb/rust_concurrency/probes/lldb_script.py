@@ -8,7 +8,6 @@ expression in, resumes, or otherwise executes the inferior.
 from __future__ import annotations
 
 import json
-import mmap
 import os
 import re
 
@@ -23,6 +22,11 @@ _HEX_ADDRESS = re.compile(r"0x[0-9a-fA-F]+")
 _RUST_VERSION = re.compile(r"rustc(?: version)?\s+([0-9]+\.[0-9]+\.[0-9]+)")
 _RUST_VERSION_BYTES = re.compile(rb"rustc(?: version)?\s+([0-9]+\.[0-9]+\.[0-9]+)")
 _MAX_VERSION_SCAN_BYTES = 64 * 1024 * 1024
+_MAX_THREADS = 256
+_MAX_FRAMES_PER_THREAD = 64
+_MAX_PRIMITIVES = 1024
+_MAX_WARNINGS = 256
+_MAX_EVIDENCE_PER_PRIMITIVE = 256
 
 
 def _rust_version(target) -> tuple[str | None, tuple[str, ...]]:
@@ -47,11 +51,12 @@ def _rust_version(target) -> tuple[str | None, tuple[str, ...]]:
         if not os.path.isfile(path) or stat_result.st_size > _MAX_VERSION_SCAN_BYTES:
             return None, ("local executable is not a bounded regular file",)
         with open(path, "rb") as executable_file:
-            with mmap.mmap(executable_file.fileno(), 0, access=mmap.ACCESS_READ) as data:
-                versions = {
-                    match.decode("ascii")
-                    for match in _RUST_VERSION_BYTES.findall(data)
-                }
+            data = executable_file.read(_MAX_VERSION_SCAN_BYTES + 1)
+        if len(data) > _MAX_VERSION_SCAN_BYTES:
+            return None, ("local executable is not a bounded regular file",)
+        versions = {
+            match.decode("ascii") for match in _RUST_VERSION_BYTES.findall(data)
+        }
     except (OSError, ValueError):
         return None, ("local executable producer scan unavailable",)
     if len(versions) != 1:
@@ -110,6 +115,73 @@ def _frame_primitive(frame, target) -> dict[str, object] | None:
     }
 
 
+def _guard_ownership(frame, os_thread_id: str) -> list[dict[str, object]]:
+    """Find visible std guard locals without evaluating target expressions."""
+    states = []
+    try:
+        variables = frame.GetVariables(True, True, False, True)
+        count = variables.GetSize()
+    except Exception:
+        return states
+    for index in range(count):
+        try:
+            value = variables.GetValueAtIndex(index)
+            type_name = value.GetTypeName() or ""
+            if "MutexGuard" in type_name:
+                kind = "mutex"
+            elif "RwLockReadGuard" in type_name or "RwLockWriteGuard" in type_name:
+                kind = "rwlock"
+            else:
+                continue
+            lock_value = value.GetChildMemberWithName("lock")
+            if not lock_value.IsValid():
+                continue
+            numeric = lock_value.GetValueAsUnsigned()
+            if not numeric:
+                address_of = lock_value.AddressOf()
+                numeric = address_of.GetValueAsUnsigned() if address_of.IsValid() else 0
+            if not numeric:
+                continue
+            address = hex(numeric)
+        except Exception:
+            continue
+        states.append(
+            {
+                "primitive_id": f"{kind}:{address}",
+                "owner_os_thread_ids": [os_thread_id],
+                "raw_state": "guard-held",
+                "evidence": [
+                    {
+                        "confidence": "confirmed",
+                        "source": "lldb-visible-guard",
+                        "detail": f"{type_name[:256]} holds {address}",
+                    }
+                ],
+            }
+        )
+    return states
+
+
+def _merge_state(states_by_id, state) -> None:
+    current = states_by_id.get(state["primitive_id"])
+    if current is None:
+        states_by_id[state["primitive_id"]] = state
+        return
+    current["owner_os_thread_ids"] = sorted(
+        set(current["owner_os_thread_ids"]) | set(state["owner_os_thread_ids"])
+    )
+    evidence_by_key = {
+        (item["confidence"], item["source"], item["detail"]): item
+        for item in current["evidence"] + state["evidence"]
+    }
+    current["evidence"] = [
+        evidence_by_key[key]
+        for key in sorted(evidence_by_key)[:_MAX_EVIDENCE_PER_PRIMITIVE]
+    ]
+    if state["raw_state"] == "guard-held":
+        current["raw_state"] = "guard-held"
+
+
 def tdb_rust_snapshot(debugger, command, result, internal_dict) -> None:
     """Emit exactly one strict JSON envelope for the fixed snapshot command."""
     if command.strip() != "--format json":
@@ -137,7 +209,10 @@ def tdb_rust_snapshot(debugger, command, result, internal_dict) -> None:
         except Exception as exc:
             warnings.append(f"Rust producer metadata unavailable: {exc}")
         try:
-            thread_count = process.GetNumThreads()
+            actual_thread_count = process.GetNumThreads()
+            thread_count = min(actual_thread_count, _MAX_THREADS)
+            if actual_thread_count > _MAX_THREADS:
+                warnings.append(f"thread evidence truncated at {_MAX_THREADS} threads")
         except Exception as exc:
             warnings.append(f"LLDB thread enumeration unavailable: {exc}")
             thread_count = 0
@@ -159,16 +234,16 @@ def tdb_rust_snapshot(debugger, command, result, internal_dict) -> None:
                         "os_thread_id": thread_id,
                     }
                 )
-                frame = thread.GetFrameAtIndex(0)
-                if frame.IsValid():
+                frame_count = min(thread.GetNumFrames(), _MAX_FRAMES_PER_THREAD)
+                for frame_index in range(frame_count):
+                    frame = thread.GetFrameAtIndex(frame_index)
+                    if not frame.IsValid():
+                        continue
                     primitive = _frame_primitive(frame, target)
                     if primitive is not None:
-                        primitive_id = primitive["primitive_id"]
-                        current = states_by_id.get(primitive_id)
-                        if current is None or json.dumps(
-                            primitive, sort_keys=True
-                        ) < json.dumps(current, sort_keys=True):
-                            states_by_id[primitive_id] = primitive
+                        _merge_state(states_by_id, primitive)
+                    for owned in _guard_ownership(frame, thread_id):
+                        _merge_state(states_by_id, owned)
             except Exception as exc:  # LLDB wraps failures in Python exceptions.
                 warnings.append(f"thread {thread_id} evidence unavailable: {exc}")
     if rust_version is None:
@@ -176,10 +251,15 @@ def tdb_rust_snapshot(debugger, command, result, internal_dict) -> None:
     payload = {
         "rust_version": rust_version,
         "threads": sorted(
-            threads, key=lambda thread: (thread["os_thread_id"], thread["dap_thread_hint"])
+            threads,
+            key=lambda thread: (thread["os_thread_id"], thread["dap_thread_hint"]),
         ),
-        "primitive_states": [states_by_id[key] for key in sorted(states_by_id)],
-        "warnings": sorted(set(warnings)),
+        "primitive_states": [
+            states_by_id[key] for key in sorted(states_by_id)[:_MAX_PRIMITIVES]
+        ],
+        "warnings": [
+            warning[:512] for warning in sorted(set(warnings))[:_MAX_WARNINGS]
+        ],
     }
     result.PutCString(
         _MARKER + json.dumps(payload, sort_keys=True, separators=(",", ":"))
@@ -189,7 +269,5 @@ def tdb_rust_snapshot(debugger, command, result, internal_dict) -> None:
 def __lldb_init_module(debugger, internal_dict) -> None:
     """Register the fixed command when LLDB imports this module."""
     debugger.HandleCommand(
-        "command script add -f "
-        f"{__name__}.tdb_rust_snapshot "
-        "tdb-rust-snapshot"
+        f"command script add -f {__name__}.tdb_rust_snapshot tdb-rust-snapshot"
     )

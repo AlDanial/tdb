@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+import shutil
+import subprocess
 from unittest.mock import AsyncMock
+from types import SimpleNamespace
 
 import pytest
 
@@ -12,6 +15,7 @@ from tdb.rust_concurrency.models import Confidence
 from tdb.rust_concurrency.probes import probe_for_adapter
 from tdb.rust_concurrency.probes.base import gate_supported_layout, parse_probe_output
 from tdb.rust_concurrency.probes.gdb import GDB_SNAPSHOT_COMMAND, GdbEvidenceProbe
+from tdb.rust_concurrency.probes import gdb_script
 
 
 def load_fixture(name: str) -> str:
@@ -21,7 +25,9 @@ def load_fixture(name: str) -> str:
 
 
 def _envelope(
-    *, rust_version: str = "1.98.0", primitive_states: list[dict[str, object]] | None = None
+    *,
+    rust_version: str = "1.98.0",
+    primitive_states: list[dict[str, object]] | None = None,
 ) -> str:
     states = primitive_states if primitive_states is not None else []
     return (
@@ -36,7 +42,7 @@ def _envelope(
 
 
 def test_gdb_probe_parses_marker_wrapped_json():
-    raw = "console noise\nTDB_RUST_JSON:{\"rust_version\":\"1.98.0\",\"threads\":[]}\n"
+    raw = 'console noise\nTDB_RUST_JSON:{"rust_version":"1.98.0","threads":[]}\n'
 
     result = parse_probe_output(raw)
 
@@ -72,9 +78,9 @@ def test_probe_parser_preserves_typed_layout_evidence():
     "raw",
     [
         "TDB_RUST_JSON:{not json}\n",
-        "TDB_RUST_JSON:{\"rust_version\": 198}\n",
-        "TDB_RUST_JSON:{\"rust_version\":\"1.98.0\",\"threads\":[{\"dap_thread_hint\":1,\"os_thread_id\":\"1\"}]}\n",
-        "TDB_RUST_JSON:{\"rust_version\":\"1.98.0\",\"primitive_states\":[{\"primitive_id\":\"mutex:123\",\"owner_os_thread_ids\":[],\"raw_state\":\"locked\",\"evidence\":[]}]}\n",
+        'TDB_RUST_JSON:{"rust_version": 198}\n',
+        'TDB_RUST_JSON:{"rust_version":"1.98.0","threads":[{"dap_thread_hint":1,"os_thread_id":"1"}]}\n',
+        'TDB_RUST_JSON:{"rust_version":"1.98.0","primitive_states":[{"primitive_id":"mutex:123","owner_os_thread_ids":[],"raw_state":"locked","evidence":[]}]}\n',
     ],
 )
 def test_invalid_probe_envelopes_degrade_to_warnings(raw: str):
@@ -161,12 +167,14 @@ async def test_collector_uses_the_selected_adapter_probe_by_default(
             "profile": build_rust_profile(adapter_id),
         },
     )()
-    probe = type("Probe", (), {"collect": AsyncMock(return_value=ProbeResult("1.98.0"))})()
+    probe = type(
+        "Probe", (), {"collect": AsyncMock(return_value=ProbeResult("1.98.0"))}
+    )()
     monkeypatch.setattr(
         "tdb.rust_concurrency.collector.probe_for_adapter",
-        lambda selected_adapter_id: probe
-        if selected_adapter_id == adapter_id
-        else None,
+        lambda selected_adapter_id: (
+            probe if selected_adapter_id == adapter_id else None
+        ),
     )
 
     snapshot = await RustConcurrencyCollector().collect_and_analyze(controller)
@@ -184,7 +192,7 @@ def test_rust_gdb_sources_probe_script_before_starting_dap():
     assert command[-2:] == ["-i", "dap"]
 
 
-def test_rust_gdb_quotes_probe_script_path(monkeypatch):
+def test_rust_gdb_escapes_probe_script_path_for_source(monkeypatch):
     class ResourcePath:
         def joinpath(self, _name):
             return "/tmp/tdb package/gdb_script.py"
@@ -195,4 +203,56 @@ def test_rust_gdb_quotes_probe_script_path(monkeypatch):
 
     command = RustGdbAdapter(executable="gdb").command()
 
-    assert command[2] == 'source "/tmp/tdb package/gdb_script.py"'
+    assert command[2] == r"source /tmp/tdb\ package/gdb_script.py"
+
+
+@pytest.mark.skipif(shutil.which("gdb") is None, reason="gdb is not installed")
+def test_packaged_probe_registers_in_real_gdb():
+    command = RustGdbAdapter(executable=shutil.which("gdb") or "gdb").command()
+    completed = subprocess.run(
+        command[:-2] + ["-batch", "-ex", "tdb-rust-snapshot --format json"],
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert "TDB_RUST_JSON:" in completed.stdout
+
+
+@pytest.mark.parametrize("response", [None, 42, object()])
+async def test_gdb_probe_non_string_response_degrades(response):
+    client = type("Client", (), {"evaluate": AsyncMock(return_value=response)})()
+
+    result = await GdbEvidenceProbe().collect(client)
+
+    assert result.rust_version is None
+    assert result.warnings == ("invalid Rust probe response",)
+
+
+def test_gdb_visible_mutex_guard_emits_confirmed_owner(monkeypatch):
+    class Address:
+        def __str__(self):
+            return "0x1234"
+
+    lock = SimpleNamespace(
+        referenced_value=lambda: SimpleNamespace(address=Address()), address=None
+    )
+
+    class Guard:
+        type = "std::sync::poison::mutex::MutexGuard<i32>"
+
+        def __getitem__(self, name):
+            assert name == "lock"
+            return lock
+
+    symbol = object()
+    frame = SimpleNamespace(block=lambda: (symbol,), read_var=lambda _symbol: Guard())
+    monkeypatch.setattr(gdb_script, "gdb", SimpleNamespace(error=RuntimeError))
+
+    states = gdb_script._guard_ownership(frame, "101")
+
+    assert states[0]["primitive_id"] == "mutex:0x1234"
+    assert states[0]["owner_os_thread_ids"] == ["101"]
+    assert states[0]["evidence"][0]["confidence"] == "confirmed"

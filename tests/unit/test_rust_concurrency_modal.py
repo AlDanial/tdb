@@ -183,3 +183,51 @@ async def test_small_viewport_keeps_live_frames_and_locals_visible():
 
         assert modal.query_one("#frames-table").size.height >= 3
         assert modal.query_one("#vars").size.height >= 3
+
+
+async def test_warnings_are_prominent_and_refresh_with_snapshot():
+    app = _ModalApp()
+    async with app.run_test() as pilot:
+        initial = sample_snapshot()
+        modal = RustConcurrencyModal(initial, current_thread_id=1)
+        app.push_screen(modal)
+        await pilot.pause()
+        degraded = ConcurrencySnapshot(
+            rust_version=None,
+            adapter=initial.adapter,
+            platform=initial.platform,
+            threads=initial.threads,
+            primitives=initial.primitives,
+            edges=initial.edges,
+            confirmed_deadlocks=(),
+            suspected_stalls=initial.suspected_stalls,
+            warnings=(
+                "unsupported Rust unknown; layout evidence disabled",
+                "probe failed: command unavailable",
+            ),
+        )
+
+        modal.update_snapshot(degraded)
+        await pilot.pause()
+
+        assert "2 warning(s)" in str(modal.query_one("#header").render())
+        findings = str(modal.query_one("#findings-list").render())
+        assert "unsupported Rust unknown" in findings
+        assert "probe failed" in findings
+
+
+def test_edge_label_uses_strongest_evidence():
+    edge = sample_snapshot().edges[0]
+    mixed = WaitEdge(
+        waiter_thread_id=edge.waiter_thread_id,
+        primitive_id=edge.primitive_id,
+        owner_thread_id=edge.owner_thread_id,
+        operation=edge.operation,
+        evidence=(
+            Evidence(Confidence.UNKNOWN, "stack", "unknown"),
+            Evidence(Confidence.CONFIRMED, "probe", "guard observed"),
+        ),
+    )
+
+    modal = object.__new__(RustConcurrencyModal)
+    assert "[confirmed]" in str(modal._edge_label(mixed))

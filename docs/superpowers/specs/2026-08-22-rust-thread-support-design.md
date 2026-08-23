@@ -1,7 +1,7 @@
 # Rust Thread and Synchronization Support — Design
 
-**Date:** 2026-08-22  
-**Status:** Approved design, pre-implementation  
+**Date:** 2026-08-22
+**Status:** Approved design, pre-implementation
 **Goal:** Add Rust debugging to tdb for already-built debug executables and provide best-effort inspection of `std::thread` and standard-library synchronization relationships on Linux and macOS.
 
 ## Scope and decisions

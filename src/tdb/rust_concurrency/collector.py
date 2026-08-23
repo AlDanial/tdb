@@ -19,6 +19,7 @@ from tdb.rust_concurrency.models import (
     RawVariable,
 )
 from tdb.session.state import SessionPhase
+
 # This is deliberately a cheap prefilter.  It prevents expanding locals for
 # ordinary application frames while leaving the authoritative matching to the
 # portable classifier after collection.
@@ -72,12 +73,49 @@ class RustConcurrencyCollector:
         max_variables: int = 256,
         probe: Any = None,
         probe_timeout: float = 0.5,
+        snapshot_timeout: float = 2.0,
     ) -> None:
         self.max_threads = max(0, max_threads)
         self.max_frames = max(0, max_frames)
         self.max_variables = max(0, max_variables)
         self.probe = probe
         self.probe_timeout = max(0.0, probe_timeout)
+        self.snapshot_timeout = max(0.0, snapshot_timeout)
+
+    async def _await_stopped(
+        self, controller: Any, awaitable: Any, *, deadline: float
+    ) -> Any:
+        """Await one operation while enforcing the original stop and deadline."""
+        operation = asyncio.ensure_future(awaitable)
+        generation = getattr(controller.state, "generation", None)
+
+        async def resumed() -> None:
+            while True:
+                await asyncio.sleep(0.01)
+                self._gate(controller)
+                if getattr(controller.state, "generation", None) != generation:
+                    from tdb.session.inspect_service import SessionGateError
+
+                    raise SessionGateError("running")
+
+        guard = asyncio.create_task(resumed())
+        remaining = max(0.0, deadline - asyncio.get_running_loop().time())
+        try:
+            done, _ = await asyncio.wait(
+                (operation, guard),
+                timeout=remaining,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if not done:
+                raise asyncio.TimeoutError
+            if guard in done:
+                return guard.result()
+            return operation.result()
+        finally:
+            for task in (operation, guard):
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(operation, guard, return_exceptions=True)
 
     @staticmethod
     def _gate(controller: Any) -> None:
@@ -122,9 +160,7 @@ class RustConcurrencyCollector:
                     f"scope {scope.name} variables unavailable: {exc}",
                 )
             capacity = remaining - len(values)
-            values.extend(
-                _raw_variable(variable) for variable in variables[:capacity]
-            )
+            values.extend(_raw_variable(variable) for variable in variables[:capacity])
         return tuple(values), len(values), None
 
     async def _collect_thread(
@@ -150,15 +186,27 @@ class RustConcurrencyCollector:
             tuple(warnings),
         )
 
-    async def collect(self, controller: Any) -> RawSnapshot:
+    async def _collect(self, controller: Any, *, deadline: float) -> RawSnapshot:
         """Fetch bounded thread stacks and best-effort selected locals."""
         self._gate(controller)
         phase = controller.state.phase
         generation = getattr(controller.state, "generation", None)
         client = controller.client
-        threads = sorted(await client.threads(), key=lambda thread: thread.id)[
-            : self.max_threads
-        ]
+        try:
+            threads = sorted(
+                await self._await_stopped(
+                    controller, client.threads(), deadline=deadline
+                ),
+                key=lambda thread: thread.id,
+            )[: self.max_threads]
+        except asyncio.TimeoutError:
+            return RawSnapshot(
+                adapter=getattr(controller.profile.adapter, "id", ""),
+                platform=self._platform(),
+                rust_version=None,
+                threads=(),
+                warnings=(f"snapshot timed out after {self.snapshot_timeout:g}s",),
+            )
         collected: dict[int, RawThread] = {}
         warnings: list[str] = []
 
@@ -167,9 +215,26 @@ class RustConcurrencyCollector:
             collected[raw_thread.thread_id] = raw_thread
             warnings.extend(thread_warnings)
 
-        async with asyncio.TaskGroup() as group:
+        async def collect_stacks() -> None:
+            async with asyncio.TaskGroup() as group:
+                for thread in threads:
+                    group.create_task(collect_one(thread))
+
+        try:
+            await self._await_stopped(controller, collect_stacks(), deadline=deadline)
+        except asyncio.TimeoutError:
+            warnings.append(f"snapshot timed out after {self.snapshot_timeout:g}s")
             for thread in threads:
-                group.create_task(collect_one(thread))
+                collected.setdefault(
+                    thread.id, RawThread(thread.id, thread.name, (), None)
+                )
+            return RawSnapshot(
+                adapter=getattr(controller.profile.adapter, "id", ""),
+                platform=self._platform(),
+                rust_version=None,
+                threads=tuple(collected[thread.id] for thread in threads),
+                warnings=tuple(sorted(warnings)),
+            )
 
         # Expand selected frames in stable thread/frame order, enforcing one
         # snapshot-wide variable ceiling rather than a per-thread ceiling.
@@ -180,11 +245,27 @@ class RustConcurrencyCollector:
             for frame in raw_thread.frames:
                 variables: tuple[RawVariable, ...] = ()
                 if _candidate_frame(frame.name) and remaining:
-                    variables, used, warning = await self._frame_variables(
-                        client,
-                        StackFrame(frame.frame_id, frame.name, line=frame.line),
-                        remaining,
-                    )
+                    try:
+                        variables, used, warning = await self._await_stopped(
+                            controller,
+                            self._frame_variables(
+                                client,
+                                StackFrame(frame.frame_id, frame.name, line=frame.line),
+                                remaining,
+                            ),
+                            deadline=deadline,
+                        )
+                    except asyncio.TimeoutError:
+                        warnings.append(
+                            f"snapshot timed out after {self.snapshot_timeout:g}s"
+                        )
+                        return RawSnapshot(
+                            adapter=getattr(controller.profile.adapter, "id", ""),
+                            platform=self._platform(),
+                            rust_version=None,
+                            threads=tuple(collected[item.id] for item in threads),
+                            warnings=tuple(sorted(warnings)),
+                        )
                     remaining -= used
                     if warning is not None:
                         warnings.append(f"thread {thread.id} {warning}")
@@ -207,6 +288,11 @@ class RustConcurrencyCollector:
             warnings=tuple(sorted(warnings)),
         )
 
+    async def collect(self, controller: Any) -> RawSnapshot:
+        """Fetch a snapshot within one stopped-state deadline."""
+        deadline = asyncio.get_running_loop().time() + self.snapshot_timeout
+        return await self._collect(controller, deadline=deadline)
+
     async def _run_probe(self, probe: Any, client: Any) -> ProbeResult | None:
         if probe is None:
             return None
@@ -217,18 +303,24 @@ class RustConcurrencyCollector:
         return result
 
     async def collect_and_analyze(self, controller: Any):
-        raw = await self.collect(controller)
+        deadline = asyncio.get_running_loop().time() + self.snapshot_timeout
+        raw = await self._collect(controller, deadline=deadline)
         stop_generation = getattr(controller.state, "generation", None)
         probe: ProbeResult | None = None
         warnings = list(raw.warnings)
         evidence_probe = (
             self.probe if self.probe is not None else probe_for_adapter(raw.adapter)
         )
-        if evidence_probe is not None:
+        if evidence_probe is not None and asyncio.get_running_loop().time() < deadline:
             try:
-                probe = await asyncio.wait_for(
+                probe_deadline = min(
+                    deadline,
+                    asyncio.get_running_loop().time() + self.probe_timeout,
+                )
+                probe = await self._await_stopped(
+                    controller,
                     self._run_probe(evidence_probe, controller.client),
-                    timeout=self.probe_timeout,
+                    deadline=probe_deadline,
                 )
             except asyncio.TimeoutError:
                 warnings.append(f"probe timed out after {self.probe_timeout:g}s")

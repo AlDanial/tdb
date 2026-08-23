@@ -4,8 +4,12 @@ from __future__ import annotations
 
 from importlib import resources
 from pathlib import Path
+import shutil
+import subprocess
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
+
+import pytest
 
 from tdb.languages.rust import RustLldbAdapter
 from tdb.rust_concurrency.probes import probe_for_adapter
@@ -41,11 +45,7 @@ async def test_lldb_probe_sends_only_the_fixed_snapshot_command():
     client = type(
         "Client",
         (),
-        {
-            "evaluate": AsyncMock(
-                return_value=load_fixture("lldb/rust-1.98.json")
-            )
-        },
+        {"evaluate": AsyncMock(return_value=load_fixture("lldb/rust-1.98.json"))},
     )()
 
     result = await LldbEvidenceProbe().collect(client)
@@ -69,10 +69,41 @@ def test_rust_lldb_loads_probe_script_before_launch():
         opts={},
     )
 
-    assert body["initCommands"] == [
-        f'command script import "{expected_script_path()}"'
-    ]
+    assert body["initCommands"] == [f'command script import "{expected_script_path()}"']
     assert body["runInTerminal"] is True
+
+
+@pytest.mark.skipif(shutil.which("lldb") is None, reason="lldb is not installed")
+def test_packaged_probe_registers_in_real_lldb():
+    completed = subprocess.run(
+        [
+            shutil.which("lldb") or "lldb",
+            "-b",
+            "-o",
+            f'command script import "{expected_script_path()}"',
+            "-o",
+            "help tdb-rust-snapshot",
+            "-o",
+            "quit",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert "tdb-rust-snapshot" in completed.stdout
+
+
+@pytest.mark.parametrize("response", [None, 42, object()])
+async def test_lldb_probe_non_string_response_degrades(response):
+    client = type("Client", (), {"evaluate": AsyncMock(return_value=response)})()
+
+    result = await LldbEvidenceProbe().collect(client)
+
+    assert result.rust_version is None
+    assert result.warnings == ("invalid Rust probe response",)
 
 
 def test_rust_lldb_attach_merges_probe_initialization_with_remote_options():
@@ -139,9 +170,7 @@ def test_lldb_snapshot_does_not_scan_version_until_inferior_is_stopped(monkeypat
     monkeypatch.setattr(lldb_script, "lldb", SimpleNamespace(eStateStopped=5))
     monkeypatch.setattr(lldb_script, "_rust_version", version_probe)
 
-    lldb_script.tdb_rust_snapshot(
-        debugger, "--format json", result, internal_dict={}
-    )
+    lldb_script.tdb_rust_snapshot(debugger, "--format json", result, internal_dict={})
 
     version_probe.assert_not_called()
     payload = result.PutCString.call_args.args[0]
@@ -161,9 +190,7 @@ def test_lldb_snapshot_degrades_global_enumeration_failure_to_warning(monkeypatc
     monkeypatch.setattr(lldb_script, "lldb", SimpleNamespace(eStateStopped=5))
     monkeypatch.setattr(lldb_script, "_rust_version", Mock(return_value=("1.98.0", ())))
 
-    lldb_script.tdb_rust_snapshot(
-        debugger, "--format json", result, internal_dict={}
-    )
+    lldb_script.tdb_rust_snapshot(debugger, "--format json", result, internal_dict={})
 
     payload = result.PutCString.call_args.args[0]
     assert '"threads":[]' in payload
@@ -188,10 +215,28 @@ def test_lldb_snapshot_keeps_threads_before_index_failure(monkeypatch):
     monkeypatch.setattr(lldb_script, "lldb", SimpleNamespace(eStateStopped=5))
     monkeypatch.setattr(lldb_script, "_rust_version", Mock(return_value=("1.98.0", ())))
 
-    lldb_script.tdb_rust_snapshot(
-        debugger, "--format json", result, internal_dict={}
-    )
+    lldb_script.tdb_rust_snapshot(debugger, "--format json", result, internal_dict={})
 
     payload = result.PutCString.call_args.args[0]
     assert '"os_thread_id":"42"' in payload
     assert "LLDB thread index 1 unavailable: index failed" in payload
+
+
+def test_lldb_visible_rwlock_guard_emits_confirmed_owner():
+    lock = Mock()
+    lock.IsValid.return_value = True
+    lock.GetValueAsUnsigned.return_value = 0xCAFE
+    guard = Mock()
+    guard.GetTypeName.return_value = "std::sync::poison::rwlock::RwLockReadGuard<i32>"
+    guard.GetChildMemberWithName.return_value = lock
+    values = Mock()
+    values.GetSize.return_value = 1
+    values.GetValueAtIndex.return_value = guard
+    frame = Mock()
+    frame.GetVariables.return_value = values
+
+    states = lldb_script._guard_ownership(frame, "202")
+
+    assert states[0]["primitive_id"] == "rwlock:0xcafe"
+    assert states[0]["owner_os_thread_ids"] == ["202"]
+    assert states[0]["evidence"][0]["confidence"] == "confirmed"

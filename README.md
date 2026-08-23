@@ -1304,7 +1304,7 @@ point), `tdb --mcp` (the main CLI with the `--mcp` switch), and
 `python -m tdb.mcp` (module form). Pick whichever matches how your MCP
 client expects to launch servers.
 
-### Tool surface (16 tools, curated)
+### Tool surface (17 tools, curated)
 
 | Cluster | Tools |
 |---------|-------|
@@ -1312,7 +1312,7 @@ client expects to launch servers.
 | Control | `control(action, timeout_s=30)` where `action ∈ {continue, next, step_in, step_out, pause, wait_for_stop}` |
 | Inspection | `inspect(expressions)`, `read_source(file_path)`, `stack_trace()`, `status()`, `get_output()` |
 | Breakpoints | `set_breakpoint(spec, condition?, hit_condition?)`, `remove_breakpoint(spec)`, `list_breakpoints()` |
-| Differentiators | `threads(thread_id?)`, `tasks(task_name?)`, `processes(name_or_pid?)`, `wait_graph()` |
+| Differentiators | `threads(thread_id?)`, `tasks(task_name?)`, `processes(name_or_pid?)`, `wait_graph()`, `rust_concurrency()` |
 
 `control` is intentionally one tool that takes an action enum. The six
 underlying RPC actions share a return shape, and agents perform
@@ -1323,7 +1323,8 @@ single optional argument for the same reason.
 `debug_launch` accepts optional `lang` and `adapter` parameters mirroring the
 CLI's `--lang`/`--adapter`; when omitted, the language is auto-detected from
 `program`, so an agent can hand it a compiled binary directly. The
-`tasks`/`processes`/`wait_graph` tools stay registered for every language but
+exception is Rust: compiled native binaries require explicit `lang="rust"`.
+The `tasks`/`processes`/`wait_graph` tools stay registered for every language but
 return a structured "not supported when debugging C/C++"-style error for
 non-Python debuggees.
 

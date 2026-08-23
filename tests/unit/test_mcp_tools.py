@@ -41,7 +41,7 @@ EXPECTED_TOOL_NAMES = {
     "set_breakpoint",
     "remove_breakpoint",
     "list_breakpoints",
-    # Differentiators (4)
+    # Differentiators (5)
     "threads",
     "tasks",
     "processes",

@@ -166,8 +166,13 @@ class RustConcurrencyModal(ModalScreen[None]):
     # --- Snapshot rendering ------------------------------------------
 
     def _render_snapshot(self) -> None:
+        warning_suffix = (
+            f" — {len(self._snapshot.warnings)} warning(s)"
+            if self._snapshot.warnings
+            else ""
+        )
         self.query_one("#header", Label).update(
-            f"Rust Concurrency ({len(self._snapshot.threads)} threads)"
+            f"Rust Concurrency ({len(self._snapshot.threads)} threads){warning_suffix}"
         )
         self._render_threads()
         self._render_wait_graph()
@@ -217,7 +222,9 @@ class RustConcurrencyModal(ModalScreen[None]):
             content.append("\nWaiting on: ", style="bold")
             content.append(f"{thread.wait.primitive_id} ({thread.wait.operation})\n")
             if thread.wait.owner_thread_id is not None:
-                content.append(f"Observed owner: thread {thread.wait.owner_thread_id}\n")
+                content.append(
+                    f"Observed owner: thread {thread.wait.owner_thread_id}\n"
+                )
             self._append_evidence(content, thread.wait.evidence)
         self.query_one("#thread-evidence", Static).update(content)
         self.query_one("#frames-table", DataTable).clear()
@@ -285,7 +292,14 @@ class RustConcurrencyModal(ModalScreen[None]):
 
     def _render_findings(self) -> None:
         output = Text()
-        self._append_findings(output, "Confirmed deadlocks", self._snapshot.confirmed_deadlocks)
+        if self._snapshot.warnings:
+            output.append("Warnings\n", style="bold red")
+            for warning in self._snapshot.warnings:
+                output.append(f"  {warning}\n", style="yellow")
+            output.append("\n")
+        self._append_findings(
+            output, "Confirmed deadlocks", self._snapshot.confirmed_deadlocks
+        )
         cycles = tuple(
             finding
             for finding in self._snapshot.suspected_stalls
@@ -329,8 +343,14 @@ class RustConcurrencyModal(ModalScreen[None]):
             if edge.owner_thread_id is not None
             else "owner unknown"
         )
-        confidence = (
-            edge.evidence[0].confidence if edge.evidence else Confidence.UNKNOWN
+        confidence = max(
+            (item.confidence for item in edge.evidence),
+            key=lambda item: {
+                Confidence.UNKNOWN: 0,
+                Confidence.PROBABLE: 1,
+                Confidence.CONFIRMED: 2,
+            }[item],
+            default=Confidence.UNKNOWN,
         )
         return Text(
             f"thread {edge.waiter_thread_id} --{edge.operation}--> "

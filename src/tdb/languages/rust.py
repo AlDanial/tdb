@@ -35,6 +35,15 @@ def _gdb_string(value: str) -> str:
     return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
+def _gdb_source_filename(value: str) -> str:
+    """Escape one filename for GDB's ``source`` command parser."""
+    if "\n" in value or "\r" in value:
+        raise LanguageNotSupportedError("GDB probe path contains a newline")
+    return "".join(
+        "\\" + char if char.isspace() or char == "\\" else char for char in value
+    )
+
+
 class RustGdbAdapter(GdbDapAdapter):
     quirks = AdapterQuirks(attach_via_adapter=True)
 
@@ -46,7 +55,7 @@ class RustGdbAdapter(GdbDapAdapter):
         return [
             command[0],
             "-iex",
-            f"source {_gdb_string(str(script_path))}",
+            f"source {_gdb_source_filename(str(script_path))}",
             "-i",
             "dap",
         ]
@@ -95,7 +104,9 @@ class RustLldbAdapter(LldbDapAdapter):
             console=console,
             opts=opts,
         )
-        body["initCommands"] = list(body.get("initCommands", ())) + self._probe_init_commands()
+        body["initCommands"] = (
+            list(body.get("initCommands", ())) + self._probe_init_commands()
+        )
         return body
 
     def attach_body(
@@ -109,7 +120,9 @@ class RustLldbAdapter(LldbDapAdapter):
         mappings = opts.get("path_mappings") or []
         if mappings:
             body["sourceMap"] = [[remote, local] for local, remote in mappings]
-        body["initCommands"] = list(opts.get("initCommands", ())) + self._probe_init_commands()
+        body["initCommands"] = (
+            list(opts.get("initCommands", ())) + self._probe_init_commands()
+        )
         return body
 
 

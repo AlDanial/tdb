@@ -27,7 +27,9 @@ class LldbEvidenceProbe:
         response = await client.evaluate(LLDB_SNAPSHOT_COMMAND, context="repl")
         output = response[0] if isinstance(response, tuple) else response
         if not isinstance(output, str):
-            return ProbeResult(warnings=("invalid Rust probe response",))
+            return ProbeResult(
+                rust_version=None, warnings=("invalid Rust probe response",)
+            )
         return gate_supported_layout(
             parse_lldb_probe_output(output), supported=SUPPORTED_RUST_VERSION
         )

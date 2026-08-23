@@ -125,8 +125,16 @@ class McpSession:
             )
 
         profile = self._resolve_profile(program, lang, adapter)
-        if profile.id == "rust" and program is None:
-            raise ValueError("Rust remote attach requires a local program")
+        if profile.id == "rust":
+            if program is None:
+                raise ValueError("Rust remote attach requires a local program")
+            program_path = Path(program).resolve()
+            if not program_path.is_file():
+                raise ValueError(
+                    "Rust remote attach requires an existing local executable: "
+                    f"{program}"
+                )
+            program = str(program_path)
 
         self._build_handlers(profile=profile)
         assert self._controller is not None

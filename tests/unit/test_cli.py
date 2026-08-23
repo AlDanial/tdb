@@ -67,6 +67,19 @@ def test_rust_remote_attach_resolves_local_program(tmp_path):
     assert args.program == str(program.resolve())
 
 
+def test_explicit_rust_rejects_source_file_with_debug_build_hint(tmp_path, capsys):
+    source = tmp_path / "main.rs"
+    source.write_text("fn main() {}\n")
+
+    with pytest.raises(SystemExit):
+        parse_args(["--lang", "rust", str(source)])
+
+    error = capsys.readouterr().err
+    assert "Rust source" in error
+    assert "rustc -g" in error
+    assert "tdb --lang rust ./binary" in error
+
+
 def test_breakpoints_parsed(tmp_path):
     prog = tmp_path / "x.py"
     prog.write_text("print('hi')\n")

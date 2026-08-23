@@ -400,6 +400,7 @@ def _resolve_language(
 
     config = load_config()
     try:
+        registry.reject_compiled_source(args.program)
         lang_id = args.lang or registry.detect(args.program)
         adapter = args.adapter or config.default_adapters.get(lang_id)
         profile = registry.resolve(

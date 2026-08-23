@@ -67,6 +67,26 @@ _EXTENSION_MAP = {
 # error — you debug the built executable.
 _COMPILED_SOURCE_EXTS = {".c", ".cc", ".cpp", ".cxx", ".c++", ".rs"}
 
+
+def reject_compiled_source(program: str | None) -> None:
+    """Reject source paths even with an explicitly selected language."""
+    if program is None:
+        return
+    extension = Path(program).suffix.lower()
+    if extension not in _COMPILED_SOURCE_EXTS:
+        return
+    if extension == ".rs":
+        raise LanguageNotSupportedError(
+            f"{program!r} is Rust source — build a debug executable "
+            f"(e.g. `rustc -g {program}` or `cargo build`) and run "
+            "`tdb --lang rust ./binary`"
+        )
+    raise LanguageNotSupportedError(
+        f"{program!r} is source for a compiled language — compile "
+        "with debug info (e.g. `g++ -g -O0`) and run `tdb ./binary`"
+    )
+
+
 _MAGIC = [
     (b"\x7fELF", "cpp"),  # Linux
     (b"MZ", "cpp"),  # Windows PE
@@ -85,13 +105,8 @@ def detect(program: str | None) -> str:
     if program is None:
         return "python"
     path = Path(program)
+    reject_compiled_source(program)
     ext = path.suffix.lower()
-    if ext in _COMPILED_SOURCE_EXTS:
-        raise LanguageNotSupportedError(
-            f"{program!r} is source for a compiled language — compile "
-            f"with debug info (e.g. `g++ -g -O0`) and run `tdb ./binary`, "
-            f"or pass --lang explicitly"
-        )
     if ext in _EXTENSION_MAP:
         return _EXTENSION_MAP[ext]
     head = b""
