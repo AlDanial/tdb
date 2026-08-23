@@ -36,12 +36,16 @@ def _gdb_string(value: str) -> str:
 
 
 def _gdb_source_filename(value: str) -> str:
-    """Escape one filename for GDB's ``source`` command parser."""
+    """Validate one filename for GDB's ``source`` command parser.
+
+    ``source`` takes the rest of the line as a literal filename (tilde
+    expansion only — no backslash unescaping, no quote stripping), so the
+    path must be passed raw: escaping would corrupt paths containing
+    spaces or Windows backslashes.
+    """
     if "\n" in value or "\r" in value:
         raise LanguageNotSupportedError("GDB probe path contains a newline")
-    return "".join(
-        "\\" + char if char.isspace() or char == "\\" else char for char in value
-    )
+    return value
 
 
 class RustGdbAdapter(GdbDapAdapter):
@@ -52,13 +56,16 @@ class RustGdbAdapter(GdbDapAdapter):
         script_path = resources.files("tdb.rust_concurrency.probes").joinpath(
             "gdb_script.py"
         )
-        return [
-            command[0],
+        # `set width unlimited` keeps the probe's single-line JSON envelope
+        # from being wrapped by gdb's filtered output stream. Splice the
+        # probe options after the executable so any argv the base adapter
+        # adds (today `-i dap`) is preserved.
+        return command[:1] + [
+            "-iex",
+            "set width unlimited",
             "-iex",
             f"source {_gdb_source_filename(str(script_path))}",
-            "-i",
-            "dap",
-        ]
+        ] + command[1:]
 
     def attach_body(
         self, *, host: str, port: int, opts: dict[str, Any]

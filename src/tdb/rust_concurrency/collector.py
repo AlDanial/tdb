@@ -72,8 +72,8 @@ class RustConcurrencyCollector:
         max_frames: int = 64,
         max_variables: int = 256,
         probe: Any = None,
-        probe_timeout: float = 0.5,
-        snapshot_timeout: float = 2.0,
+        probe_timeout: float = 2.0,
+        snapshot_timeout: float = 10.0,
     ) -> None:
         self.max_threads = max(0, max_threads)
         self.max_frames = max(0, max_frames)
@@ -145,6 +145,12 @@ class RustConcurrencyCollector:
 
         values: list[RawVariable] = []
         for scope in scopes:
+            # Only locals/arguments can name Rust synchronization objects.
+            # Registers/Globals/Statics scopes would both pollute address
+            # extraction and burn the snapshot-wide variable budget.
+            scope_kind = scope.name.lower()
+            if not (scope_kind.startswith("local") or scope_kind.startswith("argument")):
+                continue
             if remaining - len(values) <= 0:
                 break
             try:

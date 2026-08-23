@@ -187,12 +187,15 @@ def test_rust_gdb_sources_probe_script_before_starting_dap():
     command = RustGdbAdapter(executable="gdb").command()
 
     assert command[0] == "gdb"
-    assert command[1] == "-iex"
-    assert command[2].startswith("source ")
+    assert command[1:3] == ["-iex", "set width unlimited"]
+    assert command[3] == "-iex"
+    assert command[4].startswith("source ")
     assert command[-2:] == ["-i", "dap"]
 
 
-def test_rust_gdb_escapes_probe_script_path_for_source(monkeypatch):
+def test_rust_gdb_passes_probe_script_path_raw_to_source(monkeypatch):
+    # gdb's `source` takes the rest of the line literally (no backslash
+    # unescaping), so a path with spaces must NOT be escaped.
     class ResourcePath:
         def joinpath(self, _name):
             return "/tmp/tdb package/gdb_script.py"
@@ -203,7 +206,7 @@ def test_rust_gdb_escapes_probe_script_path_for_source(monkeypatch):
 
     command = RustGdbAdapter(executable="gdb").command()
 
-    assert command[2] == r"source /tmp/tdb\ package/gdb_script.py"
+    assert command[4] == "source /tmp/tdb package/gdb_script.py"
 
 
 @pytest.mark.skipif(shutil.which("gdb") is None, reason="gdb is not installed")

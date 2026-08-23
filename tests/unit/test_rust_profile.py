@@ -31,7 +31,8 @@ def test_rust_adapters_share_native_local_launch_behavior():
     gdb = RustGdbAdapter(executable="/opt/gdb")
     lldb = RustLldbAdapter(executable="/opt/lldb-dap")
     assert gdb.command()[0] == "/opt/gdb"
-    assert gdb.command()[1] == "-iex"
+    assert gdb.command()[1:3] == ["-iex", "set width unlimited"]
+    assert gdb.command()[3] == "-iex"
     assert gdb.command()[-2:] == ["-i", "dap"]
     assert lldb.command() == ["/opt/lldb-dap"]
 

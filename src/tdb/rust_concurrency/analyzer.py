@@ -40,6 +40,11 @@ _CONFIDENCE_RANK = {
     Confidence.CONFIRMED: 2,
 }
 MAX_WAIT_CYCLES = 256
+# Bounds the DFS's total edge expansions, not just the number of distinct
+# cycles found: a dense component can force exponential path enumeration
+# while discovering few new cycles, and this analysis runs synchronously
+# on the UI event loop.
+MAX_CYCLE_SEARCH_STEPS = 100_000
 
 
 def _cyclic_components(adjacency: dict[int, list[WaitEdge]]) -> tuple[frozenset[int], ...]:
@@ -120,12 +125,6 @@ def _is_confirmed(edge: WaitEdge) -> bool:
     return _strongest_confidence(edge.evidence) is Confidence.CONFIRMED
 
 
-def _canonical_cycle(thread_ids: tuple[int, ...]) -> tuple[int, ...]:
-    """Rotate a directed cycle so equivalent traversal starts compare equally."""
-    start = min(range(len(thread_ids)), key=thread_ids.__getitem__)
-    return thread_ids[start:] + thread_ids[:start]
-
-
 def _find_cycles(
     edges: Iterable[WaitEdge],
 ) -> tuple[
@@ -159,8 +158,11 @@ def _find_cycles(
         if waiter in component_by_node
     }
 
-    found: dict[tuple[int, ...], tuple[WaitEdge, ...]] = {}
+    found: dict[
+        tuple[tuple[int, ...], tuple[tuple[str, str], ...]], tuple[WaitEdge, ...]
+    ] = {}
     truncated = False
+    steps = 0
 
     nodes = set(adjacency) | {
         edge.owner_thread_id
@@ -174,6 +176,10 @@ def _find_cycles(
         active_index = {root: 0}
         frames = [(root, 0)]
         while frames:
+            steps += 1
+            if steps > MAX_CYCLE_SEARCH_STEPS:
+                truncated = True
+                break
             thread_id, edge_index = frames[-1]
             outgoing = adjacency.get(thread_id, ())
             if edge_index >= len(outgoing):
@@ -189,11 +195,21 @@ def _find_cycles(
             assert owner is not None
             if owner in active_index:
                 index = active_index[owner]
-                cycle_ids = _canonical_cycle(tuple(active[index:]))
-                cycle_edges = tuple(active_edges[index:] + [edge])
-                found.setdefault(cycle_ids, cycle_edges)
+                raw_ids = tuple(active[index:])
+                raw_edges = tuple(active_edges[index:]) + (edge,)
+                # Rotate ids and edges together so equivalent traversal
+                # starts share one key; keying on the primitive path too
+                # keeps two distinct cycles over the same threads distinct.
+                start = min(range(len(raw_ids)), key=raw_ids.__getitem__)
+                cycle_ids = raw_ids[start:] + raw_ids[:start]
+                cycle_edges = raw_edges[start:] + raw_edges[:start]
+                key = (
+                    cycle_ids,
+                    tuple((e.primitive_id, e.operation) for e in cycle_edges),
+                )
+                found.setdefault(key, cycle_edges)
                 if len(found) > MAX_WAIT_CYCLES:
-                    del found[cycle_ids]
+                    del found[key]
                     truncated = True
                     break
                 continue
@@ -204,7 +220,7 @@ def _find_cycles(
         if truncated:
             break
 
-    cycles = tuple((thread_ids, found[thread_ids]) for thread_ids in sorted(found))
+    cycles = tuple((key[0], found[key]) for key in sorted(found))
     return cycles, truncated
 
 
@@ -220,10 +236,10 @@ def _deadlock_finding(thread_ids: tuple[int, ...]) -> Finding:
 def find_confirmed_cycles(edges: tuple[WaitEdge, ...]) -> tuple[Finding, ...]:
     """Return only cycles whose every traversed owner relationship is confirmed."""
     confirmed_edges = tuple(edge for edge in edges if _is_confirmed(edge))
-    return tuple(
-        _deadlock_finding(thread_ids)
-        for thread_ids, _ in _find_cycles(confirmed_edges)[0]
-    )
+    findings: dict[tuple[int, ...], Finding] = {}
+    for thread_ids, _ in _find_cycles(confirmed_edges)[0]:
+        findings.setdefault(thread_ids, _deadlock_finding(thread_ids))
+    return tuple(findings.values())
 
 
 def _cycle_gaps(cycle_edges: tuple[WaitEdge, ...]) -> tuple[str, ...]:
@@ -281,16 +297,26 @@ def find_suspected_stalls(
     *,
     platform: str | None = None,
     adapter: str | None = None,
+    cycles: tuple[tuple[tuple[int, ...], tuple[WaitEdge, ...]], ...] | None = None,
 ) -> tuple[Finding, ...]:
-    """Report evidence-incomplete cycles and all-blocked application snapshots."""
+    """Report evidence-incomplete cycles and all-blocked application snapshots.
+
+    ``cycles`` accepts a precomputed ``_find_cycles(edges)[0]`` result so
+    ``analyze`` can run the (bounded but potentially expensive) cycle
+    search once per snapshot.
+    """
     confirmed_thread_sets = {finding.thread_ids for finding in confirmed}
     suspected: list[Finding] = []
-    for thread_ids, cycle_edges in _find_cycles(edges)[0]:
-        if thread_ids in confirmed_thread_sets:
+    seen_cycle_threads: set[tuple[int, ...]] = set()
+    if cycles is None:
+        cycles = _find_cycles(edges)[0]
+    for thread_ids, cycle_edges in cycles:
+        if thread_ids in confirmed_thread_sets or thread_ids in seen_cycle_threads:
             continue
         gaps = _cycle_gaps(cycle_edges)
         if not gaps:
             continue
+        seen_cycle_threads.add(thread_ids)
         joined = ", ".join(str(thread_id) for thread_id in thread_ids)
         suspected.append(
             Finding(
@@ -351,6 +377,10 @@ def _thread_ids_by_os_id(raw: RawSnapshot, probe: ProbeResult | None) -> dict[st
     }
     for probe_thread in probe.threads:
         thread_id = by_hint.get(probe_thread.dap_thread_hint)
+        if thread_id is None:
+            # lldb-dap's DAP thread ids are OS tids, so the probe's
+            # os_thread_id itself may be the joinable identifier.
+            thread_id = by_hint.get(probe_thread.os_thread_id)
         if thread_id is not None:
             ids[probe_thread.os_thread_id] = thread_id
     return ids
@@ -439,6 +469,9 @@ def analyze(raw: RawSnapshot, probe: ProbeResult | None = None) -> ConcurrencySn
             ),
         )
     )
+    # One bounded cycle search over the full graph serves both the
+    # suspected-stall scan and the truncation warning.
+    all_cycles, cycle_truncated = _find_cycles(edges)
     confirmed = find_confirmed_cycles(edges)
     suspected = find_suspected_stalls(
         threads,
@@ -446,9 +479,10 @@ def analyze(raw: RawSnapshot, probe: ProbeResult | None = None) -> ConcurrencySn
         confirmed,
         platform=raw.platform,
         adapter=raw.adapter,
+        cycles=all_cycles,
     )
-    cycle_truncated = _find_cycles(edges)[1]
-    warnings = raw.warnings + (probe.warnings if probe is not None else ())
+    combined = raw.warnings + (probe.warnings if probe is not None else ())
+    warnings = tuple(dict.fromkeys(combined))
     if cycle_truncated:
         warnings += (f"Wait-cycle analysis truncated after {MAX_WAIT_CYCLES} cycles.",)
     return ConcurrencySnapshot(

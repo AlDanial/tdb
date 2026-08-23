@@ -69,7 +69,10 @@ def _rust_version(target) -> tuple[str | None, tuple[str, ...]]:
 
 
 def _thread_hint(thread) -> str:
-    return f"thread #{thread.GetIndexID()}"
+    # lldb-dap derives its DAP thread ids from SBThread.GetThreadID() (the
+    # OS tid), so that value — not GetIndexID()'s "thread #N" ordinal — is
+    # what the analyzer can join back to DAP thread ids.
+    return str(thread.GetThreadID())
 
 
 def _os_thread_id(thread) -> str:

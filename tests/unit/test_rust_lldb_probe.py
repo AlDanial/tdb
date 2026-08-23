@@ -37,7 +37,7 @@ def test_lldb_probe_uses_common_schema():
     result = parse_lldb_probe_output(load_fixture("lldb/rust-1.98.json"))
 
     assert result.rust_version == "1.98.0"
-    assert result.threads[0].dap_thread_hint == "thread #1"
+    assert result.threads[0].dap_thread_hint == "101"
     assert result.primitive_states[0].primitive_id == "mutex:0x10"
 
 
