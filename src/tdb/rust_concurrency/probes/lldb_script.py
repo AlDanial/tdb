@@ -56,8 +56,10 @@ def _rust_version(target) -> tuple[str | None, tuple[str, ...]]:
         return None, ("local executable producer scan unavailable",)
     if len(versions) != 1:
         return None, ("local executable Rust producer version is ambiguous",)
-    return next(iter(versions)), (
-        "Rust version inferred from bounded local executable producer string",
+    candidate = next(iter(versions))
+    return None, (
+        "unverified local executable Rust version candidate "
+        f"{candidate}; layout evidence remains disabled",
     )
 
 
@@ -135,13 +137,16 @@ def tdb_rust_snapshot(debugger, command, result, internal_dict) -> None:
         except Exception as exc:
             warnings.append(f"Rust producer metadata unavailable: {exc}")
         try:
-            process_threads = [
-                process.GetThreadAtIndex(index)
-                for index in range(process.GetNumThreads())
-            ]
+            thread_count = process.GetNumThreads()
         except Exception as exc:
             warnings.append(f"LLDB thread enumeration unavailable: {exc}")
-            process_threads = []
+            thread_count = 0
+        process_threads = []
+        for index in range(thread_count):
+            try:
+                process_threads.append(process.GetThreadAtIndex(index))
+            except Exception as exc:
+                warnings.append(f"LLDB thread index {index} unavailable: {exc}")
         for thread in process_threads:
             thread_id = "unknown"
             try:

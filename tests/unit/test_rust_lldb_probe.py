@@ -111,6 +111,22 @@ def test_lldb_version_scan_rejects_ambiguous_embedded_versions(tmp_path):
     assert warnings == ("local executable Rust producer version is ambiguous",)
 
 
+def test_lldb_version_scan_does_not_authorize_layout_from_embedded_string(tmp_path):
+    executable = tmp_path / "app"
+    executable.write_bytes(b"user text: rustc version 1.98.0")
+    target = Mock()
+    target.GetNumModules.return_value = 0
+    target.GetExecutable.return_value.GetPath.return_value = str(executable)
+
+    version, warnings = lldb_script._rust_version(target)
+
+    assert version is None
+    assert warnings == (
+        "unverified local executable Rust version candidate 1.98.0; "
+        "layout evidence remains disabled",
+    )
+
+
 def test_lldb_snapshot_does_not_scan_version_until_inferior_is_stopped(monkeypatch):
     process = Mock()
     process.GetState.return_value = 7
@@ -152,3 +168,30 @@ def test_lldb_snapshot_degrades_global_enumeration_failure_to_warning(monkeypatc
     payload = result.PutCString.call_args.args[0]
     assert '"threads":[]' in payload
     assert "LLDB thread enumeration unavailable: threads failed" in payload
+
+
+def test_lldb_snapshot_keeps_threads_before_index_failure(monkeypatch):
+    thread = Mock()
+    thread.IsValid.return_value = True
+    thread.GetThreadID.return_value = 42
+    thread.GetIndexID.return_value = 1
+    thread.GetFrameAtIndex.return_value.IsValid.return_value = False
+    process = Mock()
+    process.GetState.return_value = 5
+    process.GetNumThreads.return_value = 2
+    process.GetThreadAtIndex.side_effect = [thread, RuntimeError("index failed")]
+    target = Mock()
+    target.GetProcess.return_value = process
+    debugger = Mock()
+    debugger.GetSelectedTarget.return_value = target
+    result = Mock()
+    monkeypatch.setattr(lldb_script, "lldb", SimpleNamespace(eStateStopped=5))
+    monkeypatch.setattr(lldb_script, "_rust_version", Mock(return_value=("1.98.0", ())))
+
+    lldb_script.tdb_rust_snapshot(
+        debugger, "--format json", result, internal_dict={}
+    )
+
+    payload = result.PutCString.call_args.args[0]
+    assert '"os_thread_id":"42"' in payload
+    assert "LLDB thread index 1 unavailable: index failed" in payload
