@@ -127,7 +127,9 @@ class RustLldbAdapter(LldbDapAdapter):
 
 
 def build_rust_profile(
-    adapter: str | None = None, adapter_paths: dict[str, str] | None = None
+    adapter: str | None = None,
+    adapter_paths: dict[str, str] | None = None,
+    program: str | None = None,
 ) -> LanguageProfile:
     default = "lldb-dap" if sys.platform == "darwin" else "gdb"
     adapter_id = adapter or default
