@@ -330,3 +330,15 @@ def test_dense_acyclic_owner_graph_has_no_cycles_or_truncation_warning():
     )
 
     assert find_confirmed_cycles(edges) == ()
+
+
+def test_long_acyclic_owner_chain_does_not_depend_on_python_recursion_limit():
+    from tdb.rust_concurrency.models import WaitEdge
+
+    confirmed = (Evidence(Confidence.CONFIRMED, "probe-owner", "owner"),)
+    edges = tuple(
+        WaitEdge(index, f"mutex:{index}", index + 1, "mutex-lock", confirmed)
+        for index in range(1, 1_101)
+    )
+
+    assert find_confirmed_cycles(edges) == ()

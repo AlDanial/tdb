@@ -43,7 +43,7 @@ MAX_WAIT_CYCLES = 256
 
 
 def _cyclic_components(adjacency: dict[int, list[WaitEdge]]) -> tuple[frozenset[int], ...]:
-    """Return deterministic strongly connected components that can contain cycles."""
+    """Return cyclic SCCs using iterative Kosaraju traversal."""
     nodes = sorted(
         set(adjacency)
         | {
@@ -53,46 +53,59 @@ def _cyclic_components(adjacency: dict[int, list[WaitEdge]]) -> tuple[frozenset[
             if edge.owner_thread_id is not None
         }
     )
-    index = 0
-    indexes: dict[int, int] = {}
-    lowlinks: dict[int, int] = {}
-    stack: list[int] = []
-    on_stack: set[int] = set()
-    components: list[frozenset[int]] = []
+    neighbors = {
+        node: tuple(
+            edge.owner_thread_id
+            for edge in adjacency.get(node, ())
+            if edge.owner_thread_id is not None
+        )
+        for node in nodes
+    }
+    reverse: dict[int, list[int]] = {node: [] for node in nodes}
+    for node, owners in neighbors.items():
+        for owner in owners:
+            reverse[owner].append(node)
+    for incoming in reverse.values():
+        incoming.sort()
 
-    def connect(node: int) -> None:
-        nonlocal index
-        indexes[node] = index
-        lowlinks[node] = index
-        index += 1
-        stack.append(node)
-        on_stack.add(node)
-        for edge in adjacency.get(node, ()):
-            owner = edge.owner_thread_id
-            assert owner is not None
-            if owner not in indexes:
-                connect(owner)
-                lowlinks[node] = min(lowlinks[node], lowlinks[owner])
-            elif owner in on_stack:
-                lowlinks[node] = min(lowlinks[node], indexes[owner])
-        if lowlinks[node] != indexes[node]:
-            return
+    seen: set[int] = set()
+    finish_order: list[int] = []
+    for root in nodes:
+        if root in seen:
+            continue
+        seen.add(root)
+        stack: list[tuple[int, bool]] = [(root, False)]
+        while stack:
+            node, expanded = stack.pop()
+            if expanded:
+                finish_order.append(node)
+                continue
+            stack.append((node, True))
+            for owner in reversed(neighbors[node]):
+                if owner not in seen:
+                    seen.add(owner)
+                    stack.append((owner, False))
+
+    assigned: set[int] = set()
+    components: list[frozenset[int]] = []
+    for root in reversed(finish_order):
+        if root in assigned:
+            continue
         component: set[int] = set()
-        while True:
-            member = stack.pop()
-            on_stack.remove(member)
-            component.add(member)
-            if member == node:
-                break
+        stack = [(root, False)]
+        assigned.add(root)
+        while stack:
+            node, _ = stack.pop()
+            component.add(node)
+            for predecessor in reversed(reverse[node]):
+                if predecessor not in assigned:
+                    assigned.add(predecessor)
+                    stack.append((predecessor, False))
         has_self_loop = any(
-            edge.owner_thread_id == node for edge in adjacency.get(node, ())
+            edge.owner_thread_id == root for edge in adjacency.get(root, ())
         )
         if len(component) > 1 or has_self_loop:
             components.append(frozenset(component))
-
-    for node in nodes:
-        if node not in indexes:
-            connect(node)
     return tuple(sorted(components, key=lambda component: tuple(sorted(component))))
 
 
@@ -146,17 +159,32 @@ def _find_cycles(
         if waiter in component_by_node
     }
 
-    active: list[int] = []
-    active_edges: list[WaitEdge] = []
-    active_index: dict[int, int] = {}
     found: dict[tuple[int, ...], tuple[WaitEdge, ...]] = {}
     truncated = False
 
-    def visit(thread_id: int) -> bool:
-        nonlocal truncated
-        active_index[thread_id] = len(active)
-        active.append(thread_id)
-        for edge in adjacency.get(thread_id, ()):
+    nodes = set(adjacency) | {
+        edge.owner_thread_id
+        for values in adjacency.values()
+        for edge in values
+        if edge.owner_thread_id is not None
+    }
+    for root in sorted(nodes):
+        active = [root]
+        active_edges: list[WaitEdge] = []
+        active_index = {root: 0}
+        frames = [(root, 0)]
+        while frames:
+            thread_id, edge_index = frames[-1]
+            outgoing = adjacency.get(thread_id, ())
+            if edge_index >= len(outgoing):
+                frames.pop()
+                del active_index[thread_id]
+                active.pop()
+                if active_edges and len(active_edges) >= len(active):
+                    active_edges.pop()
+                continue
+            edge = outgoing[edge_index]
+            frames[-1] = (thread_id, edge_index + 1)
             owner = edge.owner_thread_id
             assert owner is not None
             if owner in active_index:
@@ -167,29 +195,13 @@ def _find_cycles(
                 if len(found) > MAX_WAIT_CYCLES:
                     del found[cycle_ids]
                     truncated = True
-                    active.pop()
-                    del active_index[thread_id]
-                    return False
-            else:
-                active_edges.append(edge)
-                if not visit(owner):
-                    active_edges.pop()
-                    active.pop()
-                    del active_index[thread_id]
-                    return False
-                active_edges.pop()
-        active.pop()
-        del active_index[thread_id]
-        return True
-
-    nodes = set(adjacency) | {
-        edge.owner_thread_id
-        for values in adjacency.values()
-        for edge in values
-        if edge.owner_thread_id is not None
-    }
-    for thread_id in sorted(nodes):
-        if not visit(thread_id):
+                    break
+                continue
+            active_index[owner] = len(active)
+            active.append(owner)
+            active_edges.append(edge)
+            frames.append((owner, 0))
+        if truncated:
             break
 
     cycles = tuple((thread_ids, found[thread_ids]) for thread_ids in sorted(found))
