@@ -421,10 +421,18 @@ def _resolve_language(
             )
 
     if args.remote_attach and profile.id not in ("python", "perl", "ruby"):
-        parser.error(
-            f"--remote-attach supports Python, Perl, and Ruby debuggees "
-            f"only (detected language: {profile.id})"
-        )
+        if profile.id == "rust":
+            if args.program is None:
+                parser.error("Rust remote attach requires a local program")
+            program_path = Path(args.program).resolve()
+            if not program_path.exists():
+                parser.error(f"File not found: {args.program}")
+            args.program = str(program_path)
+        else:
+            parser.error(
+                f"--remote-attach supports Python, Perl, Ruby, and Rust debuggees "
+                f"only (detected language: {profile.id})"
+            )
 
     # gdb's DAP mode has no terminal integration (see GdbDapAdapter.launch_body,
     # which raises the same error as a backstop if this guard is ever

@@ -29,3 +29,33 @@ def test_rust_adapters_share_native_local_launch_behavior():
 def test_rust_rejects_unknown_adapter():
     with pytest.raises(LanguageNotSupportedError, match="unknown adapter 'codelldb' for rust"):
         build_rust_profile(adapter="codelldb")
+
+
+def test_rust_gdb_attach_body():
+    body = RustGdbAdapter().attach_body(
+        host="devbox",
+        port=2345,
+        opts={"program": "/local/app", "path_mappings": [("/src", "/remote/src")]},
+    )
+    assert body == {"program": "/local/app", "target": "devbox:2345"}
+
+
+def test_rust_lldb_attach_body_with_source_map():
+    body = RustLldbAdapter().attach_body(
+        host="devbox",
+        port=2345,
+        opts={"program": "/local/app", "path_mappings": [("/src", "/remote/src")]},
+    )
+    assert body["gdb-remote-host"] == "devbox"
+    assert body["gdb-remote-port"] == 2345
+    assert body["program"] == "/local/app"
+    assert body["sourceMap"] == [["/remote/src", "/src"]]
+
+
+def test_rust_gdb_source_mapping_commands_escape_paths():
+    adapter = RustGdbAdapter()
+    assert adapter.pre_configuration_commands(
+        [("/local\\path \"quote\"", "/remote\\path \"quote\"")]
+    ) == (
+        r'set substitute-path "/remote\\path \"quote\"" "/local\\path \"quote\""',
+    )

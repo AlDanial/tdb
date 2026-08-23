@@ -133,24 +133,32 @@ def build_mcp(session: McpSession | None = None) -> FastMCP:
             adapter=adapter,
         )
 
-    @mcp.tool(description="Attach to a remote debugpy server (host:port).")
+    @mcp.tool(description="Attach to a remote debuggee at host:port.")
     async def debug_attach(
         host: str,
         port: int,
         breakpoints: list[str] | None = None,
         path_mappings: list[list[str]] | None = None,
+        program: str | None = None,
+        lang: str | None = None,
+        adapter: str | None = None,
     ) -> str:
-        """Attach to a debugpy server already listening on host:port.
-        `path_mappings` is a list of [local_root, remote_root] pairs
-        forwarded to debugpy for bidirectional path translation (use
-        when tdb and the remote program have copies of the same code
-        at different paths). The session pauses on attach so you can
-        set breakpoints / inspect state immediately."""
+        """Attach to a remote DAP target at host:port.
+
+        For Rust native attach, pass `lang="rust"` and `program` as an
+        unstripped local copy of the remote executable. `adapter` selects
+        GDB or LLDB; `path_mappings` pairs local and remote source roots.
+        The session pauses on attach so you can set breakpoints and
+        inspect state immediately.
+        """
         return await sess.attach(
             host=host,
             port=port,
             breakpoints=_parse_breakpoints(breakpoints),
             path_mappings=_parse_path_mappings(path_mappings),
+            program=program,
+            lang=lang,
+            adapter=adapter,
         )
 
     @mcp.tool(description="Stop the current debug session.")

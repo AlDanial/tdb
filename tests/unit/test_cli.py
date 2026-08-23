@@ -52,6 +52,21 @@ def test_remote_attach_invalid_port():
         parse_args(["-r", "not-a-port"])
 
 
+def test_rust_remote_attach_requires_local_program(capsys):
+    with pytest.raises(SystemExit):
+        parse_args(["--lang", "rust", "-r", "host:2345"])
+    assert "Rust remote attach requires a local program" in capsys.readouterr().err
+
+
+def test_rust_remote_attach_resolves_local_program(tmp_path):
+    program = tmp_path / "app"
+    program.write_bytes(b"\x7fELF" + b"\0" * 60)
+
+    args = parse_args(["--lang", "rust", "-r", "host:2345", str(program)])
+
+    assert args.program == str(program.resolve())
+
+
 def test_breakpoints_parsed(tmp_path):
     prog = tmp_path / "x.py"
     prog.write_text("print('hi')\n")

@@ -322,9 +322,12 @@ class DAPClient:
         self,
         host: str = "127.0.0.1",
         port: int = 0,
+        program: str | None = None,
         **adapter_opts: Any,
     ) -> asyncio.Future[Response]:
         """Send attach request. Returns a Future (same pattern as launch)."""
+        if program is not None:
+            adapter_opts["program"] = program
         arguments = self._adapter.attach_body(host=host, port=port, opts=adapter_opts)
         return await self._send_raw("attach", arguments)
 

@@ -97,6 +97,12 @@ def test_control_default_timeout_is_30s(mcp_tools):
     assert control.inputSchema["properties"]["timeout_s"]["default"] == 30.0
 
 
+def test_debug_attach_accepts_rust_program_and_profile_selection(mcp_tools):
+    attach = next(tool for tool in mcp_tools if tool.name == "debug_attach")
+    properties = attach.inputSchema["properties"]
+    assert {"program", "lang", "adapter"} <= properties.keys()
+
+
 # --- _format ------------------------------------------------------------
 
 

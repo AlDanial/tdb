@@ -66,6 +66,7 @@ async def setup_headless_session(
                 host=attach_host,
                 port=attach_port,
                 path_mappings=path_mappings,
+                program=program,
             )
         except OSError as exc:
             # No server listening, route unreachable, DNS failure, etc.

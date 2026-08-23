@@ -98,6 +98,17 @@ class AdapterSpec:
         """Arguments for the DAP `attach` request."""
         raise NotImplementedError
 
+    def pre_configuration_commands(
+        self, path_mappings: list[tuple[str, str]]
+    ) -> tuple[str, ...]:
+        """Debugger commands required before source breakpoints are sent.
+
+        Attach adapters may need source-path configuration that DAP has
+        no portable request for.  The controller runs these commands
+        after `initialized` and before `setBreakpoints`.
+        """
+        return ()
+
     def pick_exception_filters(self, caps: Capabilities) -> list[str]:
         """Choose exception-breakpoint filters from what the adapter
         advertised in its initialize response. Default: the adapter's
