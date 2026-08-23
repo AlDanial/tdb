@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from importlib import resources
 from pathlib import Path
-from unittest.mock import AsyncMock
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock
 
 from tdb.languages.rust import RustLldbAdapter
 from tdb.rust_concurrency.probes import probe_for_adapter
@@ -13,6 +14,7 @@ from tdb.rust_concurrency.probes.lldb import (
     LldbEvidenceProbe,
     parse_lldb_probe_output,
 )
+from tdb.rust_concurrency.probes import lldb_script
 
 
 def load_fixture(name: str) -> str:
@@ -94,3 +96,59 @@ def test_rust_lldb_attach_merges_probe_initialization_with_remote_options():
             f'command script import "{expected_script_path()}"',
         ],
     }
+
+
+def test_lldb_version_scan_rejects_ambiguous_embedded_versions(tmp_path):
+    executable = tmp_path / "app"
+    executable.write_bytes(b"rustc version 1.98.0\0rustc version 1.97.1")
+    target = Mock()
+    target.GetNumModules.return_value = 0
+    target.GetExecutable.return_value.GetPath.return_value = str(executable)
+
+    version, warnings = lldb_script._rust_version(target)
+
+    assert version is None
+    assert warnings == ("local executable Rust producer version is ambiguous",)
+
+
+def test_lldb_snapshot_does_not_scan_version_until_inferior_is_stopped(monkeypatch):
+    process = Mock()
+    process.GetState.return_value = 7
+    target = Mock()
+    target.GetProcess.return_value = process
+    debugger = Mock()
+    debugger.GetSelectedTarget.return_value = target
+    result = Mock()
+    version_probe = Mock(side_effect=AssertionError("must not be called"))
+    monkeypatch.setattr(lldb_script, "lldb", SimpleNamespace(eStateStopped=5))
+    monkeypatch.setattr(lldb_script, "_rust_version", version_probe)
+
+    lldb_script.tdb_rust_snapshot(
+        debugger, "--format json", result, internal_dict={}
+    )
+
+    version_probe.assert_not_called()
+    payload = result.PutCString.call_args.args[0]
+    assert '"threads":[]' in payload
+    assert "inferior is not stopped" in payload
+
+
+def test_lldb_snapshot_degrades_global_enumeration_failure_to_warning(monkeypatch):
+    process = Mock()
+    process.GetState.return_value = 5
+    process.GetNumThreads.side_effect = RuntimeError("threads failed")
+    target = Mock()
+    target.GetProcess.return_value = process
+    debugger = Mock()
+    debugger.GetSelectedTarget.return_value = target
+    result = Mock()
+    monkeypatch.setattr(lldb_script, "lldb", SimpleNamespace(eStateStopped=5))
+    monkeypatch.setattr(lldb_script, "_rust_version", Mock(return_value=("1.98.0", ())))
+
+    lldb_script.tdb_rust_snapshot(
+        debugger, "--format json", result, internal_dict={}
+    )
+
+    payload = result.PutCString.call_args.args[0]
+    assert '"threads":[]' in payload
+    assert "LLDB thread enumeration unavailable: threads failed" in payload
