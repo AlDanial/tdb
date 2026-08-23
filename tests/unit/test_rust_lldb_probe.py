@@ -73,7 +73,34 @@ def test_rust_lldb_loads_probe_script_before_launch():
     assert body["runInTerminal"] is True
 
 
-@pytest.mark.skipif(shutil.which("lldb") is None, reason="lldb is not installed")
+def _lldb_supports_python_scripting() -> bool:
+    """True when lldb's embedded script interpreter actually works.
+
+    Merely having `lldb` on PATH is not enough: Alpine's lldb package,
+    for one, ships without the Python bindings (`py3-lldb`), so
+    `command script import` fails with "No module named 'lldb'".
+    """
+    lldb = shutil.which("lldb")
+    if lldb is None:
+        return False
+    try:
+        completed = subprocess.run(
+            [lldb, "-b", "-o", "script print(6 * 7)"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return completed.returncode == 0 and "42" in completed.stdout
+
+
+@pytest.mark.skipif(
+    not _lldb_supports_python_scripting(),
+    reason="lldb with working Python scripting is not installed "
+    "(Alpine needs the py3-lldb package)",
+)
 def test_packaged_probe_registers_in_real_lldb():
     completed = subprocess.run(
         [

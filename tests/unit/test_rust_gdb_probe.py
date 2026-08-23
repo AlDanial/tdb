@@ -209,7 +209,29 @@ def test_rust_gdb_passes_probe_script_path_raw_to_source(monkeypatch):
     assert command[4] == "source /tmp/tdb package/gdb_script.py"
 
 
-@pytest.mark.skipif(shutil.which("gdb") is None, reason="gdb is not installed")
+def _gdb_supports_python_scripting() -> bool:
+    """True when gdb was built with Python scripting (most are; minimal
+    builds — e.g. some musl/embedded packages — are not)."""
+    gdb = shutil.which("gdb")
+    if gdb is None:
+        return False
+    try:
+        completed = subprocess.run(
+            [gdb, "-batch", "-ex", "python print(6 * 7)"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return completed.returncode == 0 and "42" in completed.stdout
+
+
+@pytest.mark.skipif(
+    not _gdb_supports_python_scripting(),
+    reason="gdb with working Python scripting is not installed",
+)
 def test_packaged_probe_registers_in_real_gdb():
     command = RustGdbAdapter(executable=shutil.which("gdb") or "gdb").command()
     completed = subprocess.run(
