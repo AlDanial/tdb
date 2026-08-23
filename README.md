@@ -30,8 +30,9 @@ MIT License.  Copyright 2026 by Al Danial.
 the richest feature set), C/C++ (via `gdb -i dap` or `lldb-dap`), Rust (via `gdb` or
 `lldb-dap`), Perl (via `perl -d`),
 Bash (via bash's own `DEBUG` trap), Tcsh (via source instrumentation of a
-stock `tcsh`), and Ruby (via the debug gem's `rdbg`), with the language
-auto-detected from the target (ref. [Multi-Language Debugging](#multi-language-debugging)).
+stock `tcsh`), and Ruby (via the debug gem's `rdbg`). Most languages are
+auto-detected from the target; Rust intentionally requires `--lang rust`
+(ref. [Multi-Language Debugging](#multi-language-debugging)).
 
 - supports debugging of synchronous, asynchronous, multi-threaded, and multi-process Python code.
 It specifically supports modules
@@ -39,7 +40,7 @@ It specifically supports modules
     - `threading` (with a thread inspector)
     - `multiprocessing` / `concurrent.futures` (with automatic child process attachment and a process inspector)
 
-- supports remote attachment to Python, Perl, Ruby programs
+- supports remote attachment to Python, Perl, Ruby, and Rust programs
 
 - includes a JSON-RPC server mode, an MCP mode, and a `SKILL.md` file that enable
 programmatic debug control, making it suitable for
