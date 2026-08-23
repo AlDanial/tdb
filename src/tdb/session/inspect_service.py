@@ -165,11 +165,11 @@ class InspectService:
         self._gate()
         return await self._ctrl.client.threads()
 
-    async def thread_frames(self, thread_id: int) -> list[StackFrame]:
+    async def thread_frames(self, thread_id: int, *, levels: int = 8) -> list[StackFrame]:
         """A thread's stack only — no scopes/variables (cheap, for
         thread classification)."""
         self._gate()
-        return await self._ctrl.client.stack_trace(thread_id)
+        return await self._ctrl.client.stack_trace(thread_id, levels=levels)
 
     async def thread_stack(self, thread_id: int) -> StackDetail:
         """Fetch a thread's stack, plus scopes + variables of its top frame.
