@@ -56,8 +56,21 @@ class RustConcurrencyModal(ModalScreen[None]):
     RustConcurrencyModal #threads-body { height: 1fr; }
     RustConcurrencyModal #threads-table { width: 2fr; height: 1fr; }
     RustConcurrencyModal #thread-detail { width: 3fr; overflow-y: auto; }
-    RustConcurrencyModal #thread-evidence { padding: 1 2; height: auto; }
-    RustConcurrencyModal #vars { height: 1fr; padding: 0 1; }
+    RustConcurrencyModal #thread-evidence {
+        height: 5;
+        max-height: 5;
+        padding: 0 2;
+        overflow-y: auto;
+    }
+    RustConcurrencyModal #frames-table {
+        height: 1fr;
+        min-height: 3;
+    }
+    RustConcurrencyModal #vars {
+        height: 1fr;
+        min-height: 3;
+        padding: 0 1;
+    }
     RustConcurrencyModal #wait-graph-tree { height: 1fr; width: 1fr; }
     RustConcurrencyModal #wait-edge-list, RustConcurrencyModal #findings-list {
         padding: 1 2;

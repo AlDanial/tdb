@@ -157,3 +157,29 @@ async def test_live_detail_populates_locals_and_frame_selection_posts_message():
             and message.frame_id == 41
             for message in messages
         )
+
+
+async def test_small_viewport_keeps_live_frames_and_locals_visible():
+    """At a terminal-sized viewport, detail controls need usable rows."""
+    app = _ModalApp()
+    async with app.run_test(size=(100, 24)) as pilot:
+        modal = RustConcurrencyModal(sample_snapshot(), current_thread_id=1)
+        app.push_screen(modal)
+        await pilot.pause()
+        modal.show_thread_detail(
+            1,
+            [
+                StackFrame(
+                    id=41,
+                    name="wait_for_work",
+                    source=Source(path="/src/main.rs"),
+                    line=12,
+                )
+            ],
+            [Scope(name="Locals", variables_reference=9)],
+            {9: [Variable(name="guard", value="MutexGuard", variables_reference=0)]},
+        )
+        await pilot.pause()
+
+        assert modal.query_one("#frames-table").size.height >= 3
+        assert modal.query_one("#vars").size.height >= 3
