@@ -1,0 +1,18 @@
+{
+  "supported_wait_frames": [
+    "std::thread::JoinHandle<T>::join",
+    "std::sync::poison::mutex::Mutex<T>::lock",
+    "std::sync::poison::rwlock::RwLock<T>::read",
+    "std::sync::poison::rwlock::RwLock<T>::write",
+    "std::sync::poison::condvar::Condvar::wait",
+    "std::sync::mpsc::Receiver<T>::recv",
+    "std::sync::mpsc::SyncSender<T>::send",
+    "std::sync::mpsc::Sender<T>::send",
+    "std::thread::park"
+  ],
+  "non_rust_wait_frames": [
+    "my_app::parking_lot::park",
+    "futex_waitv",
+    "_RNvNtCs7R42Foo4main4park"
+  ]
+}
