@@ -68,3 +68,16 @@ async def test_quirk_false_keeps_direct_tcp_connect():
     ctrl = await _attach_with(_profile(quirk=False))
     ctrl.client.connect.assert_awaited_once_with("devbox", 5678)
     ctrl.client.start.assert_not_awaited()
+
+
+async def test_adapter_mediated_attach_forwards_local_program():
+    ctrl = DebugController(ServerEventHandler(), profile=_profile(quirk=True))
+    ctrl.client.start = AsyncMock()
+    ctrl.client.initialize = AsyncMock()
+    ctrl.client.attach = AsyncMock(return_value=None)
+
+    await ctrl.remote_attach(host="devbox", port=5678, program="/local/app")
+
+    ctrl.client.attach.assert_awaited_once_with(
+        host="devbox", port=5678, path_mappings=None, program="/local/app"
+    )

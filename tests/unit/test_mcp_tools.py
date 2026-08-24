@@ -41,11 +41,12 @@ EXPECTED_TOOL_NAMES = {
     "set_breakpoint",
     "remove_breakpoint",
     "list_breakpoints",
-    # Differentiators (4)
+    # Differentiators (5)
     "threads",
     "tasks",
     "processes",
     "wait_graph",
+    "rust_concurrency",
 }
 
 
@@ -97,6 +98,12 @@ def test_control_default_timeout_is_30s(mcp_tools):
     assert control.inputSchema["properties"]["timeout_s"]["default"] == 30.0
 
 
+def test_debug_attach_accepts_rust_program_and_profile_selection(mcp_tools):
+    attach = next(tool for tool in mcp_tools if tool.name == "debug_attach")
+    properties = attach.inputSchema["properties"]
+    assert {"program", "lang", "adapter"} <= properties.keys()
+
+
 # --- _format ------------------------------------------------------------
 
 
@@ -108,6 +115,12 @@ def test_format_success_with_empty_value_returns_ok():
     """RpcResponse.ok() (no value) returns "" — agents shouldn't see
     a blank string and assume failure; surface a benign 'ok'."""
     assert _format(RpcResponse.ok()) == "ok"
+
+
+def test_format_structured_response_returns_stable_json():
+    assert _format(RpcResponse.ok_data({"warnings": [], "threads": []})) == (
+        '{"threads": [], "warnings": []}'
+    )
 
 
 def test_format_error_prefixes_with_error_keyword():

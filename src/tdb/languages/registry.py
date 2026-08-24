@@ -68,7 +68,33 @@ _EXTENSION_MAP = {
 
 # Source files for compiled languages: debugging the source is a user
 # error — you debug the built executable.
-_COMPILED_SOURCE_EXTS = {".c", ".cc", ".cpp", ".cxx", ".c++", ".rs"}
+_COMPILED_SOURCE_EXTS = {".c", ".cc", ".cpp", ".cxx", ".c++", ".rs", ".ml", ".mli"}
+
+
+def reject_compiled_source(program: str | None) -> None:
+    """Reject source paths even with an explicitly selected language."""
+    if program is None:
+        return
+    extension = Path(program).suffix.lower()
+    if extension not in _COMPILED_SOURCE_EXTS:
+        return
+    if extension == ".rs":
+        raise LanguageNotSupportedError(
+            f"{program!r} is Rust source — build a debug executable "
+            f"(e.g. `rustc -g {program}` or `cargo build`) and run "
+            "`tdb --lang rust ./binary`"
+        )
+    if extension in (".ml", ".mli"):
+        raise LanguageNotSupportedError(
+            f"{program!r} is OCaml source — build it first (dune's dev "
+            f"profile keeps debug info) and run "
+            f"`tdb ./_build/default/.../main.exe`"
+        )
+    raise LanguageNotSupportedError(
+        f"{program!r} is source for a compiled language — compile "
+        "with debug info (e.g. `g++ -g -O0`) and run `tdb ./binary`"
+    )
+
 
 _MAGIC = [
     (b"\x7fELF", "cpp"),  # Linux
@@ -88,19 +114,8 @@ def detect(program: str | None) -> str:
     if program is None:
         return "python"
     path = Path(program)
+    reject_compiled_source(program)
     ext = path.suffix.lower()
-    if ext in _COMPILED_SOURCE_EXTS:
-        raise LanguageNotSupportedError(
-            f"{program!r} is source for a compiled language — compile "
-            f"with debug info (e.g. `g++ -g -O0`) and run `tdb ./binary`, "
-            f"or pass --lang explicitly"
-        )
-    if ext in (".ml", ".mli"):
-        raise LanguageNotSupportedError(
-            f"{program!r} is OCaml source — build it first (dune's dev "
-            f"profile keeps debug info) and run "
-            f"`tdb ./_build/default/.../main.exe`, or pass --lang explicitly"
-        )
     if ext in _EXTENSION_MAP:
         return _EXTENSION_MAP[ext]
 
@@ -178,3 +193,7 @@ register("ruby", build_ruby_profile)
 from tdb.languages.ocaml import build_ocaml_profile  # noqa: E402
 
 register("ocaml", build_ocaml_profile)
+
+from tdb.languages.rust import build_rust_profile  # noqa: E402
+
+register("rust", build_rust_profile)

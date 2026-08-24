@@ -14,6 +14,7 @@ from types import SimpleNamespace
 import pytest
 
 from tdb.dap.types import Scope, Source, StackFrame, Thread, Variable
+from tdb.languages.rust import build_rust_profile
 from tdb.server.event_handler import ServerEventHandler
 from tdb.session.controller import DebugController
 from tdb.session.inspect_service import InspectService, SessionGateError
@@ -67,6 +68,26 @@ async def test_collect_processes_gates_when_terminated():
     svc, _ = _service(SessionPhase.TERMINATED)
     with pytest.raises(SessionGateError):
         await svc.collect_processes()
+
+
+async def test_collect_rust_concurrency_gates_unsupported_profile():
+    svc, _ = _service()
+    with pytest.raises(SessionGateError, match="unsupported"):
+        await svc.collect_rust_concurrency()
+
+
+async def test_collect_rust_concurrency_uses_rust_capability(monkeypatch):
+    controller = DebugController(ServerEventHandler(), profile=build_rust_profile("gdb"))
+    controller.state.transition_to(SessionPhase.STOPPED)
+    svc = InspectService(lambda: controller)
+    expected = object()
+
+    async def collect_and_analyze(ctrl):
+        assert ctrl is controller
+        return expected
+
+    monkeypatch.setattr(svc._rust_collector, "collect_and_analyze", collect_and_analyze)
+    assert await svc.collect_rust_concurrency() is expected
 
 
 # --- Tasks ---------------------------------------------------------------

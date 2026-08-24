@@ -8,10 +8,12 @@ breakpoint state, dispatch, and validation paths can run in milliseconds.
 from __future__ import annotations
 
 import json as _json
+from unittest.mock import AsyncMock
 
 import pytest
 
 from tdb.dap.types import SourceBreakpoint, Thread
+from tdb.rust_concurrency.models import ConcurrencySnapshot, ThreadAnalysis, ThreadState
 from tdb.server.event_handler import ServerEventHandler
 from tdb.server.handlers import ControllerRef, RpcHandlers, _parse_file_line
 from tdb.session.controller import DebugController
@@ -105,6 +107,83 @@ def test_action_help_lists_known_actions(handlers):
     assert rsp.success is True
     assert "set_breakpoint" in rsp.value
     assert "continue" in rsp.value
+
+
+def _sample_rust_snapshot() -> ConcurrencySnapshot:
+    return ConcurrencySnapshot(
+        rust_version="1.98.0",
+        adapter="gdb",
+        platform="linux",
+        threads=(
+            ThreadAnalysis(
+                thread_id=1,
+                name="main",
+                state=ThreadState.BLOCKED,
+                wait=None,
+            ),
+        ),
+        primitives=(),
+        edges=(),
+        confirmed_deadlocks=(),
+        suspected_stalls=(),
+        warnings=(),
+    )
+
+
+async def test_rust_concurrency_action_returns_structured_snapshot(
+    handlers, monkeypatch
+):
+    monkeypatch.setattr(
+        handlers._inspect,
+        "collect_rust_concurrency",
+        AsyncMock(return_value=_sample_rust_snapshot()),
+    )
+
+    response = await handlers.action_rust_concurrency([])
+
+    assert response.success is True
+    assert response.data is not None
+    assert response.data["threads"][0]["name"] == "main"
+    # `value` is the short legacy-client summary, not a second copy of
+    # the payload.
+    assert response.value.startswith("rust concurrency: ")
+    assert "1 thread(s)" in response.value
+
+
+async def test_rust_concurrency_action_gates_non_rust(handlers):
+    response = await handlers.action_rust_concurrency([])
+
+    assert response.success is False
+    assert "Not supported" in response.value
+
+
+async def test_rust_concurrency_action_rejects_parameters(handlers):
+    response = await handlers.action_rust_concurrency(["unexpected"])
+
+    assert response.success is False
+    assert "does not accept parameters" in response.value
+
+
+async def test_rpc_endpoint_retains_structured_rust_data(handlers, monkeypatch):
+    import httpx
+
+    from tdb.server.app import create_app
+
+    monkeypatch.setattr(
+        handlers._inspect,
+        "collect_rust_concurrency",
+        AsyncMock(return_value=_sample_rust_snapshot()),
+    )
+    app = create_app(handlers)
+    transport = httpx.ASGITransport(app=app)
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/rpc", json={"action": "rust_concurrency", "params": []}
+        )
+
+    assert response.status_code == 200
+    assert response.json()["data"]["threads"][0]["name"] == "main"
 
 
 # --- Breakpoint actions (no DAP needed once is_terminated guards trip) --

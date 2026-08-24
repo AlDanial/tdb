@@ -5,6 +5,7 @@ a full-featured terminal-based debugger for Python and other languages
 with a Debug Adapter Protocol (DAP) implementation.  In addition to Python,
 `tdb` comes with built-in support for
 - C and C++ (via `gdb` or `lldb-dap`)
+- Rust (via `gdb` or `lldb-dap`, selected explicitly)
 - Perl (via `perl -d`)
 - Bash (via bash's own `DEBUG` trap; bash ≥ 4.4)
 - Tcsh (via source instrumentation of a stock `tcsh`)
@@ -27,11 +28,13 @@ MIT License.  Copyright 2026 by Al Danial.
 `tdb`:
 
 - debugs multiple languages through the Debug Adapter Protocol: Python (via `debugpy`,
-the richest feature set), C/C++ (via `gdb -i dap` or `lldb-dap`), Perl (via `perl -d`),
+the richest feature set), C/C++ (via `gdb -i dap` or `lldb-dap`), Rust (via `gdb` or
+`lldb-dap`), Perl (via `perl -d`),
 Bash (via bash's own `DEBUG` trap), Tcsh (via source instrumentation of a
 stock `tcsh`), Ruby (via the debug gem's `rdbg`), and OCaml (native via
-`lldb-dap`/`gdb`, bytecode via ocamlearlybird), with the language
-auto-detected from the target (ref. [Multi-Language Debugging](#multi-language-debugging)).
+`lldb-dap`/`gdb`, bytecode via ocamlearlybird). Most languages are
+auto-detected from the target; Rust intentionally requires `--lang rust`
+(ref. [Multi-Language Debugging](#multi-language-debugging)).
 
 - supports debugging of synchronous, asynchronous, multi-threaded, and multi-process Python code.
 It specifically supports modules
@@ -39,7 +42,7 @@ It specifically supports modules
     - `threading` (with a thread inspector)
     - `multiprocessing` / `concurrent.futures` (with automatic child process attachment and a process inspector)
 
-- supports remote attachment to Python, Perl, Ruby programs
+- supports remote attachment to Python, Perl, Ruby, and Rust programs
 
 - includes a JSON-RPC server mode, an MCP mode, and a `SKILL.md` file that enable
 programmatic debug control, making it suitable for
@@ -179,13 +182,14 @@ python -m tdb my_program.py
 
 ## Multi-Language Debugging
 
-`tdb` debugs any language that has a Debug Adapter Protocol backend. Seven
+`tdb` debugs any language that has a Debug Adapter Protocol backend. Eight
 languages are supported out of the box:
 
 | Language | Adapter(s) | Dependencies           | Feature level |
 |----------|------------|------------------------|---------------|
 | Python | `debugpy` (default) | Python ≥ 3.11 | everything in this README |
 | C / C++ (any native binary) | `gdb` (default), `lldb-dap` (alternate) | `gdb -i dap` requires GDB ≥ 14; `lldb-dap` ships with LLVM ≥ 17 (e.g. `apt install lldb`) | core debugging: breakpoints, stepping, stack, variables, evaluate console |
+| Rust (explicit `--lang rust`) | `gdb` (Linux default), `lldb-dap` (macOS default) | any rustc building with debug info; GDB ≥ 14 or LLVM `lldb-dap` ≥ 17 (concurrency ownership evidence additionally requires stable Rust 1.98) | core debugging + best-effort Rust concurrency inspection + remote attach |
 | Perl | perl-tdb (bundled) | perl ≥ 5.18 on PATH  | core debugging + remote attach |
 | Bash | bash-tdb (bundled) | bash ≥ 4.4 on PATH  | core debugging (no remote attach) |
 | Tcsh | tcsh-tdb (bundled) | tcsh on PATH | core debugging (no remote attach, no conditional breakpoints, no pause) |
@@ -206,7 +210,8 @@ The language is auto-detected from the debug target:
    trailing `Caml1999` marker, or a `#!...ocamlrun` shebang, in which case
    → OCaml (native or bytecode respectively). A stripped native OCaml
    binary that byte-sniffing can't identify falls back to C/C++; force it
-   with `--lang ocaml`.
+   with `--lang ocaml`. Rust is never inferred from an executable; select
+   it explicitly with `--lang rust`.
 3. A `#!...python`, `#!...perl`, `#!...bash`, `#!...csh`/`#!...tcsh`, or
    `#!...ruby` shebang → Python / Perl / Bash / Tcsh / Ruby respectively.
 4. C/C++/Rust *source* files (`.c`, `.cpp`, `.rs`, …) produce an error with a
@@ -218,7 +223,8 @@ The language is auto-detected from the debug target:
 6. Anything else produces an error naming the `--lang` override.
 
 `--lang` forces the language; `--adapter` picks a non-default adapter within
-it (`tdb --lang cpp --adapter lldb-dap ./myprog`).
+it (`tdb --lang cpp --adapter lldb-dap ./myprog`). Rust always requires the
+explicit language selection (`tdb --lang rust target/debug/app`).
 
 > **Migration note:** extensionless Python scripts without a `python` shebang
 > were previously assumed to be Python; they now require `--lang python`.
@@ -251,11 +257,12 @@ process inspectors and wait graph, the evaluate console's trailing-`?` help,
 `--python`/`--pv`, `--no-subprocess`, automatic child-process attachment, and
 the post-mortem / `tdb.breakpoint()` hooks (those hooks live inside Python
 programs by nature). Remote attach (`-r`) also works for Perl (see
-[Perl](#perl), `Devel::TdbRemote` in place of `debugpy.listen()`) and Ruby
-(see [Ruby](#ruby), `rdbg --open` in place of `debugpy.listen()`), but not
-for C/C++, Bash, Tcsh, or OCaml. `--terminal` works for every launch-mode
-language--Python, Perl, Bash, Tcsh, Ruby, and C/C++ or OCaml native
-sessions via `--adapter lldb-dap`, ref.
+[Perl](#perl), `Devel::TdbRemote` in place of `debugpy.listen()`), Ruby
+(see [Ruby](#ruby), `rdbg --open` in place of `debugpy.listen()`), and Rust
+(with a local symbol-bearing executable; see [Rust](#rust)), but not for
+C/C++, Bash, Tcsh, or OCaml. `--terminal` works for every launch-mode
+language — Python, Perl, Bash, Tcsh, Ruby, and C/C++, OCaml native, or Rust
+sessions via `--adapter lldb-dap` — see
 [External Terminal Support](#external-terminal-support).
 
 **Bash limitations (v1):** the bash adapter uses bash's own `DEBUG` trap and
@@ -342,6 +349,68 @@ picture:
 - `--terminal` (see [External Terminal Support](#external-terminal-support))
   requires `--adapter lldb-dap`; GDB's DAP mode has no terminal integration
   and `tdb` refuses `--terminal` with the default `gdb` adapter.
+
+### Rust
+
+Rust debugging is intentionally explicit: build a normal debug executable,
+leave it unmodified, and pass that executable with `--lang rust`. Linux and
+macOS are supported; Windows is not yet (MSVC-toolchain binaries carry PDB
+debug info that neither `gdb -i dap` nor this release's probes read). `tdb` does
+not compile, instrument, or auto-detect Rust programs. Core debugging
+(breakpoints, stepping, stacks, variables, remote attach) works with any
+rustc that emits debug info; the concurrency inspector's layout-specific
+*ownership evidence* additionally requires the current stable Rust
+**1.98** standard-library layout — on other versions the workspace still
+opens with stack-based wait classification and a compatibility warning.
+Build with debug information and no optimization for the most useful
+source locations:
+
+```bash
+cargo rustc -- -C debuginfo=2 -C opt-level=0
+# Equivalent direct rustc settings: rustc -C debuginfo=2 -C opt-level=0 src/main.rs
+```
+
+The common commands are:
+
+```bash
+cargo build
+tdb --lang rust target/debug/app
+tdb --lang rust --adapter lldb-dap --run target/debug/app
+tdb --lang rust --adapter lldb-dap --terminal xterm target/debug/app
+tdb --lang rust --adapter gdb --remote-attach host:2345 target/debug/app
+```
+
+`--run` and normal stopped-on-entry launch work with both adapters. On Linux,
+use GDB (the default) or `lldb-dap`; on macOS, use `lldb-dap` (the default).
+External terminals are LLDB-only: GDB's DAP mode cannot provide terminal
+integration. The mode/platform matrix is:
+
+| Platform | Normal / `--run` | `--terminal` | `--remote-attach` |
+|----------|------------------|--------------|-------------------|
+| Linux | GDB or `lldb-dap` | `lldb-dap` only | GDB or `lldb-dap` |
+| macOS | `lldb-dap` | `lldb-dap` only | `lldb-dap` |
+
+Remote attach connects to a GDB-remote server already running on the target.
+Pass the matching **local, unmodified executable with debug symbols** as the
+program argument; `tdb` requires it for symbols and Rust concurrency evidence.
+When source paths differ, pair `--local-root` with `--remote-root`. Do not
+expose the remote debug port to an untrusted network: prefer an SSH tunnel,
+for example `ssh -L 2345:127.0.0.1:2345 host`, then attach to `127.0.0.1:2345`.
+
+In a Rust session the Threads action (`Alt+T`, or the Threads menu entry)
+opens the Rust Concurrency workspace while the debuggee is stopped — a
+fresh, bounded snapshot of threads, wait edges, and findings. The graph is
+best effort: `confirmed` evidence is directly observed by the debugger,
+`probable` is a supported inference, and `unknown` means ownership could not
+be established. A deadlock is confirmed only when every edge in its cycle is
+confirmed. A suspected cycle or whole-program stall is a diagnostic lead, not
+a proof: it means a cycle has incomplete evidence, or all observed application
+threads are blocked while the graph cannot safely invent an owner. Refresh
+after the next stop to collect a new snapshot.
+
+The built-in evidence recognizes current `std` synchronization layouts. A
+future helper crate may expose stable, application-provided synchronization
+metadata for broader primitives and stronger ownership evidence.
 
 ### Perl
 
@@ -1224,7 +1293,9 @@ Both the interactive TUI and the JSON-RPC server run simultaneously.
 ### RPC Protocol
 
 Send POST requests with `{"action": "...", "params": [...]}`. Responses return
-`{"timestamp": "...", "success": true/false, "value": "..."}`.
+`{"timestamp": "...", "success": true/false, "value": "..."}`. Actions with a
+structured result (today only `rust_concurrency`) additionally carry a `data`
+object holding the full JSON payload; `value` then holds a one-line summary.
 
 ```bash
 # Check status
@@ -1282,6 +1353,7 @@ curl -s -X POST http://127.0.0.1:8150/rpc \
 | `list_tasks` | `[]` | List all asyncio tasks |
 | `inspect_task` | `["task_name"]` | Inspect a specific asyncio task |
 | `wait_graph` | `[]` | Show wait graph + any deadlock cycles |
+| `rust_concurrency` | `[]` | Structured Rust thread/wait/deadlock snapshot in `data` (Rust sessions, stopped) |
 | `restart` | `[]` | Restart session (preserves breakpoints) |
 | `quit` | `[]` | Shut down |
 
@@ -1364,7 +1436,7 @@ point), `tdb --mcp` (the main CLI with the `--mcp` switch), and
 `python -m tdb.mcp` (module form). Pick whichever matches how your MCP
 client expects to launch servers.
 
-### Tool surface (16 tools, curated)
+### Tool surface (17 tools, curated)
 
 | Cluster | Tools |
 |---------|-------|
@@ -1372,7 +1444,7 @@ client expects to launch servers.
 | Control | `control(action, timeout_s=30)` where `action ∈ {continue, next, step_in, step_out, pause, wait_for_stop}` |
 | Inspection | `inspect(expressions)`, `read_source(file_path)`, `stack_trace()`, `status()`, `get_output()` |
 | Breakpoints | `set_breakpoint(spec, condition?, hit_condition?)`, `remove_breakpoint(spec)`, `list_breakpoints()` |
-| Differentiators | `threads(thread_id?)`, `tasks(task_name?)`, `processes(name_or_pid?)`, `wait_graph()` |
+| Differentiators | `threads(thread_id?)`, `tasks(task_name?)`, `processes(name_or_pid?)`, `wait_graph()`, `rust_concurrency()` |
 
 `control` is intentionally one tool that takes an action enum. The six
 underlying RPC actions share a return shape, and agents perform
@@ -1383,9 +1455,10 @@ single optional argument for the same reason.
 `debug_launch` accepts optional `lang` and `adapter` parameters mirroring the
 CLI's `--lang`/`--adapter`; when omitted, the language is auto-detected from
 `program`, so an agent can hand it a compiled binary directly. The
-`tasks`/`processes`/`wait_graph` tools stay registered for every language but
+exception is Rust: compiled native binaries require explicit `lang="rust"`.
+The `tasks`/`processes`/`wait_graph` tools stay registered for every language but
 return a structured "not supported when debugging C/C++"-style error for
-non-Python debuggees.
+non-Python debuggees; `rust_concurrency` does the same for non-Rust debuggees.
 
 ### Agent flow for a long-running step
 

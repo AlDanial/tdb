@@ -149,6 +149,7 @@ class DapEventCoordinator:
             # controller._on_continued (single state authority). Only
             # App-level state (stderr buffer, exception-modal flag)
             # needs to be reset here.
+            self.app.panels.dismiss_rust_concurrency()
             self.app._stderr_buffer.clear()
             self.app.panels.exception_modal_shown = False
             self.app._update_ui_state()
@@ -163,6 +164,7 @@ class DapEventCoordinator:
             # state.is_terminated and state.is_running are set by
             # controller._on_terminated (single state authority). This
             # handler only does TUI-side cleanup.
+            self.app.panels.dismiss_rust_concurrency()
             if not self.app.panels.exception_modal_shown:
                 # debugpy may still be delivering OutputEvents for late stderr
                 # (chained tracebacks in particular span many lines). Wait for
@@ -295,6 +297,7 @@ class DapEventCoordinator:
 
     def on_exited(self, exit_code: int) -> None:
         try:
+            self.app.panels.dismiss_rust_concurrency()
             console = self.app.query_one("#console-view", ConsoleView)
             console.write_output(f"\nProcess exited with code {exit_code}\n", "console")
         except Exception:

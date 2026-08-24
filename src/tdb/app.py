@@ -490,6 +490,7 @@ class TdbApp(_AppMessageRoutes, App):
                         host=self._attach_host,
                         port=self._attach_port,
                         path_mappings=self._path_mappings or None,
+                        program=self._program or None,
                     )
                 except OSError as exc:
                     # No server listening, route unreachable, DNS failure,

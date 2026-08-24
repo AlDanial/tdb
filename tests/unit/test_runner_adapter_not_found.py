@@ -7,12 +7,13 @@ import pytest
 
 from tdb.languages.base import (
     AdapterNotFoundError,
+    AdapterQuirks,
     AdapterSpec,
     LanguageProfile,
     Presentation,
     ProfileCapabilities,
 )
-from tdb.server.runner import run_headless
+from tdb.server.runner import run_headless, setup_headless_session
 
 
 class _MissingAdapterSpec(AdapterSpec):
@@ -43,6 +44,22 @@ def _missing_adapter_profile() -> LanguageProfile:
     )
 
 
+class _MissingMediatedAdapterSpec(_MissingAdapterSpec):
+    """A native-style remote adapter: tdb must spawn it before attach."""
+
+    quirks = AdapterQuirks(attach_via_adapter=True)
+
+
+def _missing_mediated_adapter_profile() -> LanguageProfile:
+    return LanguageProfile(
+        id="rust",
+        display_name="Rust",
+        adapter=_MissingMediatedAdapterSpec(),
+        presentation=Presentation(),
+        capabilities=ProfileCapabilities(),
+    )
+
+
 async def test_run_headless_prints_hint_and_exits_on_adapter_not_found(capsys):
     with pytest.raises(SystemExit) as exc_info:
         await run_headless(
@@ -52,3 +69,16 @@ async def test_run_headless_prints_hint_and_exits_on_adapter_not_found(capsys):
     assert exc_info.value.code == 2
     captured = capsys.readouterr()
     assert "missing-dap not found" in captured.err
+
+
+async def test_headless_native_remote_attach_prints_adapter_hint(capsys):
+    with pytest.raises(SystemExit) as exc_info:
+        await setup_headless_session(
+            program="local-rust-binary",
+            attach_host="remote.example",
+            attach_port=2345,
+            profile=_missing_mediated_adapter_profile(),
+        )
+
+    assert exc_info.value.code == 2
+    assert "missing-dap not found" in capsys.readouterr().err

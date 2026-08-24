@@ -45,7 +45,7 @@ def create_app(handlers: RpcHandlers) -> FastAPI:
     app = FastAPI(title="tdb debug server")
     actions = handlers.dispatch_table()
 
-    @app.post("/rpc", response_model=RpcResponse)
+    @app.post("/rpc", response_model=RpcResponse, response_model_exclude_none=True)
     async def rpc_endpoint(request: RpcRequest) -> RpcResponse:
         action_fn = actions.get(request.action)
         if action_fn is None:

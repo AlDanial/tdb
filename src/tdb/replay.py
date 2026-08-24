@@ -143,7 +143,9 @@ async def run_replay(
         )
     else:
         controller, handler = await setup_headless_session(
-            program=None,
+            # Rust native remote attach records the local symbol-bearing
+            # executable in the header; other languages record None.
+            program=h.get("program"),
             attach_host=h["host"],
             attach_port=h["port"],
             path_mappings=[tuple(pm) for pm in (h.get("path_mappings") or [])] or None,

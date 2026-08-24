@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from tdb.widgets.rust_concurrency_modal import RustConcurrencyModal
     from tdb.widgets.async_tasks_modal import AsyncTasksModal
     from tdb.widgets.processes_modal import ProcessesModal
     from tdb.widgets.threads_modal import ThreadsModal
@@ -35,6 +36,7 @@ class UIPanels:
     """Live references to TdbApp's modal singletons + ephemeral UI flags."""
 
     threads: "ThreadsModal | None" = None
+    rust_concurrency: "RustConcurrencyModal | None" = None
     processes: "ProcessesModal | None" = None
     async_tasks: "AsyncTasksModal | None" = None
     # True after `_show_exception_modal` opens the traceback modal for
@@ -52,10 +54,47 @@ class UIPanels:
     last_can_restart: bool = False
     last_header: str | None = None
 
+    def dismiss_rust_concurrency(self) -> None:
+        """Safely close the live Rust workspace and drop its stale reference.
+
+        Lifecycle code may arrive after Textual has already removed the
+        screen, so clearing the reference first keeps restart/termination
+        cleanup idempotent even if dismissal itself cannot complete.
+        """
+        modal = self.rust_concurrency
+        self.rust_concurrency = None
+        if modal is None:
+            return
+        try:
+            stack = list(modal.app.screen_stack)
+        except Exception:
+            stack = None
+        try:
+            if stack is None or modal not in stack:
+                # No live screen info — fall back to a best-effort direct
+                # dismiss (already-unmounted screens raise; swallowed below).
+                modal.dismiss()
+                return
+            # Screen.dismiss() pops whichever screen is topmost, so a modal
+            # stacked above the workspace (e.g. FullContentsModal opened
+            # from the variables tree) must be popped first or dismiss()
+            # would destroy IT and leak the workspace. Anything above the
+            # workspace is rendering the same stale stop, so closing it
+            # too is correct.
+            app = modal.app
+            while app.screen is not modal:
+                app.pop_screen()
+            modal.dismiss()
+        except Exception:
+            # The registry's cleanup guarantee is more important than a
+            # best-effort notification to an already-unmounted screen.
+            pass
+
     def clear(self) -> None:
         """Drop all modal refs and reset transient flags. Called on
         session restart so stale modal instances aren't kept alive."""
         self.threads = None
+        self.dismiss_rust_concurrency()
         self.processes = None
         self.async_tasks = None
         self.exception_modal_shown = False

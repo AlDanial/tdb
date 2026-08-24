@@ -1,6 +1,6 @@
 """FastMCP server exposing tdb as a Model Context Protocol tool surface.
 
-16 curated tools (not 26 auto-generated) so the agent's tool list stays
+17 curated tools (not 26 auto-generated) so the agent's tool list stays
 small and focused. Tool wrappers translate kwargs → JSON-RPC `params`
 list and call through `McpSession._call`, which preserves the HTTP
 dispatcher's lock policy — `pause` bypasses `session_lock` so an agent
@@ -18,6 +18,7 @@ extensions, etc. typically prompt before invoking tools).
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Literal
 
@@ -38,7 +39,11 @@ _session = McpSession()
 def _format(rsp: RpcResponse) -> str:
     """Render an RpcResponse as the string an MCP tool returns. Errors
     are prefixed `Error:` so agents distinguish failure from success
-    payloads (e.g. the "still running" sentinel returned by `control`)."""
+    payloads (e.g. the "still running" sentinel returned by `control`).
+    A response carrying structured `data` (today only `rust_concurrency`)
+    returns it as stable sorted JSON instead of the prose `value`."""
+    if rsp.success and rsp.data is not None:
+        return json.dumps(rsp.data, sort_keys=True)
     if rsp.success:
         return rsp.value or "ok"
     return f"Error: {rsp.value}"
@@ -133,24 +138,39 @@ def build_mcp(session: McpSession | None = None) -> FastMCP:
             adapter=adapter,
         )
 
-    @mcp.tool(description="Attach to a remote debugpy server (host:port).")
+    @mcp.tool(
+        description=(
+            "Attach to a remote debuggee at host:port. Rust needs "
+            'lang="rust" plus program=<local unstripped copy of the '
+            "remote executable> — a native binary is otherwise treated "
+            "as C/C++."
+        )
+    )
     async def debug_attach(
         host: str,
         port: int,
         breakpoints: list[str] | None = None,
         path_mappings: list[list[str]] | None = None,
+        program: str | None = None,
+        lang: str | None = None,
+        adapter: str | None = None,
     ) -> str:
-        """Attach to a debugpy server already listening on host:port.
-        `path_mappings` is a list of [local_root, remote_root] pairs
-        forwarded to debugpy for bidirectional path translation (use
-        when tdb and the remote program have copies of the same code
-        at different paths). The session pauses on attach so you can
-        set breakpoints / inspect state immediately."""
+        """Attach to a remote DAP target at host:port.
+
+        For Rust native attach, pass `lang="rust"` and `program` as an
+        unstripped local copy of the remote executable. `adapter` selects
+        GDB or LLDB; `path_mappings` pairs local and remote source roots.
+        The session pauses on attach so you can set breakpoints and
+        inspect state immediately.
+        """
         return await sess.attach(
             host=host,
             port=port,
             breakpoints=_parse_breakpoints(breakpoints),
             path_mappings=_parse_path_mappings(path_mappings),
+            program=program,
+            lang=lang,
+            adapter=adapter,
         )
 
     @mcp.tool(description="Stop the current debug session.")
@@ -300,6 +320,18 @@ def build_mcp(session: McpSession | None = None) -> FastMCP:
         identified holders, plus any deadlock cycles. The single best
         tool for diagnosing async hangs from an agent."""
         return _format(await sess._call("wait_graph", []))
+
+    @mcp.tool(
+        description=(
+            "Show Rust threads, synchronization waits, and evidence-backed "
+            "deadlock or stall findings. Rust sessions only, while stopped; "
+            "returns a JSON snapshot (threads, primitives, edges, findings, "
+            "warnings) rather than prose."
+        )
+    )
+    async def rust_concurrency() -> str:
+        """Return a structured Rust concurrency snapshot for a stopped session."""
+        return _format(await sess._call("rust_concurrency", []))
 
     return mcp
 

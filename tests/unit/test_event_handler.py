@@ -6,7 +6,10 @@ import asyncio
 
 import pytest
 
+from tdb.app_handlers.dap_events import DapEventCoordinator
+from tdb.app_handlers.ui_panels import UIPanels
 from tdb.server.event_handler import ServerEventHandler
+from tdb.session.controller import DebugController
 
 
 def test_initialized_event_set_on_callback():
@@ -102,3 +105,62 @@ def test_sse_unsubscribe():
     h.on_initialized()
     with pytest.raises(asyncio.QueueEmpty):
         q.get_nowait()
+
+
+def test_continued_dismisses_rust_workspace():
+    """A continued/step event makes a captured Rust snapshot stale."""
+    class _App:
+        def __init__(self) -> None:
+            self.controller = DebugController(ServerEventHandler())
+            self._stderr_buffer: list[str] = []
+            self.panels = UIPanels()
+            self.ui_state_updates = 0
+
+        def _update_ui_state(self) -> None:
+            self.ui_state_updates += 1
+
+    class _Modal:
+        def __init__(self) -> None:
+            self.dismiss_calls = 0
+
+        def dismiss(self) -> None:
+            self.dismiss_calls += 1
+
+    app = _App()
+    modal = _Modal()
+    app.panels.rust_concurrency = modal  # type: ignore[assignment]
+    dap_handler = DapEventCoordinator(app)  # type: ignore[arg-type]
+
+    dap_handler.on_continued()
+
+    assert modal.dismiss_calls == 1
+    assert app.panels.rust_concurrency is None
+    assert app.ui_state_updates == 1
+
+
+def test_exited_dismisses_rust_workspace_without_terminated_event():
+    """Exited-only adapters must not retain stale Rust snapshot screens."""
+    class _App:
+        def __init__(self) -> None:
+            self.controller = DebugController(ServerEventHandler())
+            self._stderr_buffer: list[str] = []
+            self.panels = UIPanels()
+
+        def query_one(self, selector, _type=None):
+            raise AssertionError("console output is irrelevant to lifecycle cleanup")
+
+    class _Modal:
+        def __init__(self) -> None:
+            self.dismiss_calls = 0
+
+        def dismiss(self) -> None:
+            self.dismiss_calls += 1
+
+    app = _App()
+    modal = _Modal()
+    app.panels.rust_concurrency = modal  # type: ignore[assignment]
+
+    DapEventCoordinator(app).on_exited(0)  # type: ignore[arg-type]
+
+    assert modal.dismiss_calls == 1
+    assert app.panels.rust_concurrency is None

@@ -48,26 +48,16 @@ from tdb.inspection import (
     parse_process_json,
     parse_task_json,
 )
+from tdb.rust_concurrency.collector import RustConcurrencyCollector
+from tdb.rust_concurrency.models import ConcurrencySnapshot
+from tdb.session.errors import SessionGateError
+
+__all__ = ["InspectService", "SessionGateError", "StackDetail"]
 
 if TYPE_CHECKING:
     from tdb.session.controller import DebugController
 
 log = logging.getLogger(__name__)
-
-
-class SessionGateError(Exception):
-    """The session is in a phase where inspection is impossible.
-
-    ``reason`` is ``"running"`` (debuggee executing — no frames to
-    inspect; pause first), ``"terminated"`` (session over), or
-    ``"unsupported"`` (the active language profile doesn't support
-    task/process inspection — e.g. cpp). Consumers translate the reason
-    into their own user-facing wording.
-    """
-
-    def __init__(self, reason: str) -> None:
-        super().__init__(reason)
-        self.reason = reason
 
 
 # Stack/scope/variable bundle returned by `thread_stack` and
@@ -86,6 +76,7 @@ class InspectService:
 
     def __init__(self, controller_provider: Callable[[], "DebugController"]) -> None:
         self._provider = controller_provider
+        self._rust_collector = RustConcurrencyCollector()
 
     @property
     def _ctrl(self) -> "DebugController":
@@ -104,6 +95,10 @@ class InspectService:
         the debuggee via DAP evaluate; only profiles that opt in
         (Python/asyncio today) support it."""
         if not self._ctrl.profile.capabilities.task_inspection:
+            raise SessionGateError("unsupported")
+
+    def _require_concurrency_inspection(self) -> None:
+        if self._ctrl.profile.capabilities.concurrency_inspection != "rust":
             raise SessionGateError("unsupported")
 
     # --- asyncio tasks ---------------------------------------------------
@@ -164,6 +159,12 @@ class InspectService:
         """List the debuggee's threads. Raises on gate or DAP failure."""
         self._gate()
         return await self._ctrl.client.threads()
+
+    async def collect_rust_concurrency(self) -> ConcurrencySnapshot:
+        """Collect the Rust wait graph while the debuggee is stopped."""
+        self._require_concurrency_inspection()
+        self._gate()
+        return await self._rust_collector.collect_and_analyze(self._ctrl)
 
     async def thread_frames(self, thread_id: int, *, levels: int = 8) -> list[StackFrame]:
         """A thread's stack only — no scopes/variables (cheap, for

@@ -109,17 +109,34 @@ class McpSession:
         port: int,
         breakpoints: list[tuple[str, int]] | None = None,
         path_mappings: list[tuple[str, str]] | None = None,
+        program: str | None = None,
+        lang: str | None = None,
+        adapter: str | None = None,
     ) -> str:
-        """Attach to a remote debugpy server. `path_mappings` is
-        forwarded to debugpy's `pathMappings` for bidirectional path
-        translation (see `dap/client.py::attach`)."""
+        """Attach to a remote debuggee using the selected DAP adapter.
+
+        Native Rust attach requires `program` to supply local symbols.
+        `path_mappings` translates local and remote source roots.
+        """
         if self.is_active:
             return (
                 "A debug session is already active. Call `quit` before "
                 "attaching to a new one."
             )
 
-        self._build_handlers()
+        profile = self._resolve_profile(program, lang, adapter)
+        if profile.id == "rust":
+            if program is None:
+                raise ValueError("Rust remote attach requires a local program")
+            program_path = Path(program).resolve()
+            if not program_path.is_file():
+                raise ValueError(
+                    "Rust remote attach requires an existing local executable: "
+                    f"{program}"
+                )
+            program = str(program_path)
+
+        self._build_handlers(profile=profile)
         assert self._controller is not None
 
         self._apply_cli_breakpoints(breakpoints)
@@ -128,6 +145,7 @@ class McpSession:
             host=host,
             port=port,
             path_mappings=path_mappings,
+            program=program,
         )
         # Remote-attach produces a stopped event via the pre-arm pause
         # in controller.do_configure — same flow run_headless uses.

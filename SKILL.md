@@ -35,15 +35,15 @@ claude mcp add tdb -- tdb-mcp          # or: tdb --mcp, or: python -m tdb.mcp
 ```
 
 The server owns the debug session — do not also start `tdb --headless`.
-16 tools:
+17 tools:
 
 | Cluster | Tools |
 |---------|-------|
-| Lifecycle | `debug_launch(program, args?, cwd?, stop_on_entry?, just_my_code?, python?, breakpoints?, lang?, adapter?)`, `debug_attach(host, port, breakpoints?, path_mappings?)`, `quit()` |
+| Lifecycle | `debug_launch(program, args?, cwd?, stop_on_entry?, just_my_code?, python?, breakpoints?, lang?, adapter?)`, `debug_attach(host, port, breakpoints?, path_mappings?, program?, lang?, adapter?)`, `quit()` |
 | Control | `control(action, timeout_s=30)` — `action ∈ {continue, next, step_in, step_out, pause, wait_for_stop}` |
 | Inspection | `inspect(expressions)`, `read_source(file_path)`, `stack_trace()`, `status()`, `get_output()` |
 | Breakpoints | `set_breakpoint(spec, condition?, hit_condition?)`, `remove_breakpoint(spec)`, `list_breakpoints()` |
-| Concurrency | `threads(thread_id?)`, `tasks(task_name?)`, `processes(name_or_pid?)`, `wait_graph()` |
+| Concurrency | `threads(thread_id?)`, `tasks(task_name?)`, `processes(name_or_pid?)`, `wait_graph()`, `rust_concurrency()` |
 
 Multi-language notes:
 - `debug_launch` auto-detects the language from `program` — pass a compiled
@@ -72,6 +72,12 @@ Multi-language notes:
 - `tasks`, `processes`, and `wait_graph` remain Python-only; for other
   languages they return a structured "not supported" error. `threads`
   works everywhere.
+- **Rust is never auto-detected** — a native binary detects as C/C++.
+  Pass `lang="rust"` (launch and attach) to enable the Rust profile; a
+  Rust remote attach also needs `program=` pointing at a local unstripped
+  copy of the remote executable. `rust_concurrency()` returns a JSON
+  snapshot of threads, waits, and deadlock/stall findings for a stopped
+  Rust session, and a structured "not supported" error elsewhere.
 - **GDB (the default C/C++ adapter):** `inspect`/`evaluate` expressions
   go through GDB's CLI — prefix with `print`
   (`inspect(expressions=["print x"])`); bare `x` collides with GDB's

@@ -58,6 +58,9 @@ class DebugController:
         # must detach without terminating it (otherwise tdb.breakpoint()
         # and similar attach workflows would kill the user's program).
         self._is_remote_attach: bool = False
+        # Source-root pairs for the current remote attachment. Rust GDB
+        # consumes them after its `initialized` event, before breakpoints.
+        self._attach_path_mappings: list[tuple[str, str]] = []
         # True for sessions handed to the TUI by run mode (`tdb --run`).
         # Restart is meaningless there: the run-mode loop owns the
         # process lifecycle, not the TUI episode.
@@ -282,8 +285,9 @@ class DebugController:
         host: str,
         port: int,
         path_mappings: list[tuple[str, str]] | None = None,
+        program: str | None = None,
     ) -> None:
-        """Attach to a remote debugpy server listening on host:port.
+        """Attach to a remote debuggee at host:port.
 
         DAP sequence (same as launch, but with attach instead):
         1. connect via TCP to debugpy server
@@ -293,12 +297,14 @@ class DebugController:
         5. on_dap_initialized handler sends breakpoints + configurationDone
         6. debugpy sends attach response
 
-        `path_mappings` is forwarded to debugpy's `pathMappings` attach
-        arg — see `dap/client.py::attach`.
+        `program` is required by native adapters that load local symbols.
+        `path_mappings` is forwarded to the selected adapter's attach
+        body and retained for any pre-breakpoint source configuration.
         """
         self._setup_event_handlers()
         self._launch_params = {}
         self._is_remote_attach = True
+        self._attach_path_mappings = list(path_mappings or [])
 
         if self.profile.adapter.quirks.attach_via_adapter:
             await self.client.start()
@@ -310,6 +316,7 @@ class DebugController:
             host=host,
             port=port,
             path_mappings=path_mappings,
+            program=program,
         )
 
     async def do_configure(self) -> None:
@@ -322,6 +329,15 @@ class DebugController:
         filters = self.profile.adapter.pick_exception_filters(self.client.capabilities)
         if filters:
             await self.client.set_exception_breakpoints(filters)
+
+        # Native remote adapters can require source maps before a
+        # breakpoint is installed. A failure must abort configuration:
+        # silently carrying on can bind breakpoints against the wrong
+        # local source tree.
+        for command in self.profile.adapter.pre_configuration_commands(
+            self._attach_path_mappings
+        ):
+            await self.client.evaluate(command, context="repl")
 
         # Send breakpoints (skip if globally disabled; also filter per-bp enabled)
         if not self.state.breakpoints_disabled:

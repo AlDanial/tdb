@@ -1,8 +1,16 @@
-# Duplicate the github actions pipeline tests:
-# 
+# Duplicate the github actions pipeline tests (the ptrace/seccomp flags
+# are REQUIRED — without them lldb-dap cannot launch a debuggee and the
+# native lldb-dap tests fail with "DAP configurationDone failed"; see
+# .github/workflows/test.yml):
+#
 # docker build --target base -t tdb-base .
-# docker run --rm --cpus=2 --memory=7g --init tdb-base \
-#   uv run pytest tests/integration/test_tcsh_adapter.py -x -vv -p no:cacheprovider --no-cov
+# docker run --rm --cap-add=SYS_PTRACE --security-opt seccomp=unconfined \
+#   tdb-base uv run pytest
+#
+# Narrow it to one file the same way, e.g.:
+# docker run --rm --cap-add=SYS_PTRACE --security-opt seccomp=unconfined \
+#   tdb-base uv run pytest tests/integration/test_tcsh_adapter.py -x -vv \
+#   -p no:cacheprovider --no-cov
 
 
 # Run tdb from a container:
@@ -26,7 +34,11 @@ RUN apk add --no-cache perl bash tcsh ruby ruby-dev make gcc musl-dev \
 # compiler-libs/toplevel .cmi/.cmx files that aren't in the base `ocaml5`
 # package). `opam` builds ocamlearlybird (bytecode debugging) from source
 # below; `m4` is a transitive build dependency of some of its opam packages.
-RUN apk add --no-cache ocaml5 ocaml5-compiler-libs opam lldb m4 \
+# `py3-lldb` supplies lldb's Python bindings for its embedded script
+# interpreter — without it `command script import` fails inside Alpine's
+# lldb (`ModuleNotFoundError: No module named 'lldb'`) and the Rust
+# concurrency probe can never register.
+RUN apk add --no-cache ocaml5 ocaml5-compiler-libs opam lldb py3-lldb m4 \
  && rm -rf /var/cache/apk/*
 RUN adduser -D appuser
 ENV PATH="/app/.venv/bin:$PATH"

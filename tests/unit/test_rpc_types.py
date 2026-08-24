@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from tdb.server.rpc_types import RpcRequest, RpcResponse
 
 
@@ -34,3 +36,11 @@ def test_rpc_response_error():
     assert resp.success is False
     assert resp.value == "nope"
     assert resp.timestamp
+
+
+def test_rpc_response_ok_data_keeps_legacy_value():
+    response = RpcResponse.ok_data({"threads": []})
+
+    assert response.success is True
+    assert response.data == {"threads": []}
+    assert json.loads(response.value) == {"threads": []}

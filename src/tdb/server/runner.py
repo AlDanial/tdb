@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING
 
 import uvicorn
 
+from tdb.dap.client import DAPError
+from tdb.languages.base import AdapterNotFoundError
 from tdb.session.controller import DebugController
 from .app import create_app
 from .event_handler import ServerEventHandler
@@ -66,7 +68,11 @@ async def setup_headless_session(
                 host=attach_host,
                 port=attach_port,
                 path_mappings=path_mappings,
+                program=program,
             )
+        except AdapterNotFoundError as exc:
+            print(f"tdb: {exc.hint}", file=sys.stderr)
+            sys.exit(2)
         except OSError as exc:
             # No server listening, route unreachable, DNS failure, etc.
             # Mirror the TUI's failure mode: clear message on stderr,
@@ -79,8 +85,6 @@ async def setup_headless_session(
             sys.exit(2)
     else:
         assert program is not None
-        from tdb.languages.base import AdapterNotFoundError
-
         try:
             await controller.start(
                 program=program,
@@ -101,7 +105,15 @@ async def setup_headless_session(
     from tdb._timeouts import DAP_INITIALIZED, DAP_STOP_ON_ENTRY
 
     await asyncio.wait_for(handler.initialized_event.wait(), timeout=DAP_INITIALIZED)
-    await controller.do_configure()
+    try:
+        await controller.do_configure()
+    except DAPError as exc:
+        # E.g. a rejected pre-configuration command (`set substitute-path`
+        # from --path-mapping). do_configure deliberately aborts rather
+        # than binding breakpoints against the wrong source tree; mirror
+        # the attach failure modes above instead of dumping a traceback.
+        print(f"tdb: adapter configuration failed — {exc}", file=sys.stderr)
+        sys.exit(2)
 
     # Wait for the debuggee to actually stop. State (is_running,
     # stop_reason, current_thread_id) is set synchronously by
