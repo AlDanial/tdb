@@ -148,11 +148,20 @@ def rustc_version() -> RustcRelease | None:
 
 
 def require_supported_rust_concurrency() -> None:
+    # Mirrors gate_supported_layout: any stable patch release of the
+    # supported major.minor series qualifies; prereleases do not.
     found = rustc_version()
-    if found != SUPPORTED_RUST_VERSION:
+    supported = (
+        found is not None
+        and found.channel is None
+        and (found.major, found.minor)
+        == (SUPPORTED_RUST_VERSION.major, SUPPORTED_RUST_VERSION.minor)
+    )
+    if not supported:
         rendered = str(found) if found is not None else "missing"
         pytest.skip(
-            "Rust layout-specific concurrency evidence requires rustc 1.98.0; "
+            "Rust layout-specific concurrency evidence requires stable rustc "
+            f"{SUPPORTED_RUST_VERSION.major}.{SUPPORTED_RUST_VERSION.minor}.x; "
             f"found {rendered}"
         )
 

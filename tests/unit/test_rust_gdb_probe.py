@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 import shutil
 import subprocess
@@ -118,6 +119,35 @@ def test_exact_supported_rust_version_keeps_layout_evidence():
     result = parse_probe_output(load_fixture("gdb/rust-1.98.json"))
 
     assert gate_supported_layout(result, supported="1.98.0").primitive_states
+
+
+def test_patch_release_of_supported_series_keeps_layout_evidence():
+    # Standard-library layouts are stable across patch releases, so a
+    # 1.98.x point release must not silently drop ownership evidence.
+    result = parse_probe_output(load_fixture("gdb/rust-1.98.json"))
+    patched = replace(result, rust_version="1.98.3")
+
+    assert gate_supported_layout(patched, supported="1.98.0").primitive_states
+
+
+def test_prerelease_of_supported_series_disables_layout_evidence():
+    result = parse_probe_output(load_fixture("gdb/rust-1.98.json"))
+    beta = replace(result, rust_version="1.98.1-beta.2")
+
+    gated = gate_supported_layout(beta, supported="1.98.0")
+
+    assert gated.primitive_states == ()
+    assert "unsupported Rust 1.98.1-beta.2" in gated.warnings[0]
+
+
+def test_next_minor_release_disables_layout_evidence():
+    result = parse_probe_output(load_fixture("gdb/rust-1.98.json"))
+    newer = replace(result, rust_version="1.99.0")
+
+    gated = gate_supported_layout(newer, supported="1.98.0")
+
+    assert gated.primitive_states == ()
+    assert "unsupported Rust 1.99.0" in gated.warnings[0]
 
 
 async def test_gdb_probe_sends_only_the_fixed_snapshot_command():
