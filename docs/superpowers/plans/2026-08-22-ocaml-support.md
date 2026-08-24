@@ -140,6 +140,7 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 # ---------- native / lldb-dap side (reuses tdb's cpp profile) ----------
 
+
 async def probe_lldb() -> None:
     from tdb.dap.types import SourceBreakpoint
     from tdb.languages.cpp import build_cpp_profile
@@ -149,7 +150,8 @@ async def probe_lldb() -> None:
     exe = FIXTURES / "ocaml_domains.exe"
     subprocess.run(
         ["ocamlopt", "-g", "-o", str(exe), "ocaml_domains.ml"],
-        cwd=FIXTURES, check=True,
+        cwd=FIXTURES,
+        check=True,
     )
     # Same launch sequence as tests/integration/test_cpp_pause.py /
     # test_cpp_session.py's _launch: start, wait initialized, seed
@@ -180,10 +182,11 @@ async def probe_lldb() -> None:
             try:
                 scopes = await controller.client.scopes(f.id)
                 for s in scopes:
-                    var_list = await controller.client.variables(
-                        s.variables_reference)
-                    print(f"  frame={f.name!r} scope={s.name}: "
-                          f"{[(v.name, v.value, v.type) for v in var_list]}")
+                    var_list = await controller.client.variables(s.variables_reference)
+                    print(
+                        f"  frame={f.name!r} scope={s.name}: "
+                        f"{[(v.name, v.value, v.type) for v in var_list]}"
+                    )
             except Exception as e:
                 print(f"  frame={f.name!r}: scopes failed: {e}")
         break  # one thread's worth is enough signal
@@ -198,13 +201,14 @@ async def probe_lldb() -> None:
 
 # ---------- bytecode / earlybird side (raw stdio DAP) ----------
 
+
 class RawDap:
     """Minimal Content-Length-framed DAP over a subprocess's stdio."""
 
     def __init__(self, argv: list[str]) -> None:
         self.proc = subprocess.Popen(
-            argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE)
+            argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        )
         self.seq = 0
 
     def send(self, command: str, arguments: dict | None = None) -> int:
@@ -213,8 +217,7 @@ class RawDap:
         if arguments is not None:
             msg["arguments"] = arguments
         raw = json.dumps(msg).encode()
-        self.proc.stdin.write(
-            b"Content-Length: %d\r\n\r\n%s" % (len(raw), raw))
+        self.proc.stdin.write(b"Content-Length: %d\r\n\r\n%s" % (len(raw), raw))
         self.proc.stdin.flush()
         return self.seq
 
@@ -232,20 +235,24 @@ class RawDap:
     def recv_until(self, pred) -> dict:
         while True:
             msg = self.recv()
-            print(f"    <- {msg.get('type')} "
-                  f"{msg.get('command') or msg.get('event')}: "
-                  f"{json.dumps(msg)[:300]}")
+            print(
+                f"    <- {msg.get('type')} "
+                f"{msg.get('command') or msg.get('event')}: "
+                f"{json.dumps(msg)[:300]}"
+            )
             if pred(msg):
                 return msg
 
 
 def probe_earlybird() -> None:
     byte = FIXTURES / "ocaml_fatal.byte"
-    subprocess.run(["ocamlc", "-g", "-o", str(byte), "ocaml_fatal.ml"],
-                   cwd=FIXTURES, check=True)
+    subprocess.run(
+        ["ocamlc", "-g", "-o", str(byte), "ocaml_fatal.ml"], cwd=FIXTURES, check=True
+    )
     print("== Q1: earlybird invocation + launch fields ==")
-    help_out = subprocess.run(["ocamlearlybird", "--help"],
-                              capture_output=True, text=True)
+    help_out = subprocess.run(
+        ["ocamlearlybird", "--help"], capture_output=True, text=True
+    )
     print(help_out.stdout or help_out.stderr)
 
     dap = RawDap(["ocamlearlybird", "debug"])
@@ -254,15 +261,23 @@ def probe_earlybird() -> None:
     print(f"  capabilities: {json.dumps(init.get('body', {}), indent=2)}")
     # Try the field names the plan assumes; if the response is an error,
     # its message names the expected schema — record it.
-    dap.send("launch", {
-        "program": str(byte), "arguments": [], "cwd": str(FIXTURES),
-        "stopOnEntry": True, "console": "internalConsole",
-    })
-    dap.recv_until(lambda m: m.get("event") == "initialized"
-                   or m.get("command") == "launch")
+    dap.send(
+        "launch",
+        {
+            "program": str(byte),
+            "arguments": [],
+            "cwd": str(FIXTURES),
+            "stopOnEntry": True,
+            "console": "internalConsole",
+        },
+    )
+    dap.recv_until(
+        lambda m: m.get("event") == "initialized" or m.get("command") == "launch"
+    )
     dap.send("configurationDone")
-    stopped = dap.recv_until(lambda m: m.get("event") == "stopped"
-                             or m.get("event") == "terminated")
+    stopped = dap.recv_until(
+        lambda m: m.get("event") == "stopped" or m.get("event") == "terminated"
+    )
     if stopped.get("event") == "stopped":
         print("== Q4: pause support ==")
         dap.send("threads")
@@ -272,8 +287,12 @@ def probe_earlybird() -> None:
         dap.recv_until(lambda m: m.get("command") == "continue")
         dap.send("pause", {"threadId": tid})
         print("  (watch whether a 'stopped' event or an error follows)")
-        dap.recv_until(lambda m: m.get("event") in ("stopped", "terminated")
-                       or m.get("command") == "pause")
+        dap.recv_until(
+            lambda m: (
+                m.get("event") in ("stopped", "terminated")
+                or m.get("command") == "pause"
+            )
+        )
     dap.proc.kill()
 
 
@@ -378,8 +397,9 @@ def test_bytecode_shebang(tmp_path):
 
 
 def test_native_elf_with_caml_marker(tmp_path):
-    p = _write(tmp_path, "prog",
-               ELF_MAGIC + b"\x00" * 100 + b"caml_program" + b"\x00" * 100)
+    p = _write(
+        tmp_path, "prog", ELF_MAGIC + b"\x00" * 100 + b"caml_program" + b"\x00" * 100
+    )
     assert ocaml_flavor(p) == "native"
     assert registry.detect(p) == "ocaml"
 
@@ -435,14 +455,16 @@ from pathlib import Path
 _BYTECODE_TRAILER_MARK = b"Caml1999"  # e.g. b"Caml1999X033" at file end
 _NATIVE_MAGIC = (
     b"\x7fELF",
-    b"\xcf\xfa\xed\xfe", b"\xce\xfa\xed\xfe", b"\xca\xfe\xba\xbe",
+    b"\xcf\xfa\xed\xfe",
+    b"\xce\xfa\xed\xfe",
+    b"\xca\xfe\xba\xbe",
 )
 _CAML_MARKERS = (b"caml_program", b"caml_startup")
 _SCAN_CHUNK = 2 * 1024 * 1024  # spec risk 5: bounded scan, head + tail
 
 
 def ocaml_flavor(program: str) -> str | None:
-    """"native"/"bytecode" when `program` is an OCaml executable, else None.
+    """ "native"/"bytecode" when `program` is an OCaml executable, else None.
 
     Best-effort byte sniffing: a stripped native binary may return None
     (lands in cpp; --lang ocaml overrides — documented in README).
@@ -596,10 +618,14 @@ def test_ocaml_error_with_backtrace():
     assert err.message == 'Failure("boom")'
     # OUTERMOST-first (source order), like python's parser
     assert [f.func for f in err.frames] == [
-        "Fatal", "Fatal.middle", "Fatal.boom", "Stdlib.failwith"]
+        "Fatal",
+        "Fatal.middle",
+        "Fatal.boom",
+        "Stdlib.failwith",
+    ]
     assert err.frames[0].path == "ocaml_fatal.ml"
     assert err.frames[0].line == 3
-    assert 'Raised at Stdlib.failwith' in err.detail
+    assert "Raised at Stdlib.failwith" in err.detail
 
 
 def test_ocaml_error_without_backtrace_has_hint():
@@ -654,9 +680,7 @@ Append to `src/tdb/languages/errors.py`:
 #
 # Without -g the backtrace lines are absent — header-only modal plus a hint.
 
-_OCAML_FATAL_RE = re.compile(
-    r"^Fatal error: exception (?P<msg>.+?)\s*$", re.MULTILINE
-)
+_OCAML_FATAL_RE = re.compile(r"^Fatal error: exception (?P<msg>.+?)\s*$", re.MULTILINE)
 _OCAML_FRAME_RE = re.compile(
     r"^(?:Raised at|Raised by primitive operation at|Re-raised at"
     r"|Called from) (?P<func>.+?) in file \"(?P<path>[^\"]+)\""
@@ -672,10 +696,11 @@ def parse_ocaml_error(stderr: str, exit_code: int | None = None) -> ParsedError 
     if fatal is None:
         return None
     header = fatal.group(0).strip()
-    tail = stderr[fatal.start():]
+    tail = stderr[fatal.start() :]
     frames = [
-        ErrorFrame(path=m.group("path"), line=int(m.group("line")),
-                   func=m.group("func"))
+        ErrorFrame(
+            path=m.group("path"), line=int(m.group("line")), func=m.group("func")
+        )
         for m in _OCAML_FRAME_RE.finditer(tail)
     ]
     frames.reverse()  # OCaml prints innermost-first; ParsedError wants outermost-first
@@ -743,8 +768,13 @@ def test_no_numeric_suffix():
 
 
 def test_runtime_c_symbols_untouched():
-    for name in ("caml_apply2", "caml_start_program", "main",
-                 "pthread_cond_wait", "camlcase_but_no_sep"):
+    for name in (
+        "caml_apply2",
+        "caml_start_program",
+        "main",
+        "pthread_cond_wait",
+        "camlcase_but_no_sep",
+    ):
         assert demangle_frame_name(name) == name
 
 
@@ -780,14 +810,14 @@ _MANGLED_SUFFIX_RE = re.compile(r"_\d+$")
 
 
 def demangle_frame_name(name: str) -> str:
-    """"camlFoo__Bar__run_17" -> "Foo.Bar.run"; anything else unchanged.
+    """ "camlFoo__Bar__run_17" -> "Foo.Bar.run"; anything else unchanged.
 
     Runtime C symbols (caml_apply2, caml_start_program) contain no "__"
     after the caml prefix, so they pass through.
     """
     if not name.startswith("caml") or "__" not in name:
         return name
-    body = _MANGLED_SUFFIX_RE.sub("", name[len("caml"):])
+    body = _MANGLED_SUFFIX_RE.sub("", name[len("caml") :])
     return body.replace("__", ".")
 ```
 
@@ -798,10 +828,8 @@ TYPE_CHECKING-safe plain import since it's runtime-used). In
 `update_frames`, change the `add_row` line:
 
 ```python
-                display_name = (
-                    self.name_filter(frame.name) if self.name_filter else frame.name
-                )
-                self.add_row(str(i), display_name, source_name, key=str(frame.id))
+display_name = self.name_filter(frame.name) if self.name_filter else frame.name
+self.add_row(str(i), display_name, source_name, key=str(frame.id))
 ```
 
 (d) `src/tdb/widgets/threads_modal.py` — `__init__` gains
@@ -907,7 +935,7 @@ class FakeMemory:
         data += bytes([padding])
         self.mem[addr - 8] = struct.pack("<Q", (nwords << 10) | 252)
         for i in range(nwords):
-            self.mem[addr + 8 * i] = data[8 * i: 8 * i + 8]
+            self.mem[addr + 8 * i] = data[8 * i : 8 * i + 8]
         return addr
 
 
@@ -1078,6 +1106,7 @@ def _decode_string(ptr: int, size: int, read_memory: ReadMemory) -> str:
 
 # --- lldb glue (only reachable inside lldb's embedded Python) -------------
 
+
 def _read_via_process(process):
     import lldb  # noqa: F401  (import here: absent under pytest)
 
@@ -1102,7 +1131,7 @@ def ocaml_value_summary(valobj, _internal_dict):
 
 def __lldb_init_module(debugger, _internal_dict):
     debugger.HandleCommand(
-        'type summary add -F {}.ocaml_value_summary value'.format(__name__)
+        "type summary add -F {}.ocaml_value_summary value".format(__name__)
     )
     debugger.HandleCommand(
         'type summary add -F {}.ocaml_value_summary "unsigned long"'
@@ -1174,32 +1203,39 @@ from tdb.languages.ocaml import (
 
 def _native_launch_body(adapter):
     return adapter.launch_body(
-        program="/x/main.exe", args=["a"], cwd="/x", env=None,
-        stop_on_entry=True, console="integratedTerminal", opts={},
+        program="/x/main.exe",
+        args=["a"],
+        cwd="/x",
+        env=None,
+        stop_on_entry=True,
+        console="integratedTerminal",
+        opts={},
     )
 
 
 def test_lldb_launch_body_injects_formatters_and_runparam():
     body = _native_launch_body(OCamlLldbAdapter())
     assert body["program"] == "/x/main.exe"
-    assert any("command script import" in c and "lldb_formatters.py" in c
-               for c in body["initCommands"])
-    assert any("caml_fatal_uncaught_exception" in c
-               for c in body.get("preRunCommands", []))
+    assert any(
+        "command script import" in c and "lldb_formatters.py" in c
+        for c in body["initCommands"]
+    )
+    assert any(
+        "caml_fatal_uncaught_exception" in c for c in body.get("preRunCommands", [])
+    )
     assert "OCAMLRUNPARAM=b" in body["env"]  # lldb-dap env is a list
 
 
 def test_runparam_merge_preserves_user_flags():
     assert _with_runparam(None) == {"OCAMLRUNPARAM": "b"}
-    assert _with_runparam({"OCAMLRUNPARAM": "v=61"}) == {
-        "OCAMLRUNPARAM": "v=61,b"}
-    assert _with_runparam({"OCAMLRUNPARAM": "b,v=61"}) == {
-        "OCAMLRUNPARAM": "b,v=61"}
+    assert _with_runparam({"OCAMLRUNPARAM": "v=61"}) == {"OCAMLRUNPARAM": "v=61,b"}
+    assert _with_runparam({"OCAMLRUNPARAM": "b,v=61"}) == {"OCAMLRUNPARAM": "b,v=61"}
     assert _with_runparam({"PATH": "/x"})["PATH"] == "/x"
 
 
 def test_formatter_script_path_exists():
     import os
+
     assert os.path.isfile(formatter_script_path())
 
 
@@ -1297,11 +1333,17 @@ class OCamlLldbAdapter(LldbDapAdapter):
     """lldb-dap with OCaml twists: formatter injection, backtrace env,
     and a stop-before-abort breakpoint on the uncaught-exception hook."""
 
-    def launch_body(self, *, program, args, cwd, env, stop_on_entry,
-                    console, opts: dict[str, Any]) -> dict[str, Any]:
+    def launch_body(
+        self, *, program, args, cwd, env, stop_on_entry, console, opts: dict[str, Any]
+    ) -> dict[str, Any]:
         body = super().launch_body(
-            program=program, args=args, cwd=cwd, env=_with_runparam(env),
-            stop_on_entry=stop_on_entry, console=console, opts=opts,
+            program=program,
+            args=args,
+            cwd=cwd,
+            env=_with_runparam(env),
+            stop_on_entry=stop_on_entry,
+            console=console,
+            opts=opts,
         )
         body["initCommands"] = [
             f"command script import {formatter_script_path()}",
@@ -1317,11 +1359,17 @@ class OCamlGdbAdapter(GdbDapAdapter):
     script) and no pre-run breakpoint (gdb DAP has no initCommands);
     the parse-on-exit error modal still works via OCAMLRUNPARAM=b."""
 
-    def launch_body(self, *, program, args, cwd, env, stop_on_entry,
-                    console, opts: dict[str, Any]) -> dict[str, Any]:
+    def launch_body(
+        self, *, program, args, cwd, env, stop_on_entry, console, opts: dict[str, Any]
+    ) -> dict[str, Any]:
         return super().launch_body(
-            program=program, args=args, cwd=cwd, env=_with_runparam(env),
-            stop_on_entry=stop_on_entry, console=console, opts=opts,
+            program=program,
+            args=args,
+            cwd=cwd,
+            env=_with_runparam(env),
+            stop_on_entry=stop_on_entry,
+            console=console,
+            opts=opts,
         )
 
 
@@ -1345,8 +1393,9 @@ class EarlybirdAdapter(AdapterSpec):
             )
         return [exe, "debug"]
 
-    def launch_body(self, *, program, args, cwd, env, stop_on_entry,
-                    console, opts: dict[str, Any]) -> dict[str, Any]:
+    def launch_body(
+        self, *, program, args, cwd, env, stop_on_entry, console, opts: dict[str, Any]
+    ) -> dict[str, Any]:
         body: dict[str, Any] = {
             "type": "ocaml",
             "request": "launch",
@@ -1361,9 +1410,7 @@ class EarlybirdAdapter(AdapterSpec):
         return body
 
     def attach_body(self, *, host, port, opts) -> dict[str, Any]:
-        raise LanguageNotSupportedError(
-            "remote attach is not supported for ocaml yet"
-        )
+        raise LanguageNotSupportedError("remote attach is not supported for ocaml yet")
 
 
 def build_ocaml_profile(
@@ -1464,8 +1511,8 @@ one list-in/list-out hook so domain numbering ("Domain 0 (main)",
   @dataclass(frozen=True)
   class ThreadDecoration:
       thread: "Thread"
-      label: str | None   # display override; None -> adapter's name
-      hidden: bool        # runtime service thread: hide by default
+      label: str | None  # display override; None -> adapter's name
+      hidden: bool  # runtime service thread: hide by default
   ```
 
   and on `ProfileCapabilities`:
@@ -1492,13 +1539,16 @@ def _frames(*names):
 
 
 def test_domains_numbered_backups_hidden():
-    threads = [Thread(1, "prog"), Thread(2, "prog"), Thread(3, "prog"),
-               Thread(4, "prog")]
+    threads = [
+        Thread(1, "prog"),
+        Thread(2, "prog"),
+        Thread(3, "prog"),
+        Thread(4, "prog"),
+    ]
     stacks = {
         1: _frames("camlMain__entry", "caml_start_program", "main"),
         2: _frames("caml_thread_condwait", "backup_thread_func"),
-        3: _frames("camlMain__worker_271", "domain_thread_func",
-                   "start_thread"),
+        3: _frames("camlMain__worker_271", "domain_thread_func", "start_thread"),
         4: _frames("caml_thread_condwait", "backup_thread_func"),
     }
     decs = classify_ocaml_threads(threads, stacks)
@@ -1525,10 +1575,11 @@ def test_capability_field_default_none():
 def test_native_profile_has_classifier_bytecode_does_not():
     from tdb.languages.ocaml import build_ocaml_profile
 
-    assert build_ocaml_profile(program=None).capabilities.classify_threads \
-        is not None
-    assert build_ocaml_profile(adapter="ocamlearlybird") \
-        .capabilities.classify_threads is None
+    assert build_ocaml_profile(program=None).capabilities.classify_threads is not None
+    assert (
+        build_ocaml_profile(adapter="ocamlearlybird").capabilities.classify_threads
+        is None
+    )
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -1555,15 +1606,14 @@ class ThreadDecoration:
 and in `ProfileCapabilities`:
 
 ```python
-    # Classify the debuggee's threads for display: label domains, hide
-    # runtime service threads (OCaml backup threads). Receives all
-    # threads plus per-thread stacks (dict may be missing entries —
-    # classify without them). Returns decorations in the same order.
-    # None -> every thread shown with the adapter's name.
-    classify_threads: (
-        Callable[[list[Thread], dict[int, list[StackFrame]]],
-                 list[ThreadDecoration]] | None
-    ) = None
+# Classify the debuggee's threads for display: label domains, hide
+# runtime service threads (OCaml backup threads). Receives all
+# threads plus per-thread stacks (dict may be missing entries —
+# classify without them). Returns decorations in the same order.
+# None -> every thread shown with the adapter's name.
+classify_threads: (
+    Callable[[list[Thread], dict[int, list[StackFrame]]], list[ThreadDecoration]] | None
+) = None
 ```
 
 (Add `Thread`, `StackFrame` to base.py's `tdb.dap.types` import — this is
@@ -1579,8 +1629,11 @@ from tdb.languages.base import ThreadDecoration
 # Marker frames observed under lldb (probe Q3). Substring match on frame
 # names; tolerant of symbol prefixes/suffixes across OCaml versions.
 _BACKUP_FRAME_MARKERS = ("backup_thread_func", "caml_thread_condwait")
-_DOMAIN_FRAME_MARKERS = ("domain_thread_func", "caml_start_program",
-                         "caml_domain_spawn")
+_DOMAIN_FRAME_MARKERS = (
+    "domain_thread_func",
+    "caml_start_program",
+    "caml_domain_spawn",
+)
 
 
 def _stack_matches(frames: list[StackFrame], markers: tuple[str, ...]) -> bool:
@@ -1601,8 +1654,11 @@ def classify_ocaml_threads(
             decorations.append(ThreadDecoration(t, "Domain 0 (main)", False))
             domain_no = 1
             continue
-        if frames and _stack_matches(frames, _BACKUP_FRAME_MARKERS) \
-                and not _stack_matches(frames, _DOMAIN_FRAME_MARKERS):
+        if (
+            frames
+            and _stack_matches(frames, _BACKUP_FRAME_MARKERS)
+            and not _stack_matches(frames, _DOMAIN_FRAME_MARKERS)
+        ):
             decorations.append(ThreadDecoration(t, None, True))
             continue
         if frames and _stack_matches(frames, _DOMAIN_FRAME_MARKERS):
@@ -1616,7 +1672,7 @@ def classify_ocaml_threads(
 (c) In `build_ocaml_profile`'s `ProfileCapabilities(...)` add:
 
 ```python
-            classify_threads=classify_ocaml_threads if native else None,
+classify_threads = (classify_ocaml_threads if native else None,)
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
@@ -1919,16 +1975,17 @@ Same substitution in `_render_loading_detail` and `show_thread_detail`
 base list into ThreadsModal and append):
 
 ```python
-    BINDINGS = _InspectableListModal.BINDINGS + [
-        ("a", "toggle_all", "All threads"),
-    ]
+BINDINGS = _InspectableListModal.BINDINGS + [
+    ("a", "toggle_all", "All threads"),
+]
 
-    def action_toggle_all(self) -> None:
-        if self._decorations is None:
-            return
-        self._show_all = not self._show_all
-        self._apply_visibility()
-        self._reload_after_items_change()
+
+def action_toggle_all(self) -> None:
+    if self._decorations is None:
+        return
+    self._show_all = not self._show_all
+    self._apply_visibility()
+    self._reload_after_items_change()
 ```
 
 Update `FOOTER_HINT` to `"ESC close  |  r refresh  |  a all threads  |  "

@@ -125,13 +125,16 @@ class McpSession:
             )
 
         profile = self._resolve_profile(program, lang, adapter)
-        if profile.id == "rust":
+        if profile.adapter.quirks.attach_requires_local_program:
+            # Native attach (cpp/rust) needs the local symbol-bearing
+            # copy of the remote executable; mirrors cli.py's gate.
+            name = profile.display_name
             if program is None:
-                raise ValueError("Rust remote attach requires a local program")
+                raise ValueError(f"{name} remote attach requires a local program")
             program_path = Path(program).resolve()
             if not program_path.is_file():
                 raise ValueError(
-                    "Rust remote attach requires an existing local executable: "
+                    f"{name} remote attach requires an existing local executable: "
                     f"{program}"
                 )
             program = str(program_path)

@@ -72,7 +72,9 @@ class RustDebugTarget:
     source_path: Path
     compiled_source_path: Path
 
-    def arguments(self, ready_port: int | None = None, *, control: bool = False) -> list[str]:
+    def arguments(
+        self, ready_port: int | None = None, *, control: bool = False
+    ) -> list[str]:
         arguments = [self.scenario]
         if ready_port is not None:
             arguments.append(str(ready_port))
@@ -214,8 +216,9 @@ def _rust_debug_binary(
 
 
 @asynccontextmanager
-async def _ready_listener(
-) -> AsyncIterator[tuple[int, asyncio.Future[ReadyConnection]]]:
+async def _ready_listener() -> AsyncIterator[
+    tuple[int, asyncio.Future[ReadyConnection]]
+]:
     loop = asyncio.get_running_loop()
     ready: asyncio.Future[ReadyConnection] = loop.create_future()
     connections: list[ReadyConnection] = []
@@ -309,9 +312,7 @@ async def _pause_until_scenario_blocked(
     )
 
 
-async def launch_and_pause(
-    target: RustDebugTarget, adapter: str
-) -> DebugController:
+async def launch_and_pause(target: RustDebugTarget, adapter: str) -> DebugController:
     """Launch, configure, then prove and leave the fixture wait stopped."""
     handler = ServerEventHandler()
     ctrl = DebugController(handler, profile=build_rust_profile(adapter=adapter))
@@ -397,9 +398,7 @@ async def run_mode_pause_probe(
 
                 async def pause_after_resume() -> None:
                     await asyncio.wait_for(continued.wait(), WAIT)
-                    pause_results.append(
-                        await controller.pause(timeout=PAUSE_TIMEOUT)
-                    )
+                    pause_results.append(await controller.pause(timeout=PAUSE_TIMEOUT))
 
                 retry_tasks.append(asyncio.create_task(pause_after_resume()))
                 return True

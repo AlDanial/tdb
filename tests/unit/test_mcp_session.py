@@ -186,16 +186,25 @@ async def test_attach_rejects_when_already_active():
     assert "already active" in msg.lower()
 
 
+@pytest.mark.parametrize("lang", ["rust", "cpp"])
 @pytest.mark.parametrize("target_kind", ["missing", "directory"])
-async def test_rust_attach_rejects_non_file_local_program(tmp_path, target_kind):
+async def test_native_attach_rejects_non_file_local_program(
+    tmp_path, target_kind, lang
+):
     program = tmp_path / target_kind
     if target_kind == "directory":
         program.mkdir()
 
     with pytest.raises(ValueError, match="existing local executable"):
         await McpSession().attach(
-            host="localhost", port=15678, program=str(program), lang="rust"
+            host="localhost", port=15678, program=str(program), lang=lang
         )
+
+
+@pytest.mark.parametrize("lang", ["rust", "cpp"])
+async def test_native_attach_requires_local_program(lang):
+    with pytest.raises(ValueError, match="requires a local program"):
+        await McpSession().attach(host="localhost", port=15678, lang=lang)
 
 
 # --- _resolve_profile + python-arg validation ---------------------------

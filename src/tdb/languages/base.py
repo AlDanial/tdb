@@ -55,6 +55,12 @@ class AdapterQuirks:
     # False (debugpy) -> tdb connects straight to the remote DAP server.
     attach_via_adapter: bool = False
 
+    # True (native gdb/lldb attach) -> the attach body needs a local,
+    # symbol-bearing copy of the remote executable; the CLI and MCP
+    # front ends validate the program path up front. False for adapters
+    # that attach without one (debugpy, perl, rdbg).
+    attach_requires_local_program: bool = False
+
 
 class AdapterSpec:
     """How to spawn and speak to one debug adapter. Subclass per adapter.

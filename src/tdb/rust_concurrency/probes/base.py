@@ -82,7 +82,9 @@ def _parse_primitive_states(value: object) -> tuple[ProbePrimitiveState, ...]:
         primitive_id = state.get("primitive_id")
         raw_state = state.get("raw_state")
         if not _is_string(primitive_id) or not _PRIMITIVE_ID.fullmatch(primitive_id):
-            raise _InvalidEnvelope("primitive_id must contain a full hexadecimal address")
+            raise _InvalidEnvelope(
+                "primitive_id must contain a full hexadecimal address"
+            )
         if primitive_id in primitive_ids:
             raise _InvalidEnvelope(f"duplicate primitive_id {primitive_id}")
         primitive_ids.add(primitive_id)
@@ -102,7 +104,9 @@ def _parse_primitive_states(value: object) -> tuple[ProbePrimitiveState, ...]:
 
 
 def _marker_payload(output: str) -> str:
-    matches = [line[len(MARKER) :] for line in output.splitlines() if line.startswith(MARKER)]
+    matches = [
+        line[len(MARKER) :] for line in output.splitlines() if line.startswith(MARKER)
+    ]
     if len(matches) != 1:
         raise _InvalidEnvelope("expected exactly one TDB_RUST_JSON marker")
     return matches[0]

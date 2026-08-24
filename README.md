@@ -42,7 +42,7 @@ It specifically supports modules
     - `threading` (with a thread inspector)
     - `multiprocessing` / `concurrent.futures` (with automatic child process attachment and a process inspector)
 
-- supports remote attachment to Python, Perl, Ruby, and Rust programs
+- supports remote attachment to Python, Perl, Ruby, Rust, and C/C++ programs
 
 - includes a JSON-RPC server mode, an MCP mode, and a `SKILL.md` file that enable
 programmatic debug control, making it suitable for
@@ -188,7 +188,7 @@ languages are supported out of the box:
 | Language | Adapter(s) | Dependencies           | Feature level |
 |----------|------------|------------------------|---------------|
 | Python | `debugpy` (default) | Python ≥ 3.11 | everything in this README |
-| C / C++ (any native binary) | `gdb` (default), `lldb-dap` (alternate) | `gdb -i dap` requires GDB ≥ 14; `lldb-dap` ships with LLVM ≥ 17 (e.g. `apt install lldb`) | core debugging: breakpoints, stepping, stack, variables, evaluate console |
+| C / C++ (any native binary) | `gdb` (default), `lldb-dap` (alternate) | `gdb -i dap` requires GDB ≥ 14; `lldb-dap` ships with LLVM ≥ 17 (e.g. `apt install lldb`) | core debugging: breakpoints, stepping, stack, variables, evaluate console + remote attach (gdbserver/lldb-server, local symbol-bearing executable required) |
 | Rust (explicit `--lang rust`) | `gdb` (Linux default), `lldb-dap` (macOS default) | any rustc building with debug info; GDB ≥ 14 or LLVM `lldb-dap` ≥ 17 (concurrency ownership evidence additionally requires stable Rust 1.98) | core debugging + best-effort Rust concurrency inspection + remote attach |
 | Perl | perl-tdb (bundled) | perl ≥ 5.18 on PATH  | core debugging + remote attach |
 | Bash | bash-tdb (bundled) | bash ≥ 4.4 on PATH  | core debugging (no remote attach) |
@@ -258,9 +258,10 @@ process inspectors and wait graph, the evaluate console's trailing-`?` help,
 the post-mortem / `tdb.breakpoint()` hooks (those hooks live inside Python
 programs by nature). Remote attach (`-r`) also works for Perl (see
 [Perl](#perl), `Devel::TdbRemote` in place of `debugpy.listen()`), Ruby
-(see [Ruby](#ruby), `rdbg --open` in place of `debugpy.listen()`), and Rust
-(with a local symbol-bearing executable; see [Rust](#rust)), but not for
-C/C++, Bash, Tcsh, or OCaml. `--terminal` works for every launch-mode
+(see [Ruby](#ruby), `rdbg --open` in place of `debugpy.listen()`), and for
+Rust and C/C++ native binaries (against a gdbserver/lldb-server stub, with
+a local symbol-bearing executable; see [Rust](#rust) — the same flags work
+for a C/C++ target without `--lang`), but not for Bash, Tcsh, or OCaml. `--terminal` works for every launch-mode
 language — Python, Perl, Bash, Tcsh, Ruby, and C/C++, OCaml native, or Rust
 sessions via `--adapter lldb-dap` — see
 [External Terminal Support](#external-terminal-support).
@@ -813,7 +814,7 @@ results = await asyncio.gather(
     fetch(2, 1),
     fetch(3, 3),
 )
-print(results)   # next stop lands here, not on each sub-line above
+print(results)  # next stop lands here, not on each sub-line above
 ```
 
 lands on `print(results)`, not on each interior sub-line of the `gather` call. Switch to
@@ -923,6 +924,7 @@ need to launch through `tdb` up front. Install the hook once at the top of your 
 ```python
 import sys
 import tdb
+
 sys.excepthook = tdb.exception_hook
 ```
 
@@ -970,6 +972,7 @@ continuing--use `tdb.breakpoint()`:
 
 ```python
 import tdb
+
 
 def compute(n):
     total = sum(range(n))
@@ -1113,6 +1116,7 @@ where you want to attach the debugger:
 ```python
 # In the target program:
 import debugpy
+
 debugpy.listen(("0.0.0.0", 5678))
 print("Waiting for tdb to attach on port 5678...")
 debugpy.wait_for_client()  # optional: pause until debugger connects

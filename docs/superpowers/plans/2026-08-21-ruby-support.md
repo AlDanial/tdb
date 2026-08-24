@@ -130,28 +130,20 @@ def test_ruby_error_amid_earlier_stderr_noise():
 
 
 def test_ruby_single_frame_error():
-    parsed = parse_ruby_error(
-        "/w/x.rb:3:in `<main>': boom (RuntimeError)\n", 1
-    )
+    parsed = parse_ruby_error("/w/x.rb:3:in `<main>': boom (RuntimeError)\n", 1)
     assert parsed is not None
     assert parsed.frames == [ErrorFrame(path="/w/x.rb", line=3, func="")]
 
 
 def test_ruby_syntax_error_old_shape():
-    parsed = parse_ruby_error(
-        "/w/bad.rb:3: syntax error, unexpected end-of-input\n", 1
-    )
+    parsed = parse_ruby_error("/w/bad.rb:3: syntax error, unexpected end-of-input\n", 1)
     assert parsed is not None
     assert parsed.frames == [ErrorFrame(path="/w/bad.rb", line=3, func="")]
     assert "syntax error" in parsed.message
 
 
 def test_ruby_syntax_error_34_shape():
-    text = (
-        "/w/bad.rb:2: syntax error found (SyntaxError)\n"
-        "  1 | x = 1\n"
-        "> 2 | if\n"
-    )
+    text = "/w/bad.rb:2: syntax error found (SyntaxError)\n  1 | x = 1\n> 2 | if\n"
     parsed = parse_ruby_error(text, 1)
     assert parsed is not None
     assert parsed.frames[0].line == 2
@@ -193,9 +185,7 @@ _RUBY_FRAME_RE = re.compile(
 # Syntax errors have no exception-style head line:
 #   /w/bad.rb:3: syntax error, unexpected end-of-input        (<= 3.3)
 #   /w/bad.rb:2: syntax error found (SyntaxError)             (>= 3.4)
-_RUBY_SYNTAX_RE = re.compile(
-    r"^(?P<path>.+?):(?P<line>\d+): (?P<msg>syntax error.*)$"
-)
+_RUBY_SYNTAX_RE = re.compile(r"^(?P<path>.+?):(?P<line>\d+): (?P<msg>syntax error.*)$")
 
 
 def _ruby_func(name: str) -> str:
@@ -722,13 +712,16 @@ from tdb.adapters.ruby.server import (
 
 def test_client_request_roundtrip():
     t = SeqTranslator()
-    fwd = t.client_request_to_rdbg(
-        {"seq": 41, "type": "request", "command": "next"}
-    )
+    fwd = t.client_request_to_rdbg({"seq": 41, "type": "request", "command": "next"})
     assert fwd["seq"] == 1 and fwd["command"] == "next"
     resp = t.rdbg_response_to_client(
-        {"seq": 9, "type": "response", "request_seq": fwd["seq"],
-         "command": "next", "success": True}
+        {
+            "seq": 9,
+            "type": "response",
+            "request_seq": fwd["seq"],
+            "command": "next",
+            "success": True,
+        }
     )
     assert resp["request_seq"] == 41
     assert resp["seq"] == 1  # first message the proxy sends to the client
@@ -737,10 +730,18 @@ def test_client_request_roundtrip():
 def test_proxy_originated_response_is_swallowed():
     t = SeqTranslator()
     # a response to a request the proxy sent itself (no client mapping)
-    assert t.rdbg_response_to_client(
-        {"seq": 1, "type": "response", "request_seq": 999,
-         "command": "initialize", "success": True}
-    ) is None
+    assert (
+        t.rdbg_response_to_client(
+            {
+                "seq": 1,
+                "type": "response",
+                "request_seq": 999,
+                "command": "initialize",
+                "success": True,
+            }
+        )
+        is None
+    )
 
 
 def test_events_are_resequenced_monotonically():
@@ -756,18 +757,31 @@ def test_reverse_request_roundtrip():
         {"seq": 7, "type": "request", "command": "runInTerminal"}
     )
     back = t.client_response_to_rdbg(
-        {"seq": 3, "type": "response", "request_seq": fwd["seq"],
-         "command": "runInTerminal", "success": True}
+        {
+            "seq": 3,
+            "type": "response",
+            "request_seq": fwd["seq"],
+            "command": "runInTerminal",
+            "success": True,
+        }
     )
     assert back["request_seq"] == 7
 
 
 def test_client_response_without_mapping_is_swallowed():
     t = SeqTranslator()
-    assert t.client_response_to_rdbg(
-        {"seq": 3, "type": "response", "request_seq": 123,
-         "command": "x", "success": True}
-    ) is None
+    assert (
+        t.client_response_to_rdbg(
+            {
+                "seq": 3,
+                "type": "response",
+                "request_seq": 123,
+                "command": "x",
+                "success": True,
+            }
+        )
+        is None
+    )
 
 
 def test_capabilities_omit_step_back():
@@ -999,9 +1013,7 @@ class SeqTranslator:
 @dataclass
 class _Transport:
     rdbg_args: list[str]
-    connect: Callable[
-        [], Awaitable[tuple[asyncio.StreamReader, asyncio.StreamWriter]]
-    ]
+    connect: Callable[[], Awaitable[tuple[asyncio.StreamReader, asyncio.StreamWriter]]]
     cleanup: Callable[[], None] = lambda: None
 
 
@@ -1208,9 +1220,7 @@ from tests.integration.ruby_adapter_harness import (
     start_ruby_adapter,
 )
 
-pytestmark = pytest.mark.skipif(
-    not rdbg_ok(), reason="needs rdbg (debug gem >= 1.9)"
-)
+pytestmark = pytest.mark.skipif(not rdbg_ok(), reason="needs rdbg (debug gem >= 1.9)")
 
 
 async def test_stop_on_entry_reports_entry_at_first_line():
@@ -1261,8 +1271,13 @@ async def test_launch_missing_program_fails():
     try:
         resp = await client.send(
             "launch",
-            {"type": "ruby", "program": "/nonexistent/x.rb", "args": [],
-             "cwd": "/tmp", "stopOnEntry": True},
+            {
+                "type": "ruby",
+                "program": "/nonexistent/x.rb",
+                "args": [],
+                "cwd": "/tmp",
+                "stopOnEntry": True,
+            },
         )
         assert resp["success"] is False
         assert "not found" in resp["message"]
@@ -1275,9 +1290,14 @@ async def test_launch_bad_rdbg_path_names_the_hint():
     try:
         resp = await client.send(
             "launch",
-            {"type": "ruby", "program": str(FIXTURES / "ruby_hello.rb"),
-             "args": [], "cwd": "/tmp", "stopOnEntry": True,
-             "rdbg": "/nonexistent/rdbg"},
+            {
+                "type": "ruby",
+                "program": str(FIXTURES / "ruby_hello.rb"),
+                "args": [],
+                "cwd": "/tmp",
+                "stopOnEntry": True,
+                "rdbg": "/nonexistent/rdbg",
+            },
         )
         assert resp["success"] is False
     finally:
@@ -1316,9 +1336,7 @@ class RubyDapServer:
         self._launched = False
         self._sent_exited = False
         self._sent_terminated = False
-        self._reverse = ReverseRequester(
-            self._write_client, self._seqs.next_client_seq
-        )
+        self._reverse = ReverseRequester(self._write_client, self._seqs.next_client_seq)
         # Strong refs: asyncio only weakly references bare tasks (repo
         # pitfall) — a GC'd pump silently loses program output.
         self._tasks: set[asyncio.Future] = set()
@@ -1466,9 +1484,7 @@ class RubyDapServer:
             self._sent_terminated = True
         return False
 
-    async def _pump_output(
-        self, stream: asyncio.StreamReader, category: str
-    ) -> None:
+    async def _pump_output(self, stream: asyncio.StreamReader, category: str) -> None:
         while True:
             line = await stream.readline()
             if not line:
@@ -1575,9 +1591,7 @@ class RubyDapServer:
                 popen_kwargs: dict[str, Any] = {}
                 if os.name == "nt":
                     # Ctrl-C isolation, same as the perl/bash spawn path
-                    popen_kwargs["creationflags"] = (
-                        subprocess.CREATE_NEW_PROCESS_GROUP
-                    )
+                    popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
                 else:
                     popen_kwargs["start_new_session"] = True
                 self._proc = await asyncio.create_subprocess_exec(
@@ -1646,18 +1660,13 @@ class RubyDapServer:
             try:
                 return await self._transport.connect()
             except (ConnectionError, FileNotFoundError, OSError):
-                if (
-                    self._proc is not None
-                    and self._proc.returncode is not None
-                ):
+                if self._proc is not None and self._proc.returncode is not None:
                     raise RuntimeError(
                         f"rdbg exited with code {self._proc.returncode} "
                         f"before accepting a connection"
                     )
                 if loop.time() > deadline:
-                    raise TimeoutError(
-                        "timed out waiting for rdbg's DAP socket"
-                    )
+                    raise TimeoutError("timed out waiting for rdbg's DAP socket")
                 await asyncio.sleep(0.1)
 
     async def _collect_early_stderr(self) -> str:
@@ -1805,9 +1814,7 @@ from tests.integration.ruby_adapter_harness import (
     start_ruby_adapter,
 )
 
-pytestmark = pytest.mark.skipif(
-    not rdbg_ok(), reason="needs rdbg (debug gem >= 1.9)"
-)
+pytestmark = pytest.mark.skipif(not rdbg_ok(), reason="needs rdbg (debug gem >= 1.9)")
 
 VARS = str(FIXTURES / "ruby_vars.rb")
 
@@ -1843,9 +1850,7 @@ async def test_conditional_breakpoint():
             stop_on_entry=False,
         )
         await client.wait_event("stopped")
-        resp = await client.request(
-            "evaluate", {"expression": "i", "context": "repl"}
-        )
+        resp = await client.request("evaluate", {"expression": "i", "context": "repl"})
         assert resp["body"]["result"].strip() == "3"
         await client.request("continue", {"threadId": 1})
         await client.wait_event("terminated")
@@ -1894,9 +1899,7 @@ from tests.integration.ruby_adapter_harness import (
     start_ruby_adapter,
 )
 
-pytestmark = pytest.mark.skipif(
-    not rdbg_ok(), reason="needs rdbg (debug gem >= 1.9)"
-)
+pytestmark = pytest.mark.skipif(not rdbg_ok(), reason="needs rdbg (debug gem >= 1.9)")
 
 VARS = str(FIXTURES / "ruby_vars.rb")
 
@@ -2029,9 +2032,7 @@ from tests.integration.ruby_adapter_harness import (
     start_ruby_adapter,
 )
 
-pytestmark = pytest.mark.skipif(
-    not rdbg_ok(), reason="needs rdbg (debug gem >= 1.9)"
-)
+pytestmark = pytest.mark.skipif(not rdbg_ok(), reason="needs rdbg (debug gem >= 1.9)")
 
 SLEEPER = str(FIXTURES / "ruby_sleep.rb")
 
@@ -2061,7 +2062,11 @@ async def _rdbg_pids_of(proxy_pid: int) -> list[int]:
     except OSError:
         pass
     proc = await asyncio.create_subprocess_exec(
-        "ps", "-o", "pid=", "--ppid", str(proxy_pid),
+        "ps",
+        "-o",
+        "pid=",
+        "--ppid",
+        str(proxy_pid),
         stdout=asyncio.subprocess.PIPE,
     )
     out, _ = await proc.communicate()
@@ -2172,9 +2177,7 @@ from tests.integration.ruby_adapter_harness import (
 )
 from tests.integration.perl_adapter_harness import AdapterClient
 
-pytestmark = pytest.mark.skipif(
-    not rdbg_ok(), reason="needs rdbg (debug gem >= 1.9)"
-)
+pytestmark = pytest.mark.skipif(not rdbg_ok(), reason="needs rdbg (debug gem >= 1.9)")
 
 
 async def test_external_terminal_handshake():
@@ -2186,9 +2189,7 @@ async def test_external_terminal_handshake():
         assert args["kind"] == "external"
         assert "rdbg" in args["args"][0]
         assert "--open" in args["args"]
-        proc = await asyncio.create_subprocess_exec(
-            *args["args"], cwd=args["cwd"]
-        )
+        proc = await asyncio.create_subprocess_exec(*args["args"], cwd=args["cwd"])
         spawned.append(proc)
         return {}
 
@@ -2297,9 +2298,7 @@ from tdb.languages.ruby import RdbgAdapter
 from tests.integration.ruby_adapter_harness import FIXTURES, rdbg_ok
 from tdb.adapters.ruby.server import _free_port
 
-pytestmark = pytest.mark.skipif(
-    not rdbg_ok(), reason="needs rdbg (debug gem >= 1.9)"
-)
+pytestmark = pytest.mark.skipif(not rdbg_ok(), reason="needs rdbg (debug gem >= 1.9)")
 
 
 class TcpDap:
@@ -2311,12 +2310,14 @@ class TcpDap:
     def send(self, command, arguments=None):
         self.seq += 1
         body = json.dumps(
-            {"seq": self.seq, "type": "request", "command": command,
-             "arguments": arguments or {}}
+            {
+                "seq": self.seq,
+                "type": "request",
+                "command": command,
+                "arguments": arguments or {},
+            }
         ).encode()
-        self.writer.write(
-            f"Content-Length: {len(body)}\r\n\r\n".encode() + body
-        )
+        self.writer.write(f"Content-Length: {len(body)}\r\n\r\n".encode() + body)
 
     async def recv(self):
         header = b""
@@ -2331,11 +2332,7 @@ class TcpDap:
                 m = await self.recv()
                 if event and m.get("type") == "event" and m["event"] == event:
                     return m
-                if (
-                    command
-                    and m.get("type") == "response"
-                    and m["command"] == command
-                ):
+                if command and m.get("type") == "response" and m["command"] == command:
                     return m
 
         return await asyncio.wait_for(_loop(), timeout)
@@ -2344,7 +2341,12 @@ class TcpDap:
 async def test_direct_tcp_attach_stop_inspect_continue(tmp_path):
     port = _free_port()
     rdbg = await asyncio.create_subprocess_exec(
-        "rdbg", "--open", "--port", str(port), "--host", "127.0.0.1",
+        "rdbg",
+        "--open",
+        "--port",
+        str(port),
+        "--host",
+        "127.0.0.1",
         str(FIXTURES / "ruby_sleep.rb"),
         stdout=asyncio.subprocess.DEVNULL,
         stderr=asyncio.subprocess.DEVNULL,
@@ -2352,9 +2354,7 @@ async def test_direct_tcp_attach_stop_inspect_continue(tmp_path):
     try:
         for _ in range(100):  # rdbg needs a moment to listen
             try:
-                reader, writer = await asyncio.open_connection(
-                    "127.0.0.1", port
-                )
+                reader, writer = await asyncio.open_connection("127.0.0.1", port)
                 break
             except OSError:
                 await asyncio.sleep(0.1)
@@ -2363,9 +2363,9 @@ async def test_direct_tcp_attach_stop_inspect_continue(tmp_path):
         dap = TcpDap(reader, writer)
         dap.send("initialize", {"adapterID": "rdbg"})
         await dap.wait(command="initialize")
-        dap.send("attach", RdbgAdapter().attach_body(
-            host="127.0.0.1", port=port, opts={}
-        ))
+        dap.send(
+            "attach", RdbgAdapter().attach_body(host="127.0.0.1", port=port, opts={})
+        )
         await dap.wait(command="attach")
         dap.send("configurationDone")
         # non-nonstop attach: rdbg stops the waiting debuggee right after
@@ -2422,7 +2422,9 @@ git commit -m "test: ruby remote attach — direct TCP DAP against live rdbg"
   `tests/integration/test_run_mode.py`)
 
 ```python
-from tests.integration.ruby_adapter_harness import rdbg_ok  # add to the file's import block
+from tests.integration.ruby_adapter_harness import (
+    rdbg_ok,
+)  # add to the file's import block
 
 ruby_available = pytest.mark.skipif(
     not rdbg_ok(), reason="needs rdbg (debug gem >= 1.9)"
@@ -2462,9 +2464,7 @@ async def test_ruby_exit_code_passthrough(tmp_path, capfd):
     p = tmp_path / "exit7.rb"
     p.write_text('puts "rbye"\n$stdout.flush\nexit 7\n')
     code = await asyncio.wait_for(
-        run_mode.run(
-            program=str(p), config=TdbConfig(), profile=build_ruby_profile()
-        ),
+        run_mode.run(program=str(p), config=TdbConfig(), profile=build_ruby_profile()),
         timeout=60.0,
     )
     assert code == 7
@@ -2489,9 +2489,7 @@ import pytest
 from tdb.replay import load_recording, run_replay
 from tests.integration.ruby_adapter_harness import rdbg_ok
 
-pytestmark = pytest.mark.skipif(
-    not rdbg_ok(), reason="needs rdbg (debug gem >= 1.9)"
-)
+pytestmark = pytest.mark.skipif(not rdbg_ok(), reason="needs rdbg (debug gem >= 1.9)")
 
 TOY = """\
 x = 1
@@ -2525,8 +2523,7 @@ async def test_ruby_recording_replays(tmp_path):
     ]
     path = tmp_path / "ruby.jsonl"
     path.write_text(
-        "\n".join([json.dumps(header)] + [json.dumps(r) for r in records])
-        + "\n"
+        "\n".join([json.dumps(header)] + [json.dumps(r) for r in records]) + "\n"
     )
     out: list[str] = []
     errors = await run_replay(load_recording(str(path)), echo=out.append)
@@ -2639,9 +2636,7 @@ def extensions_for(lang_id: str) -> tuple[str, ...]:
     Empty for languages detected by other means (cpp: binary magic
     bytes) — callers treat empty as "show all files".
     """
-    return tuple(
-        sorted(ext for ext, lang in _EXTENSION_MAP.items() if lang == lang_id)
-    )
+    return tuple(sorted(ext for ext, lang in _EXTENSION_MAP.items() if lang == lang_id))
 
 
 def matches_language(path: str, lang_id: str) -> bool:
@@ -2669,9 +2664,7 @@ class _SourceFileTree(DirectoryTree):
     def filter_paths(self, paths):
         if not self._suffixes:
             return list(paths)
-        return [
-            p for p in paths if p.is_dir() or p.suffix.lower() in self._suffixes
-        ]
+        return [p for p in paths if p.is_dir() or p.suffix.lower() in self._suffixes]
 ```
 
 Then in `_OpenFileModal`:

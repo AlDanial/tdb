@@ -166,7 +166,9 @@ class InspectService:
         self._gate()
         return await self._rust_collector.collect_and_analyze(self._ctrl)
 
-    async def thread_frames(self, thread_id: int, *, levels: int = 8) -> list[StackFrame]:
+    async def thread_frames(
+        self, thread_id: int, *, levels: int = 8
+    ) -> list[StackFrame]:
         """A thread's stack only — no scopes/variables (cheap, for
         thread classification)."""
         self._gate()

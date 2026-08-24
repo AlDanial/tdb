@@ -182,6 +182,11 @@ class OCamlLldbAdapter(LldbDapAdapter):
     """lldb-dap with OCaml twists: formatter injection, backtrace env,
     and a stop-before-abort breakpoint on the uncaught-exception hook."""
 
+    # The C/C++ base adapters support native remote attach; OCaml does
+    # not offer it yet (attach_body below raises), so opt back out of
+    # the attach-via-adapter quirk the base class declares.
+    quirks = AdapterQuirks()
+
     def launch_body(
         self, *, program, args, cwd, env, stop_on_entry, console, opts: dict[str, Any]
     ) -> dict[str, Any]:
@@ -207,6 +212,8 @@ class OCamlGdbAdapter(GdbDapAdapter):
     """gdb -i dap fallback (Linux). No formatter injection (lldb-only
     script) and no pre-run breakpoint (gdb DAP has no initCommands);
     the parse-on-exit error modal still works via OCAMLRUNPARAM=b."""
+
+    quirks = AdapterQuirks()  # no native remote attach for OCaml yet
 
     def launch_body(
         self, *, program, args, cwd, env, stop_on_entry, console, opts: dict[str, Any]

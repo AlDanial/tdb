@@ -65,9 +65,9 @@ consumer**, and consumers are existing modules:
 
 ```python
 class LanguageProfile:
-    id: str                       # "python", "cpp", "go"
-    display_name: str             # title bar / status
-    adapter: AdapterSpec          # default adapter; alternates selectable via --adapter
+    id: str  # "python", "cpp", "go"
+    display_name: str  # title bar / status
+    adapter: AdapterSpec  # default adapter; alternates selectable via --adapter
     presentation: Presentation
     capabilities: Capabilities
 ```

@@ -77,7 +77,9 @@ async def test_collect_rust_concurrency_gates_unsupported_profile():
 
 
 async def test_collect_rust_concurrency_uses_rust_capability(monkeypatch):
-    controller = DebugController(ServerEventHandler(), profile=build_rust_profile("gdb"))
+    controller = DebugController(
+        ServerEventHandler(), profile=build_rust_profile("gdb")
+    )
     controller.state.transition_to(SessionPhase.STOPPED)
     svc = InspectService(lambda: controller)
     expected = object()

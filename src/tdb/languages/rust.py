@@ -1,8 +1,8 @@
 """The Rust language profile.
 
-Rust uses the native GDB/LLDB DAP adapters for local launch. Small
-Rust-specific subclasses leave room for future Rust attach and probe
-configuration without changing the C/C++ profile.
+Rust uses the native GDB/LLDB DAP adapters (launch, native remote
+attach, and path mapping all live in the C/C++ base adapters). The
+Rust subclasses add only concurrency-probe script injection.
 """
 
 from __future__ import annotations
@@ -12,27 +12,13 @@ from importlib import resources
 from typing import Any
 
 from tdb.languages.base import (
-    AdapterQuirks,
     AdapterSpec,
     LanguageNotSupportedError,
     LanguageProfile,
     Presentation,
     ProfileCapabilities,
 )
-from tdb.languages.cpp import GdbDapAdapter, LldbDapAdapter
-
-
-def _required_program(opts: dict[str, Any]) -> str:
-    program = opts.get("program")
-    if not isinstance(program, str) or not program:
-        raise LanguageNotSupportedError(
-            "Rust remote attach requires a local program with debug symbols"
-        )
-    return program
-
-
-def _gdb_string(value: str) -> str:
-    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+from tdb.languages.cpp import GdbDapAdapter, LldbDapAdapter, _gdb_string
 
 
 def _gdb_source_filename(value: str) -> str:
@@ -49,8 +35,6 @@ def _gdb_source_filename(value: str) -> str:
 
 
 class RustGdbAdapter(GdbDapAdapter):
-    quirks = AdapterQuirks(attach_via_adapter=True)
-
     def command(self) -> list[str]:
         command = super().command()
         script_path = resources.files("tdb.rust_concurrency.probes").joinpath(
@@ -60,30 +44,19 @@ class RustGdbAdapter(GdbDapAdapter):
         # from being wrapped by gdb's filtered output stream. Splice the
         # probe options after the executable so any argv the base adapter
         # adds (today `-i dap`) is preserved.
-        return command[:1] + [
-            "-iex",
-            "set width unlimited",
-            "-iex",
-            f"source {_gdb_source_filename(str(script_path))}",
-        ] + command[1:]
-
-    def attach_body(
-        self, *, host: str, port: int, opts: dict[str, Any]
-    ) -> dict[str, Any]:
-        return {"program": _required_program(opts), "target": f"{host}:{port}"}
-
-    def pre_configuration_commands(
-        self, path_mappings: list[tuple[str, str]]
-    ) -> tuple[str, ...]:
-        return tuple(
-            f"set substitute-path {_gdb_string(remote)} {_gdb_string(local)}"
-            for local, remote in path_mappings
+        return (
+            command[:1]
+            + [
+                "-iex",
+                "set width unlimited",
+                "-iex",
+                f"source {_gdb_source_filename(str(script_path))}",
+            ]
+            + command[1:]
         )
 
 
 class RustLldbAdapter(LldbDapAdapter):
-    quirks = AdapterQuirks(attach_via_adapter=True)
-
     @staticmethod
     def _probe_init_commands() -> list[str]:
         script_path = resources.files("tdb.rust_concurrency.probes").joinpath(
@@ -119,14 +92,7 @@ class RustLldbAdapter(LldbDapAdapter):
     def attach_body(
         self, *, host: str, port: int, opts: dict[str, Any]
     ) -> dict[str, Any]:
-        body: dict[str, Any] = {
-            "program": _required_program(opts),
-            "gdb-remote-host": host,
-            "gdb-remote-port": port,
-        }
-        mappings = opts.get("path_mappings") or []
-        if mappings:
-            body["sourceMap"] = [[remote, local] for local, remote in mappings]
+        body = super().attach_body(host=host, port=port, opts=opts)
         body["initCommands"] = (
             list(opts.get("initCommands", ())) + self._probe_init_commands()
         )

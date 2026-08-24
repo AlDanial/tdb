@@ -60,9 +60,7 @@ _FRAME_RULES = (
         PrimitiveKind.CONDVAR,
     ),
     _FrameRule(
-        re.compile(
-            r"^std::thread::(?:join_handle::)?JoinHandle::join$"
-        ),
+        re.compile(r"^std::thread::(?:join_handle::)?JoinHandle::join$"),
         "join",
         PrimitiveKind.THREAD,
     ),
@@ -133,11 +131,7 @@ def _is_platform_wait_frame(frame: RawFrame) -> bool:
 
 def _classify_wait(thread: RawThread) -> _Wait | None:
     platform_wait = next(
-        (
-            frame
-            for frame in thread.frames
-            if _is_platform_wait_frame(frame)
-        ),
+        (frame for frame in thread.frames if _is_platform_wait_frame(frame)),
         None,
     )
     park_match: tuple[RawFrame, _FrameRule] | None = None
@@ -197,7 +191,11 @@ def _label(kind: PrimitiveKind, address: str | None) -> str:
         PrimitiveKind.PARKER: "Parker",
     }
     name = names[kind]
-    return f"{name} at {address}" if address is not None else f"{name} (address unavailable)"
+    return (
+        f"{name} at {address}"
+        if address is not None
+        else f"{name} (address unavailable)"
+    )
 
 
 def _analyze_thread(thread: RawThread) -> tuple[ThreadAnalysis, _Wait | None]:

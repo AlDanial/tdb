@@ -43,20 +43,29 @@ from tdb.dap.messages import Event, Response
 
 
 def test_response_to_dict_round_trips():
-    resp = Response(seq=3, request_seq=1, command="initialize",
-                    success=True, body={"supportsConfigurationDoneRequest": True})
+    resp = Response(
+        seq=3,
+        request_seq=1,
+        command="initialize",
+        success=True,
+        body={"supportsConfigurationDoneRequest": True},
+    )
     d = resp.to_dict()
     assert d == {
-        "seq": 3, "type": "response", "request_seq": 1,
-        "command": "initialize", "success": True,
+        "seq": 3,
+        "type": "response",
+        "request_seq": 1,
+        "command": "initialize",
+        "success": True,
         "body": {"supportsConfigurationDoneRequest": True},
     }
     assert Response.from_dict(d) == resp
 
 
 def test_response_to_dict_error_message():
-    resp = Response(seq=4, request_seq=2, command="launch",
-                    success=False, message="perl not found")
+    resp = Response(
+        seq=4, request_seq=2, command="launch", success=False, message="perl not found"
+    )
     d = resp.to_dict()
     assert d["message"] == "perl not found"
     assert "body" not in d
@@ -65,8 +74,12 @@ def test_response_to_dict_error_message():
 def test_event_to_dict_round_trips():
     ev = Event(seq=5, event="stopped", body={"reason": "step", "threadId": 1})
     d = ev.to_dict()
-    assert d == {"seq": 5, "type": "event", "event": "stopped",
-                 "body": {"reason": "step", "threadId": 1}}
+    assert d == {
+        "seq": 5,
+        "type": "event",
+        "event": "stopped",
+        "body": {"reason": "step", "threadId": 1},
+    }
     assert Event.from_dict(d) == ev
 ```
 
@@ -208,7 +221,9 @@ PROMPT_RE = re.compile(rb"\r?\n?\s*DB<+\d+>+ $")
 MARK_RE = re.compile(rb"TDB>>>(.*?)<<<TDB\r?\n?", re.DOTALL)
 # Longest prefix that could still grow into a marker or prompt; used to
 # hold back tail bytes instead of flushing them as text prematurely.
-_HOLD_RE = re.compile(rb"(?:TDB>?>?>?[^<]*(?:<(?:<(?:TDB?)?)?)?|\r?\n?\s*DB<*\d*>*\x20?)$")
+_HOLD_RE = re.compile(
+    rb"(?:TDB>?>?>?[^<]*(?:<(?:<(?:TDB?)?)?)?|\r?\n?\s*DB<*\d*>*\x20?)$"
+)
 
 Event = tuple[str, object]
 
@@ -230,9 +245,7 @@ class StreamParser:
             try:
                 events.append(("json", json.loads(m.group(1).decode("utf-8"))))
             except (ValueError, UnicodeDecodeError):
-                events.append(
-                    ("text", m.group(0).decode("utf-8", errors="replace"))
-                )
+                events.append(("text", m.group(0).decode("utf-8", errors="replace")))
             self._buf = self._buf[m.end() :]
         pm = PROMPT_RE.search(self._buf)
         if pm is not None:
@@ -424,11 +437,17 @@ async def _run_conversation(requests: list[dict]) -> list[dict]:
 
 
 async def test_initialize_then_disconnect():
-    out = await _run_conversation([
-        {"seq": 1, "type": "request", "command": "initialize",
-         "arguments": {"adapterID": "perl-tdb"}},
-        {"seq": 2, "type": "request", "command": "disconnect"},
-    ])
+    out = await _run_conversation(
+        [
+            {
+                "seq": 1,
+                "type": "request",
+                "command": "initialize",
+                "arguments": {"adapterID": "perl-tdb"},
+            },
+            {"seq": 2, "type": "request", "command": "disconnect"},
+        ]
+    )
     init = out[0]
     assert init["type"] == "response" and init["command"] == "initialize"
     assert init["success"] is True
@@ -439,10 +458,12 @@ async def test_initialize_then_disconnect():
 
 
 async def test_unknown_command_errors_but_survives():
-    out = await _run_conversation([
-        {"seq": 1, "type": "request", "command": "frobnicate"},
-        {"seq": 2, "type": "request", "command": "disconnect"},
-    ])
+    out = await _run_conversation(
+        [
+            {"seq": 1, "type": "request", "command": "frobnicate"},
+            {"seq": 2, "type": "request", "command": "disconnect"},
+        ]
+    )
     frob = [m for m in out if m.get("command") == "frobnicate"][0]
     assert frob["success"] is False
     assert "frobnicate" in frob["message"]
@@ -451,10 +472,14 @@ async def test_unknown_command_errors_but_survives():
 
 async def test_handler_exception_becomes_error_response():
     reader = asyncio.StreamReader()
-    reader.feed_data(encode_message(
-        {"seq": 1, "type": "request", "command": "initialize", "arguments": {}}))
-    reader.feed_data(encode_message(
-        {"seq": 2, "type": "request", "command": "disconnect"}))
+    reader.feed_data(
+        encode_message(
+            {"seq": 1, "type": "request", "command": "initialize", "arguments": {}}
+        )
+    )
+    reader.feed_data(
+        encode_message({"seq": 2, "type": "request", "command": "disconnect"})
+    )
     reader.feed_eof()
     writer = SinkWriter()
     server = PerlDapServer(reader, writer)
@@ -651,9 +676,7 @@ from pathlib import Path
 
 import pytest
 
-HELPERS = (
-    Path(__file__).resolve().parents[3] / "src/tdb/adapters/perl/helpers.pl"
-)
+HELPERS = Path(__file__).resolve().parents[3] / "src/tdb/adapters/perl/helpers.pl"
 MARK = re.compile(r"TDB>>>(.*?)<<<TDB", re.S)
 
 
@@ -701,11 +724,7 @@ def test_location_reports_caller_and_protocol_version(run_helper, tmp_path):
 
 
 def test_stack_skips_helper_frames(run_helper):
-    code = (
-        "sub inner { Devel::TdbHelper::stack() }\n"
-        "sub outer { inner() }\n"
-        "outer();"
-    )
+    code = "sub inner { Devel::TdbHelper::stack() }\nsub outer { inner() }\nouter();"
     (payload,) = run_helper(code)
     subs = [f["sub"] for f in payload["frames"]]
     assert not any("TdbHelper" in (s or "") for s in subs)
@@ -734,13 +753,14 @@ def test_breakable_and_source_read_perl_line_tables(tmp_path):
     )
     proc = subprocess.run(
         ["perl", "-d", str(driver)],
-        capture_output=True, text=True, timeout=30,
+        capture_output=True,
+        text=True,
+        timeout=30,
         env={**os.environ, "PERL5DB": "sub DB::DB {}"},
     )
     assert proc.returncode == 0, proc.stderr
     payloads = [
-        json.loads(m)
-        for m in re.findall(r"TDB>>>(.*?)<<<TDB", proc.stdout, re.S)
+        json.loads(m) for m in re.findall(r"TDB>>>(.*?)<<<TDB", proc.stdout, re.S)
     ]
     lines_payload, source_payload = payloads
     assert 1 in lines_payload["lines"] and 3 in lines_payload["lines"]
@@ -1736,7 +1756,9 @@ class AdapterClient:
 
     async def start(self):
         self.proc = await asyncio.create_subprocess_exec(
-            sys.executable, "-m", "tdb.adapters.perl",
+            sys.executable,
+            "-m",
+            "tdb.adapters.perl",
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -1761,8 +1783,9 @@ class AdapterClient:
                 if fut and not fut.done():
                     fut.set_result(body)
 
-    async def request(self, command: str, arguments: dict | None = None,
-                      timeout: float = 30.0) -> dict:
+    async def request(
+        self, command: str, arguments: dict | None = None, timeout: float = 30.0
+    ) -> dict:
         self.seq += 1
         msg = {"seq": self.seq, "type": "request", "command": command}
         if arguments:
@@ -1770,8 +1793,7 @@ class AdapterClient:
         fut = asyncio.get_running_loop().create_future()
         self._responses[self.seq] = fut
         body = json.dumps(msg).encode()
-        self.proc.stdin.write(
-            f"Content-Length: {len(body)}\r\n\r\n".encode() + body)
+        self.proc.stdin.write(f"Content-Length: {len(body)}\r\n\r\n".encode() + body)
         await self.proc.stdin.drain()
         return await asyncio.wait_for(fut, timeout)
 
@@ -1784,8 +1806,7 @@ class AdapterClient:
         fut = asyncio.get_running_loop().create_future()
         self._responses[self.seq] = fut
         body = json.dumps(msg).encode()
-        self.proc.stdin.write(
-            f"Content-Length: {len(body)}\r\n\r\n".encode() + body)
+        self.proc.stdin.write(f"Content-Length: {len(body)}\r\n\r\n".encode() + body)
         return fut
 
     async def wait_event(self, name: str, timeout: float = 30.0) -> dict:
@@ -1820,7 +1841,7 @@ pytestmark = pytest.mark.skipif(
     reason="perl >= 5.18 required",
 )
 
-SCRIPT = "my $x = 1;\nmy $y = 2;\nprint \"sum=\", $x + $y, \"\\n\";\n"
+SCRIPT = 'my $x = 1;\nmy $y = 2;\nprint "sum=", $x + $y, "\\n";\n'
 
 
 @pytest.fixture
@@ -1840,10 +1861,15 @@ async def client():
 
 async def test_launch_stop_on_entry_step_and_run_to_exit(client, script, tmp_path):
     await client.request("initialize", {"adapterID": "perl-tdb"})
-    launch_fut = client.send("launch", {
-        "program": script, "args": [], "cwd": str(tmp_path),
-        "stopOnEntry": True,
-    })
+    launch_fut = client.send(
+        "launch",
+        {
+            "program": script,
+            "args": [],
+            "cwd": str(tmp_path),
+            "stopOnEntry": True,
+        },
+    )
     await client.wait_event("initialized")
     await client.request("configurationDone")
     launch_resp = await asyncio.wait_for(launch_fut, 30)
@@ -1865,10 +1891,15 @@ async def test_launch_stop_on_entry_step_and_run_to_exit(client, script, tmp_pat
 
 async def test_launch_missing_perl_program_errors(client, tmp_path):
     await client.request("initialize", {"adapterID": "perl-tdb"})
-    launch_fut = client.send("launch", {
-        "program": str(tmp_path / "nope.pl"), "args": [],
-        "cwd": str(tmp_path), "stopOnEntry": True,
-    })
+    launch_fut = client.send(
+        "launch",
+        {
+            "program": str(tmp_path / "nope.pl"),
+            "args": [],
+            "cwd": str(tmp_path),
+            "stopOnEntry": True,
+        },
+    )
     resp = await asyncio.wait_for(launch_fut, 30)
     assert resp["success"] is False
 ```
@@ -1885,113 +1916,125 @@ Add to `PerlDapServer.__init__`: `self.session = None`, `self.current_stop = Non
 Add handlers:
 
 ```python
-    async def _on_launch(self, request: Request) -> None:
-        args = request.arguments
-        perl = args.get("perl") or "perl"
-        preflight = await asyncio.create_subprocess_exec(
-            perl, "-e", "require v5.18",
-            stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE,
+async def _on_launch(self, request: Request) -> None:
+    args = request.arguments
+    perl = args.get("perl") or "perl"
+    preflight = await asyncio.create_subprocess_exec(
+        perl,
+        "-e",
+        "require v5.18",
+        stdout=asyncio.subprocess.DEVNULL,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    _, err = await preflight.communicate()
+    if preflight.returncode != 0:
+        self.send_error(
+            request,
+            f"perl >= 5.18 not usable ({perl!r}): "
+            f"{err.decode(errors='replace').strip() or 'not found'} — "
+            'install perl or set {"adapters": {"perl": "/path/to/perl"}} '
+            "in tdb's config.json",
         )
-        _, err = await preflight.communicate()
-        if preflight.returncode != 0:
-            self.send_error(
-                request,
-                f"perl >= 5.18 not usable ({perl!r}): "
-                f"{err.decode(errors='replace').strip() or 'not found'} — "
-                'install perl or set {"adapters": {"perl": "/path/to/perl"}} '
-                "in tdb's config.json",
-            )
-            return
-        program = args.get("program", "")
-        if not os.path.isfile(program):
-            self.send_error(request, f"program not found: {program}")
-            return
-        self._stop_on_entry = bool(args.get("stopOnEntry", True))
-        self.session = PerlSession(
-            on_output=self._forward_output, on_stop=self._on_unsolicited_stop
+        return
+    program = args.get("program", "")
+    if not os.path.isfile(program):
+        self.send_error(request, f"program not found: {program}")
+        return
+    self._stop_on_entry = bool(args.get("stopOnEntry", True))
+    self.session = PerlSession(
+        on_output=self._forward_output, on_stop=self._on_unsolicited_stop
+    )
+    try:
+        await self.session.launch(
+            program=program,
+            args=list(args.get("args") or []),
+            cwd=args.get("cwd") or os.getcwd(),
+            env=args.get("env"),
+            perl=perl,
         )
-        try:
-            await self.session.launch(
-                program=program,
-                args=list(args.get("args") or []),
-                cwd=args.get("cwd") or os.getcwd(),
-                env=args.get("env"),
-                perl=perl,
-            )
-        except PerlProtocolError as e:
-            self.send_error(request, f"{e} [{e.tail}]")
-            return
-        self._launch_request = request
-        self.send_event("initialized")
-        # response is sent by _on_configurationDone (DAP ordering)
+    except PerlProtocolError as e:
+        self.send_error(request, f"{e} [{e.tail}]")
+        return
+    self._launch_request = request
+    self.send_event("initialized")
+    # response is sent by _on_configurationDone (DAP ordering)
 
-    async def _on_configurationDone(self, request: Request) -> None:
-        self.send_response(request)
-        if self._launch_request is not None:
-            self.send_response(self._launch_request)
-            self._launch_request = None
-            if self._stop_on_entry:
-                await self._emit_stopped("entry")
-            else:
-                self.session.resume("c")
 
-    async def _emit_stopped(self, reason: str) -> None:
-        try:
-            self.current_stop = await self.session.helper(
-                "Devel::TdbHelper::location()"
-            )
-        except PerlProtocolError as e:
-            log.error("location() failed after stop: %s", e)
-            self.current_stop = None
-        self.send_event(
-            "stopped",
-            {"reason": reason, "threadId": 1, "allThreadsStopped": True},
-        )
+async def _on_configurationDone(self, request: Request) -> None:
+    self.send_response(request)
+    if self._launch_request is not None:
+        self.send_response(self._launch_request)
+        self._launch_request = None
+        if self._stop_on_entry:
+            await self._emit_stopped("entry")
+        else:
+            self.session.resume("c")
 
-    def _forward_output(self, text: str, category: str) -> None:
-        self.send_event("output", {"category": category, "output": text})
 
-    def _on_unsolicited_stop(self) -> None:
-        asyncio.ensure_future(self._classify_and_emit_stop())
-
-    async def _classify_and_emit_stop(self) -> None:
-        try:
-            loc = await self.session.helper("Devel::TdbHelper::location()")
-        except PerlProtocolError:
-            loc = None
-        self.current_stop = loc
-        reason = "step"
-        if loc and loc.get("line") in self.breakpoint_lines.get(loc.get("file"), set()):
-            reason = "breakpoint"
-        self.send_event(
-            "stopped",
-            {"reason": reason, "threadId": 1, "allThreadsStopped": True},
-        )
-        await self._writer.drain()
-
-    async def _on_threads(self, request: Request) -> None:
-        self.send_response(request, {"threads": [{"id": 1, "name": "main"}]})
-
-    async def _resume(self, request: Request, cmd: str) -> None:
-        if self.session is None or not self.session.stopped:
-            self.send_error(request, "debuggee is not stopped")
-            return
+async def _emit_stopped(self, reason: str) -> None:
+    try:
+        self.current_stop = await self.session.helper("Devel::TdbHelper::location()")
+    except PerlProtocolError as e:
+        log.error("location() failed after stop: %s", e)
         self.current_stop = None
-        self.send_response(request)
-        self.send_event("continued", {"threadId": 1, "allThreadsContinued": True})
-        self.session.resume(cmd)
+    self.send_event(
+        "stopped",
+        {"reason": reason, "threadId": 1, "allThreadsStopped": True},
+    )
 
-    async def _on_continue(self, request: Request) -> None:
-        await self._resume(request, "c")
 
-    async def _on_next(self, request: Request) -> None:
-        await self._resume(request, "n")
+def _forward_output(self, text: str, category: str) -> None:
+    self.send_event("output", {"category": category, "output": text})
 
-    async def _on_stepIn(self, request: Request) -> None:
-        await self._resume(request, "s")
 
-    async def _on_stepOut(self, request: Request) -> None:
-        await self._resume(request, "r")
+def _on_unsolicited_stop(self) -> None:
+    asyncio.ensure_future(self._classify_and_emit_stop())
+
+
+async def _classify_and_emit_stop(self) -> None:
+    try:
+        loc = await self.session.helper("Devel::TdbHelper::location()")
+    except PerlProtocolError:
+        loc = None
+    self.current_stop = loc
+    reason = "step"
+    if loc and loc.get("line") in self.breakpoint_lines.get(loc.get("file"), set()):
+        reason = "breakpoint"
+    self.send_event(
+        "stopped",
+        {"reason": reason, "threadId": 1, "allThreadsStopped": True},
+    )
+    await self._writer.drain()
+
+
+async def _on_threads(self, request: Request) -> None:
+    self.send_response(request, {"threads": [{"id": 1, "name": "main"}]})
+
+
+async def _resume(self, request: Request, cmd: str) -> None:
+    if self.session is None or not self.session.stopped:
+        self.send_error(request, "debuggee is not stopped")
+        return
+    self.current_stop = None
+    self.send_response(request)
+    self.send_event("continued", {"threadId": 1, "allThreadsContinued": True})
+    self.session.resume(cmd)
+
+
+async def _on_continue(self, request: Request) -> None:
+    await self._resume(request, "c")
+
+
+async def _on_next(self, request: Request) -> None:
+    await self._resume(request, "n")
+
+
+async def _on_stepIn(self, request: Request) -> None:
+    await self._resume(request, "s")
+
+
+async def _on_stepOut(self, request: Request) -> None:
+    await self._resume(request, "r")
 ```
 
 Also: `import os` at top; import `PerlSession, PerlProtocolError` from `.session`. Detect debuggee exit: in `_on_stop_eof` PerlSession already unblocks; add an `on_exit` callback wired the same way as `on_stop` OR simpler — in `PerlSession._on_stop_eof`, call `self._on_output("", "__eof__")` and have `_forward_output` translate `category == "__eof__"` into `send_event("terminated")` + `send_event("exited", {"exitCode": 0})` (skip the output event). Choose the simpler route and keep it internal to these two files; `_classify_and_emit_stop` must also tolerate `session=None` after teardown. Update `_on_disconnect`/`_on_terminate` to `await self.session.stop()` when a session exists.
@@ -2060,9 +2103,15 @@ async def started(script, tmp_path):
     c = AdapterClient()
     await c.start()
     await c.request("initialize", {"adapterID": "perl-tdb"})
-    launch_fut = c.send("launch", {
-        "program": script, "args": [], "cwd": str(tmp_path), "stopOnEntry": True,
-    })
+    launch_fut = c.send(
+        "launch",
+        {
+            "program": script,
+            "args": [],
+            "cwd": str(tmp_path),
+            "stopOnEntry": True,
+        },
+    )
     await c.wait_event("initialized")
     yield c, script, launch_fut
     await c.stop()
@@ -2070,15 +2119,18 @@ async def started(script, tmp_path):
 
 async def test_set_hit_and_conditional_breakpoints(started):
     c, script, launch_fut = started
-    resp = await c.request("setBreakpoints", {
-        "source": {"path": script},
-        "breakpoints": [{"line": 4, "condition": "$i == 3"}],
-    })
+    resp = await c.request(
+        "setBreakpoints",
+        {
+            "source": {"path": script},
+            "breakpoints": [{"line": 4, "condition": "$i == 3"}],
+        },
+    )
     (bp,) = resp["body"]["breakpoints"]
     assert bp["verified"] is True and bp["line"] == 4
     await c.request("configurationDone")
     await asyncio.wait_for(launch_fut, 30)
-    await c.wait_event("stopped")            # entry
+    await c.wait_event("stopped")  # entry
     await c.request("continue")
     stopped = await c.wait_event("stopped")  # conditional breakpoint
     assert stopped["body"]["reason"] == "breakpoint"
@@ -2086,10 +2138,13 @@ async def test_set_hit_and_conditional_breakpoints(started):
 
 async def test_blank_line_snaps_forward(started):
     c, script, launch_fut = started
-    resp = await c.request("setBreakpoints", {
-        "source": {"path": script},
-        "breakpoints": [{"line": 2}],   # blank line
-    })
+    resp = await c.request(
+        "setBreakpoints",
+        {
+            "source": {"path": script},
+            "breakpoints": [{"line": 2}],  # blank line
+        },
+    )
     (bp,) = resp["body"]["breakpoints"]
     assert bp["verified"] is True
     assert bp["line"] == 3
@@ -2097,15 +2152,15 @@ async def test_blank_line_snaps_forward(started):
 
 async def test_replace_clears_old_breakpoints(started):
     c, script, launch_fut = started
-    await c.request("setBreakpoints", {
-        "source": {"path": script}, "breakpoints": [{"line": 4}]})
-    await c.request("setBreakpoints", {
-        "source": {"path": script}, "breakpoints": []})
+    await c.request(
+        "setBreakpoints", {"source": {"path": script}, "breakpoints": [{"line": 4}]}
+    )
+    await c.request("setBreakpoints", {"source": {"path": script}, "breakpoints": []})
     await c.request("configurationDone")
     await asyncio.wait_for(launch_fut, 30)
-    await c.wait_event("stopped")   # entry
+    await c.wait_event("stopped")  # entry
     await c.request("continue")
-    await c.wait_event("terminated", timeout=30)   # ran through: no bp left
+    await c.wait_event("terminated", timeout=30)  # ran through: no bp left
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -2116,50 +2171,51 @@ Expected: FAIL — "unsupported command: setBreakpoints"
 - [ ] **Step 3: Implement `_on_setBreakpoints`**
 
 ```python
-    async def _on_setBreakpoints(self, request: Request) -> None:
-        if self.session is None or not self.session.stopped:
-            self.send_error(request, "cannot set breakpoints while running")
-            return
-        path = request.arguments.get("source", {}).get("path", "")
-        wanted = request.arguments.get("breakpoints", [])
-        for old_line in self.breakpoint_lines.get(path, set()):
-            await self.session.command(f"B {old_line}")
-        try:
-            breakable = set(
-                (await self.session.helper(
+async def _on_setBreakpoints(self, request: Request) -> None:
+    if self.session is None or not self.session.stopped:
+        self.send_error(request, "cannot set breakpoints while running")
+        return
+    path = request.arguments.get("source", {}).get("path", "")
+    wanted = request.arguments.get("breakpoints", [])
+    for old_line in self.breakpoint_lines.get(path, set()):
+        await self.session.command(f"B {old_line}")
+    try:
+        breakable = set(
+            (
+                await self.session.helper(
                     f"Devel::TdbHelper::breakable({self._perl_str(path)})"
-                ))["lines"]
-            )
-        except PerlProtocolError:
-            breakable = set()
-        results = []
-        actual_lines: set[int] = set()
-        for bp in wanted:
-            line = bp["line"]
-            target = line
-            if breakable and line not in breakable:
-                later = sorted(n for n in breakable if n > line)
-                target = later[0] if later else None
-            if target is None:
-                results.append({"verified": False, "line": line})
-                continue
-            cond = bp.get("condition")
-            cmd = f"b {path}:{target}" + (f" {cond}" if cond else "")
-            events = await self.session.command(cmd)
-            failed = any(
-                e[0] == "text" and "not breakable" in e[1] for e in events
-            )
-            if failed:
-                results.append({"verified": False, "line": line})
-            else:
-                results.append({"verified": True, "line": target})
-                actual_lines.add(target)
-        self.breakpoint_lines[path] = actual_lines
-        self.send_response(request, {"breakpoints": results})
+                )
+            )["lines"]
+        )
+    except PerlProtocolError:
+        breakable = set()
+    results = []
+    actual_lines: set[int] = set()
+    for bp in wanted:
+        line = bp["line"]
+        target = line
+        if breakable and line not in breakable:
+            later = sorted(n for n in breakable if n > line)
+            target = later[0] if later else None
+        if target is None:
+            results.append({"verified": False, "line": line})
+            continue
+        cond = bp.get("condition")
+        cmd = f"b {path}:{target}" + (f" {cond}" if cond else "")
+        events = await self.session.command(cmd)
+        failed = any(e[0] == "text" and "not breakable" in e[1] for e in events)
+        if failed:
+            results.append({"verified": False, "line": line})
+        else:
+            results.append({"verified": True, "line": target})
+            actual_lines.add(target)
+    self.breakpoint_lines[path] = actual_lines
+    self.send_response(request, {"breakpoints": results})
 
-    @staticmethod
-    def _perl_str(s: str) -> str:
-        return "'" + s.replace("\\", "\\\\").replace("'", "\\'") + "'"
+
+@staticmethod
+def _perl_str(s: str) -> str:
+    return "'" + s.replace("\\", "\\\\").replace("'", "\\'") + "'"
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
@@ -2223,12 +2279,19 @@ async def at_breakpoint(tmp_path):
     c = AdapterClient()
     await c.start()
     await c.request("initialize", {"adapterID": "perl-tdb"})
-    launch_fut = c.send("launch", {
-        "program": str(p), "args": [], "cwd": str(tmp_path), "stopOnEntry": False,
-    })
+    launch_fut = c.send(
+        "launch",
+        {
+            "program": str(p),
+            "args": [],
+            "cwd": str(tmp_path),
+            "stopOnEntry": False,
+        },
+    )
     await c.wait_event("initialized")
-    await c.request("setBreakpoints", {
-        "source": {"path": str(p)}, "breakpoints": [{"line": 4}]})
+    await c.request(
+        "setBreakpoints", {"source": {"path": str(p)}, "breakpoints": [{"line": 4}]}
+    )
     await c.request("configurationDone")
     await asyncio.wait_for(launch_fut, 30)
     await c.wait_event("stopped")
@@ -2249,20 +2312,22 @@ async def test_stack_scopes_variables_expand(at_breakpoint):
     assert {"Lexicals", "Globals", "Specials"} <= set(by_name)
 
     lex = await c.request(
-        "variables", {"variablesReference": by_name["Lexicals"]["variablesReference"]})
+        "variables", {"variablesReference": by_name["Lexicals"]["variablesReference"]}
+    )
     lex_vars = {v["name"]: v for v in lex["body"]["variables"]}
     if "<lexicals>" in lex_vars:
         assert "PadWalker" in lex_vars["<lexicals>"]["value"]
     else:
         assert "%info" in lex_vars
         nested = await c.request(
-            "variables",
-            {"variablesReference": lex_vars["%info"]["variablesReference"]})
+            "variables", {"variablesReference": lex_vars["%info"]["variablesReference"]}
+        )
         names = {v["name"] for v in nested["body"]["variables"]}
         assert {"label", "nums"} <= names
 
     spec = await c.request(
-        "variables", {"variablesReference": by_name["Specials"]["variablesReference"]})
+        "variables", {"variablesReference": by_name["Specials"]["variablesReference"]}
+    )
     spec_names = {v["name"] for v in spec["body"]["variables"]}
     assert "@_" in spec_names or "$0" in spec_names
 
@@ -2286,85 +2351,91 @@ Run: `.venv/bin/pytest tests/integration/test_perl_adapter_inspection.py -q` →
 Add `from tdb.adapters.perl.refs import RefRegistry`, `self.refs = RefRegistry()` in `__init__`, `self.refs.reset()` first line of both `_emit_stopped` and `_classify_and_emit_stop`, then:
 
 ```python
-    async def _on_stackTrace(self, request: Request) -> None:
-        payload = await self.session.helper("Devel::TdbHelper::stack()")
-        frames = []
-        for i, f in enumerate(payload["frames"]):
-            frames.append({
+async def _on_stackTrace(self, request: Request) -> None:
+    payload = await self.session.helper("Devel::TdbHelper::stack()")
+    frames = []
+    for i, f in enumerate(payload["frames"]):
+        frames.append(
+            {
                 "id": i,
                 "name": f.get("sub") or "main",
                 "line": f["line"],
                 "column": 1,
                 "source": {"path": f["file"]},
-            })
-        self.send_response(
-            request, {"stackFrames": frames, "totalFrames": len(frames)}
-        )
-
-    async def _on_scopes(self, request: Request) -> None:
-        frame = request.arguments.get("frameId", 0)
-        payload = await self.session.helper(
-            f"Devel::TdbHelper::scopes({frame})"
-        )
-        scopes = [
-            {
-                "name": s["name"],
-                "variablesReference": self.refs.add_scope(frame, s["kind"]),
-                "expensive": False,
             }
-            for s in payload["scopes"]
-        ]
-        self.send_response(request, {"scopes": scopes})
+        )
+    self.send_response(request, {"stackFrames": frames, "totalFrames": len(frames)})
 
-    async def _on_variables(self, request: Request) -> None:
-        ref = request.arguments.get("variablesReference", 0)
-        entry = self.refs.get(ref)
-        if entry is None:
-            self.send_error(request, f"stale variablesReference {ref}")
-            return
-        if entry["kind"] == "scope":
-            payload = await self.session.helper(
-                f"Devel::TdbHelper::vars({entry['frame']}, "
-                f"{self._perl_str(entry['scope'])})"
-            )
-        else:
-            payload = await self.session.helper(
-                f"Devel::TdbHelper::expand({entry['helper_id']})"
-            )
-        variables = []
-        if payload.get("degraded"):
-            variables.append({
+
+async def _on_scopes(self, request: Request) -> None:
+    frame = request.arguments.get("frameId", 0)
+    payload = await self.session.helper(f"Devel::TdbHelper::scopes({frame})")
+    scopes = [
+        {
+            "name": s["name"],
+            "variablesReference": self.refs.add_scope(frame, s["kind"]),
+            "expensive": False,
+        }
+        for s in payload["scopes"]
+    ]
+    self.send_response(request, {"scopes": scopes})
+
+
+async def _on_variables(self, request: Request) -> None:
+    ref = request.arguments.get("variablesReference", 0)
+    entry = self.refs.get(ref)
+    if entry is None:
+        self.send_error(request, f"stale variablesReference {ref}")
+        return
+    if entry["kind"] == "scope":
+        payload = await self.session.helper(
+            f"Devel::TdbHelper::vars({entry['frame']}, "
+            f"{self._perl_str(entry['scope'])})"
+        )
+    else:
+        payload = await self.session.helper(
+            f"Devel::TdbHelper::expand({entry['helper_id']})"
+        )
+    variables = []
+    if payload.get("degraded"):
+        variables.append(
+            {
                 "name": "<lexicals>",
                 "value": payload["degraded"],
                 "variablesReference": 0,
-            })
-        for v in payload.get("vars", []):
-            variables.append({
+            }
+        )
+    for v in payload.get("vars", []):
+        variables.append(
+            {
                 "name": v["name"],
                 "value": v["value"],
-                "variablesReference": (
-                    self.refs.add_object(v["id"]) if v["id"] else 0
-                ),
-            })
-        self.send_response(request, {"variables": variables})
-
-    async def _on_evaluate(self, request: Request) -> None:
-        expr = request.arguments.get("expression", "")
-        cmd = (
-            "{ local $@; my $r = [ eval { " + expr + " } ]; "
-            "Devel::TdbHelper::emit_eval($r, $@) }"
+                "variablesReference": (self.refs.add_object(v["id"]) if v["id"] else 0),
+            }
         )
-        try:
-            payload = await self.session.helper(cmd)
-        except PerlProtocolError as e:
-            self.send_error(request, str(e))
-            return
-        self.send_response(request, {
+    self.send_response(request, {"variables": variables})
+
+
+async def _on_evaluate(self, request: Request) -> None:
+    expr = request.arguments.get("expression", "")
+    cmd = (
+        "{ local $@; my $r = [ eval { " + expr + " } ]; "
+        "Devel::TdbHelper::emit_eval($r, $@) }"
+    )
+    try:
+        payload = await self.session.helper(cmd)
+    except PerlProtocolError as e:
+        self.send_error(request, str(e))
+        return
+    self.send_response(
+        request,
+        {
             "result": payload["value"],
             "variablesReference": (
                 self.refs.add_object(payload["id"]) if payload.get("id") else 0
             ),
-        })
+        },
+    )
 ```
 
 Note: `helper()` raises on `{"error": ...}` payloads, so a `die` in the
@@ -2423,8 +2494,10 @@ async def running_loop(tmp_path):
     c = AdapterClient()
     await c.start()
     await c.request("initialize", {"adapterID": "perl-tdb"})
-    fut = c.send("launch", {"program": str(p), "args": [],
-                            "cwd": str(tmp_path), "stopOnEntry": False})
+    fut = c.send(
+        "launch",
+        {"program": str(p), "args": [], "cwd": str(tmp_path), "stopOnEntry": False},
+    )
     await c.wait_event("initialized")
     await c.request("configurationDone")
     await asyncio.wait_for(fut, 30)
@@ -2456,28 +2529,29 @@ Run: `.venv/bin/pytest tests/integration/test_perl_adapter_pause_source.py -q` �
 - [ ] **Step 3: Implement**
 
 ```python
-    async def _on_pause(self, request: Request) -> None:
-        if self.session is None:
-            self.send_error(request, "no session")
-            return
-        if self.session.stopped:
-            self.send_response(request)
-            return
-        if not self.session.interrupt():
-            self.send_error(request, "pause is not available for this session")
-            return
-        self._pause_pending = True
+async def _on_pause(self, request: Request) -> None:
+    if self.session is None:
+        self.send_error(request, "no session")
+        return
+    if self.session.stopped:
         self.send_response(request)
+        return
+    if not self.session.interrupt():
+        self.send_error(request, "pause is not available for this session")
+        return
+    self._pause_pending = True
+    self.send_response(request)
 
-    async def _on_source(self, request: Request) -> None:
-        path = request.arguments.get("source", {}).get("path", "")
-        payload = await self.session.helper(
-            f"Devel::TdbHelper::source({self._perl_str(path)})"
-        )
-        if not payload.get("text"):
-            self.send_error(request, f"no compiled source for {path}")
-            return
-        self.send_response(request, {"content": payload["text"]})
+
+async def _on_source(self, request: Request) -> None:
+    path = request.arguments.get("source", {}).get("path", "")
+    payload = await self.session.helper(
+        f"Devel::TdbHelper::source({self._perl_str(path)})"
+    )
+    if not payload.get("text"):
+        self.send_error(request, f"no compiled source for {path}")
+        return
+    self.send_response(request, {"content": payload["text"]})
 ```
 
 In `_classify_and_emit_stop`, before the breakpoint check: `if getattr(self, "_pause_pending", False): self._pause_pending = False; reason = "pause"` (breakpoint match still wins if both apply — check breakpoint first, pause second, then step). Initialize `self._pause_pending = False` in `__init__`.
@@ -2558,7 +2632,9 @@ def test_wait_for_client_stops_and_serves_helpers(tmp_path):
     port = _free_port()
     proc = subprocess.Popen(
         ["perl", f"-I{PKG_DIR}", str(prog), str(port), str(ready)],
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
     )
     try:
         for _ in range(100):
@@ -2571,14 +2647,14 @@ def test_wait_for_client_stops_and_serves_helpers(tmp_path):
         sock = socket.create_connection(("127.0.0.1", port), timeout=10)
         sock.settimeout(10)
         buf = b""
-        while b"DB<" not in buf:            # stopped: prompt arrives
+        while b"DB<" not in buf:  # stopped: prompt arrives
             buf += sock.recv(4096)
         sock.sendall(b"Devel::TdbHelper::location()\n")
         buf = b""
-        while b"<<<TDB" not in buf:         # helpers were preloaded
+        while b"<<<TDB" not in buf:  # helpers were preloaded
             buf += sock.recv(4096)
         assert b'"version":1' in buf.replace(b" ", b"")
-        sock.sendall(b"c\n")                # detach-ish: let it finish
+        sock.sendall(b"c\n")  # detach-ish: let it finish
         out, _ = proc.communicate(timeout=15)
         assert "after=42" in out
     finally:
@@ -2759,8 +2835,11 @@ def _profile(quirk: bool) -> LanguageProfile:
     if not quirk:
         adapter.quirks = AdapterQuirks(attach_via_adapter=False)
     return LanguageProfile(
-        id="x", display_name="X", adapter=adapter,
-        presentation=Presentation(), capabilities=ProfileCapabilities(),
+        id="x",
+        display_name="X",
+        adapter=adapter,
+        presentation=Presentation(),
+        capabilities=ProfileCapabilities(),
     )
 
 
@@ -2823,8 +2902,10 @@ print "counter=$counter\\n";
 
 
 def _free_port() -> int:
-    s = socket.socket(); s.bind(("127.0.0.1", 0))
-    port = s.getsockname()[1]; s.close()
+    s = socket.socket()
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
+    s.close()
     return port
 
 
@@ -2836,7 +2917,9 @@ def remote_debuggee(tmp_path):
     port = _free_port()
     proc = subprocess.Popen(
         ["perl", f"-I{PKG_DIR}", str(prog), str(port), str(ready)],
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
     )
     for _ in range(100):
         if ready.exists():
@@ -3024,35 +3107,54 @@ def test_command_is_bundled_module():
 
 def test_launch_body_carries_perl_override():
     body = PerlAdapter(perl_executable="/opt/bin/perl").launch_body(
-        program="/x/p.pl", args=["a"], cwd="/x", env={"K": "V"},
-        stop_on_entry=True, console="internalConsole", opts={},
+        program="/x/p.pl",
+        args=["a"],
+        cwd="/x",
+        env={"K": "V"},
+        stop_on_entry=True,
+        console="internalConsole",
+        opts={},
     )
     assert body == {
-        "type": "perl", "request": "launch", "program": "/x/p.pl",
-        "args": ["a"], "cwd": "/x", "stopOnEntry": True,
-        "env": {"K": "V"}, "perl": "/opt/bin/perl",
+        "type": "perl",
+        "request": "launch",
+        "program": "/x/p.pl",
+        "args": ["a"],
+        "cwd": "/x",
+        "stopOnEntry": True,
+        "env": {"K": "V"},
+        "perl": "/opt/bin/perl",
     }
 
 
 def test_launch_body_omits_optional_keys():
     body = PerlAdapter().launch_body(
-        program="/x/p.pl", args=[], cwd="/x", env=None,
-        stop_on_entry=False, console="internalConsole", opts={},
+        program="/x/p.pl",
+        args=[],
+        cwd="/x",
+        env=None,
+        stop_on_entry=False,
+        console="internalConsole",
+        opts={},
     )
     assert "env" not in body and "perl" not in body
 
 
 def test_attach_body():
     body = PerlAdapter().attach_body(host="devbox", port=5678, opts={})
-    assert body == {"type": "perl", "request": "attach",
-                    "host": "devbox", "port": 5678}
+    assert body == {"type": "perl", "request": "attach", "host": "devbox", "port": 5678}
 
 
 def test_adapter_paths_names_the_interpreter():
     p = build_perl_profile(adapter_paths={"perl": "/opt/bin/perl"})
     body = p.adapter.launch_body(
-        program="/x/p.pl", args=[], cwd="/x", env=None,
-        stop_on_entry=False, console="internalConsole", opts={},
+        program="/x/p.pl",
+        args=[],
+        cwd="/x",
+        env=None,
+        stop_on_entry=False,
+        console="internalConsole",
+        opts={},
     )
     assert body["perl"] == "/opt/bin/perl"
 

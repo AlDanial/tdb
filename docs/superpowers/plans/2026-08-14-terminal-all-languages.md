@@ -42,8 +42,13 @@ The controller already calls every profile's `launch_body(..., console=...)`, bu
 def test_launch_body_carries_console() -> None:
     adapter = TcshAdapter()
     body = adapter.launch_body(
-        program="/tmp/x.csh", args=[], cwd="/tmp", env=None,
-        stop_on_entry=True, console="externalTerminal", opts={},
+        program="/tmp/x.csh",
+        args=[],
+        cwd="/tmp",
+        env=None,
+        stop_on_entry=True,
+        console="externalTerminal",
+        opts={},
     )
     assert body["console"] == "externalTerminal"
 ```
@@ -103,16 +108,26 @@ def test_terminal_rejected_with_remote_attach():
 ```python
 def test_lldb_launch_body_external_terminal_sets_run_in_terminal() -> None:
     body = LldbDapAdapter().launch_body(
-        program="/bin/x", args=[], cwd="/", env=None,
-        stop_on_entry=False, console="externalTerminal", opts={},
+        program="/bin/x",
+        args=[],
+        cwd="/",
+        env=None,
+        stop_on_entry=False,
+        console="externalTerminal",
+        opts={},
     )
     assert body["runInTerminal"] is True
 
 
 def test_lldb_launch_body_internal_console_omits_run_in_terminal() -> None:
     body = LldbDapAdapter().launch_body(
-        program="/bin/x", args=[], cwd="/", env=None,
-        stop_on_entry=False, console="internalConsole", opts={},
+        program="/bin/x",
+        args=[],
+        cwd="/",
+        env=None,
+        stop_on_entry=False,
+        console="internalConsole",
+        opts={},
     )
     assert "runInTerminal" not in body
 
@@ -120,8 +135,13 @@ def test_lldb_launch_body_internal_console_omits_run_in_terminal() -> None:
 def test_gdb_launch_body_rejects_external_terminal() -> None:
     with pytest.raises(LanguageNotSupportedError, match="lldb-dap"):
         GdbDapAdapter().launch_body(
-            program="/bin/x", args=[], cwd="/", env=None,
-            stop_on_entry=False, console="externalTerminal", opts={},
+            program="/bin/x",
+            args=[],
+            cwd="/",
+            env=None,
+            stop_on_entry=False,
+            console="externalTerminal",
+            opts={},
         )
 ```
 
@@ -180,15 +200,16 @@ def make_requester(sent: list[dict]) -> ReverseRequester:
 async def test_request_resolves_on_matching_response():
     sent: list[dict] = []
     requester = make_requester(sent)
-    task = asyncio.ensure_future(
-        requester.request("runInTerminal", {"args": ["true"]})
-    )
+    task = asyncio.ensure_future(requester.request("runInTerminal", {"args": ["true"]}))
     await asyncio.sleep(0)
     assert sent[0]["command"] == "runInTerminal"
     assert sent[0]["type"] == "request"
     response = Response(
-        seq=1, request_seq=sent[0]["seq"], command="runInTerminal",
-        success=True, body={},
+        seq=1,
+        request_seq=sent[0]["seq"],
+        command="runInTerminal",
+        success=True,
+        body={},
     )
     assert requester.route(response) is True
     assert (await task).success is True
@@ -199,10 +220,15 @@ async def test_failure_response_raises():
     requester = make_requester(sent)
     task = asyncio.ensure_future(requester.request("runInTerminal", {}))
     await asyncio.sleep(0)
-    requester.route(Response(
-        seq=1, request_seq=sent[0]["seq"], command="runInTerminal",
-        success=False, message="no emulator",
-    ))
+    requester.route(
+        Response(
+            seq=1,
+            request_seq=sent[0]["seq"],
+            command="runInTerminal",
+            success=False,
+            message="no emulator",
+        )
+    )
     with pytest.raises(ReverseRequestError, match="no emulator"):
         await task
 
@@ -210,9 +236,10 @@ async def test_failure_response_raises():
 async def test_route_ignores_unrelated_messages():
     requester = make_requester([])
     assert requester.route(object()) is False
-    assert requester.route(
-        Response(seq=1, request_seq=999, command="x", success=True)
-    ) is False
+    assert (
+        requester.route(Response(seq=1, request_seq=999, command="x", success=True))
+        is False
+    )
 ```
 
 - [ ] **Step 2: Run** `uv run pytest tests/unit/test_dap_reverse.py -q` → import error.
@@ -249,9 +276,7 @@ class ReverseRequester:
         self, command: str, arguments: dict[str, Any], timeout: float = 30.0
     ) -> Response:
         seq = self._next_seq()
-        future: asyncio.Future[Response] = (
-            asyncio.get_running_loop().create_future()
-        )
+        future: asyncio.Future[Response] = asyncio.get_running_loop().create_future()
         self._pending[seq] = future
         try:
             self._write(
@@ -321,9 +346,7 @@ async def test_harness_connects_over_fifo_paths_and_reports_pid(tmp_path):
     rec = Recorder()
     s = BashSession(rec.on_output, rec.on_stop, rec.on_exit)
     try:
-        await s.launch(
-            program=str(script), args=[], cwd=str(tmp_path), env=None
-        )
+        await s.launch(program=str(script), args=[], cwd=str(tmp_path), env=None)
         assert s.debuggee_pid is not None
         os.kill(s.debuggee_pid, 0)  # alive, and it is bash itself
         assert "__TDB_CMD_FD" not in s._launch_env_snapshot
@@ -420,28 +443,28 @@ unset __TDB_CMD_PATH __TDB_RESP_PATH
 and the method (plus keep a strong ref set `self._reverse_tasks: set = set()` per the repo's task-GC pitfall):
 
 ```python
-    async def _answer_reverse(self, body: dict):
-        handler = self.on_reverse_request
-        try:
-            result = await handler(body) if handler else {}
-            ok = handler is not None
-        except Exception as e:  # noqa: BLE001
-            result, ok = {"message": str(e)}, False
-        self.seq += 1
-        reply = {
-            "seq": self.seq, "type": "response",
-            "request_seq": body["seq"], "command": body["command"],
-            "success": ok,
-        }
-        if ok:
-            reply["body"] = result
-        else:
-            reply["message"] = result.get("message", "unhandled reverse request")
-        data = json.dumps(reply).encode()
-        self.proc.stdin.write(
-            f"Content-Length: {len(data)}\r\n\r\n".encode() + data
-        )
-        await self.proc.stdin.drain()
+async def _answer_reverse(self, body: dict):
+    handler = self.on_reverse_request
+    try:
+        result = await handler(body) if handler else {}
+        ok = handler is not None
+    except Exception as e:  # noqa: BLE001
+        result, ok = {"message": str(e)}, False
+    self.seq += 1
+    reply = {
+        "seq": self.seq,
+        "type": "response",
+        "request_seq": body["seq"],
+        "command": body["command"],
+        "success": ok,
+    }
+    if ok:
+        reply["body"] = result
+    else:
+        reply["message"] = result.get("message", "unhandled reverse request")
+    data = json.dumps(reply).encode()
+    self.proc.stdin.write(f"Content-Length: {len(data)}\r\n\r\n".encode() + data)
+    await self.proc.stdin.drain()
 ```
 
 (Wrap the `ensure_future` result: `t = asyncio.ensure_future(...); self._reverse_tasks.add(t); t.add_done_callback(self._reverse_tasks.discard)`.)
@@ -478,7 +501,8 @@ class TerminalSpawner:
         self.requests.append(body)
         args = body["arguments"]
         self.proc = await asyncio.create_subprocess_exec(
-            *args["args"], cwd=args.get("cwd"),
+            *args["args"],
+            cwd=args.get("cwd"),
             env=args.get("env") or None,
             stdin=asyncio.subprocess.DEVNULL,
         )
@@ -495,17 +519,23 @@ async def client():
 
 async def test_terminal_launch_steps_and_reports_exit_code(client, tmp_path):
     script = tmp_path / "t.pl"
-    script.write_text('my $x = 1;\nmy $y = 2;\nexit 7;\n')
+    script.write_text("my $x = 1;\nmy $y = 2;\nexit 7;\n")
     spawner = TerminalSpawner()
     client.on_reverse_request = spawner
     await client.request(
         "initialize",
         {"adapterID": "perl-tdb", "supportsRunInTerminalRequest": True},
     )
-    launch_fut = client.send("launch", {
-        "program": str(script), "args": [], "cwd": str(tmp_path),
-        "stopOnEntry": True, "console": "externalTerminal",
-    })
+    launch_fut = client.send(
+        "launch",
+        {
+            "program": str(script),
+            "args": [],
+            "cwd": str(tmp_path),
+            "stopOnEntry": True,
+            "console": "externalTerminal",
+        },
+    )
     await client.wait_event("initialized")
     await client.request("configurationDone")
     assert (await asyncio.wait_for(launch_fut, 30))["success"] is True
@@ -524,10 +554,14 @@ async def test_terminal_launch_without_capability_fails(client, tmp_path):
     script = tmp_path / "t.pl"
     script.write_text("my $x = 1;\n")
     await client.request("initialize", {"adapterID": "perl-tdb"})
-    resp = await client.request("launch", {
-        "program": str(script), "cwd": str(tmp_path),
-        "console": "externalTerminal",
-    })
+    resp = await client.request(
+        "launch",
+        {
+            "program": str(script),
+            "cwd": str(tmp_path),
+            "console": "externalTerminal",
+        },
+    )
     assert resp["success"] is False
     assert "runInTerminal" in resp["message"]
 ```
@@ -589,39 +623,43 @@ RunInTerminal = Callable[[list[str], str, dict[str, str]], Awaitable[None]]
 In `stop()`, after the existing owned-process handling, add the terminal-mode force-kill (plain `os.kill`, NOT killpg — the debuggee shares the emulator's process group; and clean the status dir):
 
 ```python
-        if self._process is None and self.debuggee_pid is not None:
-            for sig in (signal.SIGTERM, signal.SIGKILL):
-                try:
-                    os.kill(self.debuggee_pid, sig)
-                except (ProcessLookupError, PermissionError):
-                    break
-                await asyncio.sleep(0.05)
-        if self._exit_status_path is not None:
-            shutil.rmtree(os.path.dirname(self._exit_status_path),
-                          ignore_errors=True)
-            self._exit_status_path = None
+if self._process is None and self.debuggee_pid is not None:
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        try:
+            os.kill(self.debuggee_pid, sig)
+        except (ProcessLookupError, PermissionError):
+            break
+        await asyncio.sleep(0.05)
+if self._exit_status_path is not None:
+    shutil.rmtree(os.path.dirname(self._exit_status_path), ignore_errors=True)
+    self._exit_status_path = None
 ```
 
 (Add `import shutil`.)
 - [ ] **Step 6: Implement the server side.** `PerlDapServer.__init__`: `self._client_supports_run_in_terminal = False`. `_on_initialize`: before sending the response, `self._client_supports_run_in_terminal = bool(request.arguments.get("supportsRunInTerminalRequest"))`. In `_on_launch`, after the preflight and before constructing the session:
 
 ```python
-        run_in_terminal = None
-        if args.get("console") == "externalTerminal":
-            if not self._client_supports_run_in_terminal:
-                self.send_error(
-                    request,
-                    "externalTerminal launch requires a client that "
-                    "supports the runInTerminal reverse request",
-                )
-                return
+run_in_terminal = None
+if args.get("console") == "externalTerminal":
+    if not self._client_supports_run_in_terminal:
+        self.send_error(
+            request,
+            "externalTerminal launch requires a client that "
+            "supports the runInTerminal reverse request",
+        )
+        return
 
-            async def run_in_terminal(cmd, cwd, env):
-                await self._reverse.request("runInTerminal", {
-                    "kind": "external",
-                    "title": "tdb perl debuggee",
-                    "cwd": cwd, "args": cmd, "env": env,
-                })
+    async def run_in_terminal(cmd, cwd, env):
+        await self._reverse.request(
+            "runInTerminal",
+            {
+                "kind": "external",
+                "title": "tdb perl debuggee",
+                "cwd": cwd,
+                "args": cmd,
+                "env": env,
+            },
+        )
 ```
 
 and pass `run_in_terminal=run_in_terminal` into `self.session.launch(...)`. A `ReverseRequestError` escaping `launch` is caught by the existing `except PerlProtocolError` — it is NOT one, so extend that except clause: `except (PerlProtocolError, ReverseRequestError) as e:` and use `str(e)` when it has no `.tail` (`getattr(e, "tail", "")`).
@@ -665,7 +703,8 @@ class TerminalSpawner:
         self.requests.append(body)
         args = body["arguments"]
         self.proc = await asyncio.create_subprocess_exec(
-            *args["args"], cwd=args.get("cwd"),
+            *args["args"],
+            cwd=args.get("cwd"),
             env=args.get("env") or None,
             stdin=asyncio.subprocess.DEVNULL,
         )
@@ -685,13 +724,17 @@ async def test_terminal_launch_breakpoint_and_exit_code(client, tmp_path):
     script.write_text("x=1\nx=2\nexit 5\n")
     spawner = TerminalSpawner()
     client.on_reverse_request = spawner
-    await client.request(
-        "initialize", {"supportsRunInTerminalRequest": True}
+    await client.request("initialize", {"supportsRunInTerminalRequest": True})
+    launch_fut = client.send(
+        "launch",
+        {
+            "program": str(script),
+            "args": [],
+            "cwd": str(tmp_path),
+            "stopOnEntry": True,
+            "console": "externalTerminal",
+        },
     )
-    launch_fut = client.send("launch", {
-        "program": str(script), "args": [], "cwd": str(tmp_path),
-        "stopOnEntry": True, "console": "externalTerminal",
-    })
     await client.wait_event("initialized")
     await client.request("configurationDone")
     assert (await asyncio.wait_for(launch_fut, 30))["success"] is True
@@ -730,29 +773,30 @@ async def test_terminal_launch_breakpoint_and_exit_code(client, tmp_path):
 - [ ] **Step 4: Terminal exit watch.** New method on `BashSession` — the response FIFO delivers EOF when bash and its fd-inheriting children are gone (`_resp_loop` returns), then the wrapper's status file gives the code:
 
 ```python
-    async def _terminal_exit_watch(self) -> None:
-        await self._tasks[0]  # _resp_loop: returns on response-FIFO EOF
-        code = -1
-        deadline = asyncio.get_running_loop().time() + 2.0
-        while asyncio.get_running_loop().time() < deadline:
-            try:
-                text = open(self._exit_status_path).read().strip()
-            except OSError:
-                text = ""
-            if text:
-                code = int(text)
-                break
-            await asyncio.sleep(0.05)
-        self.exit_code = code
-        if self._ready and not self._ready.done():
-            self._ready.set_exception(BashProtocolError(
-                "bash exited before the harness reported ready "
-                "(external terminal)"
-            ))
-            return
-        if self._pending and not self._pending.done():
-            self._pending.set_exception(BashProtocolError("debuggee exited"))
-        self._on_exit(code)
+async def _terminal_exit_watch(self) -> None:
+    await self._tasks[0]  # _resp_loop: returns on response-FIFO EOF
+    code = -1
+    deadline = asyncio.get_running_loop().time() + 2.0
+    while asyncio.get_running_loop().time() < deadline:
+        try:
+            text = open(self._exit_status_path).read().strip()
+        except OSError:
+            text = ""
+        if text:
+            code = int(text)
+            break
+        await asyncio.sleep(0.05)
+    self.exit_code = code
+    if self._ready and not self._ready.done():
+        self._ready.set_exception(
+            BashProtocolError(
+                "bash exited before the harness reported ready (external terminal)"
+            )
+        )
+        return
+    if self._pending and not self._pending.done():
+        self._pending.set_exception(BashProtocolError("debuggee exited"))
+    self._on_exit(code)
 ```
 
 Order the `self._tasks` list in terminal mode as `[resp_loop_task, exit_watch_task]` so index 0 stays `_resp_loop` (match the existing pipe-mode convention where `_tasks[0]` is `_resp_loop`).
@@ -787,13 +831,23 @@ async def test_guardian_path_mode_handshake_pid_and_exit_status(
     control_writer = os.open(control_path, os.O_RDWR)
     guardian_path = (
         Path(__file__).resolve().parents[2]
-        / "src" / "tdb" / "adapters" / "tcsh" / "guardian.py"
+        / "src"
+        / "tdb"
+        / "adapters"
+        / "tcsh"
+        / "guardian.py"
     )
     process = await asyncio.create_subprocess_exec(
-        sys.executable, str(guardian_path),
-        "--status-path", str(status_path),
-        "--control-path", str(control_path),
-        "--", "/bin/sh", "-c", "exit 3",
+        sys.executable,
+        str(guardian_path),
+        "--status-path",
+        str(status_path),
+        "--control-path",
+        str(control_path),
+        "--",
+        "/bin/sh",
+        "-c",
+        "exit 3",
         cwd=str(tmp_path),
         stdin=asyncio.subprocess.DEVNULL,
         start_new_session=True,
@@ -804,16 +858,22 @@ async def test_guardian_path_mode_handshake_pid_and_exit_status(
         )
         assert line == b"armed\n"
         os.write(control_writer, b"start\n")
-        assert await asyncio.wait_for(
-            asyncio.to_thread(read_descriptor_line, status_reader), 5
-        ) == b"ok\n"
+        assert (
+            await asyncio.wait_for(
+                asyncio.to_thread(read_descriptor_line, status_reader), 5
+            )
+            == b"ok\n"
+        )
         pid_line = await asyncio.wait_for(
             asyncio.to_thread(read_descriptor_line, status_reader), 5
         )
         assert pid_line == f"pid {process.pid}\n".encode()
-        assert await asyncio.wait_for(
-            asyncio.to_thread(read_descriptor_line, status_reader), 5
-        ) == b"exit 3\n"
+        assert (
+            await asyncio.wait_for(
+                asyncio.to_thread(read_descriptor_line, status_reader), 5
+            )
+            == b"exit 3\n"
+        )
         assert await asyncio.wait_for(process.wait(), 5) == 3
     finally:
         os.close(status_reader)
@@ -938,7 +998,8 @@ async def test_terminal_launch_steps_and_reports_exit_code(
         args = message["arguments"]
         assert args["kind"] == "external"
         proc = await asyncio.create_subprocess_exec(
-            *args["args"], cwd=args.get("cwd"),
+            *args["args"],
+            cwd=args.get("cwd"),
             env=args.get("env") or None,
             stdin=asyncio.subprocess.DEVNULL,
         )
@@ -975,10 +1036,14 @@ async def test_terminal_launch_without_capability_fails(
     program = tmp_path / "t.csh"
     program.write_text("set x = 1\n")
     await dap_client.initialize()
-    response = await dap_client.request("launch", {
-        "program": str(program), "tcshPath": str(tcsh_path),
-        "console": "externalTerminal",
-    })
+    response = await dap_client.request(
+        "launch",
+        {
+            "program": str(program),
+            "tcshPath": str(tcsh_path),
+            "console": "externalTerminal",
+        },
+    )
     assert response["success"] is False
     assert "runInTerminal" in response["message"]
 ```
@@ -1089,37 +1154,43 @@ async def test_terminal_launch_without_capability_fails(
   - New method:
 
 ```python
-    async def _send_reverse_request(
-        self, command: str, arguments: Mapping[str, object]
-    ) -> None:
-        future: asyncio.Future[Mapping[str, object]] = (
-            asyncio.get_running_loop().create_future()
-        )
-        seq = await self._send(
-            {"type": "request", "command": command, "arguments": dict(arguments)}
-        )
-        self._reverse_pending[seq] = future
-        try:
-            response = await asyncio.wait_for(future, 30.0)
-        finally:
-            self._reverse_pending.pop(seq, None)
-        if not response.get("success"):
-            raise LaunchError(
-                str(response.get("message") or f"{command} was refused")
-            )
+async def _send_reverse_request(
+    self, command: str, arguments: Mapping[str, object]
+) -> None:
+    future: asyncio.Future[Mapping[str, object]] = (
+        asyncio.get_running_loop().create_future()
+    )
+    seq = await self._send(
+        {"type": "request", "command": command, "arguments": dict(arguments)}
+    )
+    self._reverse_pending[seq] = future
+    try:
+        response = await asyncio.wait_for(future, 30.0)
+    finally:
+        self._reverse_pending.pop(seq, None)
+    if not response.get("success"):
+        raise LaunchError(str(response.get("message") or f"{command} was refused"))
 ```
 
     NOTE an ordering subtlety: register the future in `_reverse_pending` BEFORE awaiting `_send` (compute nothing from the seq before send returns — restructure: `_send` acquires the write lock, so the response cannot arrive before `_send` returns from `drain()`... it CAN arrive before the `self._reverse_pending[seq] = future` line runs on this task. Register defensively: change `_send` usage to a two-step — take the seq under the same lock. Simplest correct form: make `_send` return the seq, then `self._reverse_pending[seq] = future` immediately after, and have the router (`_handle_request`) buffer unmatched responses: keep `self._unmatched_responses: dict[int, Mapping[str, object]] = {}`; router stores there when no future is pending; `_send_reverse_request` checks `_unmatched_responses.pop(seq, None)` before awaiting. Implement it exactly so.)
   - `_launch` / `_launch_config`: read `console`; when `externalTerminal`, require the capability (`RequestError` with "externalTerminal launch requires a client that supports the runInTerminal reverse request") and build the config with `external_terminal=True`; construct the session as `self._session_factory(config, sink)` then set its callback:
 
 ```python
-        if config.external_terminal:
-            async def run_in_terminal(cmd, cwd, env):
-                await self._send_reverse_request("runInTerminal", {
-                    "kind": "external", "title": "tdb tcsh debuggee",
-                    "cwd": cwd, "args": cmd, "env": env,
-                })
-            session._run_in_terminal = run_in_terminal
+if config.external_terminal:
+
+    async def run_in_terminal(cmd, cwd, env):
+        await self._send_reverse_request(
+            "runInTerminal",
+            {
+                "kind": "external",
+                "title": "tdb tcsh debuggee",
+                "cwd": cwd,
+                "args": cmd,
+                "env": env,
+            },
+        )
+
+    session._run_in_terminal = run_in_terminal
 ```
 
     (Setting the attribute post-construction keeps the `SessionFactory` signature — and every existing test factory — unchanged.)
@@ -1163,10 +1234,14 @@ async def test_launcher_wraps_command_in_emulator(tmp_path, monkeypatch):
     )
     marker = tmp_path / "ran"
     launcher = TerminalLauncher("fakeem")
-    request = Request(seq=1, command="runInTerminal", arguments={
-        "args": ["/bin/sh", "-c", f"echo done > {marker}"],
-        "cwd": str(tmp_path),
-    })
+    request = Request(
+        seq=1,
+        command="runInTerminal",
+        arguments={
+            "args": ["/bin/sh", "-c", f"echo done > {marker}"],
+            "cwd": str(tmp_path),
+        },
+    )
     body = await launcher.handle_run_in_terminal(request)
     assert body == {}
     deadline = asyncio.get_running_loop().time() + 5

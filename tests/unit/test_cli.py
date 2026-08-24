@@ -67,6 +67,28 @@ def test_rust_remote_attach_resolves_local_program(tmp_path):
     assert args.program == str(program.resolve())
 
 
+def test_cpp_remote_attach_requires_local_program(capsys):
+    with pytest.raises(SystemExit):
+        parse_args(["--lang", "cpp", "-r", "host:2345"])
+    assert "remote attach requires a local program" in capsys.readouterr().err
+
+
+def test_cpp_remote_attach_resolves_local_program(tmp_path):
+    program = tmp_path / "app"
+    program.write_bytes(b"\x7fELF" + b"\0" * 60)
+
+    args = parse_args(["-r", "host:2345", str(program)])
+
+    assert args.profile.id == "cpp"
+    assert args.program == str(program.resolve())
+
+
+def test_ocaml_remote_attach_still_refused(capsys):
+    with pytest.raises(SystemExit):
+        parse_args(["--lang", "ocaml", "-r", "host:2345"])
+    assert "--remote-attach supports" in capsys.readouterr().err
+
+
 def test_explicit_rust_rejects_source_file_with_debug_build_hint(tmp_path, capsys):
     source = tmp_path / "main.rs"
     source.write_text("fn main() {}\n")

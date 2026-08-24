@@ -1,0 +1,33 @@
+Show HN: textual-debugger, a Python TUI debugger with features for async/threading/multiprocessing
+Show HN: textual-debugger, a Python debugger for async/threading/multiprocessing
+Show HN: textual-debugger, a Python TUI debugger with power features
+                                                                                ..................
+
+I'm a vim/command line guy and loved using pudb
+(https://pypi.org/project/pudb/) as I was learning Python.
+Gradually my code became more complex and pudb wasn't
+keeping up; event loops and the threading and multiprocessing
+modules were problematic.
+
+TL;DR:  I used Claude Code to write the TUI debugger of my
+dreams:  https://pypi.org/project/textual-debugger/
+It's built with textual and debugpy so can do all the
+things possible you'd would expect with the Debug Adapter
+Protocol (remote attach, thread/process inspection).
+
+And then some!
+
+I added a JSON-RPC interface so the debugger can be controlled
+by external tools (eg an AI agent).  I also added the capability
+to run the debug target in a separate terminal which is handy
+for debugging applications that make demands on the terminal
+(like curses / rich / textual apps).
+Here's a video of that in action:  https://youtu.be/121aihjAQ8g
+
+Screenshots:
+- https://github.com/AlDanial/tdb/blob/main/gallery/async_breakpoint.png
+- https://github.com/AlDanial/tdb/blob/main/gallery/async_task_graph.png
+- https://github.com/AlDanial/tdb/blob/main/gallery/multiprocessing_process_3.png
+- https://github.com/AlDanial/tdb/blob/main/gallery/threading_list.png
+
+Give it a try!     pip install textual-debugger

@@ -109,6 +109,7 @@ def test_sse_unsubscribe():
 
 def test_continued_dismisses_rust_workspace():
     """A continued/step event makes a captured Rust snapshot stale."""
+
     class _App:
         def __init__(self) -> None:
             self.controller = DebugController(ServerEventHandler())
@@ -140,6 +141,7 @@ def test_continued_dismisses_rust_workspace():
 
 def test_exited_dismisses_rust_workspace_without_terminated_event():
     """Exited-only adapters must not retain stale Rust snapshot screens."""
+
     class _App:
         def __init__(self) -> None:
             self.controller = DebugController(ServerEventHandler())

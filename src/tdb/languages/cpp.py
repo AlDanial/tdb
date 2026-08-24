@@ -16,6 +16,7 @@ from typing import Any
 
 from tdb.languages.base import (
     AdapterNotFoundError,
+    AdapterQuirks,
     AdapterSpec,
     LanguageNotSupportedError,
     LanguageProfile,
@@ -24,8 +25,27 @@ from tdb.languages.base import (
 )
 
 
+def _required_program(opts: dict[str, Any]) -> str:
+    """Native remote attach drives gdbserver/lldb-server through a local
+    adapter, which needs the local symbol-bearing copy of the remote
+    executable."""
+    program = opts.get("program")
+    if not isinstance(program, str) or not program:
+        raise LanguageNotSupportedError(
+            "native remote attach requires a local program with debug symbols"
+        )
+    return program
+
+
+def _gdb_string(value: str) -> str:
+    """Quote one argument for a gdb CLI command that parses via buildargv
+    (e.g. `set substitute-path`)."""
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
 class LldbDapAdapter(AdapterSpec):
     id = "lldb-dap"
+    quirks = AdapterQuirks(attach_via_adapter=True, attach_requires_local_program=True)
 
     def __init__(self, executable: str | None = None) -> None:
         self._executable = executable
@@ -69,9 +89,15 @@ class LldbDapAdapter(AdapterSpec):
     def attach_body(
         self, *, host: str, port: int, opts: dict[str, Any]
     ) -> dict[str, Any]:
-        raise LanguageNotSupportedError(
-            "remote attach is not supported for lldb-dap yet"
-        )
+        body: dict[str, Any] = {
+            "program": _required_program(opts),
+            "gdb-remote-host": host,
+            "gdb-remote-port": port,
+        }
+        mappings = opts.get("path_mappings") or []
+        if mappings:
+            body["sourceMap"] = [[remote, local] for local, remote in mappings]
+        return body
 
 
 class GdbDapAdapter(AdapterSpec):
@@ -82,6 +108,7 @@ class GdbDapAdapter(AdapterSpec):
     """
 
     id = "gdb"
+    quirks = AdapterQuirks(attach_via_adapter=True, attach_requires_local_program=True)
 
     def __init__(self, executable: str | None = None) -> None:
         self._executable = executable
@@ -129,8 +156,15 @@ class GdbDapAdapter(AdapterSpec):
     def attach_body(
         self, *, host: str, port: int, opts: dict[str, Any]
     ) -> dict[str, Any]:
-        raise LanguageNotSupportedError(
-            "remote attach is not supported for gdb -i dap yet"
+        # gdb-dap passes "target" to `target remote`.
+        return {"program": _required_program(opts), "target": f"{host}:{port}"}
+
+    def pre_configuration_commands(
+        self, path_mappings: list[tuple[str, str]]
+    ) -> tuple[str, ...]:
+        return tuple(
+            f"set substitute-path {_gdb_string(remote)} {_gdb_string(local)}"
+            for local, remote in path_mappings
         )
 
 

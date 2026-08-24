@@ -70,15 +70,16 @@ These were established empirically against perl 5.40.1 before this plan was writ
 class ErrorFrame:
     path: str
     line: int
-    func: str          # "" when the language doesn't name one
+    func: str  # "" when the language doesn't name one
+
 
 @dataclass(frozen=True)
 class ParsedError:
-    header: str        # modal's first line, e.g. "Traceback (most recent call last):"
-    message: str       # e.g. "ZeroDivisionError: division by zero"
-    frames: list[ErrorFrame]   # OUTERMOST-first (source order), same as Python prints
+    header: str  # modal's first line, e.g. "Traceback (most recent call last):"
+    message: str  # e.g. "ZeroDivisionError: division by zero"
+    frames: list[ErrorFrame]  # OUTERMOST-first (source order), same as Python prints
 
-# on Presentation:
+    # on Presentation:
     parse_error: Callable[[str], "ParsedError | None"] | None = None
 ```
 
@@ -92,15 +93,15 @@ class ParsedError:
 
 from tdb.languages.errors import parse_python_error
 
-SIMPLE = '''Traceback (most recent call last):
+SIMPLE = """Traceback (most recent call last):
   File "/app/main.py", line 12, in <module>
     boom()
   File "/app/lib.py", line 5, in boom
     return 1 / 0
 ZeroDivisionError: division by zero
-'''
+"""
 
-CHAINED = '''Traceback (most recent call last):
+CHAINED = """Traceback (most recent call last):
   File "/app/a.py", line 2, in <module>
     inner()
 ValueError: first
@@ -111,7 +112,7 @@ Traceback (most recent call last):
   File "/app/b.py", line 9, in <module>
     outer()
 RuntimeError: second
-'''
+"""
 
 
 def test_returns_none_without_traceback():
@@ -307,11 +308,11 @@ import pytest
 from tdb.app import TdbApp
 from tdb.persist import TdbConfig
 
-PY_TB = '''Traceback (most recent call last):
+PY_TB = """Traceback (most recent call last):
   File "/app/main.py", line 3, in <module>
     boom()
 ZeroDivisionError: division by zero
-'''
+"""
 
 PERL_DIE = "Illegal division by zero at /w/x.pl line 4.\n"
 
@@ -444,7 +445,7 @@ async def test_clean_exit_reports_zero(tmp_path):
 
 
 async def test_die_reports_nonzero(tmp_path):
-    code = await _run_to_exit(tmp_path, 'my $x = 0;\nmy $y = 1 / $x;\n')
+    code = await _run_to_exit(tmp_path, "my $x = 0;\nmy $y = 1 / $x;\n")
     assert code != 0
 ```
 
