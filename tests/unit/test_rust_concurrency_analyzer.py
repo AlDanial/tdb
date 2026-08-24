@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
-from tdb.rust_concurrency.analyzer import analyze, find_confirmed_cycles, find_suspected_stalls
+from tdb.rust_concurrency.analyzer import (
+    analyze,
+    find_confirmed_cycles,
+    find_suspected_stalls,
+)
 from tdb.rust_concurrency.models import (
     Confidence,
     Evidence,
@@ -80,13 +84,17 @@ def raw_all_blocked_with_unknown_owners() -> tuple[RawSnapshot, ProbeResult]:
                 primitive_id="mutex:0x10",
                 owner_os_thread_ids=(),
                 raw_state="locked",
-                evidence=(Evidence(Confidence.UNKNOWN, "probe-owner", "owner unavailable"),),
+                evidence=(
+                    Evidence(Confidence.UNKNOWN, "probe-owner", "owner unavailable"),
+                ),
             ),
             ProbePrimitiveState(
                 primitive_id="mutex:0x20",
                 owner_os_thread_ids=(),
                 raw_state="locked",
-                evidence=(Evidence(Confidence.UNKNOWN, "probe-owner", "owner unavailable"),),
+                evidence=(
+                    Evidence(Confidence.UNKNOWN, "probe-owner", "owner unavailable"),
+                ),
             ),
         ),
     )
@@ -151,9 +159,7 @@ def test_all_application_threads_blocked_is_whole_program_stall():
 
 
 def test_runtime_housekeeping_thread_does_not_prevent_stall():
-    raw, probe = raw_with_housekeeping_thread(
-        "lldb.process.internal-state-coordinator"
-    )
+    raw, probe = raw_with_housekeeping_thread("lldb.process.internal-state-coordinator")
 
     snapshot = analyze(raw, probe)
 
@@ -225,9 +231,12 @@ def test_public_graph_helpers_return_deterministic_findings():
     snapshot = analyze(raw, probe)
 
     assert find_confirmed_cycles(snapshot.edges) == snapshot.confirmed_deadlocks
-    assert find_suspected_stalls(
-        snapshot.threads, snapshot.edges, snapshot.confirmed_deadlocks
-    ) == ()
+    assert (
+        find_suspected_stalls(
+            snapshot.threads, snapshot.edges, snapshot.confirmed_deadlocks
+        )
+        == ()
+    )
 
 
 def test_snapshot_graph_order_is_independent_of_debugger_thread_order():
@@ -296,7 +305,9 @@ def test_dense_owner_graph_caps_cycles_and_warns():
         adapter="gdb",
         platform="linux",
         rust_version="1.98.0",
-        threads=tuple(_mutex_thread(index, f"0x{index:x}") for index in range(1, size + 1)),
+        threads=tuple(
+            _mutex_thread(index, f"0x{index:x}") for index in range(1, size + 1)
+        ),
     )
     owners = tuple(str(index) for index in range(1, size + 1))
     confirmed = (Evidence(Confidence.CONFIRMED, "probe-owner", "owner set"),)

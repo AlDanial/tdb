@@ -210,7 +210,7 @@ LanguageProfile(
     display_name="Bash",
     adapter=BashAdapter(bash_executable=(adapter_paths or {}).get("bash")),
     presentation=Presentation(lexer="bash", frame_placeholder="main"),
-    capabilities=ProfileCapabilities(),   # all gates off
+    capabilities=ProfileCapabilities(),  # all gates off
 )
 ```
 

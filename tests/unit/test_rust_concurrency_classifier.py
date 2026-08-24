@@ -105,9 +105,7 @@ def test_classifies_supported_waits(frame_name, expected_operation, expected_kin
 def test_unrecognized_application_and_platform_frames_are_not_waits(frame_name):
     analyses, primitives, edges = classify_snapshot(raw_with_top_frame(frame_name))
 
-    assert analyses == (
-        classify_thread(raw_with_top_frame(frame_name).threads[0]),
-    )
+    assert analyses == (classify_thread(raw_with_top_frame(frame_name).threads[0]),)
     assert analyses[0].state is ThreadState.UNKNOWN
     assert primitives == ()
     assert edges == ()

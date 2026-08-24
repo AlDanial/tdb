@@ -82,7 +82,9 @@ def _parse_primitive_states(value: object) -> tuple[ProbePrimitiveState, ...]:
         primitive_id = state.get("primitive_id")
         raw_state = state.get("raw_state")
         if not _is_string(primitive_id) or not _PRIMITIVE_ID.fullmatch(primitive_id):
-            raise _InvalidEnvelope("primitive_id must contain a full hexadecimal address")
+            raise _InvalidEnvelope(
+                "primitive_id must contain a full hexadecimal address"
+            )
         if primitive_id in primitive_ids:
             raise _InvalidEnvelope(f"duplicate primitive_id {primitive_id}")
         primitive_ids.add(primitive_id)
@@ -102,7 +104,9 @@ def _parse_primitive_states(value: object) -> tuple[ProbePrimitiveState, ...]:
 
 
 def _marker_payload(output: str) -> str:
-    matches = [line[len(MARKER) :] for line in output.splitlines() if line.startswith(MARKER)]
+    matches = [
+        line[len(MARKER) :] for line in output.splitlines() if line.startswith(MARKER)
+    ]
     if len(matches) != 1:
         raise _InvalidEnvelope("expected exactly one TDB_RUST_JSON marker")
     return matches[0]
@@ -132,9 +136,26 @@ def parse_probe_output(output: str) -> ProbeResult:
         )
 
 
+_STABLE_VERSION = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
+
+
+def _stable_series(version: str | None) -> tuple[int, int] | None:
+    """(major, minor) of a stable X.Y.Z version; None for anything else."""
+    match = _STABLE_VERSION.match(version or "")
+    if match is None:
+        return None
+    return int(match.group(1)), int(match.group(2))
+
+
 def gate_supported_layout(result: ProbeResult, *, supported: str) -> ProbeResult:
-    """Keep layout-dependent evidence only for the supported stable compiler."""
-    if result.rust_version == supported:
+    """Keep layout-dependent evidence only for the supported stable series.
+
+    Standard-library layouts are stable across patch releases, so any
+    stable X.Y.z of the supported X.Y qualifies; prereleases and other
+    minor series degrade to stack-only classification with a warning.
+    """
+    found = _stable_series(result.rust_version)
+    if found is not None and found == _stable_series(supported):
         return result
     version = result.rust_version or "unknown"
     return replace(

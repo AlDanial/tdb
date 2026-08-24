@@ -1,0 +1,16 @@
+2026-08-15
+
+Follow-ups that stand (none blocking):
+  - Perl/bash launch errors raised before the initialized event are never surfaced by the controller — a pre-existing
+  structural gap that --terminal makes more likely to matter.
+  - Exit-code conventions diverge across modes: 128+n vs −n for signal deaths.
+  - os.kill vs killpg terminate semantics differ between pipe and terminal modes.
+  - The tcsh guardian status channel polls at 100 Hz.
+  - Terminal-mode early-crash detection in bash is now bounded by the 15/30 s handshake timeout rather than near-instant
+  — the deliberate cost of the macOS writer-less-FIFO fix.
+  - No automated pty-stdin test (the manual kitty smoke covered interactive input), no bash terminal-mode unit test, and
+  macOS is untested in CI.
+  - ^C-inside-the-window behavior was designed for (guardian relies on the emulator's session leadership; no setsid) but
+  couldn't be verified headlessly.
+
+

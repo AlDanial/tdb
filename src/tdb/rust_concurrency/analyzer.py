@@ -47,7 +47,9 @@ MAX_WAIT_CYCLES = 256
 MAX_CYCLE_SEARCH_STEPS = 100_000
 
 
-def _cyclic_components(adjacency: dict[int, list[WaitEdge]]) -> tuple[frozenset[int], ...]:
+def _cyclic_components(
+    adjacency: dict[int, list[WaitEdge]],
+) -> tuple[frozenset[int], ...]:
     """Return cyclic SCCs using iterative Kosaraju traversal."""
     nodes = sorted(
         set(adjacency)
@@ -266,7 +268,9 @@ def _whole_program_stall(
 ) -> Finding | None:
     """Flag an all-blocked application snapshot without inventing ownership."""
     blocked_by_id = {thread.thread_id: thread for thread in threads}
-    if not blocked_by_id or any(thread.state is not ThreadState.BLOCKED for thread in threads):
+    if not blocked_by_id or any(
+        thread.state is not ThreadState.BLOCKED for thread in threads
+    ):
         return None
 
     gaps: set[str] = set()
@@ -351,7 +355,11 @@ def find_suspected_stalls(
     return tuple(
         sorted(
             suspected,
-            key=lambda finding: (finding.kind.value, finding.thread_ids, finding.summary),
+            key=lambda finding: (
+                finding.kind.value,
+                finding.thread_ids,
+                finding.summary,
+            ),
         )
     )
 
@@ -397,9 +405,7 @@ def _link_probe_owners(
     if probe is None or not probe.primitive_states:
         return threads, primitives, edges
 
-    state_by_primitive = {
-        state.primitive_id: state for state in probe.primitive_states
-    }
+    state_by_primitive = {state.primitive_id: state for state in probe.primitive_states}
     thread_ids_by_os_id = _thread_ids_by_os_id(raw, probe)
     linked: list[WaitEdge] = []
     display_waits: dict[int, WaitEdge] = {}
@@ -434,8 +440,7 @@ def _link_probe_owners(
         replace(
             primitive,
             evidence=(
-                primitive.evidence
-                + state_by_primitive[primitive.primitive_id].evidence
+                primitive.evidence + state_by_primitive[primitive.primitive_id].evidence
                 if primitive.primitive_id in state_by_primitive
                 else primitive.evidence
             ),
@@ -486,7 +491,9 @@ def analyze(raw: RawSnapshot, probe: ProbeResult | None = None) -> ConcurrencySn
     if cycle_truncated:
         warnings += (f"Wait-cycle analysis truncated after {MAX_WAIT_CYCLES} cycles.",)
     return ConcurrencySnapshot(
-        rust_version=(probe.rust_version if probe and probe.rust_version else raw.rust_version),
+        rust_version=(
+            probe.rust_version if probe and probe.rust_version else raw.rust_version
+        ),
         adapter=raw.adapter,
         platform=raw.platform,
         threads=threads,

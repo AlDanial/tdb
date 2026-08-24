@@ -38,7 +38,9 @@ def test_rust_adapters_share_native_local_launch_behavior():
 
 
 def test_rust_rejects_unknown_adapter():
-    with pytest.raises(LanguageNotSupportedError, match="unknown adapter 'codelldb' for rust"):
+    with pytest.raises(
+        LanguageNotSupportedError, match="unknown adapter 'codelldb' for rust"
+    ):
         build_rust_profile(adapter="codelldb")
 
 
@@ -66,7 +68,44 @@ def test_rust_lldb_attach_body_with_source_map():
 def test_rust_gdb_source_mapping_commands_escape_paths():
     adapter = RustGdbAdapter()
     assert adapter.pre_configuration_commands(
-        [("/local\\path \"quote\"", "/remote\\path \"quote\"")]
-    ) == (
-        r'set substitute-path "/remote\\path \"quote\"" "/local\\path \"quote\""',
+        [('/local\\path "quote"', '/remote\\path "quote"')]
+    ) == (r'set substitute-path "/remote\\path \"quote\"" "/local\\path \"quote\""',)
+
+
+def test_rust_gdb_launch_injects_rust_backtrace_env():
+    body = RustGdbAdapter(executable="gdb").launch_body(
+        program="/app",
+        args=[],
+        cwd="/",
+        env=None,
+        stop_on_entry=True,
+        console="internalConsole",
+        opts={},
     )
+    assert body["env"]["RUST_BACKTRACE"] == "1"
+
+
+def test_rust_gdb_launch_keeps_user_rust_backtrace():
+    body = RustGdbAdapter(executable="gdb").launch_body(
+        program="/app",
+        args=[],
+        cwd="/",
+        env={"RUST_BACKTRACE": "full"},
+        stop_on_entry=True,
+        console="internalConsole",
+        opts={},
+    )
+    assert body["env"]["RUST_BACKTRACE"] == "full"
+
+
+def test_rust_lldb_launch_injects_rust_backtrace_env():
+    body = RustLldbAdapter(executable="/opt/lldb-dap").launch_body(
+        program="/app",
+        args=[],
+        cwd="/",
+        env=None,
+        stop_on_entry=True,
+        console="internalConsole",
+        opts={},
+    )
+    assert "RUST_BACKTRACE=1" in body["env"]

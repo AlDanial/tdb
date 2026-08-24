@@ -62,9 +62,42 @@ def test_launch_body_shape():
     }
 
 
-def test_attach_not_supported():
+def test_attach_without_local_program_rejected():
+    # Native remote attach needs the local symbol-bearing executable.
     with pytest.raises(LanguageNotSupportedError):
         LldbDapAdapter().attach_body(host="h", port=1, opts={})
+    with pytest.raises(LanguageNotSupportedError):
+        GdbDapAdapter().attach_body(host="h", port=1, opts={})
+
+
+def test_gdb_attach_body_targets_remote_stub():
+    body = GdbDapAdapter().attach_body(
+        host="devbox", port=2345, opts={"program": "/local/app"}
+    )
+    assert body == {"program": "/local/app", "target": "devbox:2345"}
+
+
+def test_lldb_attach_body_uses_gdb_remote_with_source_map():
+    body = LldbDapAdapter().attach_body(
+        host="devbox",
+        port=2345,
+        opts={"program": "/local/app", "path_mappings": [("/src", "/remote/src")]},
+    )
+    assert body["gdb-remote-host"] == "devbox"
+    assert body["gdb-remote-port"] == 2345
+    assert body["program"] == "/local/app"
+    assert body["sourceMap"] == [["/remote/src", "/src"]]
+
+
+def test_gdb_pre_configuration_commands_translate_path_mappings():
+    assert GdbDapAdapter().pre_configuration_commands([("/local", "/remote")]) == (
+        'set substitute-path "/remote" "/local"',
+    )
+
+
+def test_native_adapters_attach_via_adapter():
+    assert GdbDapAdapter().quirks.attach_via_adapter is True
+    assert LldbDapAdapter().quirks.attach_via_adapter is True
 
 
 def test_exception_filters_use_adapter_defaults():

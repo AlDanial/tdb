@@ -121,21 +121,21 @@ async def test_strict_split_globals_vs_environment():
     await session.launch(
         program=str(fixture), args=[], cwd=str(fixture.parent), env=env
     )
-    await session.set_breakpoint(str(fixture), 3)   # echo "marker"
+    await session.set_breakpoint(str(fixture), 3)  # echo "marker"
     session.resume("continue")
     await rec.wait_stop()
 
     gnames = {v.name for v in await session.globals_vars()}
     envvars = {v.name: v for v in await session.environment_vars()}
 
-    assert "plain_var" in gnames                     # unexported -> Globals
+    assert "plain_var" in gnames  # unexported -> Globals
     assert "plain_var" not in envvars
-    assert "exported_var" in envvars                 # script export -> Environment
+    assert "exported_var" in envvars  # script export -> Environment
     assert "exported_var" not in gnames
     assert '"from-script"' == envvars["exported_var"].value
-    assert "TDB_TEST_SENTINEL" in envvars            # inherited -> Environment
+    assert "TDB_TEST_SENTINEL" in envvars  # inherited -> Environment
     assert "TDB_TEST_SENTINEL" not in gnames
-    assert "PATH" in envvars                         # real env deliberately shown
+    assert "PATH" in envvars  # real env deliberately shown
     assert not any(n.startswith(("__tdb_", "__TDB_")) for n in envvars)
     assert not any(n.startswith(("__tdb_", "__TDB_")) for n in gnames)
     assert gnames.isdisjoint(envvars)
@@ -160,31 +160,32 @@ In `src/tdb/adapters/bash/session.py`:
 - Replace `globals_vars` (~lines 414-431) and add `environment_vars`:
 
 ```python
-    async def globals_vars(self) -> list[BashVar]:
-        """Unexported shell variables (the script's own state).
+async def globals_vars(self) -> list[BashVar]:
+    """Unexported shell variables (the script's own state).
 
-        Exported variables — inherited environment and the script's own
-        exports alike — live in environment_vars() instead; the strict
-        split means nothing appears in both.
-        """
-        return [
-            v
-            for v in parse_declares(await self.request("globals"))
-            if not v.exported and not _INTERNAL_VARS.match(v.name)
-        ]
+    Exported variables — inherited environment and the script's own
+    exports alike — live in environment_vars() instead; the strict
+    split means nothing appears in both.
+    """
+    return [
+        v
+        for v in parse_declares(await self.request("globals"))
+        if not v.exported and not _INTERNAL_VARS.match(v.name)
+    ]
 
-    async def environment_vars(self) -> list[BashVar]:
-        """Exported variables (bash's actual environment).
 
-        Deliberately NOT filtered by _INTERNAL_VARS — PATH/HOME/PWD/TERM
-        are the point of an environment tree. Only the harness's own
-        control variables are hidden.
-        """
-        return [
-            v
-            for v in parse_declares(await self.request("globals"))
-            if v.exported and not v.name.startswith(("__tdb_", "__TDB_"))
-        ]
+async def environment_vars(self) -> list[BashVar]:
+    """Exported variables (bash's actual environment).
+
+    Deliberately NOT filtered by _INTERNAL_VARS — PATH/HOME/PWD/TERM
+    are the point of an environment tree. Only the harness's own
+    control variables are hidden.
+    """
+    return [
+        v
+        for v in parse_declares(await self.request("globals"))
+        if v.exported and not v.name.startswith(("__tdb_", "__TDB_"))
+    ]
 ```
 
 (Each call issues its own `globals` request — still the existing wire
@@ -231,22 +232,30 @@ async def test_environment_scope_listed_and_populated():
     client = await start_bash_adapter()
     try:
         program = str(FIXTURES / "bash_env_scopes.sh")
-        await launch_stopped(client, program, breakpoints=[{"line": 3}],
-                             stop_on_entry=False)
+        await launch_stopped(
+            client, program, breakpoints=[{"line": 3}], stop_on_entry=False
+        )
         await client.wait_event("stopped")
         await client.request("stackTrace", {"threadId": 1})
-        scopes = (await client.request(
-            "scopes", {"frameId": 0}))["body"]["scopes"]
+        scopes = (await client.request("scopes", {"frameId": 0}))["body"]["scopes"]
         assert [s["name"] for s in scopes] == ["Locals", "Globals", "Environment"]
         env_ref = scopes[2]["variablesReference"]
-        env = {v["name"]: v for v in (await client.request(
-            "variables", {"variablesReference": env_ref}))["body"]["variables"]}
+        env = {
+            v["name"]: v
+            for v in (
+                await client.request("variables", {"variablesReference": env_ref})
+            )["body"]["variables"]
+        }
         assert "exported_var" in env
         assert "PATH" in env
         assert "plain_var" not in env
         globals_ref = scopes[1]["variablesReference"]
-        gvars = {v["name"] for v in (await client.request(
-            "variables", {"variablesReference": globals_ref}))["body"]["variables"]}
+        gvars = {
+            v["name"]
+            for v in (
+                await client.request("variables", {"variablesReference": globals_ref})
+            )["body"]["variables"]
+        }
         assert "plain_var" in gvars
         assert "exported_var" not in gvars
         await client.request("continue", {"threadId": 1})
@@ -260,12 +269,12 @@ async def test_outer_frames_get_globals_and_environment():
     client = await start_bash_adapter()
     try:
         program = str(FIXTURES / "bash_functions.sh")
-        await launch_stopped(client, program, breakpoints=[{"line": 3}],
-                             stop_on_entry=False)
+        await launch_stopped(
+            client, program, breakpoints=[{"line": 3}], stop_on_entry=False
+        )
         await client.wait_event("stopped")
         await client.request("stackTrace", {"threadId": 1})
-        scopes1 = (await client.request(
-            "scopes", {"frameId": 1}))["body"]["scopes"]
+        scopes1 = (await client.request("scopes", {"frameId": 1}))["body"]["scopes"]
         assert [s["name"] for s in scopes1] == ["Globals", "Environment"]
         await client.request("continue", {"threadId": 1})
         await client.wait_event("exited")

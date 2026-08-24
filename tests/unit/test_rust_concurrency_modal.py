@@ -250,7 +250,7 @@ async def test_enter_outside_the_tables_does_not_select_a_thread():
         app.push_screen(modal)
         await pilot.pause()
 
-        assert modal.focused is not modal.query_one("#threads-table")
+        assert modal.focused is not modal.query_one("#table")
         await pilot.press("enter")
         await pilot.pause()
 

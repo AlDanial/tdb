@@ -379,3 +379,65 @@ def parse_ocaml_error(stderr: str, exit_code: int | None = None) -> ParsedError 
     return ParsedError(
         header=header, message=fatal.group("msg"), frames=frames, detail=detail
     )
+
+
+_RUST_PANIC_RE = re.compile(
+    r"^thread '(?P<thread>[^']*)' panicked at "
+    r"(?P<path>.+?):(?P<line>\d+):\d+:\s*$",
+    re.MULTILINE,
+)
+# Pre-1.65 format: thread 'main' panicked at 'msg', src/main.rs:2:5
+_RUST_PANIC_OLD_RE = re.compile(
+    r"^thread '(?P<thread>[^']*)' panicked at '(?P<msg>.*)', "
+    r"(?P<path>.+?):(?P<line>\d+):\d+\s*$",
+    re.MULTILINE,
+)
+# One backtrace entry: "   2: app::main" + optional "      at path:line:col".
+_RUST_FRAME_RE = re.compile(
+    r"^\s+\d+: (?P<func>.+?)\n\s+at (?P<path>.+?):(?P<line>\d+)(?::\d+)?\s*$",
+    re.MULTILINE,
+)
+_RUST_NOTE_RE = re.compile(r"^(?:stack backtrace:|note: )", re.MULTILINE)
+
+
+def parse_rust_error(stderr: str, exit_code: int | None = None) -> ParsedError | None:
+    """Parse a Rust panic out of raw stderr text.
+
+    Handles the modern (>= 1.65) two-line header, the pre-1.65 single-line
+    header, and an optional `RUST_BACKTRACE` backtrace. The panic header is
+    an unambiguous signal, so `exit_code` is accepted and ignored.
+    """
+    panic = _RUST_PANIC_RE.search(stderr)
+    old_style = None if panic is not None else _RUST_PANIC_OLD_RE.search(stderr)
+    if panic is None and old_style is None:
+        return None
+
+    match = panic if panic is not None else old_style
+    assert match is not None
+    header = match.group(0).strip()
+    tail = stderr[match.start() :]
+    header_end = tail.index("\n") + 1 if "\n" in tail else len(tail)
+    detail = tail[header_end:].rstrip("\n")
+
+    if panic is not None:
+        # Message is the text between the header line and the backtrace/note.
+        note = _RUST_NOTE_RE.search(detail)
+        message_block = detail[: note.start()] if note else detail
+        message = message_block.strip().splitlines()[0] if message_block.strip() else ""
+    else:
+        message = match.group("msg")
+
+    frames = [
+        ErrorFrame(
+            path=m.group("path"), line=int(m.group("line")), func=m.group("func")
+        )
+        for m in _RUST_FRAME_RE.finditer(tail)
+    ]
+    frames.reverse()  # Rust prints innermost-first; ParsedError wants outermost-first
+    if not frames:
+        # No backtrace: the header's panic site is still a real location.
+        frames = [
+            ErrorFrame(path=match.group("path"), line=int(match.group("line")), func="")
+        ]
+
+    return ParsedError(header=header, message=message, frames=frames, detail=detail)

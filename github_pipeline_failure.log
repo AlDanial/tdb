@@ -1,0 +1,198 @@
+   Building textual-debugger @ file:///app
+      Built textual-debugger @ file:///app
+Uninstalled 1 package in 0.61ms
+Installed 1 package in 0.96ms
+============================= test session starts ==============================
+platform linux -- Python 3.14.7, pytest-9.0.2, pluggy-1.6.0 -- /app/.venv/bin/python
+rootdir: /app
+configfile: pyproject.toml
+plugins: cov-7.1.0, asyncio-1.3.0, anyio-4.13.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 10 items
+
+tests/integration/test_tcsh_adapter.py::test_stop_on_entry_precedes_first_command PASSED [ 10%]
+tests/integration/test_tcsh_adapter.py::test_breakpoint_relocation_and_next_suppress_sourced_probes FAILED [ 20%]
+
+=================================== FAILURES ===================================
+_________ test_breakpoint_relocation_and_next_suppress_sourced_probes __________
+
+self = <tests.integration.tcsh_dap_client.DAPClient object at 0x7d2c71835090>
+awaitable = <coroutine object DAPClient.wait_for_event.<locals>.wait at 0x7d2c71902f40>
+description = "'exited' event", timeout = 5
+
+    async def _with_diagnostics(
+        self,
+        awaitable: object,
+        description: str,
+        timeout: float,
+    ) -> dict[str, object]:
+        try:
+            async with asyncio.timeout(timeout):
+>               return await awaitable  # type: ignore[misc]
+                       ^^^^^^^^^^^^^^^
+
+tests/integration/tcsh_dap_client.py:219:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests/integration/tcsh_dap_client.py:139: in wait
+    await self._condition.wait_for(lambda: bool(self.events[name]))
+/usr/local/lib/python3.14/asyncio/locks.py:313: in wait_for
+    await self.wait()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <asyncio.locks.Condition object at 0x7d2c718351d0 [unlocked]>
+
+    async def wait(self):
+        """Wait until notified.
+
+        If the calling task has not acquired the lock when this
+        method is called, a RuntimeError is raised.
+
+        This method releases the underlying lock, and then blocks
+        until it is awakened by a notify() or notify_all() call for
+        the same condition variable in another task.  Once
+        awakened, it re-acquires the lock and returns True.
+
+        This method may return spuriously,
+        which is why the caller should always
+        re-check the state and be prepared to wait() again.
+        """
+        if not self.locked():
+            raise RuntimeError('cannot wait on un-acquired lock')
+
+        fut = self._get_loop().create_future()
+        self.release()
+        try:
+            try:
+                self._waiters.append(fut)
+                try:
+>                   await fut
+E                   asyncio.exceptions.CancelledError
+
+/usr/local/lib/python3.14/asyncio/locks.py:272: CancelledError
+
+The above exception was the direct cause of the following exception:
+
+self = <tests.integration.tcsh_dap_client.DAPClient object at 0x7d2c71835090>
+awaitable = <coroutine object DAPClient.wait_for_event.<locals>.wait at 0x7d2c71902f40>
+description = "'exited' event", timeout = 5
+
+    async def _with_diagnostics(
+        self,
+        awaitable: object,
+        description: str,
+        timeout: float,
+    ) -> dict[str, object]:
+        try:
+>           async with asyncio.timeout(timeout):
+                       ^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/integration/tcsh_dap_client.py:218:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <Timeout [expired]>
+exc_type = <class 'asyncio.exceptions.CancelledError'>
+exc_val = CancelledError(), exc_tb = <traceback object at 0x7d2c712ccb40>
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> bool | None:
+        assert self._state in (_State.ENTERED, _State.EXPIRING)
+
+        if self._timeout_handler is not None:
+            self._timeout_handler.cancel()
+            self._timeout_handler = None
+
+        if self._state is _State.EXPIRING:
+            self._state = _State.EXPIRED
+
+            if self._task.uncancel() <= self._cancelling and exc_type is not None:
+                # Since there are no new cancel requests, we're
+                # handling this.
+                if issubclass(exc_type, exceptions.CancelledError):
+>                   raise TimeoutError from exc_val
+E                   TimeoutError
+
+/usr/local/lib/python3.14/asyncio/timeouts.py:115: TimeoutError
+
+The above exception was the direct cause of the following exception:
+
+dap_client = <tests.integration.tcsh_dap_client.DAPClient object at 0x7d2c71835090>
+tcsh_path = PosixPath('/bin/tcsh')
+tcsh_fixtures_dir = PosixPath('/app/tests/integration/fixtures')
+
+    @pytest.mark.asyncio
+    async def test_breakpoint_relocation_and_next_suppress_sourced_probes(
+        dap_client: DAPClient,
+        tcsh_path: Path,
+        tcsh_fixtures_dir: Path,
+    ) -> None:
+        program = (tcsh_fixtures_dir / "stepping.csh").resolve()
+        await dap_client.initialize()
+        await dap_client.launch(program, tcshPath=str(tcsh_path), stopOnEntry=False)
+        breakpoints = await dap_client.request(
+            "setBreakpoints",
+            {"source": {"path": str(program)}, "breakpoints": [{"line": 1}]},
+        )
+        assert breakpoints["success"] is True
+        assert breakpoints["body"]["breakpoints"][0]["line"] == 2
+        await configure(dap_client)
+
+        stopped = await dap_client.wait_for_event("stopped")
+        assert stopped["body"]["reason"] == "breakpoint"
+        frames = await stack_frames(dap_client)
+        assert (frames[0]["source"]["path"], frames[0]["line"]) == (str(program), 2)
+        assert not dap_client.output_contains("first command ran")
+        threads = await dap_client.request("threads", {})
+        assert threads["body"]["threads"] == [{"id": 1, "name": "tcsh"}]
+
+        assert (await dap_client.request("next", {"threadId": 1}))["success"] is True
+        frames = await stack_frames_after_stop(dap_client)
+        assert (frames[0]["source"]["path"], frames[0]["line"]) == (str(program), 3)
+        await dap_client.wait_for_output("first command ran", category="stdout")
+
+        assert (await dap_client.request("next", {"threadId": 1}))["success"] is True
+        frames = await stack_frames_after_stop(dap_client)
+        assert (frames[0]["source"]["path"], frames[0]["line"]) == (str(program), 4)
+        await dap_client.wait_for_output("library first", category="stdout")
+        await dap_client.wait_for_output("library second", category="stdout")
+
+        assert (await dap_client.request("continue", {"threadId": 1}))["success"] is True
+>       exited = await dap_client.wait_for_event("exited")
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/integration/test_tcsh_adapter.py:83:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests/integration/tcsh_dap_client.py:142: in wait_for_event
+    return await self._with_diagnostics(wait(), f"{name!r} event", timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <tests.integration.tcsh_dap_client.DAPClient object at 0x7d2c71835090>
+awaitable = <coroutine object DAPClient.wait_for_event.<locals>.wait at 0x7d2c71902f40>
+description = "'exited' event", timeout = 5
+
+    async def _with_diagnostics(
+        self,
+        awaitable: object,
+        description: str,
+        timeout: float,
+    ) -> dict[str, object]:
+        try:
+            async with asyncio.timeout(timeout):
+                return await awaitable  # type: ignore[misc]
+        except TimeoutError as error:
+>           raise AssertionError(
+                f"Timed out waiting for {description}; "
+                f"stderr={self.stderr!r}; messages={self.messages!r}"
+            ) from error
+E           AssertionError: Timed out waiting for 'exited' event; stderr=''; messages=[{'type': 'response', 'request_seq': 1, 'success': True, 'command': 'initialize', 'body': {'supportsConfigurationDoneRequest': True, 'supportsTerminateRequest': True, 'supportsEvaluateForHovers': True, 'supportsSetVariable': False, 'supportsConditionalBreakpoints': False, 'supportsFunctionBreakpoints': False, 'supportsHitConditionalBreakpoints': False, 'supportsLogPoints': False, 'supportsRestartRequest': False, 'supportsStepBack': False, 'supportsCompletionsRequest': False, 'supportsModulesRequest': False, 'supportsExceptionInfoRequest': False, 'supportsReadMemoryRequest': False, 'supportsDisassembleRequest': False, 'supportsCancelRequest': False, 'supportsBreakpointLocationsRequest': False, 'supportsLoadedSourcesRequest': False, 'supportsTerminateThreadsRequest': False}, 'seq': 1}, {'type': 'event', 'event': 'initialized', 'body': {}, 'seq': 2}, {'type': 'response', 'request_seq': 2, 'success': True, 'command': 'launch', 'body': {}, 'seq': 3}, {'type': 'response', 'request_seq': 3, 'success': True, 'command': 'setBreakpoints', 'body': {'breakpoints': [{'verified': True, 'source': {'path': '/app/tests/integration/fixtures/stepping.csh'}, 'line': 2}]}, 'seq': 4}, {'type': 'response', 'request_seq': 4, 'success': True, 'command': 'configurationDone', 'body': {}, 'seq': 5}, {'type': 'event', 'event': 'stopped', 'body': {'reason': 'breakpoint', 'threadId': 1, 'allThreadsStopped': True}, 'seq': 6}, {'type': 'response', 'request_seq': 5, 'success': True, 'command': 'stackTrace', 'body': {'stackFrames': [{'id': 1, 'name': 'stepping.csh', 'source': {'name': 'stepping.csh', 'path': '/app/tests/integration/fixtures/stepping.csh'}, 'line': 2, 'column': 1, 'endLine': 2, 'endColumn': 1}], 'totalFrames': 1}, 'seq': 7}, {'type': 'response', 'request_seq': 6, 'success': True, 'command': 'threads', 'body': {'threads': [{'id': 1, 'name': 'tcsh'}]}, 'seq': 8}, {'type': 'response', 'request_seq': 7, 'success': True, 'command': 'next', 'body': {}, 'seq': 9}, {'type': 'event', 'event': 'continued', 'body': {'threadId': 1, 'allThreadsContinued': True}, 'seq': 10}, {'type': 'event', 'event': 'output', 'body': {'category': 'stdout', 'output': 'first command ran\n'}, 'seq': 11}, {'type': 'event', 'event': 'stopped', 'body': {'reason': 'step', 'threadId': 1, 'allThreadsStopped': True}, 'seq': 12}, {'type': 'response', 'request_seq': 8, 'success': True, 'command': 'stackTrace', 'body': {'stackFrames': [{'id': 2, 'name': 'stepping.csh', 'source': {'name': 'stepping.csh', 'path': '/app/tests/integration/fixtures/stepping.csh'}, 'line': 3, 'column': 1, 'endLine': 3, 'endColumn': 1}], 'totalFrames': 1}, 'seq': 13}, {'type': 'response', 'request_seq': 9, 'success': True, 'command': 'next', 'body': {}, 'seq': 14}, {'type': 'event', 'event': 'continued', 'body': {'threadId': 1, 'allThreadsContinued': True}, 'seq': 15}, {'type': 'event', 'event': 'output', 'body': {'category': 'stdout', 'output': 'library first\n'}, 'seq': 16}, {'type': 'event', 'event': 'output', 'body': {'category': 'stdout', 'output': 'library second\n'}, 'seq': 17}, {'type': 'event', 'event': 'stopped', 'body': {'reason': 'step', 'threadId': 1, 'allThreadsStopped': True}, 'seq': 18}, {'type': 'response', 'request_seq': 10, 'success': True, 'command': 'stackTrace', 'body': {'stackFrames': [{'id': 3, 'name': 'stepping.csh', 'source': {'name': 'stepping.csh', 'path': '/app/tests/integration/fixtures/stepping.csh'}, 'line': 4, 'column': 1, 'endLine': 4, 'endColumn': 1}], 'totalFrames': 1}, 'seq': 19}, {'type': 'response', 'request_seq': 11, 'success': True, 'command': 'continue', 'body': {'allThreadsContinued': True}, 'seq': 20}, {'type': 'event', 'event': 'continued', 'body': {'threadId': 1, 'allThreadsContinued': True}, 'seq': 21}, {'type': 'event', 'event': 'output', 'body': {'category': 'stdout', 'output': 'after library\n'}, 'seq': 22}]
+
+tests/integration/tcsh_dap_client.py:221: AssertionError
+=========================== short test summary info ============================
+FAILED tests/integration/test_tcsh_adapter.py::test_breakpoint_relocation_and_next_suppress_sourced_probes - AssertionError: Timed out waiting for 'exited' event; stderr=''; messages=[{'type': 'response', 'request_seq': 1, 'success': True, 'command': 'initialize', 'body': {'supportsConfigurationDoneRequest': True, 'supportsTerminateRequest': True, 'supportsEvaluateForHovers': True, 'supportsSetVariable': False, 'supportsConditionalBreakpoints': False, 'supportsFunctionBreakpoints': False, 'supportsHitConditionalBreakpoints': False, 'supportsLogPoints': False, 'supportsRestartRequest': False, 'supportsStepBack': False, 'supportsCompletionsRequest': False, 'supportsModulesRequest': False, 'supportsExceptionInfoRequest': False, 'supportsReadMemoryRequest': False, 'supportsDisassembleRequest': False, 'supportsCancelRequest': False, 'supportsBreakpointLocationsRequest': False, 'supportsLoadedSourcesRequest': False, 'supportsTerminateThreadsRequest': False}, 'seq': 1}, {'type': 'event', 'event': 'initialized', 'body': {}, 'seq': 2}, {'type': 'response', 'request_seq': 2, 'success': True, 'command': 'launch', 'body': {}, 'seq': 3}, {'type': 'response', 'request_seq': 3, 'success': True, 'command': 'setBreakpoints', 'body': {'breakpoints': [{'verified': True, 'source': {'path': '/app/tests/integration/fixtures/stepping.csh'}, 'line': 2}]}, 'seq': 4}, {'type': 'response', 'request_seq': 4, 'success': True, 'command': 'configurationDone', 'body': {}, 'seq': 5}, {'type': 'event', 'event': 'stopped', 'body': {'reason': 'breakpoint', 'threadId': 1, 'allThreadsStopped': True}, 'seq': 6}, {'type': 'response', 'request_seq': 5, 'success': True, 'command': 'stackTrace', 'body': {'stackFrames': [{'id': 1, 'name': 'stepping.csh', 'source': {'name': 'stepping.csh', 'path': '/app/tests/integration/fixtures/stepping.csh'}, 'line': 2, 'column': 1, 'endLine': 2, 'endColumn': 1}], 'totalFrames': 1}, 'seq': 7}, {'type': 'response', 'request_seq': 6, 'success': True, 'command': 'threads', 'body': {'threads': [{'id': 1, 'name': 'tcsh'}]}, 'seq': 8}, {'type': 'response', 'request_seq': 7, 'success': True, 'command': 'next', 'body': {}, 'seq': 9}, {'type': 'event', 'event': 'continued', 'body': {'threadId': 1, 'allThreadsContinued': True}, 'seq': 10}, {'type': 'event', 'event': 'output', 'body': {'category': 'stdout', 'output': 'first command ran\n'}, 'seq': 11}, {'type': 'event', 'event': 'stopped', 'body': {'reason': 'step', 'threadId': 1, 'allThreadsStopped': True}, 'seq': 12}, {'type': 'response', 'request_seq': 8, 'success': True, 'command': 'stackTrace', 'body': {'stackFrames': [{'id': 2, 'name': 'stepping.csh', 'source': {'name': 'stepping.csh', 'path': '/app/tests/integration/fixtures/stepping.csh'}, 'line': 3, 'column': 1, 'endLine': 3, 'endColumn': 1}], 'totalFrames': 1}, 'seq': 13}, {'type': 'response', 'request_seq': 9, 'success': True, 'command': 'next', 'body': {}, 'seq': 14}, {'type': 'event', 'event': 'continued', 'body': {'threadId': 1, 'allThreadsContinued': True}, 'seq': 15}, {'type': 'event', 'event': 'output', 'body': {'category': 'stdout', 'output': 'library first\n'}, 'seq': 16}, {'type': 'event', 'event': 'output', 'body': {'category': 'stdout', 'output': 'library second\n'}, 'seq': 17}, {'type': 'event', 'event': 'stopped', 'body': {'reason': 'step', 'threadId': 1, 'allThreadsStopped': True}, 'seq': 18}, {'type': 'response', 'request_seq': 10, 'success': True, 'command': 'stackTrace', 'body': {'stackFrames': [{'id': 3, 'name': 'stepping.csh', 'source': {'name': 'stepping.csh', 'path': '/app/tests/integration/fixtures/stepping.csh'}, 'line': 4, 'column': 1, 'endLine': 4, 'endColumn': 1}], 'totalFrames': 1}, 'seq': 19}, {'type': 'response', 'request_seq': 11, 'success': True, 'command': 'continue', 'body': {'allThreadsContinued': True}, 'seq': 20}, {'type': 'event', 'event': 'continued', 'body': {'threadId': 1, 'allThreadsContinued': True}, 'seq': 21}, {'type': 'event', 'event': 'output', 'body': {'category': 'stdout', 'output': 'after library\n'}, 'seq': 22}]
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+========================= 1 failed, 1 passed in 6.05s ==========================
+

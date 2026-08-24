@@ -346,3 +346,78 @@ def test_ocaml_error_detail_excludes_header_without_backtrace():
     assert "Fatal error:" not in err.detail
     # Detail should be exactly the hint text
     assert err.detail == "(no backtrace — compile with -g, e.g. dune's dev profile)"
+
+
+# --- Rust ----------------------------------------------------------------
+
+from tdb.languages.errors import parse_rust_error  # noqa: E402
+from tdb.languages.rust import build_rust_profile  # noqa: E402
+
+RUST_WITH_BACKTRACE = """\
+thread 'main' panicked at src/main.rs:7:5:
+index out of bounds: the len is 3 but the index is 9
+stack backtrace:
+   0: rust_begin_unwind
+             at /rustc/abc123/library/std/src/panicking.rs:645:5
+   1: core::panicking::panic_fmt
+             at /rustc/abc123/library/core/src/panicking.rs:72:14
+   2: app::helper
+             at ./src/main.rs:7:5
+   3: app::main
+             at ./src/main.rs:3:5
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+"""
+
+RUST_NO_BACKTRACE = """\
+thread 'worker-1' panicked at src/lib.rs:42:13:
+called `Option::unwrap()` on a `None` value
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+"""
+
+RUST_OLD_STYLE = (
+    "thread 'main' panicked at 'boom', src/main.rs:2:5\n"
+    "note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n"
+)
+
+
+def test_rust_panic_with_backtrace():
+    err = parse_rust_error(RUST_WITH_BACKTRACE, 101)
+
+    assert err is not None
+    assert err.header == "thread 'main' panicked at src/main.rs:7:5:"
+    assert err.message == "index out of bounds: the len is 3 but the index is 9"
+    # Outermost-first (Rust prints innermost-first)
+    assert [f.func for f in err.frames] == [
+        "app::main",
+        "app::helper",
+        "core::panicking::panic_fmt",
+        "rust_begin_unwind",
+    ]
+    assert err.frames[0].path == "./src/main.rs"
+    assert err.frames[0].line == 3
+    assert "index out of bounds" in err.detail
+
+
+def test_rust_panic_without_backtrace_uses_panic_site():
+    err = parse_rust_error(RUST_NO_BACKTRACE, 101)
+
+    assert err is not None
+    assert err.message == "called `Option::unwrap()` on a `None` value"
+    assert [(f.path, f.line) for f in err.frames] == [("src/lib.rs", 42)]
+
+
+def test_rust_old_style_panic_line():
+    err = parse_rust_error(RUST_OLD_STYLE, 101)
+
+    assert err is not None
+    assert err.message == "boom"
+    assert [(f.path, f.line) for f in err.frames] == [("src/main.rs", 2)]
+
+
+def test_rust_non_panic_stderr_returns_none():
+    assert parse_rust_error("error: linking with `cc` failed\n", 1) is None
+    assert parse_rust_error("", 0) is None
+
+
+def test_rust_profile_wires_panic_parser():
+    assert build_rust_profile().presentation.parse_error is parse_rust_error

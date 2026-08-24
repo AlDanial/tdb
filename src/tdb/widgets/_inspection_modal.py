@@ -1,4 +1,5 @@
-"""Base modal for the Threads / Processes / Async Tasks inspection views.
+"""Base modal for the Threads / Processes / Async Tasks / Rust
+Concurrency inspection views.
 
 Before this base existed, the three inspection modals each carried
 their own ~90-LOC copy of the same skeleton: identical CSS, identical
@@ -291,6 +292,12 @@ class _InspectableListModal(ModalScreen[None], Generic[T]):
         self,
         event: DataTable.RowHighlighted,
     ) -> None:
+        # Only react to the list table: a subclass may add further
+        # DataTables (e.g. the Rust workspace's frames table), and
+        # Textual dispatches this handler per MRO class, so a subclass
+        # override cannot shadow it — the id guard has to live here.
+        if event.data_table.id != "table":
+            return
         if event.cursor_row is not None:
             self._show_detail(event.cursor_row)
 
@@ -298,7 +305,9 @@ class _InspectableListModal(ModalScreen[None], Generic[T]):
         self,
         event: DataTable.RowSelected,
     ) -> None:
-        # Fires on Enter or double-click.
+        # Fires on Enter or double-click. See the id-guard note above.
+        if event.data_table.id != "table":
+            return
         row = event.cursor_row
         if row is None or not (0 <= row < len(self._items)):
             return

@@ -426,17 +426,19 @@ def _resolve_language(
             )
 
     if args.remote_attach:
-        if profile.id not in ("python", "perl", "ruby", "rust"):
+        if profile.id not in ("python", "perl", "ruby", "rust", "cpp"):
             parser.error(
-                f"--remote-attach supports Python, Perl, Ruby, and Rust debuggees "
-                f"only (detected language: {profile.id})"
+                f"--remote-attach supports Python, Perl, Ruby, Rust, and C/C++ "
+                f"debuggees only (detected language: {profile.id})"
             )
-        if profile.id == "rust":
-            # Native remote attach drives gdbserver/lldb-server through a
-            # local adapter, which needs the local symbol-bearing copy of
-            # the remote executable.
+        if profile.adapter.quirks.attach_requires_local_program:
+            # Native remote attach (cpp/rust) drives gdbserver/lldb-server
+            # through a local adapter, which needs the local symbol-bearing
+            # copy of the remote executable.
             if args.program is None:
-                parser.error("Rust remote attach requires a local program")
+                parser.error(
+                    f"{profile.display_name} remote attach requires a local program"
+                )
             program_path = Path(args.program).resolve()
             if not program_path.is_file():
                 parser.error(f"File not found: {args.program}")

@@ -121,10 +121,16 @@ def test_null_recorder_is_inert(tmp_path):
 
 def _ns(**kw):
     base = dict(
-        attach_host=None, attach_port=None, path_mappings=[],
-        profile=SimpleNamespace(id="python"), adapter=None,
-        program="/abs/prog.py", args=["a1"], cwd="/abs/dir",
-        python=None, no_just_my_code=False,
+        attach_host=None,
+        attach_port=None,
+        path_mappings=[],
+        profile=SimpleNamespace(id="python"),
+        adapter=None,
+        program="/abs/prog.py",
+        args=["a1"],
+        cwd="/abs/dir",
+        python=None,
+        no_just_my_code=False,
     )
     base.update(kw)
     return SimpleNamespace(**base)
@@ -148,14 +154,19 @@ def test_build_header_launch():
 
 def test_build_header_launch_defaults_cwd_to_getcwd():
     import os
+
     h = build_header(_ns(cwd=None), SimpleNamespace(step_mode="line"))
     assert h["cwd"] == os.getcwd()
 
 
 def test_build_header_remote_attach():
     h = build_header(
-        _ns(attach_host="10.0.0.5", attach_port=5678,
-            path_mappings=[("/local", "/remote")], program=None),
+        _ns(
+            attach_host="10.0.0.5",
+            attach_port=5678,
+            path_mappings=[("/local", "/remote")],
+            program=None,
+        ),
         SimpleNamespace(step_mode="statement"),
     )
     assert h["mode"] == "remote-attach"
@@ -574,7 +585,9 @@ async def test_restart_gesture_records(app_cap, monkeypatch):
     assert ("restart", []) in cap.records
 
 
-async def test_file_open_restart_not_recorded_but_notifies(app_cap, monkeypatch, tmp_path):
+async def test_file_open_restart_not_recorded_but_notifies(
+    app_cap, monkeypatch, tmp_path
+):
     app, cap, _ = app_cap
     monkeypatch.setattr(app.controller, "stop", _noop)
     monkeypatch.setattr(app, "_start_session", lambda: None)
@@ -724,9 +737,7 @@ async def test_toggle_on_records_set(app_cap, monkeypatch):
         app.controller.state.breakpoints[path] = [SourceBreakpoint(line=line)]
 
     monkeypatch.setattr(app.controller, "toggle_breakpoint", fake_toggle)
-    await app.on_code_view_breakpoint_toggled(
-        CodeView.BreakpointToggled("/x.py", 7)
-    )
+    await app.on_code_view_breakpoint_toggled(CodeView.BreakpointToggled("/x.py", 7))
     assert cap.records == [("set_breakpoint", ["/x.py:7"])]
 
 
@@ -738,9 +749,7 @@ async def test_toggle_off_records_remove(app_cap, monkeypatch):
         app.controller.state.breakpoints[path] = []
 
     monkeypatch.setattr(app.controller, "toggle_breakpoint", fake_toggle)
-    await app.on_code_view_breakpoint_toggled(
-        CodeView.BreakpointToggled("/x.py", 7)
-    )
+    await app.on_code_view_breakpoint_toggled(CodeView.BreakpointToggled("/x.py", 7))
     assert cap.records == [("remove_breakpoint", ["/x.py:7"])]
 
 
@@ -769,9 +778,7 @@ async def test_clear_all_records_remove_per_breakpoint(app_cap, monkeypatch):
         "/y.py": [SourceBreakpoint(line=1)],
     }
     monkeypatch.setattr(app.controller, "clear_all_breakpoints", _noop)
-    await app.on_breakpoint_view_clear_all_requested(
-        BreakpointView.ClearAllRequested()
-    )
+    await app.on_breakpoint_view_clear_all_requested(BreakpointView.ClearAllRequested())
     assert sorted(cap.records) == sorted(
         [
             ("remove_breakpoint", ["/x.py:3"]),
@@ -802,9 +809,7 @@ async def test_run_to_cursor_records_triple(app_cap, monkeypatch):
     ]
 
 
-async def test_run_to_cursor_on_existing_bp_records_continue_only(
-    app_cap, monkeypatch
-):
+async def test_run_to_cursor_on_existing_bp_records_continue_only(app_cap, monkeypatch):
     app, cap, _ = app_cap
     app.controller.state.breakpoints["/x.py"] = [SourceBreakpoint(line=20)]
     monkeypatch.setattr(app.controller, "run_to_cursor", _noop)
@@ -850,16 +855,14 @@ Expected: FAIL on assertions (`cap.records == []` where records are expected). F
 3a. `on_code_view_breakpoint_toggled` (app.py:741) — after `await self.controller.toggle_breakpoint(...)` and before `self.post_message(...)`:
 
 ```python
-            now_set = any(
-                bp.line == message.line
-                for bp in self.controller.state.breakpoints.get(
-                    message.source_path, []
-                )
-            )
-            self.recorder.record(
-                "set_breakpoint" if now_set else "remove_breakpoint",
-                [f"{message.source_path}:{message.line}"],
-            )
+now_set = any(
+    bp.line == message.line
+    for bp in self.controller.state.breakpoints.get(message.source_path, [])
+)
+self.recorder.record(
+    "set_breakpoint" if now_set else "remove_breakpoint",
+    [f"{message.source_path}:{message.line}"],
+)
 ```
 
 3b. `on_tdb_app__apply_breakpoint_condition` (app.py:801) — after the `await self.controller.set_breakpoint_condition(...)` call:
@@ -878,9 +881,7 @@ Expected: FAIL on assertions (`cap.records == []` where records are expected). F
 3c. `on_breakpoint_view_breakpoint_delete_requested` (app.py:1024) — after the `await self.controller.remove_breakpoint(...)` call:
 
 ```python
-            self.recorder.record(
-                "remove_breakpoint", [f"{message.source_path}:{message.line}"]
-            )
+self.recorder.record("remove_breakpoint", [f"{message.source_path}:{message.line}"])
 ```
 
 3d. `on_breakpoint_view_clear_all_requested` (app.py:1014) — before `await self.controller.clear_all_breakpoints()`:
@@ -894,21 +895,15 @@ Expected: FAIL on assertions (`cap.records == []` where records are expected). F
 3e. `on_code_view_run_to_cursor` (app.py:943) — before `await self.controller.run_to_cursor(...)`:
 
 ```python
-            had_bp = any(
-                bp.line == message.line
-                for bp in self.controller.state.breakpoints.get(
-                    message.source_path, []
-                )
-            )
-            if not had_bp:
-                self.recorder.record(
-                    "set_breakpoint", [f"{message.source_path}:{message.line}"]
-                )
-            self.recorder.record("continue", [])
-            if not had_bp:
-                self.recorder.record(
-                    "remove_breakpoint", [f"{message.source_path}:{message.line}"]
-                )
+had_bp = any(
+    bp.line == message.line
+    for bp in self.controller.state.breakpoints.get(message.source_path, [])
+)
+if not had_bp:
+    self.recorder.record("set_breakpoint", [f"{message.source_path}:{message.line}"])
+self.recorder.record("continue", [])
+if not had_bp:
+    self.recorder.record("remove_breakpoint", [f"{message.source_path}:{message.line}"])
 ```
 
 3f. `on_mount` breakpoint block (app.py:~344) — immediately after `self.controller.state.install_cli_breakpoints(self._cli_breakpoints)`:
@@ -1045,9 +1040,7 @@ async def test_frame_click_on_synthetic_stack_not_recorded(app_cap, monkeypatch)
     assert cap.records == []
 
 
-async def test_variable_expand_records_inspect_with_evaluate_name(
-    app_cap, monkeypatch
-):
+async def test_variable_expand_records_inspect_with_evaluate_name(app_cap, monkeypatch):
     app, cap, _ = app_cap
     app.controller.state.variables = {
         5: [
@@ -1068,9 +1061,7 @@ async def test_variable_expand_records_inspect_with_evaluate_name(
         type(app.controller), "active_client", property(lambda self: FakeClient())
     )
     var_view = app.query_one("#variable-view", VariableView)
-    await app.on_tdb_app_lazy_load_variables(
-        app.LazyLoadVariables(7, var_view.root)
-    )
+    await app.on_tdb_app_lazy_load_variables(app.LazyLoadVariables(7, var_view.root))
     assert cap.records == [("inspect", ["data['x']"])]
 
 
@@ -1090,9 +1081,7 @@ async def test_variable_expand_without_evaluate_name_records_nothing(
         type(app.controller), "active_client", property(lambda self: FakeClient())
     )
     var_view = app.query_one("#variable-view", VariableView)
-    await app.on_tdb_app_lazy_load_variables(
-        app.LazyLoadVariables(7, var_view.root)
-    )
+    await app.on_tdb_app_lazy_load_variables(app.LazyLoadVariables(7, var_view.root))
     assert cap.records == []
 ```
 
@@ -1117,25 +1106,21 @@ Expected: FAIL on assertions (no records). Repair constructor-signature errors u
 3b. `on_stack_view_frame_selected` (app.py:950) — before `await self.controller.select_frame(message.frame_id)`:
 
 ```python
-        state = self.controller.state
-        if not state.displayed_frames_are_synthetic:
-            frames = state.stack_frames
-            old_idx = next(
-                (
-                    i
-                    for i, f in enumerate(frames)
-                    if f.id == state.current_frame_id
-                ),
-                None,
-            )
-            new_idx = next(
-                (i for i, f in enumerate(frames) if f.id == message.frame_id),
-                None,
-            )
-            if old_idx is not None and new_idx is not None and new_idx != old_idx:
-                step = "stack_up" if new_idx > old_idx else "stack_down"
-                for _ in range(abs(new_idx - old_idx)):
-                    self.recorder.record(step, [])
+state = self.controller.state
+if not state.displayed_frames_are_synthetic:
+    frames = state.stack_frames
+    old_idx = next(
+        (i for i, f in enumerate(frames) if f.id == state.current_frame_id),
+        None,
+    )
+    new_idx = next(
+        (i for i, f in enumerate(frames) if f.id == message.frame_id),
+        None,
+    )
+    if old_idx is not None and new_idx is not None and new_idx != old_idx:
+        step = "stack_up" if new_idx > old_idx else "stack_down"
+        for _ in range(abs(new_idx - old_idx)):
+            self.recorder.record(step, [])
 ```
 
 3c. `on_tdb_app_lazy_load_variables` (app.py:1047) — insert after the Processes-modal branch returns (i.e. right before the final `try: variables = await self.controller.active_client.variables(...)` block at ~line 1091):
@@ -1345,9 +1330,7 @@ def test_malformed_json_names_line(tmp_path):
 
 
 def test_unknown_action_names_line(tmp_path):
-    path = write(
-        tmp_path, HEADER, '{"t": 1, "action": "teleport", "params": []}'
-    )
+    path = write(tmp_path, HEADER, '{"t": 1, "action": "teleport", "params": []}')
     with pytest.raises(RecordingError, match=r":2:.*teleport"):
         load_recording(path)
 
@@ -1359,9 +1342,7 @@ def test_missing_t_rejected(tmp_path):
 
 
 def test_non_list_params_rejected(tmp_path):
-    path = write(
-        tmp_path, HEADER, '{"t": 1, "action": "continue", "params": "x"}'
-    )
+    path = write(tmp_path, HEADER, '{"t": 1, "action": "continue", "params": "x"}')
     with pytest.raises(RecordingError, match=r":2:"):
         load_recording(path)
 
@@ -1551,7 +1532,7 @@ async def test_replay_breakpoint_evaluate_quit(tmp_path):
     text = "\n".join(out)
     assert errors == 0
     assert "4 commands, 0 errors" in text
-    assert "ok: 3" in text          # evaluate result, verbatim
+    assert "ok: 3" in text  # evaluate result, verbatim
     assert "set_breakpoint" in text  # command header lines present
 
 
@@ -1560,7 +1541,7 @@ async def test_replay_reports_failed_command_and_continues(tmp_path):
         tmp_path,
         [
             ("set_breakpoint", ["not-a-file-line-spec"]),  # ERROR
-            ("continue", []),                              # still runs
+            ("continue", []),  # still runs
             ("quit", []),
         ],
     )
@@ -1645,8 +1626,8 @@ async def test_recorder_file_round_trips(tmp_path):
     rec_path = tmp_path / "rt.jsonl"
     rec = SessionRecorder(str(rec_path), header)
     rec.record("set_breakpoint", [f"{prog}:3"])
-    rec.record("continue", [])   # -> stops at toy.py:3
-    rec.record("next", [])       # -> stops at toy.py:4
+    rec.record("continue", [])  # -> stops at toy.py:3
+    rec.record("next", [])  # -> stops at toy.py:4
     rec.record("quit", [])
     rec.close()
 
@@ -1748,8 +1729,7 @@ async def run_replay(
             program=None,
             attach_host=h["host"],
             attach_port=h["port"],
-            path_mappings=[tuple(pm) for pm in (h.get("path_mappings") or [])]
-            or None,
+            path_mappings=[tuple(pm) for pm in (h.get("path_mappings") or [])] or None,
             profile=_profile_from_header(h),
             step_mode=h.get("step_mode"),
         )
@@ -1826,14 +1806,18 @@ def replay_main(path: str, timing: bool, replay_timeout: float) -> None:
 In `parse_args()` right after the `--record` conflict check (Task 2's 3b):
 
 ```python
-    if args.replay:
-        if args.program:
-            parser.error("--replay takes no program argument (the recording "
-                         "header supplies the program)")
-        if args.record or args.headless or args.server or args.post_mortem:
-            parser.error("--replay cannot be combined with --record, "
-                         "--server, --headless, or --post-mortem")
-        return args
+if args.replay:
+    if args.program:
+        parser.error(
+            "--replay takes no program argument (the recording "
+            "header supplies the program)"
+        )
+    if args.record or args.headless or args.server or args.post_mortem:
+        parser.error(
+            "--replay cannot be combined with --record, "
+            "--server, --headless, or --post-mortem"
+        )
+    return args
 ```
 
 (Place this BEFORE the line-504 short-circuit `if args.doc or ...` return so `--replay` skips launch validation the same way `--post-mortem` does. Note: `args.program` may not exist if the positional wasn't parsed as such — check with `getattr(args, "program", None)`.)

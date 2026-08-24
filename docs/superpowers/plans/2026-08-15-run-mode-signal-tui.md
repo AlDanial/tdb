@@ -278,13 +278,26 @@ from tdb.session.controller import DebugController
 
 
 class _NullHandler:
-    def on_initialized(self): pass
-    def on_stopped(self, thread_id, reason, description=None, text=None): pass
-    def on_continued(self): pass
-    def on_terminated(self): pass
-    def on_exited(self, exit_code): pass
-    def on_output(self, text, category): pass
-    def on_external_terminal_started(self): pass
+    def on_initialized(self):
+        pass
+
+    def on_stopped(self, thread_id, reason, description=None, text=None):
+        pass
+
+    def on_continued(self):
+        pass
+
+    def on_terminated(self):
+        pass
+
+    def on_exited(self, exit_code):
+        pass
+
+    def on_output(self, text, category):
+        pass
+
+    def on_external_terminal_started(self):
+        pass
 
 
 @pytest.fixture
@@ -755,9 +768,9 @@ class _DetachQuitModal(ModalScreen):
 Add parameters after `recorder`:
 
 ```python
-        adopted_controller: "DebugController | None" = None,
-        adopted_handler: "SwappableEventHandler | None" = None,
-        adopted_stop: tuple | None = None,
+adopted_controller: "DebugController | None" = (None,)
+adopted_handler: "SwappableEventHandler | None" = (None,)
+adopted_stop: tuple | None = (None,)
 ```
 
 (Import `SwappableEventHandler` under `TYPE_CHECKING` or reuse the module's existing import style.) After the `self._textual_handler = TextualEventHandler(self)` / `_event_handler` block, replace the unconditional controller construction (app.py:235-236) with:
@@ -863,28 +876,29 @@ New worker next to `_start_session`:
 New methods next to `action_quit_debugger`:
 
 ```python
-    async def _detach_and_exit(self) -> None:
-        """Leave the debuggee running; run_mode resumes it after exit."""
-        if self._is_quitting:
-            return
-        self._is_quitting = True
-        self.recorder.record("quit", [])
-        if self._program:
-            program_key = str(Path(self._program).resolve())
-            save_breakpoints(self.controller.state.breakpoints, program=program_key)
-        self.detach_and_resume = True
-        self.exit()
+async def _detach_and_exit(self) -> None:
+    """Leave the debuggee running; run_mode resumes it after exit."""
+    if self._is_quitting:
+        return
+    self._is_quitting = True
+    self.recorder.record("quit", [])
+    if self._program:
+        program_key = str(Path(self._program).resolve())
+        save_breakpoints(self.controller.state.breakpoints, program=program_key)
+    self.detach_and_resume = True
+    self.exit()
 
-    async def _terminate_and_exit(self) -> None:
-        if self._is_quitting:
-            return
-        self._is_quitting = True
-        self.recorder.record("quit", [])
-        if self._program:
-            program_key = str(Path(self._program).resolve())
-            save_breakpoints(self.controller.state.breakpoints, program=program_key)
-        await self.controller.stop()
-        self.exit()
+
+async def _terminate_and_exit(self) -> None:
+    if self._is_quitting:
+        return
+    self._is_quitting = True
+    self.recorder.record("quit", [])
+    if self._program:
+        program_key = str(Path(self._program).resolve())
+        save_breakpoints(self.controller.state.breakpoints, program=program_key)
+    await self.controller.stop()
+    self.exit()
 ```
 
 Import `_DetachQuitModal` wherever `_QuitConfirmModal` is imported in app.py. Exit-path audit checklist (verify each lands in `action_confirm_quit` or `action_quit_debugger`, both now adopted-aware): `q` binding (app.py:128), `ctrl+q` binding (app.py:127), code-view `DebugAction("quit")` (app.py:900-901), any menu quit entry (grep `"quit"` in `widgets/menu_bar.py` and app_handlers/).
@@ -939,13 +953,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 EXIT_SCRIPT = "import sys\nprint('bye')\nsys.exit(7)\n"
-LOOP_SCRIPT = (
-    "import time\n"
-    "i = 0\n"
-    "while True:\n"
-    "    i += 1\n"
-    "    time.sleep(0.01)\n"
-)
+LOOP_SCRIPT = "import time\ni = 0\nwhile True:\n    i += 1\n    time.sleep(0.01)\n"
 
 
 async def _wait_until(pred, timeout=20.0):
@@ -982,13 +990,17 @@ async def test_signal_pause_episode_detach_and_terminate(tmp_path):
 
     async def pulses():
         await _wait_until(
-            lambda: box.get("controller") is not None
-            and box["controller"].state.phase is SessionPhase.RUNNING
+            lambda: (
+                box.get("controller") is not None
+                and box["controller"].state.phase is SessionPhase.RUNNING
+            )
         )
         os.kill(os.getpid(), signal.SIGUSR1)
         await _wait_until(
-            lambda: len(episodes) == 1
-            and box["controller"].state.phase is SessionPhase.RUNNING
+            lambda: (
+                len(episodes) == 1
+                and box["controller"].state.phase is SessionPhase.RUNNING
+            )
         )
         os.kill(os.getpid(), signal.SIGUSR1)
 
@@ -1061,9 +1073,7 @@ def _arm_signals(loop: asyncio.AbstractEventLoop, trigger: Callable[[], None]) -
                 loop.add_signal_handler(sig, trigger)
                 installed.append(sig)
         else:
-            signal.signal(
-                signal.SIGINT, lambda *_: loop.call_soon_threadsafe(trigger)
-            )
+            signal.signal(signal.SIGINT, lambda *_: loop.call_soon_threadsafe(trigger))
             installed.append(signal.SIGINT)
     except (ValueError, NotImplementedError, RuntimeError):
         log.warning("cannot install run-mode signal handlers", exc_info=True)
@@ -1669,8 +1679,10 @@ async def test_adapter_spawn_isolated_from_terminal_signals(monkeypatch):
         await c.start()
 
     import os
+
     if os.name == "nt":
         import subprocess
+
         assert captured.get("creationflags") == subprocess.CREATE_NEW_PROCESS_GROUP
         assert "start_new_session" not in captured
     else:

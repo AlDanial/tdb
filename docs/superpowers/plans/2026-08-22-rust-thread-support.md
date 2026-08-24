@@ -75,12 +75,14 @@ def test_rust_profile_defaults_by_platform(monkeypatch):
     monkeypatch.setattr("tdb.languages.rust.sys.platform", "darwin")
     assert build_rust_profile().adapter.id == "lldb-dap"
 
+
 def test_rust_profile_capabilities():
     profile = build_rust_profile(adapter="lldb-dap")
     assert profile.id == "rust"
     assert profile.presentation.lexer == "rust"
     assert profile.capabilities.pause_while_running is True
     assert profile.capabilities.concurrency_inspection == "rust"
+
 
 def test_rust_requires_explicit_language(tmp_path):
     binary = tmp_path / "app"
@@ -109,8 +111,10 @@ Implement `rust.py` with small Rust-specific subclasses so later tasks can add a
 class RustGdbAdapter(GdbDapAdapter):
     pass
 
+
 class RustLldbAdapter(LldbDapAdapter):
     pass
+
 
 def build_rust_profile(adapter=None, adapter_paths=None):
     default = "lldb-dap" if sys.platform == "darwin" else "gdb"
@@ -175,14 +179,17 @@ git commit -m "feat: add Rust language profile"
 ```python
 def test_rust_gdb_attach_body():
     body = RustGdbAdapter().attach_body(
-        host="devbox", port=2345,
+        host="devbox",
+        port=2345,
         opts={"program": "/local/app", "path_mappings": [("/src", "/remote/src")]},
     )
     assert body == {"program": "/local/app", "target": "devbox:2345"}
 
+
 def test_rust_lldb_attach_body_with_source_map():
     body = RustLldbAdapter().attach_body(
-        host="devbox", port=2345,
+        host="devbox",
+        port=2345,
         opts={"program": "/local/app", "path_mappings": [("/src", "/remote/src")]},
     )
     assert body["gdb-remote-host"] == "devbox"
@@ -190,11 +197,13 @@ def test_rust_lldb_attach_body_with_source_map():
     assert body["program"] == "/local/app"
     assert body["sourceMap"] == [["/remote/src", "/src"]]
 
+
 def test_rust_gdb_source_mapping_commands_escape_paths():
     adapter = RustGdbAdapter()
     assert adapter.pre_configuration_commands([("/local src", "/remote src")]) == (
         'set substitute-path "/remote src" "/local src"',
     )
+
 
 def test_rust_remote_attach_requires_local_program(tmp_path):
     with pytest.raises(SystemExit):
@@ -219,6 +228,7 @@ class RustGdbAdapter(GdbDapAdapter):
 
     def attach_body(self, *, host, port, opts):
         return {"program": _required_program(opts), "target": f"{host}:{port}"}
+
 
 class RustLldbAdapter(LldbDapAdapter):
     quirks = AdapterQuirks(attach_via_adapter=True)
@@ -267,15 +277,28 @@ git commit -m "feat: support Rust native remote attach"
 ```python
 def test_snapshot_serialization_is_stable():
     snapshot = ConcurrencySnapshot(
-        rust_version="1.98.0", adapter="gdb", platform="linux",
-        threads=(ThreadAnalysis(thread_id=1, name="main", state=ThreadState.BLOCKED, wait=None),),
-        primitives=(), edges=(), confirmed_deadlocks=(), suspected_stalls=(),
+        rust_version="1.98.0",
+        adapter="gdb",
+        platform="linux",
+        threads=(
+            ThreadAnalysis(
+                thread_id=1, name="main", state=ThreadState.BLOCKED, wait=None
+            ),
+        ),
+        primitives=(),
+        edges=(),
+        confirmed_deadlocks=(),
+        suspected_stalls=(),
         warnings=("stack-only classification",),
     )
     assert snapshot.to_dict()["threads"][0] == {
-        "thread_id": 1, "name": "main", "state": "blocked", "wait": None
+        "thread_id": 1,
+        "name": "main",
+        "state": "blocked",
+        "wait": None,
     }
     assert snapshot.to_dict()["warnings"] == ["stack-only classification"]
+
 
 def test_models_are_immutable():
     evidence = Evidence(Confidence.CONFIRMED, "frame-argument", "self=0x10")
@@ -299,11 +322,13 @@ class Confidence(str, Enum):
     PROBABLE = "probable"
     UNKNOWN = "unknown"
 
+
 @dataclass(frozen=True)
 class Evidence:
     confidence: Confidence
     source: str
     detail: str
+
 
 @dataclass(frozen=True)
 class RawVariable:
@@ -311,6 +336,7 @@ class RawVariable:
     value: str
     type_name: str
     evaluate_name: str | None = None
+
 
 @dataclass(frozen=True)
 class RawFrame:
@@ -320,12 +346,14 @@ class RawFrame:
     line: int
     variables: tuple[RawVariable, ...] = ()
 
+
 @dataclass(frozen=True)
 class RawThread:
     thread_id: int
     name: str
     frames: tuple[RawFrame, ...]
     os_thread_id: str | None = None
+
 
 @dataclass(frozen=True)
 class RawSnapshot:
@@ -335,10 +363,12 @@ class RawSnapshot:
     threads: tuple[RawThread, ...]
     warnings: tuple[str, ...] = ()
 
+
 @dataclass(frozen=True)
 class ProbeThread:
     dap_thread_hint: str
     os_thread_id: str
+
 
 @dataclass(frozen=True)
 class ProbePrimitiveState:
@@ -347,12 +377,14 @@ class ProbePrimitiveState:
     raw_state: str
     evidence: tuple[Evidence, ...]
 
+
 @dataclass(frozen=True)
 class ProbeResult:
     rust_version: str | None
     threads: tuple[ProbeThread, ...] = ()
     primitive_states: tuple[ProbePrimitiveState, ...] = ()
     warnings: tuple[str, ...] = ()
+
 
 @dataclass(frozen=True)
 class WaitEdge:
@@ -362,6 +394,7 @@ class WaitEdge:
     operation: str
     evidence: tuple[Evidence, ...]
 
+
 @dataclass(frozen=True)
 class Primitive:
     primitive_id: str
@@ -370,6 +403,7 @@ class Primitive:
     label: str
     evidence: tuple[Evidence, ...]
 
+
 @dataclass(frozen=True)
 class ThreadAnalysis:
     thread_id: int
@@ -377,12 +411,14 @@ class ThreadAnalysis:
     state: ThreadState
     wait: WaitEdge | None
 
+
 @dataclass(frozen=True)
 class Finding:
     kind: FindingKind
     thread_ids: tuple[int, ...]
     summary: str
     evidence_gaps: tuple[str, ...] = ()
+
 
 @dataclass(frozen=True)
 class ConcurrencySnapshot:
@@ -432,9 +468,21 @@ git commit -m "feat: define Rust concurrency snapshot model"
     [
         ("std::thread::JoinHandle<T>::join", "join", PrimitiveKind.THREAD),
         ("std::sync::poison::mutex::Mutex<T>::lock", "mutex-lock", PrimitiveKind.MUTEX),
-        ("std::sync::poison::rwlock::RwLock<T>::read", "rwlock-read", PrimitiveKind.RWLOCK),
-        ("std::sync::poison::rwlock::RwLock<T>::write", "rwlock-write", PrimitiveKind.RWLOCK),
-        ("std::sync::poison::condvar::Condvar::wait", "condvar-wait", PrimitiveKind.CONDVAR),
+        (
+            "std::sync::poison::rwlock::RwLock<T>::read",
+            "rwlock-read",
+            PrimitiveKind.RWLOCK,
+        ),
+        (
+            "std::sync::poison::rwlock::RwLock<T>::write",
+            "rwlock-write",
+            PrimitiveKind.RWLOCK,
+        ),
+        (
+            "std::sync::poison::condvar::Condvar::wait",
+            "condvar-wait",
+            PrimitiveKind.CONDVAR,
+        ),
         ("std::sync::mpsc::Receiver<T>::recv", "mpsc-recv", PrimitiveKind.CHANNEL),
         ("std::sync::mpsc::SyncSender<T>::send", "mpsc-send", PrimitiveKind.CHANNEL),
         ("std::thread::park", "park", PrimitiveKind.PARKER),
@@ -493,17 +541,22 @@ def test_confirmed_cycle_requires_every_confirmed_edge():
     assert len(snapshot.confirmed_deadlocks) == 1
     assert snapshot.suspected_stalls == ()
 
+
 def test_probable_cycle_is_suspected_not_confirmed():
     snapshot = analyze(raw_two_mutex_cycle(confidences=("confirmed", "probable")))
     assert snapshot.confirmed_deadlocks == ()
     assert snapshot.suspected_stalls[0].kind is FindingKind.SUSPECTED_CYCLE
 
+
 def test_all_application_threads_blocked_is_whole_program_stall():
     snapshot = analyze(raw_all_blocked_with_unknown_owners())
     assert snapshot.suspected_stalls[0].kind is FindingKind.WHOLE_PROGRAM_STALL
 
+
 def test_runtime_housekeeping_thread_does_not_prevent_stall():
-    snapshot = analyze(raw_with_housekeeping_thread("lldb.process.internal-state-coordinator"))
+    snapshot = analyze(
+        raw_with_housekeeping_thread("lldb.process.internal-state-coordinator")
+    )
     assert snapshot.suspected_stalls
 ```
 
@@ -551,14 +604,18 @@ git commit -m "feat: analyze Rust deadlocks and stalls"
 
 ```python
 async def test_collector_fetches_bounded_frames_for_every_thread(fake_controller):
-    result = await RustConcurrencyCollector(max_frames=32, max_variables=128).collect(fake_controller)
+    result = await RustConcurrencyCollector(max_frames=32, max_variables=128).collect(
+        fake_controller
+    )
     assert [t.thread_id for t in result.threads] == [1, 2]
     fake_controller.client.stack_trace.assert_any_await(1, start_frame=0, levels=32)
+
 
 async def test_collector_discards_result_if_session_resumes(fake_controller):
     fake_controller.state.transition_to(SessionPhase.RUNNING)
     with pytest.raises(SessionGateError, match="running"):
         await InspectService(lambda: fake_controller).collect_rust_concurrency()
+
 
 async def test_probe_timeout_preserves_base_snapshot(fake_controller, slow_probe):
     collector = RustConcurrencyCollector(probe=slow_probe, probe_timeout=0.01)
@@ -583,6 +640,7 @@ Add:
 def _require_concurrency_inspection(self) -> None:
     if self._ctrl.profile.capabilities.concurrency_inspection != "rust":
         raise SessionGateError("unsupported")
+
 
 async def collect_rust_concurrency(self) -> ConcurrencySnapshot:
     self._require_concurrency_inspection()
@@ -623,9 +681,10 @@ git commit -m "feat: collect stopped Rust concurrency snapshots"
 
 ```python
 def test_gdb_probe_parses_marker_wrapped_json():
-    raw = "console noise\nTDB_RUST_JSON:{\"rust_version\":\"1.98.0\",\"threads\":[]}\n"
+    raw = 'console noise\nTDB_RUST_JSON:{"rust_version":"1.98.0","threads":[]}\n'
     result = parse_probe_output(raw)
     assert result.rust_version == "1.98.0"
+
 
 def test_unsupported_rust_version_disables_layout_evidence():
     result = parse_probe_output(load_fixture("gdb/rust-1.97.json"))
@@ -690,10 +749,16 @@ def test_lldb_probe_uses_common_schema():
     assert result.rust_version == "1.98.0"
     assert result.os_thread_ids[0].dap_hint == "thread #1"
 
+
 def test_rust_lldb_loads_probe_script_before_launch():
     body = RustLldbAdapter().launch_body(
-        program="/app", args=[], cwd="/", env=None,
-        stop_on_entry=True, console="internalConsole", opts={},
+        program="/app",
+        args=[],
+        cwd="/",
+        env=None,
+        stop_on_entry=True,
+        console="internalConsole",
+        opts={},
     )
     assert body["initCommands"] == [f"command script import {expected_script_path()}"]
 ```
@@ -751,11 +816,19 @@ def test_rpc_response_ok_data_keeps_legacy_value():
     assert rsp.data == {"threads": []}
     assert json.loads(rsp.value) == {"threads": []}
 
-async def test_rust_concurrency_action_returns_structured_snapshot(handlers, monkeypatch):
-    monkeypatch.setattr(handlers._inspect, "collect_rust_concurrency", AsyncMock(return_value=sample_snapshot()))
+
+async def test_rust_concurrency_action_returns_structured_snapshot(
+    handlers, monkeypatch
+):
+    monkeypatch.setattr(
+        handlers._inspect,
+        "collect_rust_concurrency",
+        AsyncMock(return_value=sample_snapshot()),
+    )
     rsp = await handlers.action_rust_concurrency([])
     assert rsp.success is True
     assert rsp.data["threads"][0]["name"] == "main"
+
 
 async def test_rust_concurrency_action_gates_non_rust(handlers):
     rsp = await handlers.action_rust_concurrency([])
@@ -829,11 +902,15 @@ async def test_modal_has_three_tabs(app):
     assert modal.query_one("#wait-graph-tab")
     assert modal.query_one("#findings-tab")
 
-async def test_rust_threads_action_opens_concurrency_workspace(workflow, rust_controller):
+
+async def test_rust_threads_action_opens_concurrency_workspace(
+    workflow, rust_controller
+):
     workflow.app.controller = rust_controller
     await workflow.open_threads()
     assert isinstance(workflow.app.panels.rust_concurrency, RustConcurrencyModal)
     assert workflow.app.panels.threads is None
+
 
 def test_continued_dismisses_rust_workspace(dap_handler, modal):
     dap_handler.app.panels.rust_concurrency = modal
@@ -901,6 +978,7 @@ async def test_mutex_snapshot_identifies_wait(adapter, rust_debug_binary):
     ctrl = await launch_and_pause(rust_debug_binary("mutex"), adapter)
     snapshot = await InspectService(lambda: ctrl).collect_rust_concurrency()
     assert any(edge.operation == "mutex-lock" for edge in snapshot.edges)
+
 
 @pytest.mark.parametrize("adapter", available_rust_adapters())
 async def test_run_mode_pauses_blocked_rust_program(adapter, rust_debug_binary):

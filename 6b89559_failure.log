@@ -1,0 +1,613 @@
+tdbg/work » docker build --target test .
+[+] Building 271.0s (12/12) FINISHED                                                                     docker:default
+ => [internal] load build definition from Dockerfile                                                               0.0s
+ => => transferring dockerfile: 986B                                                                               0.0s
+ => [internal] load metadata for ghcr.io/astral-sh/uv:python3.14-alpine                                            0.5s
+ => [internal] load .dockerignore                                                                                  0.0s
+ => => transferring context: 2B                                                                                    0.0s
+ => [base 1/7] FROM ghcr.io/astral-sh/uv:python3.14-alpine@sha256:16e820cc12dbc3692f656f0d0f0c424805dc1d5e177e13d  0.0s
+ => => resolve ghcr.io/astral-sh/uv:python3.14-alpine@sha256:16e820cc12dbc3692f656f0d0f0c424805dc1d5e177e13d842c5  0.0s
+ => [internal] load build context                                                                                  0.3s
+ => => transferring context: 2.12MB                                                                                0.3s
+ => CACHED [base 2/7] RUN apk add --no-cache perl bash tcsh                                                        0.0s
+ => CACHED [base 3/7] RUN adduser -D appuser                                                                       0.0s
+ => [base 4/7] COPY --chown=appuser:appuser . /app                                                                 0.8s
+ => [base 5/7] WORKDIR /app                                                                                        0.1s
+ => [base 6/7] RUN ["uv", "sync", "--all-extras"]                                                                  8.8s
+ => [base 7/7] RUN ["uv", "pip", "install", "-e", "."]                                                             3.1s
+ => ERROR [test 1/1] RUN ["uv", "run", "pytest"]                                                                 257.2s
+------
+ > [test 1/1] RUN ["uv", "run", "pytest"]:
+0.190    Building textual-debugger @ file:///app
+1.630       Built textual-debugger @ file:///app
+1.633 Uninstalled 1 package in 0.61ms
+1.634 Installed 1 package in 1ms
+5.465 ============================= test session starts ==============================
+5.465 platform linux -- Python 3.14.7, pytest-9.0.2, pluggy-1.6.0
+5.465 rootdir: /app
+5.465 configfile: pyproject.toml
+5.465 testpaths: tests
+5.465 plugins: cov-7.1.0, asyncio-1.3.0, anyio-4.13.0
+5.465 asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+5.465 collected 1443 items
+5.465
+5.465 tests/integration/test_bash_adapter_breakpoints.py ....                  [  0%]
+12.06 tests/integration/test_bash_adapter_inspection.py .....                  [  0%]
+15.30 tests/integration/test_bash_adapter_launch.py ...                        [  0%]
+16.78 tests/integration/test_bash_adapter_stepping.py ..                       [  0%]
+18.49 tests/integration/test_bash_edge_cases.py ......                         [  1%]
+21.67 tests/integration/test_bash_session.py ............................      [  3%]
+41.44 tests/integration/test_cpp_session.py sssss                              [  3%]
+41.44 tests/integration/test_dap_session.py ............                       [  4%]
+65.83 tests/integration/test_gdb_session.py ss                                 [  4%]
+65.83 tests/integration/test_perl_adapter_attach.py ..                         [  4%]
+66.92 tests/integration/test_perl_adapter_breakpoints.py .....                 [  5%]
+70.20 tests/integration/test_perl_adapter_inspection.py ..                     [  5%]
+71.33 tests/integration/test_perl_adapter_launch.py ..                         [  5%]
+72.42 tests/integration/test_perl_adapter_pause_source.py ..                   [  5%]
+75.51 tests/integration/test_perl_begin_blocks.py .............                [  6%]
+114.5 tests/integration/test_perl_exit_code.py ..                              [  6%]
+115.8 tests/integration/test_perl_session.py ....                              [  6%]
+117.1 tests/integration/test_perl_session_driver.py ...........                [  7%]
+120.2 tests/integration/test_perl_tdbremote.py .                               [  7%]
+120.3 tests/integration/test_replay_perl.py .                                  [  7%]
+120.8 tests/integration/test_replay_session.py ............                    [  8%]
+141.3 tests/integration/test_rpc_basic.py ......                               [  9%]
+159.9 tests/integration/test_rpc_breakpoints.py .....                          [  9%]
+175.4 tests/integration/test_rpc_stepping.py .......                           [  9%]
+200.4 tests/integration/test_tcsh_adapter.py ........F.                        [ 10%]
+218.2 tests/unit/perl_helpers/test_helpers_core.py ....                        [ 10%]
+218.2 tests/unit/perl_helpers/test_helpers_eval.py .....                       [ 11%]
+218.3 tests/unit/perl_helpers/test_helpers_vars.py .....                       [ 11%]
+218.5 tests/unit/test_app_adapter_not_found.py .                               [ 11%]
+218.6 tests/unit/test_app_helpers.py .......                                   [ 12%]
+218.6 tests/unit/test_bash_declares.py .............                           [ 12%]
+218.6 tests/unit/test_bash_profile.py ......                                   [ 13%]
+218.6 tests/unit/test_bash_session_canonical.py ...                            [ 13%]
+218.6 tests/unit/test_bash_session_launch.py ..                                [ 13%]
+218.6 tests/unit/test_breakpoint_hook.py .....                                 [ 14%]
+218.6 tests/unit/test_cli.py ................................................. [ 17%]
+218.9 .............                                                            [ 18%]
+218.9 tests/unit/test_cli_breakpoint_install.py ..                             [ 18%]
+218.9 tests/unit/test_cli_record_flags.py .......                              [ 18%]
+218.9 tests/unit/test_code_view_lexer.py ...                                   [ 19%]
+218.9 tests/unit/test_code_view_windowed_render.py ....                        [ 19%]
+219.2 tests/unit/test_completion_frame_resolution.py ..                        [ 19%]
+219.6 tests/unit/test_controller_actions.py .................................. [ 21%]
+219.7 ........................................                                 [ 24%]
+219.7 tests/unit/test_controller_capabilities.py .......                       [ 25%]
+219.7 tests/unit/test_controller_configure_race.py ...                         [ 25%]
+219.7 tests/unit/test_controller_launch_cwd.py ...                             [ 25%]
+219.7 tests/unit/test_controller_pause.py ........                             [ 26%]
+219.9 tests/unit/test_controller_state_authority.py .............              [ 27%]
+219.9 tests/unit/test_controller_termination.py ....                           [ 27%]
+219.9 tests/unit/test_cpp_profile.py ..............                            [ 28%]
+219.9 tests/unit/test_dap_attach_pathmappings.py ....                          [ 28%]
+219.9 tests/unit/test_dap_client.py .....................................      [ 31%]
+220.1 tests/unit/test_dap_event_coordinator.py ..............                  [ 32%]
+220.2 tests/unit/test_dap_messages.py .............                            [ 33%]
+220.2 tests/unit/test_dap_source_request.py .........                          [ 33%]
+220.2 tests/unit/test_dap_types.py .............                               [ 34%]
+220.2 tests/unit/test_error_modal_routing.py ....                              [ 34%]
+220.8 tests/unit/test_error_parsers.py ................                        [ 35%]
+220.8 tests/unit/test_event_handler.py ............                            [ 36%]
+220.9 tests/unit/test_handler_ref.py ..........                                [ 37%]
+220.9 tests/unit/test_inspect_service.py ...................                   [ 38%]
+220.9 tests/unit/test_inspection.py ....................                       [ 40%]
+221.5 tests/unit/test_inspection_full.py ...................                   [ 41%]
+221.5 tests/unit/test_inspection_task_nav.py ........                          [ 42%]
+221.5 tests/unit/test_inspection_workflows.py .............                    [ 42%]
+221.6 tests/unit/test_keybindings.py ...........                               [ 43%]
+221.6 tests/unit/test_language_registry.py ...............                     [ 44%]
+221.6 tests/unit/test_languages_base.py ........                               [ 45%]
+221.6 tests/unit/test_mcp_session.py ..................                        [ 46%]
+221.8 tests/unit/test_mcp_tools.py ..............                              [ 47%]
+221.9 tests/unit/test_missing_source.py .                                      [ 47%]
+222.1 tests/unit/test_open_file_gate.py ...                                    [ 47%]
+222.7 tests/unit/test_perl_dap_server.py .......................               [ 49%]
+222.7 tests/unit/test_perl_profile.py ...........                              [ 50%]
+222.7 tests/unit/test_perl_protocol.py ..........                              [ 50%]
+222.7 tests/unit/test_perl_refs.py ...                                         [ 51%]
+222.7 tests/unit/test_perl_session_launch.py ..                                [ 51%]
+222.7 tests/unit/test_persist.py .................                             [ 52%]
+222.8 tests/unit/test_post_mortem_loader.py .......                            [ 52%]
+222.8 tests/unit/test_post_mortem_snapshot.py .......................          [ 54%]
+222.8 tests/unit/test_processes_cache.py .......                               [ 54%]
+222.8 tests/unit/test_profile_contract.py ..........................           [ 56%]
+222.8 tests/unit/test_protocol.py ...                                          [ 56%]
+222.8 tests/unit/test_python_profile.py .........                              [ 57%]
+222.8 tests/unit/test_record_hooks_breakpoints.py ..........                   [ 58%]
+224.5 tests/unit/test_record_hooks_inspection.py .......                       [ 58%]
+225.7 tests/unit/test_record_hooks_stepping.py ...........                     [ 59%]
+228.4 tests/unit/test_recorder.py .........                                    [ 60%]
+228.4 tests/unit/test_registry_bash.py ......                                  [ 60%]
+228.4 tests/unit/test_registry_tcsh.py ......                                  [ 60%]
+228.4 tests/unit/test_remote_attach_via_adapter.py ..                          [ 61%]
+228.4 tests/unit/test_replay_loader.py ...........                             [ 61%]
+228.4 tests/unit/test_rpc_handlers.py ........................................ [ 64%]
+228.5 ...........................                                              [ 66%]
+229.1 tests/unit/test_rpc_types.py .....                                       [ 66%]
+229.1 tests/unit/test_runner_adapter_not_found.py .                            [ 66%]
+229.1 tests/unit/test_session_phase.py ....................................... [ 69%]
+229.1 .......                                                                  [ 70%]
+229.1 tests/unit/test_shutdown_drain.py .....                                  [ 70%]
+229.1 tests/unit/test_source_analysis.py ......................                [ 72%]
+229.1 tests/unit/test_state.py ...............                                 [ 73%]
+229.1 tests/unit/test_statement_stepper.py ............................        [ 74%]
+229.2 tests/unit/test_task_collect_live.py ................                    [ 76%]
+229.2 tests/unit/test_tcsh_breakpoints.py ...                                  [ 76%]
+229.2 tests/unit/test_tcsh_guardian.py ..F.........F.FF......                  [ 77%]
+240.7 tests/unit/test_tcsh_inspect.py ............                             [ 78%]
+240.7 tests/unit/test_tcsh_instrumenter.py .................                   [ 79%]
+240.9 tests/unit/test_tcsh_profile.py .........                                [ 80%]
+240.9 tests/unit/test_tcsh_protocol.py ..............                          [ 81%]
+240.9 tests/unit/test_tcsh_scanner.py ....................                     [ 82%]
+240.9 tests/unit/test_tcsh_server.py ......................................... [ 85%]
+242.4 .........                                                                [ 86%]
+243.2 tests/unit/test_tcsh_session.py ........................................ [ 89%]
+248.8 ............................                                             [ 90%]
+253.1 tests/unit/test_tcsh_transport.py ...................................... [ 93%]
+254.0 .............................................................            [ 97%]
+254.5 tests/unit/test_wait_graph.py ...............................            [100%]
+256.4
+256.4 =================================== FAILURES ===================================
+256.4 ___________ test_terminate_kills_process_group_and_removes_workspace ___________
+256.4
+256.4 dap_client = <tests.integration.tcsh_dap_client.DAPClient object at 0x7fd8ddaabc50>
+256.4 tcsh_path = PosixPath('/bin/tcsh')
+256.4 tcsh_fixtures_dir = PosixPath('/app/tests/integration/fixtures')
+256.4 tmp_path = PosixPath('/tmp/pytest-of-appuser/pytest-0/test_terminate_kills_process_g0')
+256.4
+256.4     @pytest.mark.asyncio
+256.4     async def test_terminate_kills_process_group_and_removes_workspace(
+256.4         dap_client: DAPClient,
+256.4         tcsh_path: Path,
+256.4         tcsh_fixtures_dir: Path,
+256.4         tmp_path: Path,
+256.4     ) -> None:
+256.4         child_pid_file = tmp_path / "child.pid"
+256.4         before = dap_workspaces()
+256.4         await dap_client.initialize()
+256.4         await dap_client.launch(
+256.4             tcsh_fixtures_dir / "long_running.csh",
+256.4             tcshPath=str(tcsh_path),
+256.4             stopOnEntry=False,
+256.4             args=[str(child_pid_file)],
+256.4         )
+256.4         await configure(dap_client)
+256.4         await dap_client.wait_for_output("long running ready", category="stdout")
+256.4         await wait_until(child_pid_file.exists)
+256.4         child_pid = int(child_pid_file.read_text().strip())
+256.4         os.kill(child_pid, 0)
+256.4         created = dap_workspaces() - before
+256.4         assert len(created) == 1
+256.4
+256.4         assert (await dap_client.request("terminate", {}, timeout=8))["success"] is True
+256.4         await dap_client.wait_for_event("terminated")
+256.4
+256.4         def child_is_gone() -> bool:
+256.4             try:
+256.4                 os.kill(child_pid, 0)
+256.4             except ProcessLookupError:
+256.4                 return True
+256.4             return False
+256.4
+256.4 >       await wait_until(child_is_gone)
+256.4
+256.4 tests/integration/test_tcsh_adapter.py:365:
+256.4 _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+256.4
+256.4 predicate = <function test_terminate_kills_process_group_and_removes_workspace.<locals>.child_is_gone at 0x7fd8ddb30510>
+256.4
+256.4     async def wait_until(predicate, *, timeout: float = 5) -> None:
+256.4         deadline = time.monotonic() + timeout
+256.4         while not predicate():
+256.4             if time.monotonic() >= deadline:
+256.4 >               raise AssertionError("condition did not become true before timeout")
+256.4 E               AssertionError: condition did not become true before timeout
+256.4
+256.4 tests/integration/test_tcsh_adapter.py:114: AssertionError
+256.4 ______ test_controlled_termination_remains_available_during_natural_drain ______
+256.4
+256.4 tmp_path = PosixPath('/tmp/pytest-of-appuser/pytest-0/test_controlled_termination_re0')
+256.4
+256.4     @pytest.mark.asyncio
+256.4     async def test_controlled_termination_remains_available_during_natural_drain(
+256.4         tmp_path: Path,
+256.4     ) -> None:
+256.4         child_pid_path = tmp_path / "root-pid"
+256.4         background_pid_path = tmp_path / "background-pid"
+256.4         child = tmp_path / "draining-child"
+256.4         child.write_text(
+256.4             "#!/usr/bin/env python3\n"
+256.4             "import os\n"
+256.4             "import subprocess\n"
+256.4             "import sys\n"
+256.4             "from pathlib import Path\n"
+256.4             "background = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'])\n"
+256.4             "Path(sys.argv[1]).write_text(str(os.getpid()))\n"
+256.4             "Path(sys.argv[2]).write_text(str(background.pid))\n"
+256.4             "raise SystemExit(3)\n"
+256.4         )
+256.4         child.chmod(child.stat().st_mode | stat.S_IXUSR)
+256.4         process, control_writer, status_reader = await start_controlled_guardian(
+256.4             str(child),
+256.4             str(child_pid_path),
+256.4             str(background_pid_path),
+256.4             cwd=tmp_path,
+256.4         )
+256.4         child_pid = -1
+256.4         background_pid = -1
+256.4         try:
+256.4             assert await asyncio.to_thread(read_descriptor_line, status_reader) == b"ok\n"
+256.4             async with asyncio.timeout(1):
+256.4                 while not child_pid_path.exists() or not background_pid_path.exists():
+256.4                     await asyncio.sleep(0.005)
+256.4             child_pid = int(child_pid_path.read_text())
+256.4             background_pid = int(background_pid_path.read_text())
+256.4             async with asyncio.timeout(1):
+256.4                 while True:
+256.4                     try:
+256.4                         os.kill(child_pid, 0)
+256.4                     except ProcessLookupError:
+256.4                         break
+256.4                     await asyncio.sleep(0.005)
+256.4
+256.4             assert process.returncode is None
+256.4             os.write(control_writer, b"terminate\n")
+256.4             assert (
+256.4                 await asyncio.wait_for(
+256.4                     asyncio.to_thread(read_descriptor_line, status_reader),
+256.4                     timeout=1,
+256.4                 )
+256.4                 == b"terminated\n"
+256.4             )
+256.4             await asyncio.wait_for(process.wait(), timeout=1)
+256.4
+256.4             assert process.returncode == 3
+256.4 >           with pytest.raises(ProcessLookupError):
+256.4                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+256.4 E           Failed: DID NOT RAISE <class 'ProcessLookupError'>
+256.4
+256.4 tests/unit/test_tcsh_guardian.py:244: Failed
+256.4 __________ test_controlled_termination_pins_and_escalates_all_groups ___________
+256.4
+256.4 tmp_path = PosixPath('/tmp/pytest-of-appuser/pytest-0/test_controlled_termination_pi0')
+256.4
+256.4     @pytest.mark.asyncio
+256.4     async def test_controlled_termination_pins_and_escalates_all_groups(
+256.4         tmp_path: Path,
+256.4     ) -> None:
+256.4         child_pid_path = tmp_path / "child-pid"
+256.4         child = tmp_path / "controlled-child"
+256.4         child.write_text(
+256.4             "#!/usr/bin/env python3\n"
+256.4             "import os\n"
+256.4             "import signal\n"
+256.4             "import subprocess\n"
+256.4             "import sys\n"
+256.4             "import time\n"
+256.4             "from pathlib import Path\n"
+256.4             "signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+256.4             "member = subprocess.Popen(\n"
+256.4             "    [sys.executable, '-c', "
+256.4             "'import signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(30)'],\n"
+256.4             "    preexec_fn=os.setpgrp,\n"
+256.4             ")\n"
+256.4             "Path(sys.argv[1]).write_text(str(member.pid))\n"
+256.4             "while True:\n"
+256.4             "    time.sleep(1)\n"
+256.4         )
+256.4         child.chmod(child.stat().st_mode | stat.S_IXUSR)
+256.4         process, control_writer, status_reader = await start_controlled_guardian(
+256.4             str(child),
+256.4             str(child_pid_path),
+256.4             cwd=tmp_path,
+256.4         )
+256.4         member_pid = -1
+256.4         try:
+256.4             assert await asyncio.to_thread(read_descriptor_line, status_reader) == b"ok\n"
+256.4             async with asyncio.timeout(1):
+256.4                 while not child_pid_path.exists():
+256.4                     await asyncio.sleep(0.005)
+256.4             member_pid = int(child_pid_path.read_text())
+256.4
+256.4             os.write(control_writer, b"terminate\n")
+256.4             status = await asyncio.wait_for(
+256.4                 asyncio.to_thread(read_descriptor_line, status_reader),
+256.4                 timeout=3,
+256.4             )
+256.4             await asyncio.wait_for(process.wait(), timeout=1)
+256.4
+256.4             assert status == b"escalating\n"
+256.4             assert process.returncode == -signal.SIGKILL
+256.4 >           with pytest.raises(ProcessLookupError):
+256.4                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+256.4 E           Failed: DID NOT RAISE <class 'ProcessLookupError'>
+256.4
+256.4 tests/unit/test_tcsh_guardian.py:556: Failed
+256.4 _ test_startup_watchdog_cleans_child_when_guardian_stalls_before_ok[visible-child] _
+256.4
+256.4 stale_initial_snapshot = False
+256.4
+256.4     @pytest.mark.parametrize(
+256.4         "stale_initial_snapshot",
+256.4         (False, True),
+256.4         ids=("visible-child", "empty-snapshot-before-child"),
+256.4     )
+256.4     def test_startup_watchdog_cleans_child_when_guardian_stalls_before_ok(
+256.4         stale_initial_snapshot: bool,
+256.4     ) -> None:
+256.4         status_reader, status_writer = os.pipe()
+256.4         control_reader, control_writer = os.pipe()
+256.4         spawned_reader, spawned_writer = os.pipe()
+256.4         guardian_pid = os.fork()
+256.4         if guardian_pid == 0:
+256.4             os.close(status_reader)
+256.4             os.close(control_writer)
+256.4             os.close(spawned_reader)
+256.4             os.setsid()
+256.4             real_popen = guardian.subprocess.Popen
+256.4             real_member_loader = guardian._live_session_members_forked  # type: ignore[attr-defined]
+256.4
+256.4             if stale_initial_snapshot:
+256.4                 first_snapshot = True
+256.4
+256.4                 def load_members_after_stale_snapshot(
+256.4                     session_id: int,
+256.4                     excluded_pids: set[int],
+256.4                 ) -> dict[int, int] | None:
+256.4                     nonlocal first_snapshot
+256.4                     if first_snapshot:
+256.4                         first_snapshot = False
+256.4                         return {}
+256.4                     return real_member_loader(session_id, excluded_pids)
+256.4
+256.4                 guardian._live_session_members_forked = load_members_after_stale_snapshot  # type: ignore[attr-defined]
+256.4
+256.4             def spawn_then_stall(
+256.4                 *args: object, **kwargs: object
+256.4             ) -> subprocess.Popen[bytes]:
+256.4                 process = real_popen(*args, **kwargs)
+256.4                 os.write(spawned_writer, f"{process.pid}\n".encode())
+256.4                 os.kill(os.getpid(), signal.SIGSTOP)
+256.4                 return process
+256.4
+256.4             guardian.subprocess.Popen = spawn_then_stall  # type: ignore[assignment]
+256.4             returncode = guardian.main(
+256.4                 (
+256.4                     "--status-fd",
+256.4                     str(status_writer),
+256.4                     "--control-fd",
+256.4                     str(control_reader),
+256.4                     "--",
+256.4                     sys.executable,
+256.4                     "-c",
+256.4                     "import signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(30)",
+256.4                 )
+256.4             )
+256.4             os._exit(returncode)
+256.4
+256.4         os.close(status_writer)
+256.4         os.close(control_reader)
+256.4         os.close(spawned_writer)
+256.4         child_pid = -1
+256.4         try:
+256.4             assert read_descriptor_line_before(status_reader, 0.5) == b"armed\n"
+256.4             os.write(control_writer, b"start\n")
+256.4             child_pid = int(read_descriptor_line_before(spawned_reader, 1))
+256.4             os.write(control_writer, b"terminate\n")
+256.4
+256.4             assert read_descriptor_line_before(status_reader, 4) == b"escalating\n"
+256.4             reaped_pid, status = os.waitpid(guardian_pid, 0)
+256.4             assert reaped_pid == guardian_pid
+256.4             assert os.WIFSIGNALED(status)
+256.4             assert os.WTERMSIG(status) == signal.SIGKILL
+256.4 >           with pytest.raises(ProcessLookupError):
+256.4                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+256.4 E           Failed: DID NOT RAISE <class 'ProcessLookupError'>
+256.4
+256.4 tests/unit/test_tcsh_guardian.py:676: Failed
+256.4 _ test_startup_watchdog_cleans_child_when_guardian_stalls_before_ok[empty-snapshot-before-child] _
+256.4
+256.4 stale_initial_snapshot = True
+256.4
+256.4     @pytest.mark.parametrize(
+256.4         "stale_initial_snapshot",
+256.4         (False, True),
+256.4         ids=("visible-child", "empty-snapshot-before-child"),
+256.4     )
+256.4     def test_startup_watchdog_cleans_child_when_guardian_stalls_before_ok(
+256.4         stale_initial_snapshot: bool,
+256.4     ) -> None:
+256.4         status_reader, status_writer = os.pipe()
+256.4         control_reader, control_writer = os.pipe()
+256.4         spawned_reader, spawned_writer = os.pipe()
+256.4         guardian_pid = os.fork()
+256.4         if guardian_pid == 0:
+256.4             os.close(status_reader)
+256.4             os.close(control_writer)
+256.4             os.close(spawned_reader)
+256.4             os.setsid()
+256.4             real_popen = guardian.subprocess.Popen
+256.4             real_member_loader = guardian._live_session_members_forked  # type: ignore[attr-defined]
+256.4
+256.4             if stale_initial_snapshot:
+256.4                 first_snapshot = True
+256.4
+256.4                 def load_members_after_stale_snapshot(
+256.4                     session_id: int,
+256.4                     excluded_pids: set[int],
+256.4                 ) -> dict[int, int] | None:
+256.4                     nonlocal first_snapshot
+256.4                     if first_snapshot:
+256.4                         first_snapshot = False
+256.4                         return {}
+256.4                     return real_member_loader(session_id, excluded_pids)
+256.4
+256.4                 guardian._live_session_members_forked = load_members_after_stale_snapshot  # type: ignore[attr-defined]
+256.4
+256.4             def spawn_then_stall(
+256.4                 *args: object, **kwargs: object
+256.4             ) -> subprocess.Popen[bytes]:
+256.4                 process = real_popen(*args, **kwargs)
+256.4                 os.write(spawned_writer, f"{process.pid}\n".encode())
+256.4                 os.kill(os.getpid(), signal.SIGSTOP)
+256.4                 return process
+256.4
+256.4             guardian.subprocess.Popen = spawn_then_stall  # type: ignore[assignment]
+256.4             returncode = guardian.main(
+256.4                 (
+256.4                     "--status-fd",
+256.4                     str(status_writer),
+256.4                     "--control-fd",
+256.4                     str(control_reader),
+256.4                     "--",
+256.4                     sys.executable,
+256.4                     "-c",
+256.4                     "import signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(30)",
+256.4                 )
+256.4             )
+256.4             os._exit(returncode)
+256.4
+256.4         os.close(status_writer)
+256.4         os.close(control_reader)
+256.4         os.close(spawned_writer)
+256.4         child_pid = -1
+256.4         try:
+256.4             assert read_descriptor_line_before(status_reader, 0.5) == b"armed\n"
+256.4             os.write(control_writer, b"start\n")
+256.4             child_pid = int(read_descriptor_line_before(spawned_reader, 1))
+256.4             os.write(control_writer, b"terminate\n")
+256.4
+256.4             assert read_descriptor_line_before(status_reader, 4) == b"escalating\n"
+256.4             reaped_pid, status = os.waitpid(guardian_pid, 0)
+256.4             assert reaped_pid == guardian_pid
+256.4             assert os.WIFSIGNALED(status)
+256.4             assert os.WTERMSIG(status) == signal.SIGKILL
+256.4 >           with pytest.raises(ProcessLookupError):
+256.4                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+256.4 E           Failed: DID NOT RAISE <class 'ProcessLookupError'>
+256.4
+256.4 tests/unit/test_tcsh_guardian.py:676: Failed
+256.4 ================================ tests coverage ================================
+256.4 _______________ coverage: platform linux, python 3.14.7-final-0 ________________
+256.4
+256.4 Name                                     Stmts   Miss Branch BrPart  Cover   Missing
+256.4 ------------------------------------------------------------------------------------
+256.4 src/tdb/__init__.py                          4      0      0      0   100%
+256.4 src/tdb/_timeouts.py                        15      0      0      0   100%
+256.4 src/tdb/adapters/__init__.py                 0      0      0      0   100%
+256.4 src/tdb/adapters/bash/__init__.py            0      0      0      0   100%
+256.4 src/tdb/adapters/bash/__main__.py           10     10      0      0     0%   3-19
+256.4 src/tdb/adapters/bash/declares.py           58      6     24      3    87%   37-38, 42, 61-63
+256.4 src/tdb/adapters/bash/server.py            223    223     64      0     0%   9-360
+256.4 src/tdb/adapters/bash/session.py           259     21     80     17    89%   102, 109-111, 113, 133, 174, 241, 301, 312, 315->305, 320->305, 335->305, 340-345, 349, 352-353, 367, 381, 388->405, 405->411, 408-409, 411->exit, 428
+256.4 src/tdb/adapters/perl/__init__.py            0      0      0      0   100%
+256.4 src/tdb/adapters/perl/__main__.py           10     10      0      0     0%   3-19
+256.4 src/tdb/adapters/perl/protocol.py           70      3     32      3    94%   43, 76->82, 106-107
+256.4 src/tdb/adapters/perl/refs.py               19      0      0      0   100%
+256.4 src/tdb/adapters/perl/server.py            471    207    146     27    52%   92->91, 93->91, 96, 132-133, 136, 154-155, 160-164, 177-184, 187-194, 197-198, 214-215, 219-220, 224-282, 285-301, 304-308, 343-349, 357, 396-409, 423-444, 460-468, 482-496, 502-511, 540, 558, 614-633, 638, 660-663, 675-683, 687, 690, 693, 697-698, 700-701, 703-704, 714-715, 722-730, 797-800, 824-825, 827-828, 834, 869-879, 886-919, 926-941
+256.4 src/tdb/adapters/perl/session.py           181     30     44     10    80%   63, 72, 85-93, 106->exit, 166-167, 179-182, 222->exit, 235-236, 244, 251, 278->277, 281, 283, 296-302, 308->310, 310->312, 312->exit
+256.4 src/tdb/adapters/tcsh/__init__.py            0      0      0      0   100%
+256.4 src/tdb/adapters/tcsh/__main__.py            2      2      0      0     0%   1-3
+256.4 src/tdb/adapters/tcsh/breakpoints.py        21      0      4      0   100%
+256.4 src/tdb/adapters/tcsh/cli.py               129     45     34      6    63%   31, 37, 47->38, 54, 67-68, 78-79, 81, 95-128, 132->exit, 142-147, 163
+256.4 src/tdb/adapters/tcsh/guardian.py          553    349    182     19    34%   33, 39-102, 109-130, 140-186, 190-206, 214-235, 239-246, 250-254, 260, 265, 271-272, 275-278, 335-336, 339-340, 345-348, 357-370, 378-386, 400-402, 416, 428-429, 435-436, 440, 450-487, 507, 515-525, 553-611, 621-636, 661, 667-668, 675, 679, 695, 698-699, 711-712, 714, 721-741, 759-764, 778-806, 819, 823-824, 836-837, 848
+256.4 src/tdb/adapters/tcsh/inspect.py            99      3     14      1    96%   138-139, 193
+256.4 src/tdb/adapters/tcsh/instrumenter.py      258     20    114     17    89%   40, 131, 168, 170->172, 211, 223, 259->261, 287, 293-294, 301, 312, 326->318, 344-347, 349, 353, 359, 361-363
+256.4 src/tdb/adapters/tcsh/models.py             22      0      0      0   100%
+256.4 src/tdb/adapters/tcsh/protocol.py           52      5     18      3    89%   29, 41, 48-49, 51
+256.4 src/tdb/adapters/tcsh/runtime.py           169     29     36      6    83%   47-48, 49->58, 55-56, 151-156, 163-168, 185-194, 201-209, 217, 230, 236, 254-267, 302
+256.4 src/tdb/adapters/tcsh/scanner.py           173      7     98     11    93%   48->56, 92, 115->117, 143->145, 169->171, 184, 193, 207, 212, 215, 218
+256.4 src/tdb/adapters/tcsh/server.py            351     28    112     23    89%   34->36, 34->exit, 36->exit, 146-147, 164, 166-171, 173-176, 179-182, 198-200, 229, 256, 280, 377->381, 383, 420, 422, 459, 491, 495, 511->exit, 517-518, 520, 528, 534, 538->exit, 549, 556
+256.4 src/tdb/adapters/tcsh/session.py           889    151    258     51    81%   238-239, 296->299, 299->302, 306-307, 315-321, 347-368, 380, 395, 451, 458-459, 471-479, 486-488, 492->496, 509, 516, 526-527, 540-541, 572->580, 574-577, 593, 620, 630->638, 632-635, 652-653, 677-678, 690, 696-698, 705, 716, 725-726, 796, 803-805, 816-825, 826->exit, 854->860, 856-857, 914, 924->927, 932, 943, 944->955, 947-951, 961-963, 966, 973-974, 978-986, 999, 1006, 1020-1021, 1026-1029, 1036, 1055, 1061, 1066-1067, 1074, 1079, 1086, 1089, 1093, 1095, 1103, 1106-1107, 1110-1111, 1117, 1128-1131, 1146->1151, 1155-1166, 1167->1171, 1172, 1179, 1183-1186, 1194, 1198-1199, 1212, 1216-1217, 1259, 1261
+256.4 src/tdb/adapters/tcsh/transport.py         626     80    186     30    84%   140-141, 147-148, 173, 209-227, 238, 248, 317, 324-325, 336-339, 356->exit, 375->377, 379->381, 388-389, 434->436, 456, 541->544, 546->550, 556, 596, 600, 628-634, 682-684, 689->686, 693->721, 701-705, 710->712, 714-718, 722, 784-786, 792, 832, 847-850, 854, 856, 903-909, 917, 935->934, 948-949, 958-959, 973, 981, 984-985, 999
+256.4 src/tdb/app.py                             794    306    236     45    58%   223-227, 316, 329, 335, 346, 369, 384->393, 393->400, 395->397, 411, 425-426, 432-448, 484, 489->493, 490->489, 494, 498-510, 515-532, 591->599, 602-609, 623-624, 629-639, 651, 685-687, 701-740, 743-746, 760-762, 772, 775->777, 795-800, 812-813, 833-857, 879-880, 886, 892, 901-902, 905-910, 912-913, 916-917, 927, 936->exit, 948-949, 957-958, 971-979, 999-1001, 1015-1020, 1039-1040, 1056->1060, 1062-1065, 1076-1086, 1091-1094, 1100-1101, 1114, 1118-1119, 1131-1132, 1144-1145, 1151-1158, 1164-1178, 1185-1202, 1208->1221, 1225->1233, 1235-1236, 1252-1279, 1306-1326, 1338-1346, 1351, 1357-1358, 1361-1371, 1374-1387, 1390-1398, 1401-1410, 1417-1424, 1430-1433, 1436-1437, 1440, 1443-1444, 1447-1448, 1451-1452, 1455, 1464, 1470-1472, 1475, 1478, 1481, 1484, 1487, 1490, 1504-1505, 1508, 1558-1559, 1572->1574, 1578->1580, 1582, 1588-1595
+256.4 src/tdb/app_handlers/__init__.py             0      0      0      0   100%
+256.4 src/tdb/app_handlers/dap_events.py         160     93     42      2    42%   47-53, 58-91, 111-135, 147-156, 161-176, 184-197, 237, 260->272, 275-276, 297-301, 304-312, 315-321
+256.4 src/tdb/app_handlers/inspection.py         248    144     80      9    41%   68-79, 90-113, 117, 120-134, 138-153, 215-231, 234, 238-248, 261-286, 294-303, 330, 343-360, 377-378, 384-392, 408-414, 422, 429-433, 436-445, 449-458
+256.4 src/tdb/app_handlers/routing.py             74     36     10      0    45%   69, 73, 76, 79, 82, 85, 91, 94, 102, 106, 109, 113, 117, 123-124, 128, 136, 142-146, 154, 160, 166-170, 178, 184, 190-194
+256.4 src/tdb/app_handlers/ui_panels.py           22      0      0      0   100%
+256.4 src/tdb/app_helpers.py                      37     16     10      2    57%   26->24, 29-49
+256.4 src/tdb/breakpoint_hook.py                  38     11      6      0    75%   53-54, 58-63, 78-80, 96-98
+256.4 src/tdb/cli.py                             298     70    108     10    77%   333, 334->349, 345, 348, 392-393, 454-455, 592-598, 601, 603, 605, 608-615, 627-649, 665-666, 675-676, 685-701, 729-776
+256.4 src/tdb/dap/__init__.py                      0      0      0      0   100%
+256.4 src/tdb/dap/client.py                      242      6     58      7    96%   101, 104->109, 107-108, 122->121, 133->139, 174->161, 181-182, 350->352, 455
+256.4 src/tdb/dap/messages.py                     53      0     14      0   100%
+256.4 src/tdb/dap/protocol.py                     27      1     10      3    89%   33->38, 34->33, 39
+256.4 src/tdb/dap/types.py                       104      0      6      0   100%
+256.4 src/tdb/inspection.py                      156      1     50      1    99%   239
+256.4 src/tdb/inspection_full.py                  74      1     28      1    98%   127
+256.4 src/tdb/keybindings/__init__.py             50      0     18      1    99%   127->131
+256.4 src/tdb/languages/__init__.py                2      0      0      0   100%
+256.4 src/tdb/languages/base.py                   49      0      0      0   100%
+256.4 src/tdb/languages/bash.py                   25      1      6      0    97%   64
+256.4 src/tdb/languages/cpp.py                    43      2     10      2    92%   62->65, 118, 124
+256.4 src/tdb/languages/errors.py                 74      4     30      5    91%   68->79, 71, 73, 75, 168
+256.4 src/tdb/languages/perl.py                   30      0      8      0   100%
+256.4 src/tdb/languages/python.py                 33      0     10      0   100%
+256.4 src/tdb/languages/registry.py               54      2     20      0    97%   100-101
+256.4 src/tdb/languages/tcsh.py                   32      2     12      2    91%   40, 44
+256.4 src/tdb/mcp/__init__.py                      0      0      0      0   100%
+256.4 src/tdb/mcp/__main__.py                      1      1      0      0     0%   3
+256.4 src/tdb/mcp/server.py                      103     36     28      1    61%   71, 124, 149, 161, 186-189, 199, 206, 214, 223, 231, 246-253, 257, 261, 270-272, 279-281, 288-290, 302, 310-312
+256.4 src/tdb/mcp/session.py                      99     41     20      2    59%   57, 84-104, 122-134, 141-148, 169-170, 210-212, 215-217, 229-246
+256.4 src/tdb/persist.py                         115     14     36      4    88%   72->61, 83-84, 110, 117-118, 127-129, 172->174, 196-198, 200, 211-212
+256.4 src/tdb/post_mortem.py                     130      6     36      1    96%   77->89, 99-100, 104-105, 142-143
+256.4 src/tdb/processes_cache.py                  64      4      8      0    94%   188-189, 238-239
+256.4 src/tdb/replay.py                          119     21     42      5    83%   45, 99, 103-106, 137, 161-169, 182, 185-188, 194-202
+256.4 src/tdb/server/__init__.py                   0      0      0      0   100%
+256.4 src/tdb/server/app.py                       41     15      4      1    64%   52, 57, 59-60, 65-78
+256.4 src/tdb/server/event_handler.py             83      7      6      1    91%   100-101, 139-140, 153-154, 157
+256.4 src/tdb/server/handlers.py                 451    140    146     17    67%   44, 308-309, 316, 340, 350, 359, 362-363, 436-440, 454-457, 463-466, 473-480, 487-488, 535, 554-555, 569-570, 578-591, 595, 599-602, 605-606, 614, 616, 618, 627-628, 645-651, 658-659, 699-708, 719-722, 725-726, 742-761, 764-777, 780-810
+256.4 src/tdb/server/rpc_types.py                 17      0      0      0   100%
+256.4 src/tdb/server/runner.py                    58     20     10      4    62%   48, 60, 64-79, 111->115, 159-181
+256.4 src/tdb/session/__init__.py                  0      0      0      0   100%
+256.4 src/tdb/session/child_processes.py         108     79     18      1    24%   68, 71, 85-95, 98, 107-113, 119-127, 145-255
+256.4 src/tdb/session/controller.py              518     40    172     23    91%   234-240, 323->341, 348->357, 353-354, 398-399, 446-447, 490, 497->509, 507-508, 526->exit, 530-531, 535-536, 559-561, 563-568, 595->594, 600->exit, 651->656, 652->651, 656->exit, 743, 761->765, 763->765, 777-779, 807->exit, 834->exit, 836-837, 862->exit, 872-873, 922, 937-938, 990, 995, 998, 1022->exit, 1030
+256.4 src/tdb/session/event_bus.py                37     16     28     13    34%   18->19, 18->exit, 19->26, 19->exit, 26->27, 26->exit, 27->28, 27->exit, 28->29, 28->exit, 29->30, 29->exit, 30->exit, 37, 40, 43-44, 53-54, 57-58, 61-62, 65-66, 69-70, 73-74
+256.4 src/tdb/session/inspect_service.py         113     29     34      5    67%   155->159, 180->189, 207->211, 221-249, 262-277
+256.4 src/tdb/session/messages.py                 26     10      0      0    62%   29-33, 46-47, 52-54
+256.4 src/tdb/session/post_mortem_loader.py       25      0      6      0   100%
+256.4 src/tdb/session/recorder.py                 50      4      8      1    91%   49-50, 51->exit, 59-60
+256.4 src/tdb/session/state.py                    97      0     22      0   100%
+256.4 src/tdb/session/statement_stepper.py        92      0     30      0   100%
+256.4 src/tdb/session/terminal.py                 36     36      6      0     0%   23-121
+256.4 src/tdb/session/textual_handler.py          23      8      0      0    65%   31, 40-46, 49, 52, 55, 58, 61
+256.4 src/tdb/source_analysis.py                  82      3     44      6    93%   32->34, 34->38, 121, 142, 146->exit, 170
+256.4 src/tdb/widgets/__init__.py                  0      0      0      0   100%
+256.4 src/tdb/widgets/_inspection_modal.py       105     64     14      0    34%   150-154, 158-164, 167-176, 208, 212, 218, 222, 226, 236, 240, 246-249, 254-263, 266-269, 273-274, 280-286, 294-295, 302-308, 313, 319
+256.4 src/tdb/widgets/async_tasks_modal.py       153    109     40      0    23%   84-91, 96-105, 108-127, 130-156, 159, 162, 169, 172, 177, 180-183, 186, 196-197, 205-206, 214-215, 219-230, 234-236, 254-261, 270-294, 297-305, 311-318
+256.4 src/tdb/widgets/breakpoint_view.py          72     23     10      0    65%   34-36, 40-42, 52-54, 87-90, 101, 104, 107-110, 113-116
+256.4 src/tdb/widgets/code_view.py               492    234    210     44    42%   60-62, 65, 68-72, 75, 101-103, 106, 109-110, 113, 148-152, 155-165, 172, 175-178, 181-183, 186, 225-226, 230-231, 247, 251-263, 373-375, 385-386, 434-473, 484-550, 559->560, 559->exit, 560->561, 560->exit, 561->562, 561->exit, 562->563, 562->exit, 563->564, 563->exit, 564->565, 564->exit, 565->566, 565->exit, 566->567, 566->exit, 567->568, 567->exit, 568->569, 568->exit, 569->570, 569->exit, 570->571, 570->exit, 571->572, 571->exit, 572->573, 572->exit, 573->574, 573->exit, 574->575, 574->exit, 575->576, 575->exit, 576->577, 576->exit, 577->579, 577->exit, 605-610, 614-635, 640-644, 647-654, 657-667, 671-675, 727-729, 741-747, 764->771, 781->783, 804, 806, 824, 857-860, 864-873, 878-889, 893-898, 916-917, 920-921
+256.4 src/tdb/widgets/console_view.py             15      3      4      1    68%   32-35
+256.4 src/tdb/widgets/evaluate_console.py        112     60     26      1    38%   23-25, 28, 60-61, 84, 87, 90-110, 127-158, 169-172, 175-181, 186-194
+256.4 src/tdb/widgets/full_contents_modal.py      96     74     32      0    17%   77-78, 82-88, 91, 101-112, 115-137, 146-149, 165-204, 212-223
+256.4 src/tdb/widgets/menu_bar.py                125     64     42      4    47%   26-28, 30, 112-114, 120-121, 163->exit, 177, 188-199, 202-236, 239-244, 248, 256-267, 271-275, 278
+256.4 src/tdb/widgets/modals.py                  204    129     30      0    32%   82-84, 87-98, 103-121, 124-134, 137, 188-192, 195-214, 217-226, 229, 236, 291-292, 295-304, 311, 317-319, 322-325, 328-336, 339, 389-405, 408, 411-412, 445-446, 449-453, 456, 493-494, 497-499, 502, 561-564, 567, 593-594, 599, 602
+256.4 src/tdb/widgets/processes_modal.py         149    108     48      0    21%   63-75, 79, 84-94, 97-120, 125-127, 130, 133, 140-151, 154-159, 167-168, 176-177, 192-244, 248-256, 266, 276
+256.4 src/tdb/widgets/stack_view.py               55     11     18      2    71%   58-59, 66->71, 74-83
+256.4 src/tdb/widgets/status_bar.py               21      2      4      0    92%   26, 40
+256.4 src/tdb/widgets/threads_modal.py            93     64     24      0    25%   34-36, 41-48, 51-60, 63, 66, 69, 72, 75-80, 88-89, 97-98, 111-144, 152-154
+256.4 src/tdb/widgets/variable_view.py            86     29     22      5    61%   54-56, 91, 98, 105-106, 111->exit, 115-116, 123, 137-149, 157-159, 167-175
+256.4 ------------------------------------------------------------------------------------
+256.4 TOTAL                                    11649   3429   3446    459    68%
+256.4 =========================== short test summary info ============================
+256.4 FAILED tests/integration/test_tcsh_adapter.py::test_terminate_kills_process_group_and_removes_workspace
+256.4 FAILED tests/unit/test_tcsh_guardian.py::test_controlled_termination_remains_available_during_natural_drain
+256.4 FAILED tests/unit/test_tcsh_guardian.py::test_controlled_termination_pins_and_escalates_all_groups
+256.4 FAILED tests/unit/test_tcsh_guardian.py::test_startup_watchdog_cleans_child_when_guardian_stalls_before_ok[visible-child]
+256.4 FAILED tests/unit/test_tcsh_guardian.py::test_startup_watchdog_cleans_child_when_guardian_stalls_before_ok[empty-snapshot-before-child]
+256.4 ============ 5 failed, 1431 passed, 7 skipped in 253.09s (0:04:13) =============
+------
+Dockerfile:31
+--------------------
+  29 |     # - - - - - test target
+  30 |     FROM base AS test
+  31 | >>> RUN ["uv", "run", "pytest"]
+  32 |     # - - - - -
+  33 |
+--------------------
+ERROR: failed to build: failed to solve: process "uv run pytest" did not complete successfully: exit code: 1
+

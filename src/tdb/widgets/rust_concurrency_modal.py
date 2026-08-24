@@ -3,6 +3,11 @@
 The generic Threads modal remains the normal DAP thread browser.  Rust's
 concurrency collector has richer, immutable wait-graph evidence, so this
 screen renders that one snapshot coherently across its three tabs.
+
+Structurally this is an `_InspectableListModal` (threads list + detail
+pane) whose body is wrapped in a `TabbedContent` and extended with a
+frames table in the detail pane plus two extra tabs (wait graph,
+findings) rendered from the same snapshot.
 """
 
 from __future__ import annotations
@@ -11,10 +16,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from textual.app import ComposeResult
-from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.message import Message
-from textual.screen import ModalScreen
 from textual.widgets import DataTable, Label, Static, TabbedContent, TabPane, Tree
 
 from rich.text import Text
@@ -26,37 +29,25 @@ from tdb.rust_concurrency.models import (
     ThreadAnalysis,
     WaitEdge,
 )
+from tdb.widgets._inspection_modal import _InspectableListModal
 from tdb.widgets.variable_view import VariableView
 
 if TYPE_CHECKING:
     from tdb.dap.types import Scope, StackFrame, Variable
 
 
-class RustConcurrencyModal(ModalScreen[None]):
+class RustConcurrencyModal(_InspectableListModal[ThreadAnalysis]):
     """Near-full-screen view of one immutable Rust concurrency snapshot."""
 
+    KIND_LABEL = "Rust Concurrency"
+    TABLE_COLUMNS = ("ID", "Name", "State", "Wait")
+    FOOTER_HINT = "ESC close  |  r refresh  |  Enter select  |  arrows/tab navigate"
+
+    # Additions to the base skeleton's CSS: tab sizing, the compact
+    # evidence pane, and the two graph/findings tabs.
     DEFAULT_CSS = """
-    RustConcurrencyModal {
-        align: center middle;
-    }
-    RustConcurrencyModal #dialog {
-        width: 90%;
-        height: 80%;
-        border: solid $primary;
-        background: $surface;
-    }
-    RustConcurrencyModal #header, RustConcurrencyModal #footer {
-        height: 1;
-        padding: 0 1;
-        background: $primary-background;
-    }
-    RustConcurrencyModal #header { text-style: bold; }
-    RustConcurrencyModal #footer { color: $text-muted; }
     RustConcurrencyModal TabbedContent { height: 1fr; }
-    RustConcurrencyModal #threads-body { height: 1fr; }
-    RustConcurrencyModal #threads-table { width: 2fr; height: 1fr; }
-    RustConcurrencyModal #thread-detail { width: 3fr; overflow-y: auto; }
-    RustConcurrencyModal #thread-evidence {
+    RustConcurrencyModal #info {
         height: 5;
         max-height: 5;
         padding: 0 2;
@@ -69,7 +60,6 @@ class RustConcurrencyModal(ModalScreen[None]):
     RustConcurrencyModal #vars {
         height: 1fr;
         min-height: 3;
-        padding: 0 1;
     }
     RustConcurrencyModal #wait-graph-tree { height: 1fr; width: 1fr; }
     RustConcurrencyModal #wait-edge-list, RustConcurrencyModal #findings-list {
@@ -79,13 +69,6 @@ class RustConcurrencyModal(ModalScreen[None]):
     }
     """
 
-    BINDINGS = [
-        Binding("escape", "dismiss_modal", "Close", show=False),
-        Binding("q", "dismiss_modal", "Close", show=False),
-        Binding("r", "request_refresh", "Refresh", show=False),
-        Binding("enter", "select_current", "Select", show=False),
-    ]
-
     def __init__(
         self,
         snapshot: ConcurrencySnapshot,
@@ -94,42 +77,47 @@ class RustConcurrencyModal(ModalScreen[None]):
         super().__init__()
         self._snapshot = snapshot
         self._current_thread_id = current_thread_id
-        self._thread_ids: list[int] = []
+        self._items: list[ThreadAnalysis] = list(snapshot.threads)
         self._detail_thread_id: int | None = None
         self._detail_frames: list[StackFrame] = []
 
+    # --- Compose / mount ---------------------------------------------
+
     def compose(self) -> ComposeResult:
         with Vertical(id="dialog"):
-            yield Label("Rust Concurrency", id="header")
+            yield Label(self._header_text(), id="header")
             with TabbedContent(initial="threads-tab"):
                 with TabPane("Threads", id="threads-tab"):
-                    with Horizontal(id="threads-body"):
-                        yield DataTable(id="threads-table")
-                        with Vertical(id="thread-detail"):
-                            yield Static(id="thread-evidence")
-                            yield DataTable(id="frames-table")
-                            yield VariableView(id="vars")
+                    with Horizontal(id="body"):
+                        yield from self._compose_body()
                 with TabPane("Wait Graph", id="wait-graph-tab"):
                     yield Tree("Wait graph", id="wait-graph-tree")
                     yield Static(id="wait-edge-list")
                 with TabPane("Findings", id="findings-tab"):
                     yield Static(id="findings-list")
-            yield Label(
-                "ESC close  |  r refresh  |  Enter select  |  arrows/tab navigate",
-                id="footer",
-            )
+            yield Label(self.FOOTER_HINT, id="footer")
+
+    def _compose_body(self) -> ComposeResult:
+        with Vertical(id="list-pane"):
+            table = DataTable(id="table")
+            table.cursor_type = "row"
+            yield table
+        with Vertical(id="detail-pane"):
+            yield Static("", id="info")
+            frames = DataTable(id="frames-table")
+            frames.cursor_type = "row"
+            yield frames
+            yield VariableView(id="vars")
 
     def on_mount(self) -> None:
-        table = self.query_one("#threads-table", DataTable)
-        table.cursor_type = "row"
-        table.add_columns("ID", "Name", "State", "Wait")
         frames = self.query_one("#frames-table", DataTable)
-        frames.cursor_type = "row"
         frames.add_columns("#", "Function", "Location")
         tree = self.query_one("#wait-graph-tree", Tree)
         tree.show_root = False
         tree.guide_depth = 3
-        self._render_snapshot()
+        super().on_mount()
+        self._render_wait_graph()
+        self._render_findings()
 
     # --- Public workflow surface -------------------------------------
 
@@ -161,77 +149,90 @@ class RustConcurrencyModal(ModalScreen[None]):
     def update_snapshot(self, snapshot: ConcurrencySnapshot) -> None:
         """Atomically replace the model rendered by all three workspace tabs."""
         self._snapshot = snapshot
-        self._render_snapshot()
+        self._items = list(snapshot.threads)
+        self._update_header()
+        if self._items:
+            self._populate_table()
+            index = self._initial_cursor_index()
+            self.query_one("#table", DataTable).move_cursor(row=index)
+            self._show_detail(index)
+        else:
+            self._render_empty_state()
+        self._render_wait_graph()
+        self._render_findings()
 
-    # --- Snapshot rendering ------------------------------------------
+    # --- Base-class contract -----------------------------------------
 
-    def _render_snapshot(self) -> None:
+    def _header_text(self) -> str:
         warning_suffix = (
             f" — {len(self._snapshot.warnings)} warning(s)"
             if self._snapshot.warnings
             else ""
         )
-        self.query_one("#header", Label).update(
-            f"Rust Concurrency ({len(self._snapshot.threads)} threads){warning_suffix}"
+        return (
+            f"{self.KIND_LABEL} ({len(self._snapshot.threads)} threads){warning_suffix}"
         )
-        self._render_threads()
-        self._render_wait_graph()
-        self._render_findings()
 
-    def _render_threads(self) -> None:
-        table = self.query_one("#threads-table", DataTable)
-        table.clear()
-        self._thread_ids = []
-        for thread in self._snapshot.threads:
-            thread_id = Text(str(thread.thread_id))
-            name = Text(thread.name)
-            if thread.thread_id == self._current_thread_id:
-                thread_id.stylize("bold")
-                name.stylize("bold")
-            wait = thread.wait.operation if thread.wait is not None else "—"
-            table.add_row(thread_id, name, thread.state.value, wait)
-            self._thread_ids.append(thread.thread_id)
-        if self._snapshot.threads:
-            index = next(
-                (
-                    i
-                    for i, thread in enumerate(self._snapshot.threads)
-                    if thread.thread_id == self._current_thread_id
-                ),
-                0,
-            )
-            table.move_cursor(row=index)
-            self._show_thread_summary(self._snapshot.threads[index])
-        else:
-            self.query_one("#thread-evidence", Static).update("No Rust threads found")
+    def _empty_state_text(self) -> str:
+        return "No Rust threads found"
 
-    def _show_thread_summary(self, thread: ThreadAnalysis) -> None:
-        """Show immutable analysis immediately and request its live DAP detail."""
-        self._detail_thread_id = thread.thread_id
-        self._detail_frames = []
+    def _format_row(self, item: ThreadAnalysis) -> tuple:
+        thread_id = Text(str(item.thread_id))
+        name = Text(item.name)
+        if item.thread_id == self._current_thread_id:
+            thread_id.stylize("bold")
+            name.stylize("bold")
+        wait = item.wait.operation if item.wait is not None else "—"
+        return (thread_id, name, item.state.value, wait)
+
+    def _initial_cursor_index(self) -> int:
+        return next(
+            (
+                i
+                for i, thread in enumerate(self._items)
+                if thread.thread_id == self._current_thread_id
+            ),
+            0,
+        )
+
+    def _render_loading_detail(self, item: ThreadAnalysis) -> Text:
         content = Text()
         content.append("Thread ID: ", style="bold")
-        content.append(f"{thread.thread_id}\n")
+        content.append(f"{item.thread_id}\n")
         content.append("Name:      ", style="bold")
-        content.append(f"{thread.name}\n")
+        content.append(f"{item.name}\n")
         content.append("State:     ", style="bold")
-        content.append(f"{thread.state.value}\n")
-        if thread.wait is None:
+        content.append(f"{item.state.value}\n")
+        if item.wait is None:
             content.append("\nNo observed wait relationship.\n", style="dim")
         else:
             content.append("\nWaiting on: ", style="bold")
-            content.append(f"{thread.wait.primitive_id} ({thread.wait.operation})\n")
-            if thread.wait.owner_thread_id is not None:
-                content.append(
-                    f"Observed owner: thread {thread.wait.owner_thread_id}\n"
-                )
-            self._append_evidence(content, thread.wait.evidence)
-        self.query_one("#thread-evidence", Static).update(content)
+            content.append(f"{item.wait.primitive_id} ({item.wait.operation})\n")
+            if item.wait.owner_thread_id is not None:
+                content.append(f"Observed owner: thread {item.wait.owner_thread_id}\n")
+            self._append_evidence(content, item.wait.evidence)
+        return content
+
+    def _on_after_show_detail(self, item: ThreadAnalysis) -> None:
+        """Request the highlighted thread's live DAP stack + locals."""
+        self._detail_thread_id = item.thread_id
+        self._detail_frames = []
         self.query_one("#frames-table", DataTable).clear()
         variables = self.query_one("#vars", VariableView)
         variables.clear()
         variables.root.add_leaf("Loading live frame locals…")
-        self.post_message(self.LoadThreadDetail(thread.thread_id))
+        self.post_message(self.LoadThreadDetail(item.thread_id))
+
+    def _select_id_for(self, item: ThreadAnalysis) -> int:
+        return item.thread_id
+
+    def _make_select_message(self, item_id: int) -> Message:
+        return self.SelectThread(item_id)
+
+    def _make_refresh_message(self) -> Message:
+        return self.RefreshSnapshot()
+
+    # --- Live thread detail ------------------------------------------
 
     def show_thread_detail(
         self,
@@ -262,6 +263,8 @@ class RustConcurrencyModal(ModalScreen[None]):
         else:
             variable_view.clear()
             variable_view.root.add_leaf("(no variables available)")
+
+    # --- Wait graph / findings tabs ----------------------------------
 
     def _render_wait_graph(self) -> None:
         tree = self.query_one("#wait-graph-tree", Tree)
@@ -371,49 +374,16 @@ class RustConcurrencyModal(ModalScreen[None]):
                 style=RustConcurrencyModal._confidence_style(item.confidence),
             )
 
-    # --- User interaction --------------------------------------------
-
-    def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
-        if event.data_table.id != "threads-table":
-            return
-        row = event.cursor_row
-        if row is not None and 0 <= row < len(self._snapshot.threads):
-            self._show_thread_summary(self._snapshot.threads[row])
+    # --- Frames-table events -----------------------------------------
+    # Textual dispatches same-named handlers once per MRO class, so the
+    # base class's handlers ALSO run for every event here. They ignore
+    # anything that isn't the #table list; this handler ignores #table
+    # and covers only the extra frames table. Do not call super() — that
+    # would double-handle #table events.
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         if event.data_table.id == "frames-table":
             self._select_frame_at(event.cursor_row)
-        elif event.data_table.id == "threads-table":
-            self._select_thread_at(event.cursor_row)
-
-    def on_tree_node_selected(self, event: Tree.NodeSelected[int]) -> None:
-        if isinstance(event.node.data, int):
-            self.post_message(self.SelectThread(event.node.data))
-
-    def action_dismiss_modal(self) -> None:
-        self.dismiss(None)
-
-    def action_request_refresh(self) -> None:
-        self.post_message(self.RefreshSnapshot())
-
-    def action_select_current(self) -> None:
-        # Only act when one of the two tables holds focus. With focus
-        # anywhere else (tab bar, wait-graph tree, variables view) Enter
-        # must fall through to that widget — selecting the threads-table
-        # row from the tab bar would close the workspace and re-target the
-        # session as a surprise side effect of tab navigation.
-        frames = self.query_one("#frames-table", DataTable)
-        if self.focused is frames:
-            self._select_frame_at(frames.cursor_row)
-            return
-        table = self.query_one("#threads-table", DataTable)
-        if self.focused is table:
-            self._select_thread_at(table.cursor_row)
-
-    def _select_thread_at(self, row: int | None) -> None:
-        if row is None or not (0 <= row < len(self._thread_ids)):
-            return
-        self.post_message(self.SelectThread(self._thread_ids[row]))
 
     def _select_frame_at(self, row: int | None) -> None:
         if (

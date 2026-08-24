@@ -144,7 +144,9 @@ class RustConcurrencyCollector:
             # Registers/Globals/Statics scopes would both pollute address
             # extraction and burn the snapshot-wide variable budget.
             scope_kind = scope.name.lower()
-            if not (scope_kind.startswith("local") or scope_kind.startswith("argument")):
+            if not (
+                scope_kind.startswith("local") or scope_kind.startswith("argument")
+            ):
                 continue
             if remaining - len(values) <= 0:
                 break

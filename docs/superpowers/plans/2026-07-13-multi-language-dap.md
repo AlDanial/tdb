@@ -252,9 +252,7 @@ class AdapterSpec:
         advertised in its initialize response. Default: the adapter's
         own defaults."""
         return [
-            f["filter"]
-            for f in caps.exception_breakpoint_filters
-            if f.get("default")
+            f["filter"] for f in caps.exception_breakpoint_filters if f.get("default")
         ]
 
 
@@ -368,7 +366,7 @@ In `src/tdb/dap/types.py`, open the `Capabilities` dataclass. Add a field (with 
 In `Capabilities.from_dict`, alongside the existing key mappings, add:
 
 ```python
-            exception_breakpoint_filters=data.get("exceptionBreakpointFilters", []),
+exception_breakpoint_filters = (data.get("exceptionBreakpointFilters", []),)
 ```
 
 (Match the existing `from_dict` style exactly — it maps camelCase keys to snake_case kwargs.)
@@ -433,7 +431,11 @@ def test_launch_body_matches_legacy_client_body():
         env={"K": "V"},
         stop_on_entry=True,
         console="internalConsole",
-        opts={"just_my_code": False, "python": "/usr/bin/python3", "sub_process": False},
+        opts={
+            "just_my_code": False,
+            "python": "/usr/bin/python3",
+            "sub_process": False,
+        },
     )
     assert body == {
         "type": "debugpy",
@@ -454,8 +456,13 @@ def test_launch_body_matches_legacy_client_body():
 
 def test_launch_body_defaults():
     body = DebugpyAdapter().launch_body(
-        program="p.py", args=[], cwd=".", env=None,
-        stop_on_entry=False, console="externalTerminal", opts={},
+        program="p.py",
+        args=[],
+        cwd=".",
+        env=None,
+        stop_on_entry=False,
+        console="externalTerminal",
+        opts={},
     )
     assert body["justMyCode"] is True
     assert body["subProcess"] is True
@@ -793,15 +800,16 @@ Add to the TYPE_CHECKING imports at the top: `from tdb.languages.base import Ada
 `_watch_adapter_death()` — generalize the two message strings:
 
 ```python
-        log.error(
-            "%s adapter exited with code %s%s",
-            self._adapter.id, rc,
-            f"\nstderr:\n{stderr_text}" if stderr_text else "",
-        )
-        err = ConnectionError(
-            f"{self._adapter.id} adapter died (exit {rc}): "
-            f"{stderr_text.splitlines()[-1] if stderr_text else 'no output'}"
-        )
+log.error(
+    "%s adapter exited with code %s%s",
+    self._adapter.id,
+    rc,
+    f"\nstderr:\n{stderr_text}" if stderr_text else "",
+)
+err = ConnectionError(
+    f"{self._adapter.id} adapter died (exit {rc}): "
+    f"{stderr_text.splitlines()[-1] if stderr_text else 'no output'}"
+)
 ```
 
 (The default spec id is `"debugpy"`, so the existing adapter-death test asserting on the message still passes.)
@@ -845,17 +853,15 @@ Add to the TYPE_CHECKING imports at the top: `from tdb.languages.base import Ada
 `attach()` — replace wholesale (move the debugpy-specific notes into `DebugpyAdapter`, already done in Task 3):
 
 ```python
-    async def attach(
-        self,
-        host: str = "127.0.0.1",
-        port: int = 0,
-        **adapter_opts: Any,
-    ) -> asyncio.Future[Response]:
-        """Send attach request. Returns a Future (same pattern as launch)."""
-        arguments = self._adapter.attach_body(
-            host=host, port=port, opts=adapter_opts
-        )
-        return await self._send_raw("attach", arguments)
+async def attach(
+    self,
+    host: str = "127.0.0.1",
+    port: int = 0,
+    **adapter_opts: Any,
+) -> asyncio.Future[Response]:
+    """Send attach request. Returns a Future (same pattern as launch)."""
+    arguments = self._adapter.attach_body(host=host, port=port, opts=adapter_opts)
+    return await self._send_raw("attach", arguments)
 ```
 
 - [ ] **Step 4: Run tests**
@@ -998,13 +1004,11 @@ Add `LanguageProfile` to a `TYPE_CHECKING` import from `tdb.languages.base`.
 `do_configure` — replace the hardcoded filter call:
 
 ```python
-        # Exception-breakpoint filters are adapter-specific; the spec
-        # picks them from what the adapter advertised at initialize.
-        filters = self.profile.adapter.pick_exception_filters(
-            self.client.capabilities
-        )
-        if filters:
-            await self.client.set_exception_breakpoints(filters)
+# Exception-breakpoint filters are adapter-specific; the spec
+# picks them from what the adapter advertised at initialize.
+filters = self.profile.adapter.pick_exception_filters(self.client.capabilities)
+if filters:
+    await self.client.set_exception_breakpoints(filters)
 ```
 
 and gate the pre-arm pause block (keep the existing comment):
@@ -1068,10 +1072,10 @@ def test_detect_none_defaults_python():
 @pytest.mark.parametrize(
     "magic",
     [
-        b"\x7fELF\x02\x01\x01" + b"\x00" * 9,          # ELF
-        b"MZ\x90\x00" + b"\x00" * 12,                  # PE
-        b"\xcf\xfa\xed\xfe" + b"\x00" * 12,            # Mach-O 64 LE
-        b"\xca\xfe\xba\xbe" + b"\x00" * 12,            # Mach-O universal
+        b"\x7fELF\x02\x01\x01" + b"\x00" * 9,  # ELF
+        b"MZ\x90\x00" + b"\x00" * 12,  # PE
+        b"\xcf\xfa\xed\xfe" + b"\x00" * 12,  # Mach-O 64 LE
+        b"\xca\xfe\xba\xbe" + b"\x00" * 12,  # Mach-O universal
     ],
 )
 def test_detect_native_binaries_as_cpp(tmp_path, magic):
@@ -1187,8 +1191,8 @@ _EXTENSION_MAP = {".py": "python", ".pyw": "python", ".go": "go"}
 _COMPILED_SOURCE_EXTS = {".c", ".cc", ".cpp", ".cxx", ".c++", ".rs"}
 
 _MAGIC = [
-    (b"\x7fELF", "cpp"),           # Linux
-    (b"MZ", "cpp"),                # Windows PE
+    (b"\x7fELF", "cpp"),  # Linux
+    (b"MZ", "cpp"),  # Windows PE
     (b"\xcf\xfa\xed\xfe", "cpp"),  # Mach-O 64-bit LE
     (b"\xce\xfa\xed\xfe", "cpp"),  # Mach-O 32-bit LE
     (b"\xca\xfe\xba\xbe", "cpp"),  # Mach-O universal
@@ -1465,21 +1469,16 @@ def _resolve_language(
             )
         if args.no_subprocess:
             parser.error(
-                f"--no-subprocess is debugpy-specific "
-                f"(detected language: {profile.id})"
+                f"--no-subprocess is debugpy-specific (detected language: {profile.id})"
             )
         if args.remote_attach:
-            parser.error(
-                "--remote-attach currently supports Python debuggees only"
-            )
+            parser.error("--remote-attach currently supports Python debuggees only")
 ```
 
 Executable overrides ride along in the same call — the `profile = registry.resolve(...)` line is:
 
 ```python
-        profile = registry.resolve(
-            lang_id, adapter=adapter, adapter_paths=config.adapters
-        )
+profile = registry.resolve(lang_id, adapter=adapter, adapter_paths=config.adapters)
 ```
 
 (The builder looks up the override by the adapter id it actually chooses — passing the whole mapping is what makes a configured `lldb-dap` path work even when `--adapter` was omitted and cpp fell back to its default adapter.)
@@ -1552,13 +1551,14 @@ def test_highlight_python_still_works():
 `src/tdb/widgets/code_view.py` — convert `_highlight_source` (line ~729) from staticmethod to instance method and add the class attribute:
 
 ```python
-    # Rich lexer for syntax highlighting; set from
-    # LanguageProfile.presentation.lexer by TdbApp at startup.
-    lexer_name: str = "python"
+# Rich lexer for syntax highlighting; set from
+# LanguageProfile.presentation.lexer by TdbApp at startup.
+lexer_name: str = "python"
 
-    def _highlight_source(self, source: str) -> list[Text]:
-        syntax = Syntax(source, self.lexer_name, theme="monokai", line_numbers=False)
-        ...  # rest of the body unchanged
+
+def _highlight_source(self, source: str) -> list[Text]:
+    syntax = Syntax(source, self.lexer_name, theme="monokai", line_numbers=False)
+    ...  # rest of the body unchanged
 ```
 
 Check call sites with `grep -n "_highlight_source" src/tdb/widgets/code_view.py` — they already call via `self.`, so removing `@staticmethod` is the only change needed.
@@ -1653,8 +1653,13 @@ def test_command_missing_executable_hints_install(monkeypatch):
 
 def test_launch_body_shape():
     body = LldbDapAdapter().launch_body(
-        program="/x/prog", args=["-n", "3"], cwd="/x",
-        env={"A": "1"}, stop_on_entry=True, console="internalConsole", opts={},
+        program="/x/prog",
+        args=["-n", "3"],
+        cwd="/x",
+        env={"A": "1"},
+        stop_on_entry=True,
+        console="internalConsole",
+        opts={},
     )
     assert body == {
         "type": "lldb-dap",
@@ -1714,8 +1719,13 @@ def test_identity_fields(profile):
 
 def test_launch_body_is_well_formed(profile):
     body = profile.adapter.launch_body(
-        program="/x/prog", args=[], cwd="/x", env=None,
-        stop_on_entry=False, console="internalConsole", opts={},
+        program="/x/prog",
+        args=[],
+        cwd="/x",
+        env=None,
+        stop_on_entry=False,
+        console="internalConsole",
+        opts={},
     )
     assert body["request"] == "launch"
     assert body["program"] == "/x/prog"
@@ -1787,8 +1797,8 @@ class LldbDapAdapter(AdapterSpec):
         if exe is None:
             raise AdapterNotFoundError(
                 "lldb-dap not found on PATH — install LLVM >= 17 "
-                "(package `lldb`), or set {\"adapters\": {\"lldb-dap\": "
-                "\"/path/to/lldb-dap\"}} in tdb's config.json"
+                '(package `lldb`), or set {"adapters": {"lldb-dap": '
+                '"/path/to/lldb-dap"}} in tdb\'s config.json'
             )
         return [exe]
 
@@ -1943,7 +1953,7 @@ Find the internal call site of `compute_step_units(...)` (`grep -n "compute_step
 `controller.py` — the stepper construction in `__init__` gains:
 
 ```python
-            compute_units=self.profile.capabilities.compute_step_units,
+compute_units = (self.profile.capabilities.compute_step_units,)
 ```
 
 `app.py` `action_step_mode` (line ~1192) — first lines:
@@ -2052,14 +2062,13 @@ Call `self._require_task_inspection()` as the first line of `collect_tasks`, `ta
 `app_handlers/inspection.py` — the `except SessionGateError` blocks branch on the reason to pick a notify message (see lines 80-96 pattern). In each, add an `unsupported` case first:
 
 ```python
-            if e.reason == "unsupported":
-                self.app.notify(
-                    f"Not available for "
-                    f"{self.app.controller.profile.display_name}",
-                    title="Async Tasks",  # match each block's existing title
-                    severity="warning",
-                )
-                return
+if e.reason == "unsupported":
+    self.app.notify(
+        f"Not available for {self.app.controller.profile.display_name}",
+        title="Async Tasks",  # match each block's existing title
+        severity="warning",
+    )
+    return
 ```
 
 (Blocks that catch without binding: change `except SessionGateError:` to `except SessionGateError as e:`.)
@@ -2181,8 +2190,12 @@ Append to `tests/unit/test_controller_actions.py` (using this file's `_make()` +
 ```python
 async def test_unbound_breakpoints_warn_on_console():
     ctrl, dap, handler = _make()
-    dap.breakpoint_results = [{"verified": False, "line": 3}]  # adapt to _FakeDAP's config style
-    await ctrl.set_breakpoint("/x/prog.cpp", 3)  # use the real runtime-sync method name found in Step 1
+    dap.breakpoint_results = [
+        {"verified": False, "line": 3}
+    ]  # adapt to _FakeDAP's config style
+    await ctrl.set_breakpoint(
+        "/x/prog.cpp", 3
+    )  # use the real runtime-sync method name found in Step 1
     warnings = [o for o in handler.outputs if "debug info" in o[1]]
     assert warnings, "expected an unbound-breakpoint warning"
 
@@ -2199,18 +2212,16 @@ Adapt the two `dap.breakpoint_results` lines and the method name to `_FakeDAP`'s
 - [ ] **Step 3: Implement** — in `controller.py`:
 
 ```python
-    def _warn_unbound_breakpoints(
-        self, source_path: str, result: list[Breakpoint]
-    ) -> None:
-        """A file whose breakpoints ALL failed to bind usually means the
-        target has no debug info for it (native binary built without -g,
-        or generated/stale source). Surface a hint on the console."""
-        if result and all(not bp.verified for bp in result):
-            self.event_handler.on_output(
-                "console",
-                f"warning: no breakpoints bound in {source_path} — "
-                f"was the program compiled with debug info (-g)?\n",
-            )
+def _warn_unbound_breakpoints(self, source_path: str, result: list[Breakpoint]) -> None:
+    """A file whose breakpoints ALL failed to bind usually means the
+    target has no debug info for it (native binary built without -g,
+    or generated/stale source). Surface a hint on the console."""
+    if result and all(not bp.verified for bp in result):
+        self.event_handler.on_output(
+            "console",
+            f"warning: no breakpoints bound in {source_path} — "
+            f"was the program compiled with debug info (-g)?\n",
+        )
 ```
 
 At each transmit site found in Step 1 (except run-to-cursor), capture the return value and call the helper:
@@ -2290,9 +2301,7 @@ def cpp_binary(tmp_path_factory):
     src.write_text(CPP_SRC)
     binary = src.parent / "main"
     cxx = shutil.which("g++") or shutil.which("clang++")
-    subprocess.run(
-        [cxx, "-g", "-O0", "-o", str(binary), str(src)], check=True
-    )
+    subprocess.run([cxx, "-g", "-O0", "-o", str(binary), str(src)], check=True)
     return str(binary), str(src)
 
 
@@ -2386,7 +2395,9 @@ def test_gdb_adapter_selectable():
 
 def test_gdb_command():
     assert GdbDapAdapter(executable="/usr/bin/gdb").command() == [
-        "/usr/bin/gdb", "-i", "dap"
+        "/usr/bin/gdb",
+        "-i",
+        "dap",
     ]
 
 
@@ -2400,8 +2411,13 @@ def test_gdb_command_missing_hints_gdb14(monkeypatch):
 
 def test_gdb_launch_body():
     body = GdbDapAdapter().launch_body(
-        program="/x/prog", args=["a"], cwd="/x", env=None,
-        stop_on_entry=True, console="internalConsole", opts={},
+        program="/x/prog",
+        args=["a"],
+        cwd="/x",
+        env=None,
+        stop_on_entry=True,
+        console="internalConsole",
+        opts={},
     )
     assert body == {
         "type": "gdb",
@@ -2435,7 +2451,7 @@ class GdbDapAdapter(AdapterSpec):
         if exe is None:
             raise AdapterNotFoundError(
                 "gdb not found on PATH — install GDB >= 14 (its DAP mode), "
-                "or set {\"adapters\": {\"gdb\": \"/path/to/gdb\"}} in "
+                'or set {"adapters": {"gdb": "/path/to/gdb"}} in '
                 "tdb's config.json"
             )
         return [exe, "-i", "dap"]
