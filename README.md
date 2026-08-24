@@ -371,6 +371,10 @@ cargo rustc -- -C debuginfo=2 -C opt-level=0
 # Equivalent direct rustc settings: rustc -C debuginfo=2 -C opt-level=0 src/main.rs
 ```
 
+A panic that terminates the debuggee opens the error modal with the parsed
+panic message and backtrace; `tdb` injects `RUST_BACKTRACE=1` into launched
+programs (your own value wins if you set one) so the frames are present.
+
 The common commands are:
 
 ```bash

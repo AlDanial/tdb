@@ -19,6 +19,7 @@ from tdb.languages.base import (
     ProfileCapabilities,
 )
 from tdb.languages.cpp import GdbDapAdapter, LldbDapAdapter, _gdb_string
+from tdb.languages.errors import parse_rust_error
 
 
 def _gdb_source_filename(value: str) -> str:
@@ -32,6 +33,14 @@ def _gdb_source_filename(value: str) -> str:
     if "\n" in value or "\r" in value:
         raise LanguageNotSupportedError("GDB probe path contains a newline")
     return value
+
+
+def _with_rust_backtrace(env: dict[str, str] | None) -> dict[str, str]:
+    """Merge RUST_BACKTRACE=1 into the debuggee env (panic backtraces for
+    the error modal) without clobbering a user-provided value."""
+    merged = dict(env or {})
+    merged.setdefault("RUST_BACKTRACE", "1")
+    return merged
 
 
 class RustGdbAdapter(GdbDapAdapter):
@@ -53,6 +62,27 @@ class RustGdbAdapter(GdbDapAdapter):
                 f"source {_gdb_source_filename(str(script_path))}",
             ]
             + command[1:]
+        )
+
+    def launch_body(
+        self,
+        *,
+        program: str,
+        args: list[str],
+        cwd: str,
+        env: dict[str, str] | None,
+        stop_on_entry: bool,
+        console: str,
+        opts: dict[str, Any],
+    ) -> dict[str, Any]:
+        return super().launch_body(
+            program=program,
+            args=args,
+            cwd=cwd,
+            env=_with_rust_backtrace(env),
+            stop_on_entry=stop_on_entry,
+            console=console,
+            opts=opts,
         )
 
 
@@ -79,7 +109,7 @@ class RustLldbAdapter(LldbDapAdapter):
             program=program,
             args=args,
             cwd=cwd,
-            env=env,
+            env=_with_rust_backtrace(env),
             stop_on_entry=stop_on_entry,
             console=console,
             opts=opts,
@@ -120,7 +150,7 @@ def build_rust_profile(
         id="rust",
         display_name="Rust",
         adapter=adapters[adapter_id](executable=executable),
-        presentation=Presentation(lexer="rust"),
+        presentation=Presentation(lexer="rust", parse_error=parse_rust_error),
         capabilities=ProfileCapabilities(
             pause_while_running=True,
             concurrency_inspection="rust",

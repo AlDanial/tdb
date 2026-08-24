@@ -70,3 +70,42 @@ def test_rust_gdb_source_mapping_commands_escape_paths():
     assert adapter.pre_configuration_commands(
         [('/local\\path "quote"', '/remote\\path "quote"')]
     ) == (r'set substitute-path "/remote\\path \"quote\"" "/local\\path \"quote\""',)
+
+
+def test_rust_gdb_launch_injects_rust_backtrace_env():
+    body = RustGdbAdapter(executable="gdb").launch_body(
+        program="/app",
+        args=[],
+        cwd="/",
+        env=None,
+        stop_on_entry=True,
+        console="internalConsole",
+        opts={},
+    )
+    assert body["env"]["RUST_BACKTRACE"] == "1"
+
+
+def test_rust_gdb_launch_keeps_user_rust_backtrace():
+    body = RustGdbAdapter(executable="gdb").launch_body(
+        program="/app",
+        args=[],
+        cwd="/",
+        env={"RUST_BACKTRACE": "full"},
+        stop_on_entry=True,
+        console="internalConsole",
+        opts={},
+    )
+    assert body["env"]["RUST_BACKTRACE"] == "full"
+
+
+def test_rust_lldb_launch_injects_rust_backtrace_env():
+    body = RustLldbAdapter(executable="/opt/lldb-dap").launch_body(
+        program="/app",
+        args=[],
+        cwd="/",
+        env=None,
+        stop_on_entry=True,
+        console="internalConsole",
+        opts={},
+    )
+    assert "RUST_BACKTRACE=1" in body["env"]
