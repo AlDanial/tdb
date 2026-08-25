@@ -17,10 +17,12 @@ import pytest
 from tdb.dap.client import DAPClient
 from tdb.dap.messages import Response
 from tdb.dap.types import Capabilities
+from tdb.dap.types import Thread
 from tdb.languages.rust import RustLldbAdapter
 from tdb.languages.rust import build_rust_profile
 from tdb.server.event_handler import ServerEventHandler
 from tdb.session.controller import DebugController
+from tdb.session.state import SessionPhase
 
 
 @pytest.mark.asyncio
@@ -124,6 +126,53 @@ async def test_rust_gdb_configures_source_mappings_before_breakpoints():
         'set substitute-path "/remote src" "/local src"', context="repl"
     )
     client.configuration_done.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_gdb_remote_attach_resumes_inferior_stopped_by_stub():
+    """gdb's DAP attach (`target remote`) leaves the inferior stopped at
+    the stub's entry point and never resumes it — unlike lldb-dap, which
+    resumes on its own after attach. The controller must normalize this:
+    attach means "join a running program", so after the attach response
+    lands with the debuggee stopped, kick it off."""
+    controller = DebugController(
+        ServerEventHandler(), profile=build_rust_profile(adapter="gdb")
+    )
+    client = AsyncMock()
+    client.capabilities = Capabilities()
+    client.threads.return_value = [Thread(id=1, name="main")]
+    controller.client = client
+    controller._launch_future = _successful_attach_response()
+    controller._is_remote_attach = True
+    # The attach stopped event has already landed by the time the
+    # deferred attach response resolves.
+    controller.state.transition_to(SessionPhase.RUNNING)
+    controller.state.transition_to(SessionPhase.STOPPED)
+
+    await controller.do_configure()
+
+    client.continue_nowait.assert_awaited_once_with(1)
+    # State must flip eagerly, not wait for gdb's continued event — the
+    # debuggee visibly resumes before that event reaches the read loop.
+    assert controller.state.phase is SessionPhase.RUNNING
+
+
+@pytest.mark.asyncio
+async def test_lldb_remote_attach_does_not_send_extra_continue():
+    """lldb-dap resumes the debuggee itself after attach; the controller
+    must not stack a second continue on top."""
+    controller = DebugController(
+        ServerEventHandler(), profile=build_rust_profile(adapter="lldb-dap")
+    )
+    client = AsyncMock()
+    client.capabilities = Capabilities()
+    controller.client = client
+    controller._launch_future = _successful_attach_response()
+    controller._is_remote_attach = True
+
+    await controller.do_configure()
+
+    client.continue_nowait.assert_not_awaited()
 
 
 @pytest.mark.asyncio
