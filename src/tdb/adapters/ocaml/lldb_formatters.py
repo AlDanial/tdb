@@ -45,7 +45,11 @@ def describe_value(
     memory degrades to a raw-pointer summary — never raises.
     """
     if word & 1:
-        return f"{word >> 1} (int, raw {hex(word)})", []
+        # word arrives as UNSIGNED 64-bit (GetValueAsUnsigned / "<Q");
+        # reinterpret as signed before undoing the 2n+1 encoding or
+        # negative ints show as huge positives.
+        signed = word - (1 << 64) if word >> 63 else word
+        return f"{signed >> 1} (int, raw {hex(word)})", []
     ptr = word
     header_raw = read_memory(ptr - WORD, WORD)
     if header_raw is None or len(header_raw) < WORD:
