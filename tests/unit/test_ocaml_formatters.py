@@ -43,6 +43,25 @@ def test_immediate_int():
     assert children == []
 
 
+def test_negative_immediate_int():
+    # lldb hands the word over as UNSIGNED 64-bit: n=-5 encodes as
+    # 2n+1 = -9 = 0xFFFF_FFFF_FFFF_FFF7. Must decode back to -5, not
+    # the huge positive 2**63 - 5.
+    word = (2 * -5 + 1) & ((1 << 64) - 1)
+    summary, children = describe_value(word, lambda a, s: None)
+    assert summary.startswith("-5 ")
+    assert children == []
+
+
+def test_negative_int_child_of_block():
+    m = FakeMemory()
+    neg_one = (2 * -1 + 1) & ((1 << 64) - 1)  # 0xFFFF...FFFF
+    v = m.add_block(0x9000, 0, [neg_one])
+    _summary, children = describe_value(v, m.read)
+    child_summary, _ = describe_value(children[0][1], m.read)
+    assert child_summary.startswith("-1 ")
+
+
 def test_string_block():
     m = FakeMemory()
     v = m.add_string(0x1000, b"hello")

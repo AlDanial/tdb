@@ -275,6 +275,31 @@ def test_ocaml_error_without_backtrace_has_hint():
     assert "compile with -g" in err.detail
 
 
+def test_ocaml_multiline_span_frames_are_kept():
+    # A frame whose location spans several source lines prints as
+    # "lines N-M" (plural) — verified against OCaml 5.4's stdlib format
+    # string `... in file "%s"%s, line%s, characters %d-%d`. These
+    # frames must not be dropped from the parsed backtrace.
+    text = (
+        'Fatal error: exception Failure("boom")\n'
+        'Raised at Stdlib.failwith in file "stdlib.ml", line 29,'
+        " characters 17-33\n"
+        'Called from Mline.f in file "mline.ml" (inlined), lines 4-5,'
+        " characters 2-6\n"
+        'Called from Mline in file "mline.ml", line 7, characters 9-13\n'
+    )
+    err = parse_ocaml_error(text, 2)
+    assert err is not None
+    assert [f.func for f in err.frames] == [
+        "Mline",
+        "Mline.f",
+        "Stdlib.failwith",
+    ]
+    # The span frame anchors at its first line.
+    assert err.frames[1].path == "mline.ml"
+    assert err.frames[1].line == 4
+
+
 def test_ocaml_error_none_on_clean_output():
     assert parse_ocaml_error("all good\n", 0) is None
     assert parse_ocaml_error("", None) is None

@@ -342,10 +342,13 @@ def parse_ruby_error(stderr: str, exit_code: int | None = None) -> ParsedError |
 # Without -g the backtrace lines are absent — header-only modal plus a hint.
 
 _OCAML_FATAL_RE = re.compile(r"^Fatal error: exception (?P<msg>.+?)\s*$", re.MULTILINE)
+# A frame spanning several source lines prints "lines N-M" (plural) —
+# stdlib format string is `... in file "%s"%s, line%s, characters %d-%d`
+# where line%s becomes " N" or "s N-M". Capture the first line of a span.
 _OCAML_FRAME_RE = re.compile(
     r"^(?:Raised at|Raised by primitive operation at|Re-raised at"
     r"|Called from) (?P<func>.+?) in file \"(?P<path>[^\"]+)\""
-    r"(?: \(inlined\))?, line (?P<line>\d+)",
+    r"(?: \(inlined\))?, lines? (?P<line>\d+)(?:-\d+)?",
     re.MULTILINE,
 )
 
