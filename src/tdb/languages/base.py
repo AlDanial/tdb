@@ -61,6 +61,14 @@ class AdapterQuirks:
     # that attach without one (debugpy, perl, rdbg).
     attach_requires_local_program: bool = False
 
+    # gdb's DAP attach (`target remote`) leaves the inferior stopped at
+    # the stub's entry point and never resumes it; every other adapter's
+    # attach yields a running debuggee (lldb-dap resumes on its own).
+    # True -> the controller sends a continue after the attach response
+    # if the debuggee is still stopped, so attach means "join a running
+    # program" uniformly.
+    resume_after_remote_attach: bool = False
+
 
 class AdapterSpec:
     """How to spawn and speak to one debug adapter. Subclass per adapter.

@@ -108,7 +108,11 @@ class GdbDapAdapter(AdapterSpec):
     """
 
     id = "gdb"
-    quirks = AdapterQuirks(attach_via_adapter=True, attach_requires_local_program=True)
+    quirks = AdapterQuirks(
+        attach_via_adapter=True,
+        attach_requires_local_program=True,
+        resume_after_remote_attach=True,
+    )
 
     def __init__(self, executable: str | None = None) -> None:
         self._executable = executable

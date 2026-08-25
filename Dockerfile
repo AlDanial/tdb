@@ -23,7 +23,13 @@
 FROM ghcr.io/astral-sh/uv:python3.14-alpine AS base
 # perl/bash/tcsh power their DAP adapters; ruby + the debug gem power
 # the rdbg proxy (the gem has a C extension, hence the build deps).
-RUN apk add --no-cache perl bash tcsh ruby ruby-dev make gcc musl-dev \
+# gdb (>= 14, DAP mode) and rust/rustc let CI run the C/C++ and Rust
+# integration suites for real (Alpine's gdb package bundles gdbserver
+# as of 16.3-r2, so the gdb remote-stub attach tests run here even
+# though most hosts skip them; layout-specific Rust concurrency
+# evidence skips unless Alpine's rustc matches the supported stable
+# series — see rust_adapter_harness.require_supported_rust_concurrency).
+RUN apk add --no-cache perl bash tcsh ruby ruby-dev make gcc gdb rust musl-dev \
  && gem install debug --no-document
 # OCaml: native debugging goes through lldb-dap (this image's `lldb` package
 # also covers C/C++). `ocaml5` (5.4.0) is Alpine's >=5.0 package -- the

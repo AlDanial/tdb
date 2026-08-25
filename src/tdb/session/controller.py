@@ -383,6 +383,25 @@ class DebugController:
         if not response.success:
             raise Exception(f"Launch failed: {response.message}")
 
+        # gdb's `target remote` attach leaves the inferior stopped at the
+        # stub's entry point; its stopped event has already landed by the
+        # time the deferred attach response resolves, so phase is STOPPED
+        # here. Resume so attach means "join a running program" like every
+        # other adapter (lldb-dap resumes on its own after attach).
+        if (
+            self._is_remote_attach
+            and self.profile.adapter.quirks.resume_after_remote_attach
+            and self.state.phase == SessionPhase.STOPPED
+        ):
+            # Mirror continue_(): flip state eagerly so a caller acting
+            # right after do_configure can't observe a stale STOPPED —
+            # the debuggee visibly resumes (and can hit code) before
+            # gdb's continued event reaches our read loop.
+            self.state.transition_to(SessionPhase.RUNNING)
+            self.state.clear_frame_data()
+            self._stopped_event.clear()
+            await self._resume_client(self.client)
+
         # Don't clobber STOPPED: in remote-attach (tdb.breakpoint()) the
         # debuggee may already be paused at the hook by the time configuration
         # finishes, and `_on_stopped` will have set phase=STOPPED before this
@@ -575,12 +594,21 @@ class DebugController:
             # ever recorded a thread id. Ask the adapter directly.
             try:
                 threads = await self.client.threads()
+                if not threads:
+                    return False
+                thread_id = threads[0].id
             except Exception:
-                log.exception("thread query for pause failed")
-                return False
-            if not threads:
-                return False
-            thread_id = threads[0].id
+                # gdb's DAP (< 17) rejects `threads` while the inferior
+                # is running (notStopped), yet its `pause` ignores the
+                # threadId and interrupts every thread — so a placeholder
+                # id still lands the interrupt. Adapters that do validate
+                # the id fail the pause request below and we return
+                # False, same as before this fallback.
+                log.debug(
+                    "thread query for pause failed; trying placeholder id",
+                    exc_info=True,
+                )
+                thread_id = 1
         # Clear before sending so a stale set() from a previous stop
         # doesn't make us return True instantly.
         self._stopped_event.clear()
