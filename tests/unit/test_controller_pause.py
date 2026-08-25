@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 
+from tdb.dap.client import DAPError
 from tdb.dap.messages import Event
 from tdb.session.controller import DebugController
 from tdb.session.event_bus import DebugEventHandler
@@ -80,6 +81,28 @@ async def test_pause_returns_false_when_no_thread_id():
     ctrl = _make_controller(thread_id=None)
     assert await ctrl.pause(timeout=0.1) is False
     assert ctrl.client.pause_calls == []
+
+
+async def test_pause_falls_back_to_placeholder_id_when_threads_rejected():
+    """gdb's DAP (< 17) answers `threads` with a notStopped error while
+    the inferior is running, but its `pause` ignores the threadId and
+    interrupts every thread. So when the thread query fails, pause()
+    must still send the request with a placeholder id rather than give
+    up before the interrupt ever reaches the adapter."""
+    ctrl = _make_controller(thread_id=None)
+
+    async def reject_threads() -> list:
+        raise DAPError("threads", "notStopped")
+
+    ctrl.client.threads = reject_threads
+
+    async def fire_stopped_soon():
+        await asyncio.sleep(0.01)
+        ctrl._on_stopped(_stopped_event())
+
+    asyncio.create_task(fire_stopped_soon())
+    assert await ctrl.pause(timeout=1.0) is True
+    assert ctrl.client.pause_calls == [1]  # placeholder id went out
 
 
 # --- Successful and failed timeouts -----------------------------------
