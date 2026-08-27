@@ -344,11 +344,16 @@ def parse_ruby_error(stderr: str, exit_code: int | None = None) -> ParsedError |
 _OCAML_FATAL_RE = re.compile(r"^Fatal error: exception (?P<msg>.+?)\s*$", re.MULTILINE)
 # A frame spanning several source lines prints "lines N-M" (plural) —
 # stdlib format string is `... in file "%s"%s, line%s, characters %d-%d`
-# where line%s becomes " N" or "s N-M". Capture the first line of a span.
+# where line%s becomes " N" or "s N-M". The frame anchors at the span's
+# first line; the "-M" tail is deliberately left unconsumed (every match
+# is ^-anchored, so it can't corrupt the next one). The "<func> in file"
+# segment requires OCaml >= 4.12 — Printexc gained function names there,
+# and that is tdb's documented OCaml floor (see README); older runtimes'
+# backtraces parse as header-only.
 _OCAML_FRAME_RE = re.compile(
     r"^(?:Raised at|Raised by primitive operation at|Re-raised at"
     r"|Called from) (?P<func>.+?) in file \"(?P<path>[^\"]+)\""
-    r"(?: \(inlined\))?, lines? (?P<line>\d+)(?:-\d+)?",
+    r"(?: \(inlined\))?, lines? (?P<line>\d+)",
     re.MULTILINE,
 )
 
