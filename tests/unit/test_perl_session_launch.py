@@ -200,3 +200,43 @@ async def test_launch_terminal_mode_pid_parse_fails_closed_on_stray_digit(
 
     assert session.debuggee_pid is None
     assert "could not parse debuggee pid" in caplog.text
+
+
+async def test_launch_quotes_helpers_path_for_perl(tmp_path, monkeypatch):
+    """helpers_path() is spliced into a Perl single-quoted string; a path
+    containing an apostrophe (or backslashes, e.g. a Windows UNC share)
+    must be escaped or the `do` statement misparses and helpers.pl never
+    loads (same bug class as the OCaml `command script import` quoting)."""
+    monkeypatch.setattr(
+        session_mod, "helpers_path", lambda: "/home/o'brien/helpers.pl"
+    )
+    monkeypatch.setattr(session_mod.asyncio, "start_server", _fake_start_server)
+
+    async def fake_create_subprocess_exec(*argv, **kwargs):
+        return _FakeProcess()
+
+    monkeypatch.setattr(
+        session_mod.asyncio, "create_subprocess_exec", fake_create_subprocess_exec
+    )
+
+    session = _make_session()
+    sent: list[str] = []
+
+    async def capture_command(text: str, timeout: float = 20.0) -> list:
+        sent.append(text)
+        return []
+
+    session.command = capture_command  # type: ignore[method-assign]
+    program = str(tmp_path / "prog.pl")
+    await session.launch(program=program, args=[], cwd=str(tmp_path), env=None)
+
+    assert r"do '/home/o\'brien/helpers.pl'" in sent
+
+
+def test_perl_single_quote_escapes_backslashes():
+    # Windows UNC path: perl single-quote strings collapse \\ to \, so
+    # every backslash must be doubled to round-trip.
+    assert (
+        session_mod._perl_single_quote("\\\\server\\share\\h.pl")
+        == "'\\\\\\\\server\\\\share\\\\h.pl'"
+    )

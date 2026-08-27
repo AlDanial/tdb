@@ -37,9 +37,12 @@ def _required_program(opts: dict[str, Any]) -> str:
     return program
 
 
-def _gdb_string(value: str) -> str:
-    """Quote one argument for a gdb CLI command that parses via buildargv
-    (e.g. `set substitute-path`)."""
+def quote_debugger_arg(value: str) -> str:
+    """Quote one argument for a gdb or lldb CLI command. Both parse
+    double-quoted arguments with backslash escapes (gdb via buildargv,
+    e.g. `set substitute-path`; lldb e.g. `command script import`).
+    Shared by the rust and ocaml profiles — keep semantics in sync with
+    both debuggers when changing."""
     return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
@@ -167,7 +170,7 @@ class GdbDapAdapter(AdapterSpec):
         self, path_mappings: list[tuple[str, str]]
     ) -> tuple[str, ...]:
         return tuple(
-            f"set substitute-path {_gdb_string(remote)} {_gdb_string(local)}"
+            f"set substitute-path {quote_debugger_arg(remote)} {quote_debugger_arg(local)}"
             for local, remote in path_mappings
         )
 

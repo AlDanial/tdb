@@ -194,8 +194,8 @@ languages are supported out of the box:
 | Bash | bash-tdb (bundled) | bash ≥ 4.4 on PATH  | core debugging (no remote attach) |
 | Tcsh | tcsh-tdb (bundled) | tcsh on PATH | core debugging (no remote attach, no conditional breakpoints, no pause) |
 | Ruby | `rdbg` (the [debug gem](https://github.com/ruby/debug)) | `rdbg` ≥ 1.9 on PATH | core debugging + remote attach |
-| OCaml (native executable) | `lldb-dap` (default), `gdb` (alternate) | `lldb-dap` ships with LLVM ≥ 17; `gdb -i dap` requires GDB ≥ 14 | core debugging + domains-as-threads; Variables view shows no OCaml locals (upstream DWARF limitation); evaluate console is lldb/C-level, not OCaml |
-| OCaml (bytecode executable) | `ocamlearlybird` (default) | `opam install earlybird` | core debugging + rich OCaml locals; no pause/`--run`, no evaluate responses, no fatal-error modal (ocamlearlybird 1.3.6 limitations); single-domain only |
+| OCaml (native executable) | `lldb-dap` (default), `gdb` (alternate) | OCaml ≥ 4.12; `lldb-dap` ships with LLVM ≥ 17; `gdb -i dap` requires GDB ≥ 14 | core debugging + domains-as-threads; Variables view shows no OCaml locals (upstream DWARF limitation); evaluate console is lldb/C-level, not OCaml |
+| OCaml (bytecode executable) | `ocamlearlybird` (default) | OCaml ≥ 4.12; `opam install earlybird` | core debugging + rich OCaml locals; no pause/`--run`, no evaluate responses, no fatal-error modal (ocamlearlybird 1.3.6 limitations); single-domain only |
 
 ### Language detection and selection
 
@@ -634,6 +634,11 @@ from how the executable was built:
 does). Always pass the **built executable** to `tdb`, never the `.ml`
 source, as in `tdb ./_build/default/bin/main.exe`, not `tdb main.ml` (which
 errors with this exact guidance).
+
+**OCaml version:** tdb requires **OCaml ≥ 4.12**. Older runtimes print
+`Printexc` backtraces without function names, which the fatal-error
+modal's parser does not understand (frames would be dropped and the
+modal would wrongly suggest recompiling with `-g`).
 
 ```bash
 tdb ./_build/default/bin/main.exe          # native, lldb-dap
