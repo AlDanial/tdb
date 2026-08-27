@@ -3,6 +3,7 @@ import sys
 import pytest
 
 from tdb.languages.base import LanguageNotSupportedError
+from tdb.languages.cpp import quote_debugger_arg
 from tdb.languages.ocaml import (
     EarlybirdAdapter,
     OCamlLldbAdapter,
@@ -27,14 +28,14 @@ def _native_launch_body(adapter):
 def test_lldb_launch_body_injects_formatters_and_runparam():
     body = _native_launch_body(OCamlLldbAdapter())
     assert body["program"] == "/x/main.exe"
-    assert any(
-        "command script import" in c and "lldb_formatters.py" in c
-        for c in body["initCommands"]
-    )
     # The script path must be quoted — an install path containing a
     # space (e.g. a venv under "My Projects") would otherwise split
-    # into multiple lldb arguments.
-    assert f'command script import "{formatter_script_path()}"' in body["initCommands"]
+    # into multiple lldb arguments. Build the expectation with the same
+    # helper production uses so Windows backslash-doubling matches too.
+    assert (
+        f"command script import {quote_debugger_arg(formatter_script_path())}"
+        in body["initCommands"]
+    )
     assert any(
         "caml_fatal_uncaught_exception" in c for c in body.get("preRunCommands", [])
     )

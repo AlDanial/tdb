@@ -18,7 +18,7 @@ from tdb.languages.base import (
     Presentation,
     ProfileCapabilities,
 )
-from tdb.languages.cpp import GdbDapAdapter, LldbDapAdapter, _gdb_string
+from tdb.languages.cpp import GdbDapAdapter, LldbDapAdapter, quote_debugger_arg
 from tdb.languages.errors import parse_rust_error
 
 
@@ -92,7 +92,7 @@ class RustLldbAdapter(LldbDapAdapter):
         script_path = resources.files("tdb.rust_concurrency.probes").joinpath(
             "lldb_script.py"
         )
-        return [f"command script import {_gdb_string(str(script_path))}"]
+        return [f"command script import {quote_debugger_arg(str(script_path))}"]
 
     def launch_body(
         self,

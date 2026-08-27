@@ -24,7 +24,7 @@ from tdb.languages.base import (
     ProfileCapabilities,
     ThreadDecoration,
 )
-from tdb.languages.cpp import GdbDapAdapter, LldbDapAdapter, _gdb_string
+from tdb.languages.cpp import GdbDapAdapter, LldbDapAdapter, quote_debugger_arg
 from tdb.languages.errors import parse_ocaml_error
 
 _BYTECODE_TRAILER_MARK = b"Caml1999"  # e.g. b"Caml1999X033" at file end
@@ -200,7 +200,7 @@ class OCamlLldbAdapter(LldbDapAdapter):
             opts=opts,
         )
         body["initCommands"] = [
-            f"command script import {_gdb_string(formatter_script_path())}",
+            f"command script import {quote_debugger_arg(formatter_script_path())}",
         ]
         body["preRunCommands"] = [
             "breakpoint set --name caml_fatal_uncaught_exception",
