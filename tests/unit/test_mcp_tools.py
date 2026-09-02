@@ -41,12 +41,13 @@ EXPECTED_TOOL_NAMES = {
     "set_breakpoint",
     "remove_breakpoint",
     "list_breakpoints",
-    # Differentiators (5)
+    # Differentiators (6)
     "threads",
     "tasks",
     "processes",
     "wait_graph",
     "rust_concurrency",
+    "goroutines",
 }
 
 

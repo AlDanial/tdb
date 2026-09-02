@@ -39,6 +39,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Callable
 
 from tdb.dap.types import Scope, StackFrame, Thread, Variable
+from tdb.go_concurrency.collector import GoConcurrencyCollector
+from tdb.go_concurrency.models import GoroutineSnapshot
 from tdb.inspection import (
     PROCESS_COLLECT_EXPR,
     ProcessInfo,
@@ -77,6 +79,7 @@ class InspectService:
     def __init__(self, controller_provider: Callable[[], "DebugController"]) -> None:
         self._provider = controller_provider
         self._rust_collector = RustConcurrencyCollector()
+        self._go_collector = GoConcurrencyCollector()
 
     @property
     def _ctrl(self) -> "DebugController":
@@ -97,8 +100,8 @@ class InspectService:
         if not self._ctrl.profile.capabilities.task_inspection:
             raise SessionGateError("unsupported")
 
-    def _require_concurrency_inspection(self) -> None:
-        if self._ctrl.profile.capabilities.concurrency_inspection != "rust":
+    def _require_concurrency_inspection(self, kind: str) -> None:
+        if self._ctrl.profile.capabilities.concurrency_inspection != kind:
             raise SessionGateError("unsupported")
 
     # --- asyncio tasks ---------------------------------------------------
@@ -162,9 +165,15 @@ class InspectService:
 
     async def collect_rust_concurrency(self) -> ConcurrencySnapshot:
         """Collect the Rust wait graph while the debuggee is stopped."""
-        self._require_concurrency_inspection()
+        self._require_concurrency_inspection("rust")
         self._gate()
         return await self._rust_collector.collect_and_analyze(self._ctrl)
+
+    async def collect_go_concurrency(self) -> GoroutineSnapshot:
+        """Collect the goroutine wait-graph snapshot while stopped."""
+        self._require_concurrency_inspection("go")
+        self._gate()
+        return await self._go_collector.collect(self._ctrl)
 
     async def thread_frames(
         self, thread_id: int, *, levels: int = 8
