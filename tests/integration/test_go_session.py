@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -35,6 +36,7 @@ WAIT = 20.0  # generous ceiling for adapter spawn + debuggee start
 FIXTURES = Path(__file__).parent / "fixtures"
 GO_SIMPLE_SRC = FIXTURES / "go_simple" / "main.go"
 GO_BLOCKED_SRC = FIXTURES / "go_blocked" / "main.go"
+GO_ATTACH_SRC = FIXTURES / "go_attach" / "main.go"
 GO_TESTMODE_DIR = FIXTURES / "go_testmode"
 GO_TESTMODE_TEST_SRC = GO_TESTMODE_DIR / "mathy_test.go"
 
@@ -269,3 +271,70 @@ async def test_panic_parsed_into_error(tmp_path):
     parsed = parse_go_error(stderr_text)
     assert parsed is not None
     assert any("divide" in f.func for f in parsed.frames)
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="local pid attach relies on a Linux-only ptrace_scope workaround "
+    "in the go_attach fixture (see its module docstring); -a/--attach "
+    "itself is Linux-only for Go (README)",
+)
+async def test_pid_attach_exposes_goroutines(tmp_path_factory):
+    """-a/--attach against an already-running pid: mirrors how the CLI
+    composes attach (cli.py's `_parse_attach_spec` + `_resolve_language`
+    feed `build_go_profile(attach_pid=...)` into `DebugController.
+    remote_attach`, see controller.py's `remote_attach`/`do_configure`).
+
+    Builds go_attach's binary, starts it as an ordinary subprocess (i.e.
+    *not* through tdb/dlv — a genuine "already running, attach later"
+    scenario), attaches by pid, verifies the pre-armed `stopOnEntry`
+    (DelveAdapter.attach_body) produces a real stop with a readable
+    goroutine population, then tears the subprocess down explicitly
+    (the fixture's own 10s sleep is only a backstop).
+    """
+    d = tmp_path_factory.mktemp("go_attach_bin")
+    binary = d / "go_attach"
+    subprocess.run(
+        ["go", "build", "-gcflags=all=-N -l", "-o", str(binary), str(GO_ATTACH_SRC)],
+        check=True,
+    )
+
+    proc = subprocess.Popen([str(binary)])
+    try:
+        # Let the debuggee run past its self-ptrace-permit call and start
+        # parking goroutines before dlv attaches.
+        await asyncio.sleep(0.3)
+
+        handler = ServerEventHandler()
+        ctrl = DebugController(handler, profile=build_go_profile(attach_pid=proc.pid))
+        try:
+            await ctrl.remote_attach(host="127.0.0.1", port=0, program=str(binary))
+            assert ctrl.is_remote_attach is True
+            await asyncio.wait_for(handler.initialized_event.wait(), WAIT)
+            await ctrl.do_configure()
+            # attach_body sends stopOnEntry=True for local pid attach —
+            # dlv should produce a real `stopped` event, not just resume.
+            assert await handler.wait_for_stop(timeout=WAIT)
+            await ctrl.fetch_stop_info()
+
+            threads = await ctrl.client.threads()
+            assert len(threads) >= 1
+
+            snapshot = await GoConcurrencyCollector().collect(ctrl)
+            assert len(snapshot.goroutines) >= 1
+            assert any(
+                g.state in (GoroutineState.CHAN_RECV, GoroutineState.MUTEX_WAIT)
+                for g in snapshot.goroutines
+            )
+        finally:
+            try:
+                await asyncio.wait_for(ctrl.stop(), timeout=WAIT)
+            except Exception:
+                pass
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                pass
