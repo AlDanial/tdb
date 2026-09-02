@@ -451,8 +451,10 @@ def parse_rust_error(stderr: str, exit_code: int | None = None) -> ParsedError |
 _GO_PANIC_HEADER_RE = re.compile(r"^panic: (.+)$", re.MULTILINE)
 _GO_GOROUTINE_HEADER_RE = re.compile(r"^goroutine \d+ \[[^\]]+\]:$", re.MULTILINE)
 # A frame is a `pkg.func(args...)` line followed by a tab-indented
-# `\t/path/file.go:NN +0xOFF` location line.
-_GO_FRAME_RE = re.compile(r"^(\S.*?)\(.*\)?$")
+# `\t/path/file.go:NN +0xOFF` location line. Pointer-receiver methods like
+# `pkg.(*Type).method(...)` must be captured in full, so we capture
+# everything up to the final `(args)` part using greedy matching.
+_GO_FRAME_RE = re.compile(r"^(.+)\([^)]*\)$")
 _GO_LOC_RE = re.compile(r"^\t(\S+?):(\d+)(?: \+0x[0-9a-f]+)?\s*$")
 
 
@@ -486,7 +488,7 @@ def parse_go_error(stderr: str, exit_code: int | None = None) -> ParsedError | N
             func_m = _GO_FRAME_RE.match(func_line)
             loc_m = _GO_LOC_RE.match(loc_line)
             if func_m and loc_m:
-                func = func_m.group(1).split("(")[0]
+                func = func_m.group(1)
                 if not func.startswith("runtime."):
                     frames.append(
                         ErrorFrame(

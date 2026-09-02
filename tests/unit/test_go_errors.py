@@ -49,3 +49,19 @@ def test_goexit_frames_skipped():
     )
     err = parse_go_error(text, 2)
     assert all("runtime." not in f.func for f in err.frames)
+
+
+def test_pointer_receiver_methods():
+    """Pointer-receiver methods like (*Server).ServeHTTP must be captured in full."""
+    text = PANIC.replace(
+        "main.divide(...)\n\t/w/main.go:7 +0x11\nmain.main()",
+        "main.(*Server).ServeHTTP(0xc0000123, 0xc0000456)\n\t/w/srv.go:44 +0x1a\nmain.main()",
+    )
+    err = parse_go_error(text, 2)
+    assert err is not None
+    # Verify the pointer-receiver method is captured with full qualified name
+    server_frame = [f for f in err.frames if "Server" in f.func]
+    assert len(server_frame) == 1
+    assert server_frame[0].func == "main.(*Server).ServeHTTP"
+    assert server_frame[0].path == "/w/srv.go"
+    assert server_frame[0].line == 44
