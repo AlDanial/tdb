@@ -208,3 +208,7 @@ register("ocaml", build_ocaml_profile)
 from tdb.languages.rust import build_rust_profile  # noqa: E402
 
 register("rust", build_rust_profile)
+
+from tdb.languages.go import build_go_profile  # noqa: E402
+
+register("go", build_go_profile)
