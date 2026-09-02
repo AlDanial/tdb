@@ -114,6 +114,13 @@ def detect(program: str | None) -> str:
     if program is None:
         return "python"
     path = Path(program)
+    if path.is_dir():
+        if any(path.glob("*.go")):
+            return "go"
+        raise LanguageNotSupportedError(
+            f"{program!r} is a directory with no .go files — tdb debugs "
+            f"a program file, or a Go package directory"
+        )
     reject_compiled_source(program)
     ext = path.suffix.lower()
     if ext in _EXTENSION_MAP:
@@ -131,6 +138,10 @@ def detect(program: str | None) -> str:
         pass
     for magic, lang_id in _MAGIC:
         if head.startswith(magic):
+            from tdb.languages.go import is_go_binary  # lazy: import cycle
+
+            if is_go_binary(str(path)):
+                return "go"
             return lang_id
     if head.startswith(b"#!") and b"python" in head.splitlines()[0]:
         return "python"
