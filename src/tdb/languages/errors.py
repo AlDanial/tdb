@@ -444,3 +444,67 @@ def parse_rust_error(stderr: str, exit_code: int | None = None) -> ParsedError |
         ]
 
     return ParsedError(header=header, message=message, frames=frames, detail=detail)
+
+
+# --- Go (dlv) ---------------------------------------------------------------
+
+_GO_PANIC_HEADER_RE = re.compile(r"^panic: (.+)$", re.MULTILINE)
+_GO_GOROUTINE_HEADER_RE = re.compile(r"^goroutine \d+ \[[^\]]+\]:$", re.MULTILINE)
+# A frame is a `pkg.func(args...)` line followed by a tab-indented
+# `\t/path/file.go:NN +0xOFF` location line.
+_GO_FRAME_RE = re.compile(r"^(\S.*?)\(.*\)?$")
+_GO_LOC_RE = re.compile(r"^\t(\S+?):(\d+)(?: \+0x[0-9a-f]+)?\s*$")
+
+
+def parse_go_error(stderr: str, exit_code: int | None = None) -> ParsedError | None:
+    """Parse a Go panic out of raw stderr text.
+
+    `exit_code` is accepted for Presentation.parse_error signature
+    parity and ignored: the `panic:` header is an unambiguous signal
+    (Go always exits 2 on unrecovered panic, but a program printing
+    "panic:" itself and exiting 0 would be pathological either way).
+
+    Frames come from the FIRST goroutine block only — Go prints the
+    panicking goroutine first; other goroutines' dumps (GOTRACEBACK=all)
+    are preserved in `detail` but not turned into synthetic frames.
+    Runtime-internal frames (runtime.goexit etc.) are skipped.
+    """
+    header_match = _GO_PANIC_HEADER_RE.search(stderr)
+    if header_match is None:
+        return None
+    detail_text = stderr[header_match.start() :].rstrip()
+
+    goroutine_match = _GO_GOROUTINE_HEADER_RE.search(detail_text)
+    frames: list[ErrorFrame] = []
+    if goroutine_match is not None:
+        lines = detail_text[goroutine_match.end() :].lstrip("\n").split("\n")
+        i = 0
+        while i + 1 < len(lines):
+            func_line, loc_line = lines[i], lines[i + 1]
+            if not func_line.strip() or _GO_GOROUTINE_HEADER_RE.match(func_line):
+                break  # end of the first goroutine's block
+            func_m = _GO_FRAME_RE.match(func_line)
+            loc_m = _GO_LOC_RE.match(loc_line)
+            if func_m and loc_m:
+                func = func_m.group(1).split("(")[0]
+                if not func.startswith("runtime."):
+                    frames.append(
+                        ErrorFrame(
+                            path=loc_m.group(1),
+                            line=int(loc_m.group(2)),
+                            func=func,
+                        )
+                    )
+                i += 2
+            else:
+                i += 1
+    # Go prints innermost-first; ParsedError wants outermost-first.
+    frames.reverse()
+
+    message = header_match.group(1).strip()
+    return ParsedError(
+        header=f"panic: {message}",
+        message=message,
+        frames=frames,
+        detail=detail_text,
+    )

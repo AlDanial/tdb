@@ -113,3 +113,43 @@ def test_attach_bodies():
 def test_unknown_adapter_rejected():
     with pytest.raises(LanguageNotSupportedError):
         build_go_profile(adapter="gdb")
+
+
+from tdb.dap.types import Source, StackFrame, Thread
+from tdb.languages.go import classify_go_threads
+
+
+def _frame(name):
+    return StackFrame(id=1, name=name, source=Source(path="/w/main.go"), line=1)
+
+
+def test_classify_hides_pure_runtime_goroutines():
+    threads = [
+        Thread(id=1, name="* [Go 1] main.main"),
+        Thread(id=2, name="[Go 17] runtime.gcBgMarkWorker"),
+        Thread(id=3, name="[Go 5] main.worker"),
+    ]
+    stacks = {
+        1: [_frame("main.main")],
+        2: [_frame("runtime.gopark"), _frame("runtime.gcBgMarkWorker")],
+        3: [
+            _frame("runtime.gopark"),
+            _frame("runtime.chanrecv"),
+            _frame("main.worker"),
+        ],
+    }
+    d = classify_go_threads(threads, stacks)
+    assert [x.hidden for x in d] == [False, True, False]
+    assert all(x.label is None for x in d)  # dlv's names are already good
+
+
+def test_classify_without_stack_stays_visible():
+    threads = [Thread(id=9, name="[Go 9] main.helper")]
+    d = classify_go_threads(threads, {})
+    assert d[0].hidden is False
+
+
+def test_profile_wires_error_parser_and_classifier():
+    p = build_go_profile()
+    assert p.presentation.parse_error is not None
+    assert p.capabilities.classify_threads is not None

@@ -11,6 +11,7 @@ import re
 import shutil
 from typing import Any
 
+from tdb.dap.types import StackFrame, Thread
 from tdb.languages.base import (
     AdapterNotFoundError,
     AdapterQuirks,
@@ -19,7 +20,9 @@ from tdb.languages.base import (
     LanguageProfile,
     Presentation,
     ProfileCapabilities,
+    ThreadDecoration,
 )
+from tdb.languages.errors import parse_go_error
 
 # Magic prefix of the build-info blob Go links into every binary
 # (what `go version <binary>` locates). 16 bytes, version-stable.
@@ -140,6 +143,24 @@ class DelveAdapter(AdapterSpec):
         return {"mode": "remote"}
 
 
+def classify_go_threads(
+    threads: list[Thread], stacks: dict[int, list[StackFrame]]
+) -> list[ThreadDecoration]:
+    """Hide goroutines whose entire stack is Go-runtime internals (GC
+    workers, finalizers, netpoll) so the plain ThreadsModal shows user
+    goroutines by default; `a` reveals everything. Labels stay None —
+    dlv's own thread names ("[Go N] pkg.func") are already right.
+    A goroutine with no stack info stays visible."""
+    decorations: list[ThreadDecoration] = []
+    for t in threads:
+        frames = stacks.get(t.id, [])
+        hidden = bool(frames) and all(
+            f.name.startswith(("runtime.", "runtime/")) for f in frames
+        )
+        decorations.append(ThreadDecoration(t, None, hidden))
+    return decorations
+
+
 def build_go_profile(
     adapter: str | None = None,
     adapter_paths: dict[str, str] | None = None,
@@ -162,9 +183,14 @@ def build_go_profile(
             mode="test" if test else None,
             attach_pid=attach_pid,
         ),
-        presentation=Presentation(lexer="go"),
+        presentation=Presentation(
+            lexer="go",
+            parse_error=parse_go_error,
+            frame_placeholder="<main>",
+        ),
         capabilities=ProfileCapabilities(
             pause_while_running=True,  # dlv dap honors DAP `pause` -> --run works
             concurrency_inspection="go",
+            classify_threads=classify_go_threads,
         ),
     )
