@@ -62,15 +62,23 @@ def analyze(
             if ops == {"recv"} or ops == {"send"}:
                 side = "receiving" if ops == {"recv"} else "sending"
                 other = "sender" if ops == {"recv"} else "receiver"
-                findings.append(
-                    GoFinding(
-                        GoFindingKind.STUCK_CHANNEL,
-                        tids,
-                        f"{len(group)} goroutine(s) {side} on {resource.label} "
-                        f"with no {other} observed",
-                        confidence,
+                # Fire ONLY when no non-runtime goroutine is still
+                # runnable/running (spec §3 analyzer) -- if something else
+                # can still run, it may yet unblock these waiters (e.g. by
+                # sending/receiving after doing other work), so this isn't
+                # confidently "stuck". LIKELY_LEAK below is independent of
+                # this: a large same-channel waiter cluster is worth
+                # flagging regardless of what else is running.
+                if not someone_running:
+                    findings.append(
+                        GoFinding(
+                            GoFindingKind.STUCK_CHANNEL,
+                            tids,
+                            f"{len(group)} goroutine(s) {side} on {resource.label} "
+                            f"with no {other} observed",
+                            confidence,
+                        )
                     )
-                )
                 if len(group) >= _LEAK_CLUSTER:
                     findings.append(
                         GoFinding(
@@ -81,7 +89,10 @@ def analyze(
                             Confidence.PROBABLE,
                         )
                     )
-        elif len(group) >= _CONVOY_SIZE:
+        # Mutex convoy requires the blocked operations to actually be
+        # mutex ops -- a WaitGroup.Wait cluster (ops == {"waitgroup"}) is
+        # not a mutex convoy, just ordinary fan-in/fan-out synchronization.
+        elif ops == {"mutex"} and len(group) >= _CONVOY_SIZE:
             findings.append(
                 GoFinding(
                     GoFindingKind.MUTEX_CONVOY,
