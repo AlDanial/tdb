@@ -51,7 +51,7 @@ RUN apk add --no-cache ocaml5 ocaml5-compiler-libs opam lldb py3-lldb m4 \
 # afterward the same way the OCaml/opam layer above is (keeps the image
 # lean -- neither is needed once dlv is built).
 RUN apk add --no-cache go \
- && GOBIN=/usr/local/bin go install github.com/go-delve/delve/cmd/dlv@latest \
+ && GOBIN=/usr/local/bin go install github.com/go-delve/delve/cmd/dlv@v1.27.1 \
  && rm -rf /root/go /root/.cache/go-build
 RUN adduser -D appuser
 ENV PATH="/app/.venv/bin:$PATH"
