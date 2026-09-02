@@ -16,6 +16,7 @@ Rules that keep this compartmentalized (see the design spec):
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
@@ -78,6 +79,15 @@ class AdapterSpec:
 
     id: str = ""
     quirks: AdapterQuirks = AdapterQuirks()
+    # How the DAP byte stream is established after spawning `command()`:
+    #   "stdio"      — (default) DAP over the subprocess's stdin/stdout.
+    #   "spawn_tcp"  — the subprocess serves DAP on a TCP socket and
+    #                  announces it on stdout with a line matching
+    #                  `listen_regex` (group 1 host, group 2 port);
+    #                  the client connects and speaks DAP over TCP.
+    #                  Used by adapters with no stdio mode (dlv dap).
+    connect_mode: str = "stdio"
+    listen_regex: "re.Pattern[str] | None" = None
 
     def command(self) -> list[str]:
         """Argv for the adapter subprocess (DAP over stdio).

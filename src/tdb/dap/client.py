@@ -57,6 +57,7 @@ class DAPClient:
         # field the task could be collected before it logs anything,
         # leaving a silent hang on premature adapter exit.
         self._watch_task: asyncio.Task[None] | None = None
+        self._stdout_drain_task: asyncio.Task[None] | None = None
         self.capabilities = Capabilities()
 
     def _next_seq(self) -> int:
@@ -99,7 +100,14 @@ class DAPClient:
             stderr=asyncio.subprocess.PIPE,
             **spawn_kwargs,
         )
-        self._reader = self._process.stdout
+        if self._adapter.connect_mode == "spawn_tcp":
+            host, port = await self._await_listen_line()
+            self._reader, self._writer = await asyncio.open_connection(host, port)
+            # Keep draining the adapter's stdout so its pipe never fills
+            # and blocks it (dlv logs there). Strong ref like _watch_task.
+            self._stdout_drain_task = asyncio.create_task(self._drain_stdout())
+        else:
+            self._reader = self._process.stdout
         self._reader_task = asyncio.create_task(self._read_loop())
         # Watch for premature death — if the adapter exits before tdb
         # is done with it, surface stderr so the user sees an
@@ -155,6 +163,13 @@ class DAPClient:
             except asyncio.CancelledError:
                 pass
             self._watch_task = None
+        if self._stdout_drain_task:
+            self._stdout_drain_task.cancel()
+            try:
+                await self._stdout_drain_task
+            except asyncio.CancelledError:
+                pass
+            self._stdout_drain_task = None
         if self._writer:
             self._writer.close()
             self._writer = None
@@ -208,6 +223,52 @@ class DAPClient:
         except Exception as e:
             log.exception("Error handling reverse request: %s", request.command)
             await self._send_reverse_response(request, success=False, message=str(e))
+
+    async def _drain_stdout(self) -> None:
+        """Discard a spawn_tcp adapter's post-handshake stdout (log
+        noise) so the pipe can't fill and stall the adapter."""
+        assert self._process is not None and self._process.stdout is not None
+        try:
+            while await self._process.stdout.read(65536):
+                pass
+        except Exception:
+            pass
+
+    async def _await_listen_line(self) -> tuple[str, int]:
+        """Read the spawn_tcp adapter's stdout until its listen
+        announcement, with a hard deadline. Raises ConnectionError with
+        the adapter's stderr when it dies or stays silent."""
+        from tdb import _timeouts
+
+        assert self._process is not None and self._process.stdout is not None
+        pattern = self._adapter.listen_regex
+        assert pattern is not None, "spawn_tcp adapter must define listen_regex"
+
+        async def _read_until_match() -> tuple[str, int]:
+            assert self._process is not None and self._process.stdout is not None
+            while True:
+                raw = await self._process.stdout.readline()
+                if not raw:  # EOF: adapter exited before announcing
+                    stderr = b""
+                    if self._process.stderr is not None:
+                        stderr = await self._process.stderr.read()
+                    raise ConnectionError(
+                        f"{self._adapter.id} adapter exited before serving DAP: "
+                        f"{stderr.decode('utf-8', errors='replace').strip() or 'no output'}"
+                    )
+                m = pattern.search(raw.decode("utf-8", errors="replace"))
+                if m:
+                    return m.group(1), int(m.group(2))
+
+        try:
+            return await asyncio.wait_for(
+                _read_until_match(), timeout=_timeouts.ADAPTER_LISTEN
+            )
+        except asyncio.TimeoutError:
+            raise ConnectionError(
+                f"{self._adapter.id} adapter did not announce its DAP port "
+                f"within {_timeouts.ADAPTER_LISTEN}s"
+            ) from None
 
     def _get_write_stream(self) -> asyncio.StreamWriter:
         """Return the stream used for writing DAP messages."""
