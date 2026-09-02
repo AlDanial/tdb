@@ -457,14 +457,37 @@ _GO_GOROUTINE_HEADER_RE = re.compile(r"^goroutine \d+ \[[^\]]+\]:$", re.MULTILIN
 _GO_FRAME_RE = re.compile(r"^(.+)\([^)]*\)$")
 _GO_LOC_RE = re.compile(r"^\t(\S+?):(\d+)(?: \+0x[0-9a-f]+)?\s*$")
 
+# `go build`-style compile failures from `debug`/`test` mode. LIVE-VERIFIED
+# against a real `dlv dap` (v1.27.1) server: on a compile failure it never
+# puts this text in the failed launch response (`message` is just "Failed
+# to launch"); instead it arrives as a `stderr`-category `output` event
+# BEFORE that response, shaped like plain `go build` stderr with a
+# `Build Error: <the go build invocation>` line prepended:
+#
+#   Build Error: go build -o /tmp/x/__debug_bin123 -gcflags all=-N -l /tmp/x/broken.go
+#   # command-line-arguments
+#   ./broken.go:6:21: syntax error: unexpected newline in argument list; ...
+#
+# The `# <package>` header is the unambiguous signal (a bare `file.go:N:`
+# line alone is too easily an ordinary log line); `go build`'s own
+# `file.go:line:col: message` shape is matched with the column optional,
+# since the spec describes the shape without one.
+_GO_PACKAGE_HEADER_RE = re.compile(r"^# (\S.*)$", re.MULTILINE)
+_GO_COMPILE_LOC_RE = re.compile(
+    r"^(?:\./)?(?P<path>[^\s:]+\.go):(?P<line>\d+)(?::\d+)?:\s*(?P<msg>.+?)\s*$",
+    re.MULTILINE,
+)
+
 
 def parse_go_error(stderr: str, exit_code: int | None = None) -> ParsedError | None:
-    """Parse a Go panic out of raw stderr text.
+    """Parse a Go panic, or a `debug`/`test`-mode compile failure, out of
+    raw stderr/output text.
 
     `exit_code` is accepted for Presentation.parse_error signature
-    parity and ignored: the `panic:` header is an unambiguous signal
-    (Go always exits 2 on unrecovered panic, but a program printing
-    "panic:" itself and exiting 0 would be pathological either way).
+    parity and ignored: both the `panic:` header and the `# package` +
+    `file.go:line:` compile-error shape are unambiguous signals on their
+    own (Go always exits 2 on unrecovered panic and 1 on a `go build`
+    failure, but exit codes are not needed to recognize either shape).
 
     Frames come from the FIRST goroutine block only — Go prints the
     panicking goroutine first; other goroutines' dumps (GOTRACEBACK=all)
@@ -473,7 +496,7 @@ def parse_go_error(stderr: str, exit_code: int | None = None) -> ParsedError | N
     """
     header_match = _GO_PANIC_HEADER_RE.search(stderr)
     if header_match is None:
-        return None
+        return _parse_go_compile_error(stderr)
     detail_text = stderr[header_match.start() :].rstrip()
 
     goroutine_match = _GO_GOROUTINE_HEADER_RE.search(detail_text)
@@ -506,6 +529,42 @@ def parse_go_error(stderr: str, exit_code: int | None = None) -> ParsedError | N
     message = header_match.group(1).strip()
     return ParsedError(
         header=f"panic: {message}",
+        message=message,
+        frames=frames,
+        detail=detail_text,
+    )
+
+
+def _parse_go_compile_error(stderr: str) -> ParsedError | None:
+    """`go build`-style compile failure (see `parse_go_error`).
+
+    Requires a `# <package>` header AND at least one `file.go:line:`
+    location line -- a bare location line alone is too easily an
+    ordinary program log message to treat as a fatal error.
+    """
+    pkg_match = _GO_PACKAGE_HEADER_RE.search(stderr)
+    if pkg_match is None:
+        return None
+    loc_matches = list(_GO_COMPILE_LOC_RE.finditer(stderr))
+    if not loc_matches:
+        return None
+
+    frames = [
+        ErrorFrame(path=m.group("path"), line=int(m.group("line")), func="")
+        for m in loc_matches
+    ]
+    # Matches are in source order (first-reported error first); reversed
+    # here so that, after `_check_stderr_traceback`'s downstream reversal
+    # (ParsedError.frames -> synthetic DAP frames, which un-reverses),
+    # the first-reported error lands at synthetic index 0 -- the frame
+    # the UI navigates to.
+    frames.reverse()
+
+    message = loc_matches[0].group("msg").strip()
+    package = pkg_match.group(1).strip()
+    detail_text = stderr[pkg_match.start() :].rstrip()
+    return ParsedError(
+        header=f"go build failed: {package}",
         message=message,
         frames=frames,
         detail=detail_text,
