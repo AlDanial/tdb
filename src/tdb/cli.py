@@ -41,6 +41,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Attach to a remote debugpy server (e.g. 5678 or localhost:5678)",
     )
     parser.add_argument(
+        "-a",
+        "--attach",
+        dest="attach_pid",
+        type=int,
+        metavar="PID",
+        help="Attach to a running local process by pid (Go only)",
+    )
+    parser.add_argument(
         "--run",
         action="store_true",
         help="Run the program without the TUI, at full speed, ignoring "
@@ -48,6 +56,12 @@ def build_parser() -> argparse.ArgumentParser:
         "pause it and open the debugger at the current line; quitting "
         "the debugger can detach and resume the program. For "
         "inspecting programs that appear to be hung.",
+    )
+    parser.add_argument(
+        "--test",
+        action="store_true",
+        help="Debug a Go test package (Delve 'test' mode; Go only). "
+        "Arguments after -- go to the test binary, e.g. -- -run TestFoo",
     )
     parser.add_argument(
         "program",
@@ -294,9 +308,19 @@ def _parse_attach_spec(
     args: argparse.Namespace,
     parser: argparse.ArgumentParser,
 ) -> None:
-    """Split `--remote-attach [HOST:]PORT` into `attach_host` / `attach_port`."""
+    """Split `--remote-attach [HOST:]PORT` into `attach_host` / `attach_port`.
+
+    Pid-attach (`-a/--attach`) reuses the same `attach_host`/`attach_port`
+    plumbing with dummy values: the Delve adapter's `attach_body` ignores
+    host/port for local pid attach (it carries the pid instead), so no
+    downstream code (app.py, the controller) needs a separate pid-attach
+    path — `remote_attach` + `attach_via_adapter` + `spawn_tcp` compose.
+    """
     args.attach_host = None
     args.attach_port = None
+    if args.attach_pid is not None:
+        args.attach_host, args.attach_port = "127.0.0.1", 0
+        return
     if not args.remote_attach:
         return
     spec = args.remote_attach
@@ -373,17 +397,38 @@ def _resolve_program_path(
 ) -> None:
     """Resolve `program` to an absolute path + verify it exists.
 
-    Requires either `program` or `--remote-attach`; either is fine but
-    not neither. In remote-attach mode no local file is required.
+    Requires a `program`, `--remote-attach`, or `-a/--attach`; any one
+    is fine but not none. In remote-attach / pid-attach mode no local
+    file is required.
     """
-    if args.remote_attach is None and args.program is None:
-        parser.error("either a program or --remote-attach is required")
+    if not args.program and not args.remote_attach and args.attach_pid is None:
+        parser.error("either a program, --remote-attach, or -a/--attach is required")
 
     if args.program and not args.remote_attach:
         program_path = Path(args.program).resolve()
         if not program_path.exists():
             parser.error(f"File not found: {args.program}")
         args.program = str(program_path)
+
+
+def _detect_lang(args: argparse.Namespace) -> str:
+    """registry.detect, plus pid-attach language sniffing: with -a and
+    no program/--lang, read the pid's executable (Linux /proc) and
+    check for Go buildinfo; elsewhere --lang is required."""
+    from tdb.languages import registry
+    from tdb.languages.base import LanguageNotSupportedError
+
+    if args.program is None and args.attach_pid is not None:
+        from tdb.languages.go import is_go_binary
+
+        exe = f"/proc/{args.attach_pid}/exe"
+        if is_go_binary(exe):
+            return "go"
+        raise LanguageNotSupportedError(
+            f"cannot determine the language of pid {args.attach_pid} — "
+            "pass --lang (pid attach currently supports Go only)"
+        )
+    return registry.detect(args.program)
 
 
 def _resolve_language(
@@ -402,14 +447,25 @@ def _resolve_language(
     config = load_config()
     try:
         registry.reject_compiled_source(args.program)
-        lang_id = args.lang or registry.detect(args.program)
+        lang_id = args.lang or _detect_lang(args)
         adapter = args.adapter or config.default_adapters.get(lang_id)
-        profile = registry.resolve(
-            lang_id,
-            adapter=adapter,
-            adapter_paths=config.adapters,
-            program=args.program,
-        )
+        if lang_id == "go" and (args.test or args.attach_pid is not None):
+            from tdb.languages.go import build_go_profile
+
+            profile = build_go_profile(
+                adapter=adapter,
+                adapter_paths=config.adapters,
+                program=args.program,
+                test=args.test,
+                attach_pid=args.attach_pid,
+            )
+        else:
+            profile = registry.resolve(
+                lang_id,
+                adapter=adapter,
+                adapter_paths=config.adapters,
+                program=args.program,
+            )
     except LanguageNotSupportedError as e:
         parser.error(str(e))
     args.profile = profile
@@ -425,11 +481,22 @@ def _resolve_language(
                 f"--no-subprocess is debugpy-specific (detected language: {profile.id})"
             )
 
-    if args.remote_attach:
-        if profile.id not in ("python", "perl", "ruby", "rust", "cpp"):
+    if profile.id != "go":
+        if args.test:
             parser.error(
-                f"--remote-attach supports Python, Perl, Ruby, Rust, and C/C++ "
-                f"debuggees only (detected language: {profile.id})"
+                f"--test applies only to Go debuggees (detected language: {profile.id})"
+            )
+        if args.attach_pid is not None:
+            parser.error(
+                f"-a/--attach applies only to Go debuggees "
+                f"(detected language: {profile.id})"
+            )
+
+    if args.remote_attach:
+        if profile.id not in ("python", "perl", "ruby", "rust", "cpp", "go"):
+            parser.error(
+                f"--remote-attach supports Python, Perl, Ruby, Rust, C/C++, "
+                f"and Go debuggees only (detected language: {profile.id})"
             )
         if profile.adapter.quirks.attach_requires_local_program:
             # Native remote attach (cpp/rust) drives gdbserver/lldb-server
@@ -465,6 +532,15 @@ def _resolve_language(
             "--terminal is not supported with the ocamlearlybird adapter "
             "(earlybird has no terminal integration) — use "
             "`--adapter lldb-dap`"
+        )
+
+    # dlv dap has no terminal integration either (see DelveAdapter.launch_body,
+    # which raises the same error as a backstop if this guard is ever
+    # bypassed).
+    if args.terminal and profile.adapter.id == "dlv":
+        parser.error(
+            "--terminal is not supported for Go yet (dlv dap does not "
+            "route the debuggee to a caller-provided terminal)"
         )
 
 
@@ -601,6 +677,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ):
             if value:
                 parser.error(f"--run cannot be combined with {flag}")
+
+    if args.attach_pid is not None:
+        for flag, value in (
+            ("-r/--remote-attach", args.remote_attach),
+            ("--test", args.test),
+            ("--terminal", args.terminal),
+            ("--run", args.run),
+        ):
+            if value:
+                parser.error(f"-a/--attach cannot be combined with {flag}")
 
     if args.record and (args.headless or args.server or args.post_mortem or args.mcp):
         parser.error(
