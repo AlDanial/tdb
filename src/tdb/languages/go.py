@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 import shutil
+from pathlib import Path
 from typing import Any
 
 from tdb.dap.types import StackFrame, Thread
@@ -114,6 +115,8 @@ class DelveAdapter(AdapterSpec):
                 "not route the debuggee to a caller-provided terminal)"
             )
         mode = self._mode or ("exec" if is_go_binary(program) else "debug")
+        program_path = Path(program)
+        dlv_cwd = str(program_path if program_path.is_dir() else program_path.parent)
         body: dict[str, Any] = {
             "type": "go",
             "request": "launch",
@@ -122,6 +125,24 @@ class DelveAdapter(AdapterSpec):
             "args": args,
             "cwd": cwd,
             "stopOnEntry": stop_on_entry,
+            # Without this, dlv dap lets the debuggee inherit its own
+            # stdout/stderr fds ("outputMode" default "local") and never
+            # emits DAP `output` events for them — the Console View would
+            # stay empty for the whole session. "remote" makes dlv pipe
+            # the debuggee's stdout/stderr back as `output` events, same
+            # as every other adapter here (verified against real dlv
+            # 1.27.1: see tests/integration/test_go_session.py).
+            "outputMode": "remote",
+            # For "debug"/"test" mode dlv runs `go build`/`go test -c`
+            # from ITS OWN process cwd (tdb's launch cwd, per the
+            # "inherit shell cwd" policy — which is unrelated to the Go
+            # module `program` lives in). If that cwd sits outside
+            # `program`'s module, `go build`/`go test` fails with
+            # "cannot find main module" (real dlv 1.27.1 behavior).
+            # `dlvCwd` tells dlv to chdir before building, anchoring the
+            # build in the right module without touching the debuggee's
+            # own runtime `cwd` (set separately, above).
+            "dlvCwd": dlv_cwd,
         }
         if env:
             body["env"] = env

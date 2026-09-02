@@ -77,6 +77,8 @@ def test_launch_mode_debug_for_source(tmp_path):
         "args": ["-n"],
         "cwd": "/w",
         "stopOnEntry": True,
+        "outputMode": "remote",
+        "dlvCwd": str(tmp_path),
         "env": {"A": "1"},
     }
 
@@ -90,6 +92,30 @@ def test_launch_mode_exec_for_go_binary(tmp_path):
 def test_launch_mode_test_via_builder(tmp_path):
     p = build_go_profile(program=str(tmp_path), test=True)
     assert _body(p.adapter, str(tmp_path))["mode"] == "test"
+
+
+def test_output_mode_always_remote(tmp_path):
+    # Without this, dlv dap lets the debuggee inherit its own stdout/
+    # stderr fds and never emits DAP `output` events for them (verified
+    # against real dlv 1.27.1 — see tests/integration/test_go_session.py).
+    src = tmp_path / "main.go"
+    src.write_text("package main\n")
+    assert _body(DelveAdapter(), str(src))["outputMode"] == "remote"
+
+
+def test_dlv_cwd_anchors_build_in_program_module(tmp_path):
+    # dlv builds/tests from ITS OWN process cwd (tdb's launch cwd), not
+    # from `program` — if that cwd sits outside program's Go module,
+    # `go build`/`go test` fails with "cannot find main module" (real
+    # dlv 1.27.1 behavior). dlvCwd must anchor the build correctly
+    # regardless of `program`'s shape (file vs. package directory).
+    src = tmp_path / "main.go"
+    src.write_text("package main\n")
+    assert _body(DelveAdapter(), str(src))["dlvCwd"] == str(tmp_path)
+
+    pkg_dir = tmp_path / "pkg"
+    pkg_dir.mkdir()
+    assert _body(DelveAdapter(mode="test"), str(pkg_dir))["dlvCwd"] == str(pkg_dir)
 
 
 def test_terminal_rejected():
