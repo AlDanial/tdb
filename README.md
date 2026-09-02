@@ -358,6 +358,9 @@ picture:
 - Detection of a Go binary by buildinfo sniffing scans only the first
   16MB of the file; a huge binary whose buildinfo blob sits beyond that
   falls back to C/C++ — force it with `--lang go`.
+- `-a`/`--attach`'s language auto-detection (reading the target pid's
+  buildinfo from `/proc/PID/exe`) is Linux-only; on macOS/Windows pass
+  `--lang go` alongside `-a`.
 
 See [Go](#go) below for launch details.
 
@@ -756,8 +759,9 @@ tdb -r host:port --lang go # attach to a `dlv dap --listen` already running remo
 
 `tdb --test ./pkg` debugs the package's tests under Delve's `test` mode;
 pass test-binary flags after `--`, e.g. `tdb --test ./pkg -- -run TestFoo`.
-`-a`/`--attach` currently supports Go only, and on Linux can identify the
-target as Go from `/proc/PID/exe`'s buildinfo without `--lang`; attaching
+`-a`/`--attach` currently supports Go only; on Linux, and only on Linux,
+`tdb` can identify the target as Go from `/proc/PID/exe`'s buildinfo
+without `--lang` (elsewhere pass `--lang go` alongside `-a`). Attaching
 stops the process immediately so you get control right away.
 
 **Remote attach:** start Delve's own DAP server against your program
@@ -797,7 +801,9 @@ contributes no wait edge (Delve can't tell which case it's waiting on);
 no mutex-holder identification (impossible for Go's runtime); goroutines
 spawned indirectly via `exec.Command` child OS processes are not
 automatically attached; buildinfo-based binary detection scans only the
-first 16MB of the file (`--lang go` overrides for anything larger).
+first 16MB of the file (`--lang go` overrides for anything larger); `-a`'s
+`/proc`-based language auto-detection is Linux-only (pass `--lang go`
+alongside `-a` on macOS/Windows).
 
 ## Layout
 
