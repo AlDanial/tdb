@@ -684,9 +684,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             ("--test", args.test),
             ("--terminal", args.terminal),
             ("--run", args.run),
+            ("a positional PROGRAM argument", args.program),
         ):
             if value:
                 parser.error(f"-a/--attach cannot be combined with {flag}")
+
+    # --test only means anything for a launch (dlv builds a test binary);
+    # -r/--remote-attach never launches, so combined with --test the flag
+    # would otherwise be silently ignored (attach_body carries no "test"
+    # mode at all). The -a/--attach case is covered above.
+    if args.test and args.remote_attach:
+        parser.error("--test cannot be combined with -r/--remote-attach")
 
     if args.record and (args.headless or args.server or args.post_mortem or args.mcp):
         parser.error(

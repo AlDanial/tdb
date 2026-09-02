@@ -81,3 +81,16 @@ def test_terminal_rejected_for_go(go_src):
 
 def test_run_allowed_for_go(go_src):
     assert parse_args(["--run", go_src]).profile.id == "go"
+
+
+def test_attach_pid_conflicts_with_positional_program(tmp_path, monkeypatch):
+    monkeypatch.setattr("tdb.languages.go.is_go_binary", lambda p: True)
+    program = tmp_path / "somebinary"
+    program.write_bytes(b"\x00")
+    with pytest.raises(SystemExit):
+        parse_args(["--lang", "go", "-a", "4242", str(program)])
+
+
+def test_test_flag_conflicts_with_remote_attach():
+    with pytest.raises(SystemExit):
+        parse_args(["--lang", "go", "--test", "-r", "localhost:5678"])
