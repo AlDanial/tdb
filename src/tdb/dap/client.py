@@ -520,6 +520,21 @@ class DAPClient:
         resp = await self._send("evaluate", args)
         return resp.body.get("result", ""), resp.body.get("variablesReference", 0)
 
+    async def evaluate_raw(
+        self,
+        expression: str,
+        frame_id: int | None = None,
+        context: str = "watch",
+    ) -> dict[str, Any]:
+        """Like evaluate(), but returns the full response body — the Go
+        concurrency collector needs `memoryReference` to identify wait
+        targets, which the (result, variablesReference) tuple drops."""
+        args: dict[str, Any] = {"expression": expression, "context": context}
+        if frame_id is not None:
+            args["frameId"] = frame_id
+        resp = await self._send("evaluate", args)
+        return resp.body
+
     async def completions(
         self,
         text: str,
