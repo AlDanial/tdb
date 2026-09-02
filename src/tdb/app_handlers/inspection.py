@@ -26,6 +26,7 @@ from tdb.dap.types import Source, StackFrame
 from tdb.inspection import ProcessInfo
 from tdb.session.inspect_service import InspectService, SessionGateError
 from tdb.widgets.async_tasks_modal import AsyncTasksModal
+from tdb.widgets.goroutines_modal import GoroutinesModal
 from tdb.widgets.menu_bar import MenuBar
 from tdb.widgets.processes_modal import ProcessesModal
 from tdb.widgets.rust_concurrency_modal import RustConcurrencyModal
@@ -201,6 +202,10 @@ class InspectionWorkflows:
         """Update the Threads label with the current thread count."""
         threads = self.app.controller.state.threads
         menu_bar = self.app.query_one("#menu-bar", MenuBar)
+        if self.app.controller.profile.capabilities.concurrency_inspection == "go":
+            label = f"Goroutines ({len(threads)})" if threads else "Goroutines"
+            menu_bar.update_action_label("threads-label", label)
+            return
         if len(threads) >= 2:
             menu_bar.update_action_label(
                 "threads-label",
@@ -241,12 +246,18 @@ class InspectionWorkflows:
         if ctrl.state.is_running:
             self.app.notify("Program is running — pause first", title="Threads")
             return
-        if ctrl.profile.capabilities.concurrency_inspection == "rust":
+        ci = ctrl.profile.capabilities.concurrency_inspection
+        if ci == "rust":
             if await self.open_rust_concurrency():
                 return
             # Snapshot collection failed (probe/collector error, not a
             # session gate): fall through to the generic thread list so a
             # Rust session never loses its threads view entirely.
+        elif ci == "go":
+            if await self.open_goroutines():
+                return
+            # Snapshot failed: fall through to the generic thread list so
+            # a Go session never loses its threads view entirely.
         try:
             threads = await self._svc.list_threads()
         except SessionGateError:
@@ -342,6 +353,65 @@ class InspectionWorkflows:
             return
         except Exception:
             log.debug("Failed to fetch Rust thread detail for %d", thread_id)
+            frames, scopes, variables = [], [], {}
+        modal.show_thread_detail(thread_id, frames, scopes, variables)
+
+    async def open_goroutines(self) -> bool:
+        """Collect a goroutine snapshot and open the Go workspace.
+
+        Returns False only when snapshot collection itself failed — the
+        caller then falls back to the generic Threads modal. Session-gate
+        refusals return True: the generic list would be gated identically.
+        """
+        ctrl = self.app.controller
+        try:
+            snapshot = await self._svc.collect_go_concurrency()
+        except SessionGateError:
+            return True
+        except Exception:
+            log.exception("Error collecting goroutine snapshot")
+            self.app.notify(
+                "Goroutine snapshot failed — showing plain thread list",
+                title="Goroutines",
+            )
+            return False
+        modal = GoroutinesModal(snapshot, ctrl.state.current_thread_id)
+        self.app.panels.goroutines = modal
+        self.app.push_screen(modal, callback=self._on_goroutines_dismissed)
+        return True
+
+    def _on_goroutines_dismissed(self, _result: object) -> None:
+        self.app.panels.goroutines = None
+
+    async def refresh_goroutines(self) -> None:
+        """Replace every Go workspace tab from one fresh snapshot."""
+        try:
+            snapshot = await self._svc.collect_go_concurrency()
+        except SessionGateError:
+            return
+        except Exception:
+            log.exception("Error refreshing goroutine snapshot")
+            self.app.notify(
+                "Refresh failed — showing the previous snapshot",
+                title="Goroutines",
+            )
+            return
+        modal = self.app.panels.goroutines
+        if modal is not None:
+            modal.update_snapshot(snapshot)
+
+    async def load_goroutine_detail(self, thread_id: int) -> None:
+        """Live DAP stack + locals for the highlighted goroutine (it is
+        a DAP thread, so thread_stack serves it unchanged)."""
+        modal = self.app.panels.goroutines
+        if modal is None:
+            return
+        try:
+            frames, scopes, variables = await self._svc.thread_stack(thread_id)
+        except SessionGateError:
+            return
+        except Exception:
+            log.debug("Failed to fetch goroutine detail for %d", thread_id)
             frames, scopes, variables = [], [], {}
         modal.show_thread_detail(thread_id, frames, scopes, variables)
 
