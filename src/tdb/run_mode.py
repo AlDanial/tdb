@@ -14,6 +14,7 @@ import logging
 import os
 import signal
 import sys
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Awaitable, Callable
 
@@ -71,6 +72,55 @@ class ConsoleRunHandler:
 
     def on_external_terminal_started(self) -> None:
         pass
+
+
+# --- Shared headless-session lifecycle -------------------------------------
+# Used by both run mode and eval mode; the invariants here (adapter-not-
+# found contract, orphan prevention on escaping exceptions) must stay in
+# one place so a fix can't land in one headless mode and miss the other.
+
+
+async def start_session(controller: DebugController, **start_kwargs) -> int | None:
+    """controller.start() with the shared headless-mode contract: a
+    missing adapter prints its one-line hint and yields exit code 2.
+    Returns the exit code to bail with, or None on success."""
+    from tdb.languages.base import AdapterNotFoundError
+
+    try:
+        await controller.start(**start_kwargs)
+    except AdapterNotFoundError as exc:
+        print(f"tdb: {exc.hint}", file=sys.stderr)
+        return 2
+    return None
+
+
+@asynccontextmanager
+async def stop_session_on_error(controller: DebugController):
+    """Guard for everything after a successful start(): the debuggee is
+    running under a live adapter session, and any escaping exception
+    (timeout waiting for `initialized`, a raising TUI episode, ...) must
+    not leave the adapter+debuggee orphaned and detached from the
+    terminal's process group — best-effort stop before re-raising."""
+    try:
+        yield
+    except BaseException:
+        if not controller.state.is_terminated:
+            try:
+                await controller.stop()
+            except Exception:
+                log.exception("cleanup stop failed after headless-mode error")
+        raise
+
+
+async def configure_when_initialized(
+    console: ConsoleRunHandler, controller: DebugController
+) -> None:
+    """Wait for the adapter's `initialized` event, then push breakpoints
+    and configurationDone (which unblocks the launch response)."""
+    from tdb._timeouts import DAP_INITIALIZED
+
+    await asyncio.wait_for(console.initialized.wait(), timeout=DAP_INITIALIZED)
+    await controller.do_configure()
 
 
 TuiEpisode = Callable[
@@ -175,8 +225,6 @@ async def run(
 ) -> int:
     """Run `program` headless; signals open TUI episodes. Returns tdb's
     exit code (the debuggee's when it exits during the run phase)."""
-    from tdb._timeouts import DAP_INITIALIZED
-    from tdb.languages.base import AdapterNotFoundError
     from tdb.persist import load_config
 
     if config is None:
@@ -187,28 +235,21 @@ async def run(
     controller.step_mode = config.step_mode
     controller.adopted_session = True  # restart is never offered in run mode
 
-    try:
-        await controller.start(
-            program=program,
-            args=args,
-            cwd=cwd or str(Path.cwd()),
-            stop_on_entry=False,
-            just_my_code=just_my_code,
-            python=python,
-            sub_process=sub_process,
-        )
-    except AdapterNotFoundError as exc:
-        print(f"tdb: {exc.hint}", file=sys.stderr)
-        return 2
+    bail = await start_session(
+        controller,
+        program=program,
+        args=args,
+        cwd=cwd or str(Path.cwd()),
+        stop_on_entry=False,
+        just_my_code=just_my_code,
+        python=python,
+        sub_process=sub_process,
+    )
+    if bail is not None:
+        return bail
 
-    # From here on, the debuggee is running under a live adapter session.
-    # Any escaping exception (timeout waiting for `initialized`, a raising
-    # TUI episode, ...) must not leave the adapter+debuggee orphaned and
-    # detached from the terminal's process group — best-effort stop it
-    # before re-raising.
-    try:
-        await asyncio.wait_for(console.initialized.wait(), timeout=DAP_INITIALIZED)
-        await controller.do_configure()
+    async with stop_session_on_error(controller):
+        await configure_when_initialized(console, controller)
         if on_session_ready is not None:
             on_session_ready(controller)
 
@@ -262,10 +303,3 @@ async def run(
         finally:
             _disarm_signals(loop, installed, ignore=False)
         return exit_code
-    except BaseException:
-        if not controller.state.is_terminated:
-            try:
-                await controller.stop()
-            except Exception:
-                log.exception("cleanup stop failed after run-mode error")
-        raise

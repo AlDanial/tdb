@@ -42,6 +42,7 @@
 
 ```python
 """tests/unit/test_dap_spawn_tcp.py"""
+
 import re
 import sys
 import textwrap
@@ -248,6 +249,7 @@ git commit -m "Add spawn_tcp adapter connect mode for socket-only DAP servers"
 
 ```python
 """tests/unit/test_go_detection.py"""
+
 import pytest
 
 from tdb.languages import registry
@@ -278,6 +280,7 @@ def test_non_go_elf_still_detects_cpp(tmp_path):
 
 def test_marker_straddling_chunk_boundary(tmp_path):
     from tdb.languages import go
+
     payload = b"A" * (go._CHUNK - 70) + GO_BUILDINFO_MAGIC
     prog = _fake_binary(tmp_path, "straddle", payload)
     assert is_go_binary(prog)
@@ -285,6 +288,7 @@ def test_marker_straddling_chunk_boundary(tmp_path):
 
 def test_marker_beyond_scan_limit_is_missed(tmp_path):
     from tdb.languages import go
+
     payload = b"A" * (go._SCAN_LIMIT + 10) + GO_BUILDINFO_MAGIC
     prog = _fake_binary(tmp_path, "huge", payload)
     assert not is_go_binary(prog)  # bounded scan, documented limitation
@@ -418,6 +422,7 @@ git commit -m "Detect Go targets: buildinfo sniff for binaries, package director
 
 ```python
 """tests/unit/test_go_profile.py"""
+
 import shutil
 
 import pytest
@@ -449,7 +454,9 @@ def test_registered_in_registry():
 
 def test_command_and_adapter_paths_override():
     assert DelveAdapter(executable="/opt/dlv").command() == [
-        "/opt/dlv", "dap", "--listen=127.0.0.1:0",
+        "/opt/dlv",
+        "dap",
+        "--listen=127.0.0.1:0",
     ]
     p = build_go_profile(adapter_paths={"dlv": "/opt/dlv"})
     assert p.adapter.command()[0] == "/opt/dlv"
@@ -470,8 +477,13 @@ def test_listen_regex_matches_dlv_output():
 
 def _body(adapter, program, console="internalConsole"):
     return adapter.launch_body(
-        program=program, args=["-n"], cwd="/w", env={"A": "1"},
-        stop_on_entry=True, console=console, opts={},
+        program=program,
+        args=["-n"],
+        cwd="/w",
+        env={"A": "1"},
+        stop_on_entry=True,
+        console=console,
+        opts={},
     )
 
 
@@ -481,9 +493,14 @@ def test_launch_mode_debug_for_source(tmp_path):
     body = _body(DelveAdapter(), str(src))
     assert body["mode"] == "debug"
     assert body == {
-        "type": "go", "request": "launch", "mode": "debug",
-        "program": str(src), "args": ["-n"], "cwd": "/w",
-        "stopOnEntry": True, "env": {"A": "1"},
+        "type": "go",
+        "request": "launch",
+        "mode": "debug",
+        "program": str(src),
+        "args": ["-n"],
+        "cwd": "/w",
+        "stopOnEntry": True,
+        "env": {"A": "1"},
     }
 
 
@@ -506,7 +523,9 @@ def test_terminal_rejected():
 def test_attach_bodies():
     local = build_go_profile(attach_pid=1234).adapter
     assert local.attach_body(host="127.0.0.1", port=0, opts={}) == {
-        "mode": "local", "processId": 1234, "stopOnEntry": True,
+        "mode": "local",
+        "processId": 1234,
+        "stopOnEntry": True,
     }
     assert local.quirks.attach_via_adapter is True
     remote = build_go_profile().adapter
@@ -698,6 +717,7 @@ git commit -m "Add Go language profile backed by Delve DAP (dlv dap, spawn_tcp)"
 
 ```python
 """tests/unit/test_go_errors.py"""
+
 from tdb.languages.errors import parse_go_error
 
 PANIC = """\
@@ -769,7 +789,11 @@ def test_classify_hides_pure_runtime_goroutines():
     stacks = {
         1: [_frame("main.main")],
         2: [_frame("runtime.gopark"), _frame("runtime.gcBgMarkWorker")],
-        3: [_frame("runtime.gopark"), _frame("runtime.chanrecv"), _frame("main.worker")],
+        3: [
+            _frame("runtime.gopark"),
+            _frame("runtime.chanrecv"),
+            _frame("main.worker"),
+        ],
     }
     d = classify_go_threads(threads, stacks)
     assert [x.hidden for x in d] == [False, True, False]
@@ -884,16 +908,20 @@ def classify_go_threads(
 And update `build_go_profile`'s return value:
 
 ```python
-        presentation=Presentation(
-            lexer="go",
-            parse_error=parse_go_error,
-            frame_placeholder="<main>",
-        ),
-        capabilities=ProfileCapabilities(
-            pause_while_running=True,
-            concurrency_inspection="go",
-            classify_threads=classify_go_threads,
-        ),
+presentation = (
+    Presentation(
+        lexer="go",
+        parse_error=parse_go_error,
+        frame_placeholder="<main>",
+    ),
+)
+capabilities = (
+    ProfileCapabilities(
+        pause_while_running=True,
+        concurrency_inspection="go",
+        classify_threads=classify_go_threads,
+    ),
+)
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
@@ -924,6 +952,7 @@ git commit -m "Parse Go panics into the error modal; classify runtime goroutines
 
 ```python
 """tests/unit/test_cli_go.py"""
+
 import pytest
 
 from tdb.cli import parse_args
@@ -953,8 +982,13 @@ def test_go_source_resolves_go_profile(go_src):
 def test_test_flag_selects_test_mode(go_pkg):
     args = parse_args(["--test", go_pkg])
     body = args.profile.adapter.launch_body(
-        program=go_pkg, args=[], cwd=".", env=None,
-        stop_on_entry=True, console="internalConsole", opts={},
+        program=go_pkg,
+        args=[],
+        cwd=".",
+        env=None,
+        stop_on_entry=True,
+        console="internalConsole",
+        opts={},
     )
     assert body["mode"] == "test"
 
@@ -1177,6 +1211,7 @@ git commit -m "CLI: Go mode inference, --test, -a/--attach pid, allowlist update
 
 ```python
 """tests/unit/test_go_classifier.py"""
+
 from tdb.go_concurrency.classifier import classify_stack
 from tdb.go_concurrency.models import GoroutineState
 
@@ -1206,7 +1241,12 @@ WAITGROUP = [
     "main.main",
 ]
 SLEEP = ["runtime.gopark", "time.Sleep", "main.napper"]
-SYSCALL = ["syscall.Syscall6", "internal/poll.(*FD).Read", "os.(*File).Read", "main.reader"]
+SYSCALL = [
+    "syscall.Syscall6",
+    "internal/poll.(*FD).Read",
+    "os.(*File).Read",
+    "main.reader",
+]
 RUNNING = ["main.crunch", "main.main"]
 GC = ["runtime.gopark", "runtime.gcBgMarkWorker"]
 
@@ -1262,23 +1302,34 @@ def test_empty_stack_is_unknown():
 
 def test_snapshot_to_dict_roundtrips():
     from tdb.go_concurrency.models import (
-        Confidence, GoFinding, GoFindingKind, GoResource, GoWaitEdge,
-        GoroutineInfo, GoroutineSnapshot,
+        Confidence,
+        GoFinding,
+        GoFindingKind,
+        GoResource,
+        GoWaitEdge,
+        GoroutineInfo,
+        GoroutineSnapshot,
     )
+
     snap = GoroutineSnapshot(
         goroutines=(
             GoroutineInfo(
-                thread_id=3, goid=5, function="main.worker",
-                state=GoroutineState.CHAN_RECV, operation="recv",
+                thread_id=3,
+                goid=5,
+                function="main.worker",
+                state=GoroutineState.CHAN_RECV,
+                operation="recv",
                 resource_id="chan:0xc000024180",
-                frames=("runtime.gopark", "main.worker"), is_runtime=False,
+                frames=("runtime.gopark", "main.worker"),
+                is_runtime=False,
             ),
         ),
         resources=(GoResource("chan:0xc000024180", "channel", "chan 0xc000024180"),),
         edges=(GoWaitEdge(3, "chan:0xc000024180", "recv"),),
         findings=(
             GoFinding(
-                GoFindingKind.STUCK_CHANNEL, (3,),
+                GoFindingKind.STUCK_CHANNEL,
+                (3,),
                 "1 goroutine receiving on chan 0xc000024180 with no sender",
                 Confidence.PROBABLE,
             ),
@@ -1456,7 +1507,12 @@ _PARK_RULES: tuple[tuple[str, GoroutineState, str | None, str | None], ...] = (
     ("runtime.selectgo", GoroutineState.SELECT, None, None),
     ("sync.runtime_SemacquireMutex", GoroutineState.MUTEX_WAIT, "mutex", "addr"),
     ("sync.runtime_SemacquireRWMutex", GoroutineState.MUTEX_WAIT, "mutex", "addr"),
-    ("sync.runtime_SemacquireWaitGroup", GoroutineState.WAITGROUP_WAIT, "waitgroup", "addr"),
+    (
+        "sync.runtime_SemacquireWaitGroup",
+        GoroutineState.WAITGROUP_WAIT,
+        "waitgroup",
+        "addr",
+    ),
     ("sync.runtime_Semacquire", GoroutineState.WAITGROUP_WAIT, "waitgroup", "addr"),
     ("time.Sleep", GoroutineState.SLEEP, None, None),
 )
@@ -1521,16 +1577,26 @@ git commit -m "go_concurrency: snapshot models and stack-shape classifier"
 
 ```python
 """tests/unit/test_go_analyzer.py"""
+
 from tdb.go_concurrency.analyzer import analyze
 from tdb.go_concurrency.models import (
-    Confidence, GoFindingKind, GoroutineInfo, GoroutineState,
+    Confidence,
+    GoFindingKind,
+    GoroutineInfo,
+    GoroutineState,
 )
 
 
 def _g(tid, state, op=None, res=None, func="main.f", runtime=False):
     return GoroutineInfo(
-        thread_id=tid, goid=tid, function=func, state=state,
-        operation=op, resource_id=res, frames=(), is_runtime=runtime,
+        thread_id=tid,
+        goid=tid,
+        function=func,
+        state=state,
+        operation=op,
+        resource_id=res,
+        frames=(),
+        is_runtime=runtime,
     )
 
 
@@ -1539,9 +1605,9 @@ CH = "chan:0xc000024180"
 
 def test_edges_and_resources_built():
     snap = analyze(
-        [_g(1, GoroutineState.CHAN_RECV, "recv", CH),
-         _g(2, GoroutineState.RUNNING)],
-        uncollected=0, warnings=(),
+        [_g(1, GoroutineState.CHAN_RECV, "recv", CH), _g(2, GoroutineState.RUNNING)],
+        uncollected=0,
+        warnings=(),
     )
     assert [e.to_dict() for e in snap.edges] == [
         {"thread_id": 1, "resource_id": CH, "operation": "recv"}
@@ -1551,19 +1617,25 @@ def test_edges_and_resources_built():
 
 def test_matched_send_recv_is_not_a_finding():
     snap = analyze(
-        [_g(1, GoroutineState.CHAN_RECV, "recv", CH),
-         _g(2, GoroutineState.CHAN_SEND, "send", CH)],
-        uncollected=0, warnings=(),
+        [
+            _g(1, GoroutineState.CHAN_RECV, "recv", CH),
+            _g(2, GoroutineState.CHAN_SEND, "send", CH),
+        ],
+        uncollected=0,
+        warnings=(),
     )
     assert snap.findings == ()
 
 
 def test_stuck_channel_confirmed_when_everyone_blocked():
     snap = analyze(
-        [_g(1, GoroutineState.CHAN_RECV, "recv", CH),
-         _g(2, GoroutineState.CHAN_RECV, "recv", CH),
-         _g(3, GoroutineState.RUNTIME, runtime=True)],
-        uncollected=0, warnings=(),
+        [
+            _g(1, GoroutineState.CHAN_RECV, "recv", CH),
+            _g(2, GoroutineState.CHAN_RECV, "recv", CH),
+            _g(3, GoroutineState.RUNTIME, runtime=True),
+        ],
+        uncollected=0,
+        warnings=(),
     )
     (f,) = snap.findings
     assert f.kind is GoFindingKind.STUCK_CHANNEL
@@ -1573,9 +1645,9 @@ def test_stuck_channel_confirmed_when_everyone_blocked():
 
 def test_stuck_channel_probable_when_something_still_runs():
     snap = analyze(
-        [_g(1, GoroutineState.CHAN_RECV, "recv", CH),
-         _g(2, GoroutineState.RUNNING)],
-        uncollected=0, warnings=(),
+        [_g(1, GoroutineState.CHAN_RECV, "recv", CH), _g(2, GoroutineState.RUNNING)],
+        uncollected=0,
+        warnings=(),
     )
     (f,) = snap.findings
     assert f.confidence is Confidence.PROBABLE
@@ -1584,7 +1656,8 @@ def test_stuck_channel_probable_when_something_still_runs():
 def test_uncollected_downgrades_confidence():
     snap = analyze(
         [_g(1, GoroutineState.CHAN_RECV, "recv", CH)],
-        uncollected=5, warnings=(),
+        uncollected=5,
+        warnings=(),
     )
     (f,) = snap.findings
     assert f.confidence is Confidence.PROBABLE  # unseen goroutines may hold the sender
@@ -1610,6 +1683,7 @@ def test_likely_leak_needs_a_cluster():
 
 ```python
 """tests/unit/test_go_collector.py"""
+
 import pytest
 
 from tdb.dap.types import Source, StackFrame, Thread
@@ -1658,15 +1732,22 @@ def _frames(*names):
 
 @pytest.mark.asyncio
 async def test_collect_classifies_and_extracts_channel():
-    threads = [Thread(id=1, name="* [Go 1] main.main"),
-               Thread(id=2, name="[Go 5] main.worker")]
+    threads = [
+        Thread(id=1, name="* [Go 1] main.main"),
+        Thread(id=2, name="[Go 5] main.worker"),
+    ]
     stacks = {
         1: _frames("main.main"),
         2: _frames("runtime.gopark", "runtime.chanrecv", "main.worker"),
     }
     # park frame for thread 2 is index 1 -> frame id 101; `c` evaluates
     # with a memoryReference carrying the channel address.
-    evals = {(101, "c"): {"result": "*runtime.hchan {...}", "memoryReference": "0xc000024180"}}
+    evals = {
+        (101, "c"): {
+            "result": "*runtime.hchan {...}",
+            "memoryReference": "0xc000024180",
+        }
+    }
     snap = await GoConcurrencyCollector().collect(
         FakeController(FakeClient(threads, stacks, evals))
     )
@@ -1916,8 +1997,16 @@ class GoConcurrencyCollector:
                 log.debug("goroutine %s: stack fetch failed", t.id)
                 warnings.append(f"goroutine {goid or t.id}: stack unavailable")
                 goroutines.append(
-                    GoroutineInfo(t.id, goid, function, GoroutineState.UNKNOWN,
-                                  None, None, (), False)
+                    GoroutineInfo(
+                        t.id,
+                        goid,
+                        function,
+                        GoroutineState.UNKNOWN,
+                        None,
+                        None,
+                        (),
+                        False,
+                    )
                 )
                 continue
             names = [f.name for f in frames]
@@ -1992,6 +2081,7 @@ git commit -m "go_concurrency: bounded DAP collector and conservative wait-graph
 
 ```python
 """tests/unit/test_go_inspect_service.py"""
+
 import pytest
 
 from tdb.session.inspect_service import InspectService, SessionGateError
@@ -2135,8 +2225,13 @@ git commit -m "Expose goroutine snapshots via InspectService, RPC action, MCP to
 
 ```python
 """tests/unit/test_goroutines_modal.py"""
+
 from tdb.go_concurrency.models import (
-    Confidence, GoFinding, GoFindingKind, GoroutineInfo, GoroutineSnapshot,
+    Confidence,
+    GoFinding,
+    GoFindingKind,
+    GoroutineInfo,
+    GoroutineSnapshot,
     GoroutineState,
 )
 from tdb.widgets.goroutines_modal import GoroutinesModal
@@ -2148,8 +2243,12 @@ def _g(tid, state=GoroutineState.RUNNING, runtime=False, res=None, op=None):
 
 def _snap(goroutines, findings=(), uncollected=0):
     return GoroutineSnapshot(
-        goroutines=tuple(goroutines), resources=(), edges=(),
-        findings=tuple(findings), uncollected=uncollected, warnings=(),
+        goroutines=tuple(goroutines),
+        resources=(),
+        edges=(),
+        findings=tuple(findings),
+        uncollected=uncollected,
+        warnings=(),
     )
 
 
@@ -2330,25 +2429,27 @@ Then, copied structurally from `RustConcurrencyModal` with these substitutions (
 - `_render_wait_graph()`: tree of resource → waiter leaves:
 
 ```python
-    def _render_wait_graph(self) -> None:
-        tree = self.query_one("#wait-graph-tree", Tree)
-        tree.clear()
-        by_resource: dict[str, list] = {}
-        for edge in self._snapshot.edges:
-            by_resource.setdefault(edge.resource_id, []).append(edge)
-        if not by_resource:
-            tree.root.add_leaf(Text("No observed waits", style="dim"))
-            return
-        labels = {r.resource_id: r.label for r in self._snapshot.resources}
-        funcs = {g.thread_id: g.function for g in self._snapshot.goroutines}
-        goids = {g.thread_id: g.goid for g in self._snapshot.goroutines}
-        for rid, edges in sorted(by_resource.items()):
-            node = tree.root.add(Text(labels.get(rid, rid), style="bold"))
-            for e in edges:
-                goid = goids.get(e.thread_id)
-                who = f"Go {goid}" if goid is not None else f"thread {e.thread_id}"
-                node.add_leaf(Text(f"{who} — {e.operation} — {funcs.get(e.thread_id, '?')}"))
-            node.expand()
+def _render_wait_graph(self) -> None:
+    tree = self.query_one("#wait-graph-tree", Tree)
+    tree.clear()
+    by_resource: dict[str, list] = {}
+    for edge in self._snapshot.edges:
+        by_resource.setdefault(edge.resource_id, []).append(edge)
+    if not by_resource:
+        tree.root.add_leaf(Text("No observed waits", style="dim"))
+        return
+    labels = {r.resource_id: r.label for r in self._snapshot.resources}
+    funcs = {g.thread_id: g.function for g in self._snapshot.goroutines}
+    goids = {g.thread_id: g.goid for g in self._snapshot.goroutines}
+    for rid, edges in sorted(by_resource.items()):
+        node = tree.root.add(Text(labels.get(rid, rid), style="bold"))
+        for e in edges:
+            goid = goids.get(e.thread_id)
+            who = f"Go {goid}" if goid is not None else f"thread {e.thread_id}"
+            node.add_leaf(
+                Text(f"{who} — {e.operation} — {funcs.get(e.thread_id, '?')}")
+            )
+        node.expand()
 ```
 
 - `_render_findings()`: one section, style by confidence (`Confidence.CONFIRMED` → `"bold red"`, `Confidence.PROBABLE` → `"yellow"`), `"  none"` dim when empty, warnings block on top like Rust's.
@@ -2390,6 +2491,7 @@ fails. Uses the same App-stubbing style as the existing inspection
 workflow tests (see tests/unit/test_* for ThreadsModal workflows; if
 none exists, this stub-based approach stands alone).
 """
+
 import pytest
 
 from tdb.app_handlers.inspection import InspectionWorkflows
@@ -2447,6 +2549,7 @@ async def test_open_threads_routes_to_goroutines(monkeypatch):
     wf = InspectionWorkflows(app)
 
     from tdb.go_concurrency.models import GoroutineSnapshot
+
     snap = GoroutineSnapshot((), (), (), (), 0, ())
 
     async def fake_collect():
@@ -2456,6 +2559,7 @@ async def test_open_threads_routes_to_goroutines(monkeypatch):
     await wf.open_threads()
     assert len(app.pushed) == 1
     from tdb.widgets.goroutines_modal import GoroutinesModal
+
     assert isinstance(app.pushed[0], GoroutinesModal)
     assert app.panels.goroutines is app.pushed[0]
 
@@ -2507,64 +2611,67 @@ Expected: FAIL — no goroutine dispatch.
 - New methods, mirroring the three rust ones (`open_rust_concurrency` at ~line 274, `refresh_rust_concurrency`, `load_rust_thread_detail` at ~line 334):
 
 ```python
-    async def open_goroutines(self) -> bool:
-        """Collect a goroutine snapshot and open the Go workspace.
+async def open_goroutines(self) -> bool:
+    """Collect a goroutine snapshot and open the Go workspace.
 
-        Returns False only when snapshot collection itself failed — the
-        caller then falls back to the generic Threads modal. Session-gate
-        refusals return True: the generic list would be gated identically.
-        """
-        ctrl = self.app.controller
-        try:
-            snapshot = await self._svc.collect_go_concurrency()
-        except SessionGateError:
-            return True
-        except Exception:
-            log.exception("Error collecting goroutine snapshot")
-            self.app.notify(
-                "Goroutine snapshot failed — showing plain thread list",
-                title="Goroutines",
-            )
-            return False
-        modal = GoroutinesModal(snapshot, ctrl.state.current_thread_id)
-        self.app.panels.goroutines = modal
-        self.app.push_screen(modal, callback=self._on_goroutines_dismissed)
+    Returns False only when snapshot collection itself failed — the
+    caller then falls back to the generic Threads modal. Session-gate
+    refusals return True: the generic list would be gated identically.
+    """
+    ctrl = self.app.controller
+    try:
+        snapshot = await self._svc.collect_go_concurrency()
+    except SessionGateError:
         return True
+    except Exception:
+        log.exception("Error collecting goroutine snapshot")
+        self.app.notify(
+            "Goroutine snapshot failed — showing plain thread list",
+            title="Goroutines",
+        )
+        return False
+    modal = GoroutinesModal(snapshot, ctrl.state.current_thread_id)
+    self.app.panels.goroutines = modal
+    self.app.push_screen(modal, callback=self._on_goroutines_dismissed)
+    return True
 
-    def _on_goroutines_dismissed(self, _result: object) -> None:
-        self.app.panels.goroutines = None
 
-    async def refresh_goroutines(self) -> None:
-        """Replace every Go workspace tab from one fresh snapshot."""
-        try:
-            snapshot = await self._svc.collect_go_concurrency()
-        except SessionGateError:
-            return
-        except Exception:
-            log.exception("Error refreshing goroutine snapshot")
-            self.app.notify(
-                "Refresh failed — showing the previous snapshot",
-                title="Goroutines",
-            )
-            return
-        modal = self.app.panels.goroutines
-        if modal is not None:
-            modal.update_snapshot(snapshot)
+def _on_goroutines_dismissed(self, _result: object) -> None:
+    self.app.panels.goroutines = None
 
-    async def load_goroutine_detail(self, thread_id: int) -> None:
-        """Live DAP stack + locals for the highlighted goroutine (it is
-        a DAP thread, so thread_stack serves it unchanged)."""
-        modal = self.app.panels.goroutines
-        if modal is None:
-            return
-        try:
-            frames, scopes, variables = await self._svc.thread_stack(thread_id)
-        except SessionGateError:
-            return
-        except Exception:
-            log.debug("Failed to fetch goroutine detail for %d", thread_id)
-            frames, scopes, variables = [], [], {}
-        modal.show_thread_detail(thread_id, frames, scopes, variables)
+
+async def refresh_goroutines(self) -> None:
+    """Replace every Go workspace tab from one fresh snapshot."""
+    try:
+        snapshot = await self._svc.collect_go_concurrency()
+    except SessionGateError:
+        return
+    except Exception:
+        log.exception("Error refreshing goroutine snapshot")
+        self.app.notify(
+            "Refresh failed — showing the previous snapshot",
+            title="Goroutines",
+        )
+        return
+    modal = self.app.panels.goroutines
+    if modal is not None:
+        modal.update_snapshot(snapshot)
+
+
+async def load_goroutine_detail(self, thread_id: int) -> None:
+    """Live DAP stack + locals for the highlighted goroutine (it is
+    a DAP thread, so thread_stack serves it unchanged)."""
+    modal = self.app.panels.goroutines
+    if modal is None:
+        return
+    try:
+        frames, scopes, variables = await self._svc.thread_stack(thread_id)
+    except SessionGateError:
+        return
+    except Exception:
+        log.debug("Failed to fetch goroutine detail for %d", thread_id)
+        frames, scopes, variables = [], [], {}
+    modal.show_thread_detail(thread_id, frames, scopes, variables)
 ```
 
 - In `update_thread_count`, relabel for Go (goroutine counts are interesting from 1 up):
@@ -2581,40 +2688,44 @@ Expected: FAIL — no goroutine dispatch.
 `src/tdb/app_handlers/routing.py` — import `GoroutinesModal`, then four handlers copied from the Rust block with names substituted:
 
 ```python
-    # --- Modal: Goroutines --------------------------------------------
+# --- Modal: Goroutines --------------------------------------------
 
-    async def on_goroutines_modal_refresh_snapshot(
-        self,
-        message: GoroutinesModal.RefreshSnapshot,
-    ) -> None:
-        await self._inspection.refresh_goroutines()
 
-    async def on_goroutines_modal_load_goroutine_detail(
-        self,
-        message: GoroutinesModal.LoadGoroutineDetail,
-    ) -> None:
-        await self._inspection.load_goroutine_detail(message.thread_id)
+async def on_goroutines_modal_refresh_snapshot(
+    self,
+    message: GoroutinesModal.RefreshSnapshot,
+) -> None:
+    await self._inspection.refresh_goroutines()
 
-    async def on_goroutines_modal_select_goroutine(
-        self,
-        message: GoroutinesModal.SelectGoroutine,
-    ) -> None:
-        if isinstance(self.screen, GoroutinesModal):  # type: ignore[attr-defined]
-            self.screen.dismiss(None)  # type: ignore[attr-defined]
-        await self.controller.switch_active_thread(message.thread_id)
-        self._sync_views_to_top_frame()
-        self.query_one("#code-view", CodeView).focus()  # type: ignore[attr-defined]
 
-    async def on_goroutines_modal_select_frame(
-        self,
-        message: GoroutinesModal.SelectFrame,
-    ) -> None:
-        if isinstance(self.screen, GoroutinesModal):  # type: ignore[attr-defined]
-            self.screen.dismiss(None)  # type: ignore[attr-defined]
-        await self.controller.switch_active_thread(message.thread_id)
-        await self.controller.select_frame(message.frame_id)
-        self._sync_views_to_top_frame()
-        self.query_one("#code-view", CodeView).focus()  # type: ignore[attr-defined]
+async def on_goroutines_modal_load_goroutine_detail(
+    self,
+    message: GoroutinesModal.LoadGoroutineDetail,
+) -> None:
+    await self._inspection.load_goroutine_detail(message.thread_id)
+
+
+async def on_goroutines_modal_select_goroutine(
+    self,
+    message: GoroutinesModal.SelectGoroutine,
+) -> None:
+    if isinstance(self.screen, GoroutinesModal):  # type: ignore[attr-defined]
+        self.screen.dismiss(None)  # type: ignore[attr-defined]
+    await self.controller.switch_active_thread(message.thread_id)
+    self._sync_views_to_top_frame()
+    self.query_one("#code-view", CodeView).focus()  # type: ignore[attr-defined]
+
+
+async def on_goroutines_modal_select_frame(
+    self,
+    message: GoroutinesModal.SelectFrame,
+) -> None:
+    if isinstance(self.screen, GoroutinesModal):  # type: ignore[attr-defined]
+        self.screen.dismiss(None)  # type: ignore[attr-defined]
+    await self.controller.switch_active_thread(message.thread_id)
+    await self.controller.select_frame(message.frame_id)
+    self._sync_views_to_top_frame()
+    self.query_one("#code-view", CodeView).focus()  # type: ignore[attr-defined]
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**

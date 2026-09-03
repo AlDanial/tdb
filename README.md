@@ -146,6 +146,10 @@ tdb -k 20 -k 35 -k module.py:14 my_program.py arg1 arg2
 # sessions (-t is -k minus the persistence)
 tdb -t 20 my_program.py
 
+# no TUI: run at (almost) full speed, printing nr each time line 25 is
+# reached, then continuing (-e may be repeated; see "Eval Mode" below)
+tdb --eval my_program.py:25 "print(f'{nr=}')" my_program.py
+
 # use a specific virtualenv
 tdb --python /path/to/venv/bin/python my_program.py
 
@@ -355,7 +359,7 @@ picture:
 - Goroutines spawned by `exec.Command` (child OS processes) are not
   automatically attached or debugged, unlike Python's automatic
   multiprocessing child attach.
-- Detection of a Go binary by buildinfo sniffing scans only the first
+- Detection of a Go binary via buildinfo check scans only the first
   16MB of the file; a huge binary whose buildinfo blob sits beyond that
   falls back to C/C++ — force it with `--lang go`.
 - `-a`/`--attach`'s language auto-detection (reading the target pid's
@@ -1307,7 +1311,7 @@ program itself; it is rejected for remote-attach (`-r`), since there's no
 program for `tdb` to spawn a terminal around.
 
 The debuggee runs in a separate window of the specified terminal, including
-all of its stdin/stdout/stderr -- keyboard input, program output, and
+all of its stdin/stdout/stderr. Keyboard input, program output, and
 anything the program itself draws to the terminal all happen in that
 window, not in `tdb`'s Console View. Supported choices:
 `xterm`, `konsole`, `gnome-terminal`, `ghostty`, `kitty`, `iterm2`, `warp`,
@@ -1345,7 +1349,7 @@ tdb --run my_program.py; echo $?   # my_program.py's own exit code
 **Interrupting:** press Ctrl-C in the terminal (any platform), or, on Unix, send
 `SIGUSR1` to `tdb`'s pid from another terminal: `kill -USR1 <tdb pid>`. Either one pauses
 the debuggee at its currently executing line and opens the TUI with full debugging
-available -- breakpoints, stepping, variable inspection, the evaluate console. The
+available (breakpoints, stepping, variable inspection, the evaluate console). The
 debuggee itself never receives the signal (`tdb`'s adapter runs in its own process
 group), so its own `SIGINT` handling is undisturbed.
 
@@ -1374,6 +1378,48 @@ blocking external call or syscall, the pause can't land until that call returns 
 
 **Incompatible flags:** `-r`, `-k`/`-t`, `--record`, `--replay`, `--server`,
 `--headless`, `--mcp`, `--terminal`.
+
+### Eval Mode (`-e`/`--eval`)
+
+Eval mode automates a common debugging loop--set a breakpoint, run to it,
+evaluate an expression in the Evaluate console, continue--without
+opening the TUI. `-e` takes two arguments, a location and an expression:
+
+```bash
+tdb --eval examples/digits_of_pi.py:25 "print(f'{nr=}')" examples/digits_of_pi.py
+```
+
+sets a breakpoint at line 25, runs the program, and each time that line is
+reached evaluates `print(f'{nr=}')` in the stopped frame, then continues.
+Program output and evaluation output both stream to the terminal; when the
+program exits, `tdb` exits with the same code (and with `1` if the session
+ends without one--as with a crash or killed adapter--so a scripted `tdb -e ...
+&& next` can trust the exit status). `Ctrl-C` stops the program and exits
+`130`. Under `multiprocessing`, an eval point placed in child code is
+evaluated in each child process that reaches it.
+
+- The location is `FILE:LINE`, or a bare `LINE` of the program being debugged,
+  and is snapped to the start of a logical statement just like `-k`.
+- `-e` may be repeated to plant several eval points in one run.
+- The expression is evaluated through the debug adapter (DAP `evaluate`,
+  context `repl`), just like the Evaluate console: side effects are real
+  and persist in the running program, for example 
+  `-e my_program.py:25 "limit = 10"` changes `limit` from line 25 onward.
+- A bare expression's result is printed to stdout; statement-style
+  expressions (`print(...)`, assignments) print nothing beyond their own
+  output. An expression error is reported on stderr and the run continues --
+  a typo isn't fatal, matching the Evaluate console.
+- Saved breakpoints are ignored, and any other stop (e.g. an
+  uncaught-exception stop) is continued untouched, so the program runs to
+  completion unattended.
+- For non-Python debuggees the expression must be in the debug adapter's
+  own syntax, for example gdb's `print x` / `set var x=3` for C/C++, and not
+  necessarily the debuggee's language. The adapter may bind the breakpoint
+  to the next executable line (gdb moves one off a declaration or brace);
+  the eval point matches that bound line, so the expression still runs.
+
+**Incompatible flags:** `--run`, `-r`, `-a`, `-k`/`-t`, `--record`,
+`--replay`, `--server`, `--headless`, `--mcp`, `--terminal`.
 
 ### Keybinding Schemes
 

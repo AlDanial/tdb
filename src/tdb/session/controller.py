@@ -197,6 +197,13 @@ class DebugController:
         """
         result = await self.client.set_breakpoints(source_path, bps)
         self._warn_unbound_breakpoints(source_path, result)
+        # DAP mandates response breakpoints in request order, so zip
+        # recovers requested-line -> bound-line even when the adapter
+        # moved a breakpoint (Breakpoint.line defaults to 0 when the
+        # adapter omits it — skip those).
+        self.state.bound_breakpoint_lines[source_path] = {
+            req.line: res.line for req, res in zip(bps, result) if res.line
+        }
         return result
 
     def _setup_event_handlers(self) -> None:
