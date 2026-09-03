@@ -333,6 +333,18 @@ def build_mcp(session: McpSession | None = None) -> FastMCP:
         """Return a structured Rust concurrency snapshot for a stopped session."""
         return _format(await sess._call("rust_concurrency", []))
 
+    @mcp.tool(
+        description=(
+            "Show goroutines with states (chan send/recv, select, mutex, "
+            "WaitGroup, sleep, syscall), the channel/semaphore wait graph, "
+            "and stuck-channel/convoy/leak findings. Go sessions only, "
+            "while stopped; returns a JSON snapshot."
+        )
+    )
+    async def goroutines() -> str:
+        """Return a structured goroutine snapshot for a stopped Go session."""
+        return _format(await sess._call("goroutines", []))
+
     return mcp
 
 

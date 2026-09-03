@@ -49,6 +49,10 @@ DAP_STOP_ON_ENTRY = 10.0
 DAP_CHILD_ATTACH = 30.0
 """End-to-end timeout for connecting + initializing a child DAP session."""
 
+# Ceiling for a spawn_tcp adapter to print its "listening at" line.
+ADAPTER_LISTEN = 15.0
+"""Timeout for spawn_tcp adapter to announce its listening port."""
+
 
 # --- RPC handler waits ---------------------------------------------------
 # Step / continue can run a long tail in multi-process programs: after

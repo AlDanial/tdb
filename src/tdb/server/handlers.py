@@ -115,6 +115,7 @@ class RpcHandlers:
         "inspect_task",
         "wait_graph",
         "rust_concurrency",
+        "goroutines",
         "restart",
         "status",
         "quit",
@@ -145,6 +146,7 @@ class RpcHandlers:
         "inspect_task": 'params: ["task_name"]  -- inspect a specific asyncio task',
         "wait_graph": "params: []  -- show task wait-graph and any deadlock cycles",
         "rust_concurrency": "params: []  -- show Rust thread and synchronization findings",
+        "goroutines": "params: []  -- show Go goroutines, wait graph, and findings",
         "restart": "params: []",
         "status": "params: []",
         "quit": "params: []",
@@ -223,6 +225,7 @@ class RpcHandlers:
             "inspect_task": self.action_inspect_task,
             "wait_graph": self.action_wait_graph,
             "rust_concurrency": self.action_rust_concurrency,
+            "goroutines": self.action_goroutines,
             "restart": self.action_restart,
             "status": self.action_status,
             "quit": self.action_quit,
@@ -709,6 +712,24 @@ class RpcHandlers:
             f"{len(snapshot.edges)} wait edge(s), "
             f"{len(snapshot.confirmed_deadlocks)} confirmed deadlock(s), "
             f"{len(snapshot.suspected_stalls)} suspected stall(s)"
+        )
+        return RpcResponse.ok_data(snapshot.to_dict(), summary)
+
+    async def action_goroutines(self, params: list[Any]) -> RpcResponse:
+        """Return the stopped goroutine snapshot as structured JSON data."""
+        if params:
+            return RpcResponse.error("goroutines does not accept parameters")
+        try:
+            snapshot = await self._inspect.collect_go_concurrency()
+        except SessionGateError as e:
+            return self._gate_error(e, "inspect goroutines")
+        except Exception as e:
+            return RpcResponse.error(f"Failed to collect goroutines: {e}")
+        summary = (
+            f"goroutines: {len(snapshot.goroutines)} collected "
+            f"({snapshot.uncollected} beyond cap), "
+            f"{len(snapshot.edges)} wait edge(s), "
+            f"{len(snapshot.findings)} finding(s)"
         )
         return RpcResponse.ok_data(snapshot.to_dict(), summary)
 

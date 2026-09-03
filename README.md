@@ -11,6 +11,7 @@ with a Debug Adapter Protocol (DAP) implementation.  In addition to Python,
 - Tcsh (via source instrumentation of a stock `tcsh`)
 - Ruby (via the [debug gem](https://github.com/ruby/debug)'s `rdbg`; debug ≥ 1.9)
 - OCaml (native via `lldb-dap`/`gdb`, bytecode via [ocamlearlybird](https://github.com/hackwaly/ocamlearlybird))
+- Go (via [Delve](https://github.com/go-delve/delve)'s `dlv dap`)
 
 `tdb` is built with [textual](https://github.com/Textualize/textual) and speaks
 DAP to a pluggable debug adapter.
@@ -31,8 +32,9 @@ MIT License.  Copyright 2026 by Al Danial.
 the richest feature set), C/C++ (via `gdb -i dap` or `lldb-dap`), Rust (via `gdb` or
 `lldb-dap`), Perl (via `perl -d`),
 Bash (via bash's own `DEBUG` trap), Tcsh (via source instrumentation of a
-stock `tcsh`), Ruby (via the debug gem's `rdbg`), and OCaml (native via
-`lldb-dap`/`gdb`, bytecode via ocamlearlybird). Most languages are
+stock `tcsh`), Ruby (via the debug gem's `rdbg`), OCaml (native via
+`lldb-dap`/`gdb`, bytecode via ocamlearlybird), and Go (via Delve's `dlv
+dap`). Most languages are
 auto-detected from the target; Rust intentionally requires `--lang rust`
 (ref. [Multi-Language Debugging](#multi-language-debugging)).
 
@@ -42,7 +44,7 @@ It specifically supports modules
     - `threading` (with a thread inspector)
     - `multiprocessing` / `concurrent.futures` (with automatic child process attachment and a process inspector)
 
-- supports remote attachment to Python, Perl, Ruby, Rust, and C/C++ programs
+- supports remote attachment to Python, Perl, Ruby, Rust, C/C++, and Go programs
 
 - includes a JSON-RPC server mode, an MCP mode, and a `SKILL.md` file that enable
 programmatic debug control, making it suitable for
@@ -182,7 +184,7 @@ python -m tdb my_program.py
 
 ## Multi-Language Debugging
 
-`tdb` debugs any language that has a Debug Adapter Protocol backend. Eight
+`tdb` debugs any language that has a Debug Adapter Protocol backend. Nine
 languages are supported out of the box:
 
 | Language | Adapter(s) | Dependencies           | Feature level |
@@ -194,33 +196,39 @@ languages are supported out of the box:
 | Bash | bash-tdb (bundled) | bash ≥ 4.4 on PATH  | core debugging (no remote attach) |
 | Tcsh | tcsh-tdb (bundled) | tcsh on PATH | core debugging (no remote attach, no conditional breakpoints, no pause) |
 | Ruby | `rdbg` (the [debug gem](https://github.com/ruby/debug)) | `rdbg` ≥ 1.9 on PATH | core debugging + remote attach |
-| OCaml (native executable) | `lldb-dap` (default), `gdb` (alternate) | OCaml ≥ 4.12; `lldb-dap` ships with LLVM ≥ 17; `gdb -i dap` requires GDB ≥ 14 | core debugging + domains-as-threads; Variables view shows no OCaml locals (upstream DWARF limitation); evaluate console is lldb/C-level, not OCaml |
-| OCaml (bytecode executable) | `ocamlearlybird` (default) | OCaml ≥ 4.12; `opam install earlybird` | core debugging + rich OCaml locals; no pause/`--run`, no evaluate responses, no fatal-error modal (ocamlearlybird 1.3.6 limitations); single-domain only |
+| OCaml (native executable) | `lldb-dap` (default), `gdb` (alternate) | `lldb-dap` ships with LLVM ≥ 17; `gdb -i dap` requires GDB ≥ 14 | core debugging + domains-as-threads; Variables view shows no OCaml locals (upstream DWARF limitation); evaluate console is lldb/C-level, not OCaml |
+| OCaml (bytecode executable) | `ocamlearlybird` (default) | `opam install earlybird` | core debugging + rich OCaml locals; no pause/`--run`, no evaluate responses, no fatal-error modal (ocamlearlybird 1.3.6 limitations); single-domain only |
+| Go | `dlv` (the [Delve](https://github.com/go-delve/delve) DAP server) | Delve ≥ 1.21 on PATH (`go install github.com/go-delve/delve/cmd/dlv@latest`) | core debugging + goroutine inspection (wait graph, findings) + remote attach (no `--terminal`) |
 
 ### Language detection and selection
 
 The language is auto-detected from the debug target:
 
-1. File extension: `.py` → Python; `.pl` / `.pm` / `.t` → Perl; `.sh` / `.bash`
-   → Bash; `.csh` / `.tcsh` → Tcsh; `.rb` → Ruby. (`.ml` / `.mli` do *not*
-   auto-select OCaml, see point 5.)
-2. Native executables (ELF, Mach-O, PE magic bytes) → C/C++, unless
-   byte-sniffing finds an OCaml marker, either a native binary's
+1. A directory → Go, if it contains any `*.go` file (a Go package
+   directory, e.g. `tdb ./pkg`); otherwise an error naming `--lang`.
+2. File extension: `.py` → Python; `.go` → Go; `.pl` / `.pm` / `.t` → Perl;
+   `.sh` / `.bash` → Bash; `.csh` / `.tcsh` → Tcsh; `.rb` → Ruby. (`.ml` /
+   `.mli` do *not* auto-select OCaml, see point 6.)
+3. Native executables (ELF, Mach-O, PE magic bytes) → C/C++, unless
+   byte-sniffing finds an OCaml marker (a native binary's
    `caml_program`/`caml_startup` runtime symbols, a bytecode file's
-   trailing `Caml1999` marker, or a `#!...ocamlrun` shebang, in which case
-   → OCaml (native or bytecode respectively). A stripped native OCaml
-   binary that byte-sniffing can't identify falls back to C/C++; force it
-   with `--lang ocaml`. Rust is never inferred from an executable; select
-   it explicitly with `--lang rust`.
-3. A `#!...python`, `#!...perl`, `#!...bash`, `#!...csh`/`#!...tcsh`, or
+   trailing `Caml1999` marker, or a `#!...ocamlrun` shebang) → OCaml
+   (native or bytecode respectively), or a Go buildinfo blob (the marker
+   `go version` itself locates, scanned in the first 16MB of the file) →
+   Go. A stripped native OCaml binary, or a Go binary whose buildinfo
+   blob sits beyond the 16MB scan window, that byte-sniffing can't
+   identify falls back to C/C++; force it with `--lang ocaml` or `--lang
+   go` respectively. Rust is never inferred from an executable; select it
+   explicitly with `--lang rust`.
+4. A `#!...python`, `#!...perl`, `#!...bash`, `#!...csh`/`#!...tcsh`, or
    `#!...ruby` shebang → Python / Perl / Bash / Tcsh / Ruby respectively.
-4. C/C++/Rust *source* files (`.c`, `.cpp`, `.rs`, …) produce an error with a
+5. C/C++/Rust *source* files (`.c`, `.cpp`, `.rs`, …) produce an error with a
    hint: compile with debug info (`g++ -g -O0`) and debug the binary.
-5. `.ml` / `.mli` (OCaml source) produce an error too: build the project
+6. `.ml` / `.mli` (OCaml source) produce an error too: build the project
    first (dune's dev profile keeps debug info) and pass the **built
    executable** to `tdb` (`tdb ./_build/default/bin/main.exe`), never the
    `.ml` file.
-6. Anything else produces an error naming the `--lang` override.
+7. Anything else produces an error naming the `--lang` override.
 
 `--lang` forces the language; `--adapter` picks a non-default adapter within
 it (`tdb --lang cpp --adapter lldb-dap ./myprog`). Rust always requires the
@@ -258,13 +266,15 @@ process inspectors and wait graph, the evaluate console's trailing-`?` help,
 the post-mortem / `tdb.breakpoint()` hooks (those hooks live inside Python
 programs by nature). Remote attach (`-r`) also works for Perl (see
 [Perl](#perl), `Devel::TdbRemote` in place of `debugpy.listen()`), Ruby
-(see [Ruby](#ruby), `rdbg --open` in place of `debugpy.listen()`), and for
+(see [Ruby](#ruby), `rdbg --open` in place of `debugpy.listen()`), Go (see
+[Go](#go), `dlv dap --listen` in place of `debugpy.listen()`), and for
 Rust and C/C++ native binaries (against a gdbserver/lldb-server stub, with
 a local symbol-bearing executable; see [Rust](#rust) — the same flags work
 for a C/C++ target without `--lang`), but not for Bash, Tcsh, or OCaml. `--terminal` works for every launch-mode
 language — Python, Perl, Bash, Tcsh, Ruby, and C/C++, OCaml native, or Rust
 sessions via `--adapter lldb-dap` — see
-[External Terminal Support](#external-terminal-support).
+[External Terminal Support](#external-terminal-support). Go does not
+support `--terminal` yet (`dlv dap` has no terminal-routing mode).
 
 **Bash limitations (v1):** the bash adapter uses bash's own `DEBUG` trap and
 has a smaller feature set than Python:
@@ -330,6 +340,29 @@ picture:
   backtrace instead.
 - No Windows support, no remote attach, and a stripped native binary that
   byte-sniffing can't identify needs `--lang ocaml`.
+
+**Go limitations (v1):**
+
+- `--terminal` is not supported (`dlv dap` has no terminal-routing mode).
+- The Goroutines workspace's wait graph shows channel-send/-receive,
+  mutex, and `WaitGroup` edges; a goroutine parked in a `select` is
+  classified but contributes no wait edge (Delve can't tell which of the
+  `select`'s cases it's waiting on).
+- No mutex-holder identification: Go's `sync.Mutex` doesn't record an
+  owner at the runtime level, so unlike Python's Lock/Semaphore inspector
+  the wait graph can name what a goroutine is blocked on but never who
+  holds it.
+- Goroutines spawned by `exec.Command` (child OS processes) are not
+  automatically attached or debugged, unlike Python's automatic
+  multiprocessing child attach.
+- Detection of a Go binary by buildinfo sniffing scans only the first
+  16MB of the file; a huge binary whose buildinfo blob sits beyond that
+  falls back to C/C++ — force it with `--lang go`.
+- `-a`/`--attach`'s language auto-detection (reading the target pid's
+  buildinfo from `/proc/PID/exe`) is Linux-only; on macOS/Windows pass
+  `--lang go` alongside `-a`.
+
+See [Go](#go) below for launch details.
 
 ### C/C++ tips
 
@@ -705,6 +738,77 @@ never reaches `tdb`. Run the program outside the debugger
 sessions can't `pause` a running program (so `--run` is unavailable for
 bytecode. Native sessions support `--run` normally); `Unix.fork` and Eio
 fibers are out of scope (only OCaml 5 domains are presented as threads).
+
+### Go
+
+`tdb` debugs Go through [Delve](https://github.com/go-delve/delve)'s own
+DAP server, `dlv dap` (Delve ≥ 1.21). Install it with:
+
+```bash
+go install github.com/go-delve/delve/cmd/dlv@latest
+```
+
+`dlv` must be on `PATH`, or point tdb at it with
+`{"adapters": {"dlv": "/path/to/dlv"}}` in `config.json`.
+
+**Launch modes** — `tdb` picks the right Delve mode automatically:
+
+```bash
+tdb main.go               # source file: `go run`-style debug mode
+tdb ./pkg                 # package directory: `go run`-style debug mode
+tdb ./binary               # pre-built Go binary (buildinfo-detected): exec mode
+tdb --test ./pkg          # Go test package: Delve test mode
+tdb -a PID                 # attach to a running local Go process by pid
+tdb -r host:port --lang go # attach to a `dlv dap --listen` already running remotely
+```
+
+`tdb --test ./pkg` debugs the package's tests under Delve's `test` mode;
+pass test-binary flags after `--`, e.g. `tdb --test ./pkg -- -run TestFoo`.
+`-a`/`--attach` currently supports Go only; on Linux, and only on Linux,
+`tdb` can identify the target as Go from `/proc/PID/exe`'s buildinfo
+without `--lang` (elsewhere pass `--lang go` alongside `-a`). Attaching
+stops the process immediately so you get control right away.
+
+**Remote attach:** start Delve's own DAP server against your program
+first —
+
+```bash
+dlv dap --listen=host:port ./binary
+```
+
+— then connect from `tdb`:
+
+```bash
+tdb -r host:port --lang go
+```
+
+Do not expose the port to an untrusted network; prefer an SSH tunnel.
+
+**Goroutine inspection:** in a Go session the Threads action (`Alt+T`, or
+the **Goroutines (N)** menu label) opens the Goroutines workspace while
+the debuggee is stopped — a fresh, bounded snapshot of goroutines, wait
+edges, and findings, the same shape as the Rust Concurrency workspace.
+Goroutines parked entirely in Go-runtime internals (GC workers,
+finalizers, netpoll) are hidden by default; press `a` to reveal them
+alongside the rest. The **Wait Graph** tab groups goroutines by the
+channel, mutex, or `WaitGroup` they're blocked on; the **Findings** tab
+surfaces stuck channels, mutex convoys, and likely leaks with a
+confidence level (`confirmed` vs `probable`) — Go mutexes never record an
+owner, so, unlike Python's Lock/Semaphore inspector, findings can name
+what's blocked but not who holds it. The snapshot collects up to 150
+goroutines; a busier program reports the header
+`Goroutines (150) — N more not collected` rather than silently truncating.
+Refresh (`r`) after the next stop to collect a new snapshot.
+
+**Limitations (v1):** `--terminal` is not supported (`dlv dap` has no
+terminal-routing mode); a goroutine parked in a `select` is classified but
+contributes no wait edge (Delve can't tell which case it's waiting on);
+no mutex-holder identification (impossible for Go's runtime); goroutines
+spawned indirectly via `exec.Command` child OS processes are not
+automatically attached; buildinfo-based binary detection scans only the
+first 16MB of the file (`--lang go` overrides for anything larger); `-a`'s
+`/proc`-based language auto-detection is Linux-only (pass `--lang go`
+alongside `-a` on macOS/Windows).
 
 ## Layout
 

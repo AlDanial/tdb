@@ -46,6 +46,13 @@ RUN apk add --no-cache perl bash tcsh ruby ruby-dev make gcc gdb rust musl-dev \
 # concurrency probe can never register.
 RUN apk add --no-cache ocaml5 ocaml5-compiler-libs opam lldb py3-lldb m4 \
  && rm -rf /var/cache/apk/*
+# Go + Delve (Go debugging integration tests). GOBIN puts `dlv` on PATH
+# without polluting /root/go; the go module cache/build cache are wiped
+# afterward the same way the OCaml/opam layer above is (keeps the image
+# lean -- neither is needed once dlv is built).
+RUN apk add --no-cache go \
+ && GOBIN=/usr/local/bin go install github.com/go-delve/delve/cmd/dlv@v1.27.1 \
+ && rm -rf /root/go /root/.cache/go-build
 RUN adduser -D appuser
 ENV PATH="/app/.venv/bin:$PATH"
 

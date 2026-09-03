@@ -48,9 +48,10 @@ def test_unknown_target_errors_with_lang_hint(tmp_path):
         registry.detect(str(f))
 
 
-def test_go_maps_to_unregistered_language(tmp_path):
-    with pytest.raises(LanguageNotSupportedError, match="go.*not supported"):
-        registry.resolve(registry.detect("/x/main.go"))
+def test_go_extension_maps_to_go_language(tmp_path):
+    # Go files are detected by extension and resolve to the go language profile
+    assert registry.detect("/x/main.go") == "go"
+    assert registry.resolve("go").id == "go"
 
 
 def test_resolve_python():

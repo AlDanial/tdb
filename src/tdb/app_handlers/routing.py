@@ -41,6 +41,7 @@ from tdb.session.messages import (
 )
 from tdb.widgets.async_tasks_modal import AsyncTasksModal
 from tdb.widgets.code_view import CodeView
+from tdb.widgets.goroutines_modal import GoroutinesModal
 from tdb.widgets.processes_modal import ProcessesModal
 from tdb.widgets.rust_concurrency_modal import RustConcurrencyModal
 from tdb.widgets.threads_modal import ThreadsModal
@@ -199,6 +200,41 @@ class _AppMessageRoutes:
         message: RustConcurrencyModal.SelectFrame,
     ) -> None:
         if isinstance(self.screen, RustConcurrencyModal):  # type: ignore[attr-defined]
+            self.screen.dismiss(None)  # type: ignore[attr-defined]
+        await self.controller.switch_active_thread(message.thread_id)
+        await self.controller.select_frame(message.frame_id)
+        self._sync_views_to_top_frame()
+        self.query_one("#code-view", CodeView).focus()  # type: ignore[attr-defined]
+
+    # --- Modal: Goroutines --------------------------------------------
+
+    async def on_goroutines_modal_refresh_snapshot(
+        self,
+        message: GoroutinesModal.RefreshSnapshot,
+    ) -> None:
+        await self._inspection.refresh_goroutines()
+
+    async def on_goroutines_modal_load_goroutine_detail(
+        self,
+        message: GoroutinesModal.LoadGoroutineDetail,
+    ) -> None:
+        await self._inspection.load_goroutine_detail(message.thread_id)
+
+    async def on_goroutines_modal_select_goroutine(
+        self,
+        message: GoroutinesModal.SelectGoroutine,
+    ) -> None:
+        if isinstance(self.screen, GoroutinesModal):  # type: ignore[attr-defined]
+            self.screen.dismiss(None)  # type: ignore[attr-defined]
+        await self.controller.switch_active_thread(message.thread_id)
+        self._sync_views_to_top_frame()
+        self.query_one("#code-view", CodeView).focus()  # type: ignore[attr-defined]
+
+    async def on_goroutines_modal_select_frame(
+        self,
+        message: GoroutinesModal.SelectFrame,
+    ) -> None:
+        if isinstance(self.screen, GoroutinesModal):  # type: ignore[attr-defined]
             self.screen.dismiss(None)  # type: ignore[attr-defined]
         await self.controller.switch_active_thread(message.thread_id)
         await self.controller.select_frame(message.frame_id)
