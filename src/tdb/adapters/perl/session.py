@@ -32,6 +32,14 @@ class PerlProtocolError(Exception):
         self.tail = tail
 
 
+def _perl_single_quote(value: str) -> str:
+    """Quote for a Perl single-quoted string literal. Backslash and the
+    quote itself are the only escapes; without them an apostrophe in the
+    install path breaks the `do` statement, and a Windows UNC path's
+    backslashes collapse."""
+    return "'" + value.replace("\\", "\\\\").replace("'", "\\'") + "'"
+
+
 def helpers_path() -> str:
     ref = importlib.resources.files("tdb.adapters.perl") / "helpers.pl"
     return str(ref)
@@ -212,7 +220,7 @@ class PerlSession:
         self._reader_task = asyncio.create_task(self._read_loop())
         await self._await_prompt(timeout=timeout, terminal=run_in_terminal is not None)
         self.stopped = True
-        await self.command(f"do '{helpers_path()}'")
+        await self.command(f"do {_perl_single_quote(helpers_path())}")
         if run_in_terminal is not None:
             reply = await self.command("p $$")
             # Fail-closed: pull the pid from the LAST non-empty line of the

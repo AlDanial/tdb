@@ -668,6 +668,11 @@ does). Always pass the **built executable** to `tdb`, never the `.ml`
 source, as in `tdb ./_build/default/bin/main.exe`, not `tdb main.ml` (which
 errors with this exact guidance).
 
+**OCaml version:** tdb requires **OCaml ≥ 4.12**. Older runtimes print
+`Printexc` backtraces without function names, which the fatal-error
+modal's parser does not understand (frames would be dropped and the
+modal would wrongly suggest recompiling with `-g`).
+
 ```bash
 tdb ./_build/default/bin/main.exe          # native, lldb-dap
 tdb --adapter gdb ./_build/default/bin/main.exe   # native, gdb
