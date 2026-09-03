@@ -207,9 +207,7 @@ async def test_launch_quotes_helpers_path_for_perl(tmp_path, monkeypatch):
     containing an apostrophe (or backslashes, e.g. a Windows UNC share)
     must be escaped or the `do` statement misparses and helpers.pl never
     loads (same bug class as the OCaml `command script import` quoting)."""
-    monkeypatch.setattr(
-        session_mod, "helpers_path", lambda: "/home/o'brien/helpers.pl"
-    )
+    monkeypatch.setattr(session_mod, "helpers_path", lambda: "/home/o'brien/helpers.pl")
     monkeypatch.setattr(session_mod.asyncio, "start_server", _fake_start_server)
 
     async def fake_create_subprocess_exec(*argv, **kwargs):

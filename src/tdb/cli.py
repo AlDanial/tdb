@@ -223,6 +223,21 @@ def build_parser() -> argparse.ArgumentParser:
         "at line 1.",
     )
     parser.add_argument(
+        "-e",
+        "--eval",
+        action="append",
+        nargs=2,
+        default=[],
+        metavar=("FILE:LINE|LINE", "EXPR"),
+        help="Run without the TUI: set a breakpoint at FILE:LINE (or LINE "
+        "of the program), evaluate EXPR there each time it is reached, "
+        "then continue (may be repeated). Program output and evaluation "
+        "results go to the terminal; side effects (e.g. assignments) "
+        "persist in the running program. Saved breakpoints are ignored. "
+        "For non-Python debuggees EXPR uses the debug adapter's "
+        "expression syntax (e.g. gdb's).",
+    )
+    parser.add_argument(
         "-t",
         "--to-line",
         action="append",
@@ -280,6 +295,10 @@ def _apply_flag_implications(args: argparse.Namespace) -> None:
     if args.headless:
         args.server = True
     if args.run:
+        args.stop_on_entry = False
+    if args.eval:
+        # An eval point means "run to here and evaluate", never "pause
+        # at line 1".
         args.stop_on_entry = False
 
 
@@ -614,6 +633,12 @@ def _parse_breakpoints(
 
     args.breakpoint = parse_spec_list(args.breakpoint, "-k")
     args.to_line = parse_spec_list(args.to_line, "-t")
+    # -e locations resolve exactly like -k ones; the expression rides
+    # along untouched. (path, line, expr) — lines still need snapping.
+    eval_locs = parse_spec_list([loc for loc, _ in args.eval], "-e")
+    args.eval_points = [
+        (path, line, expr) for (path, line), (_, expr) in zip(eval_locs, args.eval)
+    ]
 
 
 def _snap_breakpoints(args: argparse.Namespace) -> None:
@@ -651,6 +676,13 @@ def _snap_breakpoints(args: argparse.Namespace) -> None:
     args.breakpoint = snap_list(args.breakpoint, "-k")
     args.to_line = snap_list(args.to_line, "-t")
 
+    snapped_points: list[tuple[str, int, str]] = []
+    for bp_path, line, expr in args.eval_points:
+        snapped = snap_list([(bp_path, line)], "-e")
+        if snapped:
+            snapped_points.append((*snapped[0], expr))
+    args.eval_points = snapped_points
+
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """Public entry: build parser, parse argv, run post-processing.
@@ -677,6 +709,29 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ):
             if value:
                 parser.error(f"--run cannot be combined with {flag}")
+
+    if args.eval:
+        # -e owns the whole session lifecycle (headless run, its own
+        # transient breakpoints, output on the terminal) — every mode
+        # that owns the terminal or the session differently conflicts.
+        # -k/-t conflict because eval mode deliberately ignores all
+        # other breakpoints, saved ones included.
+        for flag, value in (
+            ("--run", args.run),
+            ("-r/--remote-attach", args.remote_attach),
+            ("-a/--attach", args.attach_pid is not None),
+            ("-k/--breakpoint", args.breakpoint),
+            ("-t/--to-line", args.to_line),
+            ("--record", args.record),
+            ("--replay", args.replay),
+            ("--headless", args.headless),
+            ("--server", args.server),
+            ("--mcp", args.mcp),
+            ("--terminal", args.terminal),
+            ("--post-mortem", args.post_mortem),
+        ):
+            if value:
+                parser.error(f"--eval cannot be combined with {flag}")
 
     if args.attach_pid is not None:
         for flag, value in (
@@ -735,6 +790,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         )
     _parse_breakpoints(args, parser)
     _snap_breakpoints(args)
+    if args.eval and not args.eval_points:
+        # Every -e location was dropped by statement snapping. Launching
+        # anyway would run the whole program with zero evaluations and
+        # exit 0 — a silent no-op the user would misread as "the
+        # expression printed nothing".
+        parser.error(
+            "--eval: no eval point survived line snapping "
+            "(see the warnings above); nothing would be evaluated"
+        )
     # Merged (path, line, persist) list consumed by the TUI and headless
     # runner: -k breakpoints are saved on exit, -t ones are session-only.
     args.cli_bps = [(p, ln, True) for p, ln in args.breakpoint] + [
@@ -783,6 +847,8 @@ def main(argv: list[str] | None = None) -> None:
         replay_main(args.replay, timing=args.timing, replay_timeout=args.replay_timeout)
     elif args.run:
         _run_run(args)
+    elif args.eval:
+        _run_eval(args)
     elif args.headless:
         _run_headless(args)
     else:
@@ -914,6 +980,26 @@ def _run_run(args: argparse.Namespace) -> None:
             sub_process=not args.no_subprocess,
             profile=args.profile,
             config=load_config(),
+        )
+    )
+    sys.exit(code)
+
+
+def _run_eval(args: argparse.Namespace) -> None:
+    """Run headless, evaluating each -e expression at its line (`--eval`)."""
+    import asyncio
+    from tdb.eval_mode import run
+
+    code = asyncio.run(
+        run(
+            program=args.program,
+            args=args.args,
+            cwd=args.cwd,
+            eval_points=args.eval_points,
+            just_my_code=not args.no_just_my_code,
+            python=args.python,
+            sub_process=not args.no_subprocess,
+            profile=args.profile,
         )
     )
     sys.exit(code)

@@ -49,6 +49,13 @@ class DebugState:
     breakpoints: dict[str, list[SourceBreakpoint]] = field(default_factory=dict)
     breakpoints_disabled: bool = False
 
+    # Where the adapter actually bound each requested breakpoint:
+    # {source_path: {requested_line: bound_line}}, recorded from every
+    # setBreakpoints response. Adapters (gdb especially) may move a
+    # breakpoint to the next executable line; consumers that match stop
+    # locations against requested lines (eval mode) need the bound line.
+    bound_breakpoint_lines: dict[str, dict[int, int]] = field(default_factory=dict)
+
     # Current thread/frame context
     threads: list[Thread] = field(default_factory=list)
     current_thread_id: int | None = None
