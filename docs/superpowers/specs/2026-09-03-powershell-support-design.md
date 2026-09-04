@@ -437,3 +437,32 @@ amend the sections above. Where they conflict, this addendum wins.
    continues with exit code 0, so `parse_powershell_error` MUST return
    `None` unless `exit_code` is non-zero; the message may span several
    `|`-prefixed lines and is joined with spaces.
+
+## Addendum 2 (2026-09-04, from the first real-PSES integration run)
+
+1. **PSES drops requests sent before its `initialize` response.** The proxy
+   must await the reply to its proxy-originated `initialize` before forwarding
+   `launch` (it runs on the client loop, so awaiting is safe). PSES answers
+   `launch` first and emits `initialized` after it.
+2. **stopOnEntry emulation, corrected.** A line-1 breakpoint on the user
+   script binds to a *function body* when line 1 is a `function` definition
+   (it then fires only when that function is first called, or never). The
+   proxy instead sets a synthetic breakpoint on `tdb_launch.ps1`'s
+   `& $Script @ScriptArgs` line, swallows that stop, clears the launcher
+   breakpoint, issues `stepIn`, and reports the resulting stop as reason
+   `"entry"`. The user's own breakpoint lists are never merged or rewritten;
+   the "setBreakpoints" and "configurationDone" rows of the proxy table
+   above are replaced by this mechanism.
+3. **`Write-Error` output is tagged `stderr`.** PowerShell renders
+   non-terminating errors as ConciseView blocks, so the classifier tags them
+   like fatal ones; this is correct console colouring. No fatal-error modal
+   results because `parse_powershell_error` returns `None` for exit code 0.
+   The block names the launcher's `&` line rather than the user's
+   `Write-Error` line (cosmetic, deferred). The "Write-Error stays stdout"
+   wording in the body is superseded.
+4. **Abrupt proxy death.** On Linux the proxy sets `PR_SET_PDEATHSIG`
+   (SIGKILL) on the pwsh child so a SIGKILLed proxy cannot orphan pwsh.
+5. Real stack under a breakpoint inside `Add`:
+   `<Breakpoint>`, `Add`, `Outer`, `<ScriptBlock>` (user script),
+   `<ScriptBlock>` (tdb_launch.ps1), then a source-less
+   `Interactive Session` frame at the bottom.

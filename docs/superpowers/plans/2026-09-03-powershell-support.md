@@ -1664,7 +1664,6 @@ from tests.integration.perl_adapter_harness import AdapterClient
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="POSIX sh shim")
 
 
-
 @pytest.fixture
 def fake(tmp_path, monkeypatch):
     shim, pses = make_fake_pwsh(tmp_path)
