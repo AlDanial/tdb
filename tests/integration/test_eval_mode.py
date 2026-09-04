@@ -158,11 +158,19 @@ async def test_sigint_stops_cleanly(tmp_path, capfd):
     p = tmp_path / "forever.py"
     p.write_text(FOREVER_SCRIPT)
     loop = asyncio.get_running_loop()
-    handle = loop.call_later(3.0, os.kill, os.getpid(), signal.SIGINT)
+    # 20s (matching the "generous ceiling for adapter spawn + debuggee
+    # start" used elsewhere, e.g. test_dap_session.py's WAIT): under a
+    # loaded CI runner (Docker + ptrace/seccomp flags), debugpy attach
+    # can take longer than a few seconds, and firing SIGINT before
+    # eval_mode.run() reaches its own signal handler installation lets
+    # the interrupt fall through to Python's default handler instead —
+    # an uncaught KeyboardInterrupt that kills the whole pytest run
+    # rather than just this test.
+    handle = loop.call_later(20.0, os.kill, os.getpid(), signal.SIGINT)
     try:
         code = await asyncio.wait_for(
             eval_mode.run(program=str(p), eval_points=[(str(p), 2, "7")]),
-            timeout=60,
+            timeout=90,
         )
     finally:
         handle.cancel()
