@@ -25,6 +25,7 @@ from tdb.languages.base import (
     Presentation,
     ProfileCapabilities,
 )
+from tdb.languages.errors import parse_powershell_error
 
 
 class PsesAdapter(AdapterSpec):
@@ -100,7 +101,7 @@ def build_powershell_profile(
         ),
         presentation=Presentation(
             lexer="powershell",
-            parse_error=None,  # Task 2 wires parse_powershell_error
+            parse_error=parse_powershell_error,
             frame_placeholder="<ScriptBlock>",
         ),
         capabilities=ProfileCapabilities(pause_while_running=True),

@@ -574,3 +574,65 @@ def _parse_go_compile_error(stderr: str) -> ParsedError | None:
         frames=frames,
         detail=detail_text,
     )
+
+
+# --- PowerShell ------------------------------------------------------------
+# pwsh 7's default "ConciseView" error rendering:
+#
+#   <Kind>: <path>:<line>          Kind = Exception | FooException | Cmdlet-Name
+#   Line |
+#      2 |  $n = [int]::Parse("abc")
+#        |  ~~~~~~~~~~~~~~~~~~~~~~~~
+#        | <message, possibly continued on more "| " lines>
+#
+# The identical block is printed for NON-terminating errors (script keeps
+# running, exit 0) and for the terminating error that ends the script
+# (exit 1), so `exit_code` is the only fatal-vs-not signal.
+_PS_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+_PS_HEAD_RE = re.compile(r"^(?P<kind>[A-Za-z][\w.-]*): (?P<path>.+?):(?P<line>\d+)\s*$")
+_PS_CONT_RE = re.compile(r"^\s*(?:Line \||\d+ \||\|)(?P<rest>.*)$")
+_PS_MSG_RE = re.compile(r"^\s*\|\s?(?P<msg>.*)$")
+
+
+def parse_powershell_error(
+    stderr: str, exit_code: int | None = None
+) -> ParsedError | None:
+    """Parse pwsh's ConciseView error block into a ParsedError.
+
+    Returns None unless ``exit_code`` is a non-zero int: PowerShell prints
+    the same block for non-terminating errors, after which the script
+    continues and exits 0. The LAST block in the text is the fatal one
+    (earlier ones were non-terminating).
+    """
+    if not exit_code:
+        return None
+    lines = [_PS_ANSI_RE.sub("", ln) for ln in stderr.splitlines()]
+    head_idx = None
+    for i, ln in enumerate(lines):
+        if _PS_HEAD_RE.match(ln):
+            head_idx = i
+    if head_idx is None:
+        return None
+    head = _PS_HEAD_RE.match(lines[head_idx])
+    assert head is not None
+    block = [lines[head_idx]]
+    msg_parts: list[str] = []
+    for ln in lines[head_idx + 1 :]:
+        if not _PS_CONT_RE.match(ln):
+            break
+        block.append(ln)
+        m = _PS_MSG_RE.match(ln)
+        if m is None:
+            continue  # "Line |" or "   2 | source" rows
+        text = m.group("msg").strip()
+        if not text or set(text) <= {"~", " "}:
+            continue  # the squiggle row
+        msg_parts.append(text)
+    return ParsedError(
+        header=lines[head_idx].strip(),
+        message=" ".join(msg_parts),
+        frames=[
+            ErrorFrame(path=head.group("path"), line=int(head.group("line")), func="")
+        ],
+        detail="\n".join(block).rstrip(),
+    )
