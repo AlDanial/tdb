@@ -265,6 +265,32 @@ async def test_terminate_is_answered_locally_and_ends_session(fake):
         await client.stop()
 
 
+async def test_socket_death_without_terminated_ends_the_session(fake, monkeypatch):
+    """PSES's socket dies mid-session with no `terminated` while the pwsh
+    host survives: the proxy must still end the session rather than hang."""
+    monkeypatch.setenv("FAKE_PSES_MODE", "socket-die")
+    client = await start_proxy()
+    try:
+        await client.request("initialize", {"adapterID": "pses"})
+        fut = client.send("launch", launch_args(fake))
+        await client.wait_event("initialized")
+        await client.request(
+            "setBreakpoints",
+            {"source": {"path": fake["script"]}, "breakpoints": [{"line": 6}]},
+        )
+        await client.request("configurationDone")
+        await fut
+        await client.wait_event("stopped")
+        client.send("pause", {"threadId": 1})  # the fake never answers this
+        await client.wait_event("exited", timeout=10)
+        await client.wait_event("terminated", timeout=10)
+        resp = await client.request("threads", timeout=10)
+        assert resp["success"] is False
+        assert "no debug session" in resp["message"]
+    finally:
+        await client.stop()
+
+
 def test_build_pwsh_command(tmp_path):
     cmd = build_pwsh_command(
         "/bin/pwsh",

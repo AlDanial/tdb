@@ -25,6 +25,9 @@ FAKE_PSES_MODE:
   "no-session-file" -> never writes the session file (proxy must time out)
   "die"             -> prints "boom: bad module" and exits 3 at once
   "old-version"     -> session file says powerShellVersion "5.1.0"
+  "socket-die"      -> `pause` closes the DAP socket without answering and
+                       without `terminated`, while the process stays alive
+                       (PSES dying under a surviving pwsh host)
 """
 
 from __future__ import annotations
@@ -172,6 +175,12 @@ class Fake:
                 _out("after continue")
                 _out(SENTINEL)
                 self.event(w, "terminated")
+            elif cmd == "pause" and mode == "socket-die":
+                # Drop the debug socket mid-session and keep the "pwsh host"
+                # alive: no response, no `terminated`.
+                w.close()
+                await asyncio.sleep(3600)
+                return
             elif cmd in ("next", "stepIn", "stepOut", "pause"):
                 self.resp(w, req, {})
                 self.stopped(w, "step", self.line + 1)

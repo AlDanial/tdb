@@ -151,6 +151,10 @@ class PowerShellDapServer:
         self._done = asyncio.Event()
         self._proc: asyncio.subprocess.Process | None = None
         self._up_writer: asyncio.StreamWriter | None = None
+        # Detached-but-not-yet-awaited socket writer (see _detach_upstream).
+        self._dead_up_writer: asyncio.StreamWriter | None = None
+        self._finishing = False  # a _finish_session task is in flight
+        self._shutting_down = False  # run()'s teardown owns the kill now
         self._workdir: str | None = None
         self._client_init_args: dict = {}
         self._launched = False
@@ -267,6 +271,7 @@ class PowerShellDapServer:
                 await self._dispatch_client_message(msg)
                 await self._writer.drain()
         finally:
+            self._shutting_down = True
             await self._ensure_pwsh_dead()
             await self._await_watch_exit()
             await self._close_upstream()
@@ -298,30 +303,48 @@ class PowerShellDapServer:
 
     # ---- PSES socket side ----
     async def _pump_up(self, reader: asyncio.StreamReader) -> None:
-        while True:
-            try:
-                msg = await read_message(reader)
-            except (ConnectionError, asyncio.IncompleteReadError, EOFError, ValueError):
-                return
-            mtype = msg.get("type")
-            if mtype == "event":
-                if await self._note_and_filter_event(msg):
-                    continue
-                self._write_client(self._seqs.upstream_event_to_client(msg))
-            elif mtype == "response":
-                pending = self._proxy_requests.pop(msg.get("request_seq", -1), None)
-                if pending is not None:
-                    if not pending.done():
-                        pending.set_result(msg)
-                    continue
-                out = self._seqs.upstream_response_to_client(msg)
-                if out is None:
-                    continue
-                out = self._rewrite_response(out)
-                self._write_client(out)
-            elif mtype == "request":
-                self._write_client(self._seqs.upstream_request_to_client(msg))
-            await self._writer.drain()
+        try:
+            while True:
+                try:
+                    msg = await read_message(reader)
+                except (
+                    ConnectionError,
+                    asyncio.IncompleteReadError,
+                    EOFError,
+                    ValueError,
+                ):
+                    return
+                mtype = msg.get("type")
+                if mtype == "event":
+                    if await self._note_and_filter_event(msg):
+                        continue
+                    self._write_client(self._seqs.upstream_event_to_client(msg))
+                elif mtype == "response":
+                    pending = self._proxy_requests.pop(msg.get("request_seq", -1), None)
+                    if pending is not None:
+                        if not pending.done():
+                            pending.set_result(msg)
+                        continue
+                    out = self._seqs.upstream_response_to_client(msg)
+                    if out is None:
+                        continue
+                    out = self._rewrite_response(out)
+                    self._write_client(out)
+                elif mtype == "request":
+                    self._write_client(self._seqs.upstream_request_to_client(msg))
+                await self._writer.drain()
+        finally:
+            # The debug socket is gone. PSES may have died without ever
+            # sending `terminated` while the pwsh host survives, so nothing
+            # else would end the session: forget the writer (later client
+            # requests then get "no debug session" instead of vanishing into
+            # a dead socket) and kill pwsh, which lets _watch_exit emit
+            # exited(code) + terminated in order. Sync + fire-and-forget:
+            # this runs under cancellation too, and _pump_up must never
+            # await an upstream reply only it could deliver.
+            self._detach_upstream()
+            if self._launched and not self._sent_terminated:
+                self._start_finish_session()
 
     def _rewrite_response(self, msg: dict) -> dict:
         """Task 8 hook (setBreakpoints strip). Identity for now."""
@@ -343,14 +366,24 @@ class PowerShellDapServer:
             # after the stdout pump has drained (the sentinel arrives on
             # a different pipe than this event and may still be in flight).
             self._terminated_seen = True
-            self._spawn_task(self._finish_session())
+            self._start_finish_session()
             return True
         if event == "exited":
             return True  # never observed from PSES; _watch_exit owns it
         # Task 8: `stopped` rewrites go here — no awaiting _up_request.
         return False
 
+    def _start_finish_session(self) -> None:
+        """Spawn _finish_session once. Callers may run inside `_pump_up`, so
+        this must stay synchronous and fire-and-forget."""
+        if self._finishing or self._shutting_down:
+            return
+        self._finishing = True
+        self._spawn_task(self._finish_session())
+
     async def _finish_session(self) -> None:
+        # A no-op when the socket is already gone (_up_request returns None
+        # immediately once _up_writer has been detached).
         await self._up_request("disconnect", {}, timeout=2.0)
         await self._ensure_pwsh_dead()
 
@@ -604,13 +637,28 @@ class PowerShellDapServer:
         except Exception:
             log.exception("_watch_exit failed during teardown")
 
-    async def _close_upstream(self) -> None:
-        """Close the PSES socket so its transport is not GC'd while open."""
+    def _detach_upstream(self) -> None:
+        """Close the PSES socket and forget it: `_up_writer` back to None so
+        `_dispatch_client_message` answers "no debug session" rather than
+        writing into a dead socket. Synchronous, so it is safe from a
+        cancelled task's `finally`."""
         writer, self._up_writer = self._up_writer, None
         if writer is None:
             return
+        self._dead_up_writer = writer
         try:
             writer.close()
+        except (ConnectionError, OSError):
+            pass
+
+    async def _close_upstream(self) -> None:
+        """Close the PSES socket (if `_pump_up` has not already) and await the
+        transport, so it is not GC'd open."""
+        self._detach_upstream()
+        writer, self._dead_up_writer = self._dead_up_writer, None
+        if writer is None:
+            return
+        try:
             await writer.wait_closed()
         except (ConnectionError, OSError):
             pass
