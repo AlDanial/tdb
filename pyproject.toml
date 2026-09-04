@@ -60,7 +60,7 @@
   include = ["tdb", "tdb.*"]
 
   [tool.setuptools.package-data]
-  tdb = ["README.md", "adapters/perl/helpers.pl", "adapters/perl/Devel/TdbRemote.pm", "adapters/perl/Devel/TdbCompile.pm", "adapters/bash/tdb_harness.sh", "rust_concurrency/probes/gdb_script.py", "rust_concurrency/probes/lldb_script.py"]
+  tdb = ["README.md", "adapters/perl/helpers.pl", "adapters/perl/Devel/TdbRemote.pm", "adapters/perl/Devel/TdbCompile.pm", "adapters/bash/tdb_harness.sh", "adapters/powershell/tdb_launch.ps1", "rust_concurrency/probes/gdb_script.py", "rust_concurrency/probes/lldb_script.py"]
 
   [tool.pytest.ini_options]
   testpaths = ["tests"]

@@ -1,0 +1,658 @@
+"""Drive PowerShellDapServer end-to-end over real pipes against the
+fake PSES (tests/unit/fake_pses.py). POSIX only."""
+
+import asyncio
+import json
+import os
+import shutil
+import signal
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+from tdb.adapters.powershell.output import LAUNCHER
+from tdb.adapters.powershell.server import (
+    CAPABILITIES,
+    LAUNCHER_CALL_LINE,
+    PowerShellDapServer,
+    _parse_version,
+    build_pwsh_command,
+    connect_debug_service,
+)
+from tests.integration.perl_adapter_harness import AdapterClient
+from tests.unit.fake_pses import make_fake_pwsh
+
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="POSIX sh shim")
+
+
+@pytest.fixture
+def fake(tmp_path, monkeypatch):
+    shim, pses = make_fake_pwsh(tmp_path)
+    log = tmp_path / "requests.jsonl"
+    monkeypatch.setenv("FAKE_PSES_LOG", str(log))
+    monkeypatch.delenv("FAKE_PSES_MODE", raising=False)
+    script = tmp_path / "s.ps1"
+    script.write_text("Write-Host 1\n")
+    return {
+        "pwsh": shim,
+        "pses": str(pses),
+        "log": log,
+        "script": str(script),
+        "tmp": tmp_path,
+    }
+
+
+@pytest.fixture(autouse=True)
+def _reap_fakes(tmp_path):
+    """SIGKILL any fake PSES this test left behind (they ignore SIGTERM and
+    would otherwise pile up across the suite)."""
+    yield
+    if shutil.which("pgrep") is None:  # pragma: no cover - non-POSIX
+        return
+    out = subprocess.run(
+        ["pgrep", "-f", f"fake_pses.py.*{tmp_path}"], capture_output=True, text=True
+    ).stdout
+    for pid in out.split():
+        try:
+            os.kill(int(pid), signal.SIGKILL)
+        except (ProcessLookupError, ValueError, PermissionError):
+            pass
+
+
+def _requests(log: Path) -> list[dict]:
+    if not log.exists():
+        return []
+    msgs = [json.loads(line) for line in log.read_text().splitlines()]
+    return [m for m in msgs if m.get("command")]
+
+
+def requests_seen(log: Path, command: str) -> list[dict]:
+    return [m for m in _requests(log) if m["command"] == command]
+
+
+async def start_proxy() -> AdapterClient:
+    client = AdapterClient()
+    await client.start(module="tdb.adapters.powershell")
+    return client
+
+
+def launch_args(fake, **extra) -> dict:
+    return {
+        "type": "powershell",
+        "request": "launch",
+        "program": fake["script"],
+        "args": [],
+        "cwd": str(fake["tmp"]),
+        "stopOnEntry": False,
+        "console": "internalConsole",
+        "pwsh": fake["pwsh"],
+        "pses": fake["pses"],
+        **extra,
+    }
+
+
+async def test_initialize_is_answered_statically():
+    client = await start_proxy()
+    try:
+        resp = await client.request("initialize", {"adapterID": "pses"})
+        assert resp["success"] and resp["body"] == CAPABILITIES
+        assert resp["body"]["supportsTerminateRequest"] is True
+    finally:
+        await client.stop()
+
+
+async def test_launch_forwards_launcher_and_quoted_args(fake):
+    client = await start_proxy()
+    try:
+        await client.request("initialize", {"adapterID": "pses"})
+        fut = client.send("launch", launch_args(fake, args=["one two", "it's"]))
+        await client.wait_event("initialized")
+        await client.request("configurationDone")
+        assert (await fut)["success"]
+        exited = await client.wait_event("exited")
+        assert exited["body"]["exitCode"] == 3  # from the fake's sentinel
+        await client.wait_event("terminated")
+        [launch] = requests_seen(fake["log"], "launch")
+        a = launch["arguments"]
+        assert a["script"].endswith("tdb_launch.ps1")
+        assert a["args"] == [f"'{fake['script']}'", "'one two'", "'it''s'"]
+        assert a["cwd"] == str(fake["tmp"])
+        assert "stopOnEntry" not in a and "env" not in a
+        [init] = requests_seen(fake["log"], "initialize")
+        assert init["arguments"]["adapterID"] == "pses"
+    finally:
+        await client.stop()
+
+
+async def test_stdout_becomes_output_events_without_prompt_or_sentinel(fake):
+    client = await start_proxy()
+    try:
+        await client.request("initialize", {"adapterID": "pses"})
+        fut = client.send("launch", launch_args(fake))
+        await client.wait_event("initialized")
+        await client.request("configurationDone")
+        await fut
+        await client.wait_event("terminated")
+        outs = [e["body"] for e in client.events if e["event"] == "output"]
+        text = "".join(o["output"] for o in outs)
+        assert "hello from fake\n" in text
+        assert "PS /tmp/fake>" not in text
+        assert "tdb-exit" not in text
+        assert all(o["category"] == "stdout" for o in outs)
+    finally:
+        await client.stop()
+
+
+async def _collect_until(client, name: str, timeout: float = 30.0) -> list[str]:
+    """Event names in arrival order, waiting for `name` WITHOUT consuming
+    anything (unlike wait_event, which removes the event it matched)."""
+    for _ in range(int(timeout * 10)):
+        names = [e["event"] for e in client.events]
+        if name in names:
+            return names
+        await asyncio.sleep(0.1)
+    raise AssertionError(f"event {name!r} never arrived; saw {client.events}")
+
+
+async def test_exited_precedes_terminated(fake):
+    client = await start_proxy()
+    try:
+        await client.request("initialize", {"adapterID": "pses"})
+        fut = client.send("launch", launch_args(fake))
+        await client.wait_event("initialized")
+        await client.request("configurationDone")
+        await fut
+        names = await _collect_until(client, "terminated")
+        assert "exited" in names
+        assert names.index("exited") < names.index("terminated")
+    finally:
+        await client.stop()
+
+
+async def test_trailing_output_before_the_sentinel_is_kept(fake, monkeypatch):
+    """`Write-Host -NoNewline` leaves the launcher's sentinel appended to
+    real output: the text before it must still reach the Console View."""
+    monkeypatch.setenv("FAKE_PSES_MODE", "no-newline-exit")
+    client = await start_proxy()
+    try:
+        await client.request("initialize", {"adapterID": "pses"})
+        fut = client.send("launch", launch_args(fake))
+        await client.wait_event("initialized")
+        await client.request("configurationDone")
+        await fut
+        exited = await client.wait_event("exited")
+        assert exited["body"]["exitCode"] == 3
+        outs = [e["body"] for e in client.events if e["event"] == "output"]
+        text = "".join(o["output"] for o in outs if o["category"] == "stdout")
+        assert "done" in text
+        assert "tdb-exit" not in text
+    finally:
+        await client.stop()
+
+
+async def test_old_minor_pwsh_warns_but_runs(fake, monkeypatch):
+    """7.0/7.1 are above MIN_PWSH but untested: a console warning, not a
+    refusal (spec addendum 3.4)."""
+    monkeypatch.setenv("FAKE_PSES_MODE", "old-minor")
+    client = await start_proxy()
+    try:
+        await client.request("initialize", {"adapterID": "pses"})
+        fut = client.send("launch", launch_args(fake))
+        await client.wait_event("initialized")
+        await client.request("configurationDone")
+        assert (await fut)["success"]
+        await client.wait_event("terminated")
+        warnings = [
+            e["body"]["output"]
+            for e in client.events
+            if e["event"] == "output" and e["body"]["category"] == "console"
+        ]
+        assert len(warnings) == 1
+        assert "7.1.5" in warnings[0] and "7.2" in warnings[0]
+    finally:
+        await client.stop()
+
+
+async def test_recent_pwsh_warns_about_nothing(fake):
+    client = await start_proxy()
+    try:
+        await client.request("initialize", {"adapterID": "pses"})
+        fut = client.send("launch", launch_args(fake))
+        await client.wait_event("initialized")
+        await client.request("configurationDone")
+        await fut
+        await client.wait_event("terminated")
+        assert not [
+            e
+            for e in client.events
+            if e["event"] == "output" and e["body"]["category"] == "console"
+        ]
+    finally:
+        await client.stop()
+
+
+async def test_missing_pwsh_fails_launch_with_hint(fake):
+    client = await start_proxy()
+    try:
+        await client.request("initialize", {"adapterID": "pses"})
+        resp = await client.send("launch", launch_args(fake, pwsh="/nonexistent/pwsh"))
+        assert resp["success"] is False
+        assert "pwsh" in resp["message"]
+    finally:
+        await client.stop()
+
+
+async def test_missing_pses_fails_launch_with_hint(fake):
+    client = await start_proxy()
+    try:
+        await client.request("initialize", {"adapterID": "pses"})
+        resp = await client.send("launch", launch_args(fake, pses="/nonexistent/pses"))
+        assert resp["success"] is False
+        assert "PowerShellEditorServices.zip" in resp["message"]
+    finally:
+        await client.stop()
+
+
+async def test_missing_program_fails_launch(fake):
+    client = await start_proxy()
+    try:
+        await client.request("initialize", {"adapterID": "pses"})
+        resp = await client.send(
+            "launch", launch_args(fake, program="/nonexistent/x.ps1")
+        )
+        assert resp["success"] is False and "not found" in resp["message"]
+    finally:
+        await client.stop()
+
+
+async def test_pwsh_dying_early_surfaces_its_output(fake, monkeypatch):
+    monkeypatch.setenv("FAKE_PSES_MODE", "die")
+    client = await start_proxy()
+    try:
+        await client.request("initialize", {"adapterID": "pses"})
+        resp = await client.send("launch", launch_args(fake))
+        assert resp["success"] is False
+        assert "boom: bad module" in resp["message"]
+    finally:
+        await client.stop()
+
+
+async def test_session_file_timeout(fake, monkeypatch):
+    monkeypatch.setenv("FAKE_PSES_MODE", "no-session-file")
+    monkeypatch.setenv("TDB_PSES_SESSION_TIMEOUT", "1.0")
+    client = await start_proxy()
+    try:
+        await client.request("initialize", {"adapterID": "pses"})
+        resp = await client.send("launch", launch_args(fake))
+        assert resp["success"] is False
+        assert "session file" in resp["message"]
+    finally:
+        await client.stop()
+
+
+async def test_old_powershell_is_refused(fake, monkeypatch):
+    monkeypatch.setenv("FAKE_PSES_MODE", "old-version")
+    client = await start_proxy()
+    try:
+        await client.request("initialize", {"adapterID": "pses"})
+        resp = await client.send("launch", launch_args(fake))
+        assert resp["success"] is False
+        assert "5.1" in resp["message"] and "7" in resp["message"]
+    finally:
+        await client.stop()
+
+
+async def test_disconnect_kills_pwsh(fake):
+    client = await start_proxy()
+    try:
+        await client.request("initialize", {"adapterID": "pses"})
+        fut = client.send("launch", launch_args(fake))
+        await client.wait_event("initialized")
+        await client.request(
+            "setBreakpoints",
+            {"source": {"path": fake["script"]}, "breakpoints": [{"line": 6}]},
+        )
+        await client.request("configurationDone")
+        await fut
+        await client.wait_event("stopped")
+        resp = await client.request("disconnect")
+        assert resp["success"]
+        await client.proc.wait()  # proxy exits after disconnect
+        # The fake pwsh (an sh shim that exec'd python fake_pses.py) must be
+        # gone. Match on this test's own session dir so a concurrent test or
+        # a stale fake from another run cannot make the assertion flaky.
+        import subprocess
+        import time
+
+        needle = f"fake_pses.py.*{fake['tmp']}"
+        for _ in range(30):
+            out = subprocess.run(
+                ["pgrep", "-f", needle], capture_output=True, text=True
+            ).stdout
+            if not out.strip():
+                break
+            time.sleep(0.1)
+        assert not out.strip(), f"fake pwsh survived disconnect: {out}"
+    finally:
+        await client.stop()
+
+
+async def test_terminate_is_answered_locally_and_ends_session(fake):
+    client = await start_proxy()
+    try:
+        await client.request("initialize", {"adapterID": "pses"})
+        fut = client.send("launch", launch_args(fake))
+        await client.wait_event("initialized")
+        await client.request(
+            "setBreakpoints",
+            {"source": {"path": fake["script"]}, "breakpoints": [{"line": 6}]},
+        )
+        await client.request("configurationDone")
+        await fut
+        await client.wait_event("stopped")
+        resp = await client.request("terminate")
+        assert resp["success"]
+        await client.wait_event("exited")
+        await client.wait_event("terminated")
+        assert not requests_seen(fake["log"], "terminate"), (
+            "terminate must not reach PSES"
+        )
+    finally:
+        await client.stop()
+
+
+async def test_socket_death_without_terminated_ends_the_session(fake, monkeypatch):
+    """PSES's socket dies mid-session with no `terminated` while the pwsh
+    host survives: the proxy must still end the session rather than hang."""
+    monkeypatch.setenv("FAKE_PSES_MODE", "socket-die")
+    client = await start_proxy()
+    try:
+        await client.request("initialize", {"adapterID": "pses"})
+        fut = client.send("launch", launch_args(fake))
+        await client.wait_event("initialized")
+        await client.request(
+            "setBreakpoints",
+            {"source": {"path": fake["script"]}, "breakpoints": [{"line": 6}]},
+        )
+        await client.request("configurationDone")
+        await fut
+        await client.wait_event("stopped")
+        client.send("pause", {"threadId": 1})  # the fake never answers this
+        await client.wait_event("exited", timeout=10)
+        await client.wait_event("terminated", timeout=10)
+        resp = await client.request("threads", timeout=10)
+        assert resp["success"] is False
+        assert "no debug session" in resp["message"]
+    finally:
+        await client.stop()
+
+
+async def test_remove_socket_unlinks_pses_socket(tmp_path):
+    """Real PSES puts its UNIX socket at /tmp/CoreFxPipe_<pipe name>, outside
+    the proxy's workdir, so _cleanup_workdir cannot reach it and a killed
+    pwsh leaves it behind."""
+    srv = PowerShellDapServer(asyncio.StreamReader(), None)
+    sock = tmp_path / "CoreFxPipe_tdb-pses-1-abcd"
+    sock.write_text("")
+    srv._socket_path = str(sock)
+    srv._remove_socket()
+    assert not sock.exists()
+    assert srv._socket_path is None
+    srv._remove_socket()  # idempotent
+    srv._socket_path = str(sock)
+    srv._remove_socket()  # already gone: no raise
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        ("7.6.5", (7, 6)),
+        ("7.2", (7, 2)),
+        ("7", (7, 0)),  # bare major
+        ("5.1.0", (5, 1)),
+        (None, (0, 0)),  # key missing from the session file
+        ("", (0, 0)),
+        ("preview", (0, 0)),
+        (7, (7, 0)),  # non-string but numeric
+        ({"major": 7}, (0, 0)),  # non-string, unrecognizable
+    ],
+)
+def test_parse_version(value, expected):
+    """(0, 0) sorts below MIN_PWSH, so anything unreadable is refused
+    rather than crashing the launch handler."""
+    assert _parse_version(value) == expected
+
+
+def test_build_pwsh_command(tmp_path):
+    cmd = build_pwsh_command(
+        "/bin/pwsh",
+        tmp_path / "PSES",
+        tmp_path / "s.json",
+        tmp_path / "log",
+        "tdb-pses-1",
+    )
+    assert cmd[:6] == [
+        "/bin/pwsh",
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        str(tmp_path / "PSES" / "Start-EditorServices.ps1"),
+    ]
+    assert "-DebugServiceOnly" in cmd
+    assert cmd[cmd.index("-DebugServicePipeName") + 1] == "tdb-pses-1"
+    assert cmd[cmd.index("-BundledModulesPath") + 1] == str(tmp_path)
+    assert cmd[cmd.index("-LogLevel") + 1] == "None"
+    assert cmd[cmd.index("-SessionDetailsPath") + 1] == str(tmp_path / "s.json")
+    assert "-Stdio" not in cmd
+
+
+async def test_connect_debug_service_posix(tmp_path):
+    sock = str(tmp_path / "s")
+
+    async def echo(r, w):
+        w.write(await r.read(5))
+        await w.drain()
+        w.close()
+
+    server = await asyncio.start_unix_server(echo, path=sock)
+    async with server:
+        r, w = await connect_debug_service({"debugServicePipeName": sock})
+        w.write(b"hello")
+        await w.drain()
+        assert await r.read(5) == b"hello"
+        w.close()
+
+
+async def test_connect_debug_service_windows_branch_is_selected(monkeypatch):
+    calls = []
+    monkeypatch.setattr("tdb.adapters.powershell.server.sys.platform", "win32")
+
+    async def fake_pipe(name):
+        calls.append(name)
+        return ("r", "w")
+
+    monkeypatch.setattr(
+        "tdb.adapters.powershell.server._connect_windows_pipe", fake_pipe
+    )
+    assert await connect_debug_service({"debugServicePipeName": r"\\.\pipe\tdb-x"}) == (
+        "r",
+        "w",
+    )
+    assert calls == [r"\\.\pipe\tdb-x"]
+
+
+# ---- Task 8: rewrites -------------------------------------------------------
+
+
+async def test_stop_on_entry_breaks_on_the_launcher_then_steps_in(fake):
+    """The entry stop is a breakpoint on the launcher's `& $Script` line
+    followed by a stepIn — a line-1 breakpoint on the user's script binds to
+    a function body when line 1 is a `function`."""
+    client = await start_proxy()
+    try:
+        await client.request("initialize", {"adapterID": "pses"})
+        fut = client.send("launch", launch_args(fake, stopOnEntry=True))
+        await client.wait_event("initialized")
+        await client.request("configurationDone")
+        await fut
+        ev = await client.wait_event("stopped")
+        assert ev["body"]["reason"] == "entry"
+        # exactly one stop reaches the client: the launcher one is swallowed
+        assert [e for e in client.events if e["event"] == "stopped"] == []
+        seen = requests_seen(fake["log"], "setBreakpoints")
+        assert [
+            (
+                s["arguments"]["source"]["path"],
+                [b["line"] for b in s["arguments"]["breakpoints"]],
+            )
+            for s in seen
+        ] == [(str(LAUNCHER), [LAUNCHER_CALL_LINE]), (str(LAUNCHER), [])]
+        # the breakpoint is cleared before the stepIn that produces the stop
+        order = [
+            r["command"]
+            for r in _requests(fake["log"])
+            if r["command"] in ("setBreakpoints", "stepIn")
+        ]
+        assert order == ["setBreakpoints", "setBreakpoints", "stepIn"]
+    finally:
+        await client.stop()
+
+
+async def test_unverified_launcher_breakpoint_disarms_stop_on_entry(fake, monkeypatch):
+    """PSES could not bind the launcher breakpoint, so it will never fire.
+    stopOnEntry must degrade to run-to-first-breakpoint rather than stay
+    armed: an armed proxy would swallow the user's real breakpoint stop and
+    relabel the following one "entry" (spec addendum 3.3)."""
+    monkeypatch.setenv("FAKE_PSES_MODE", "unverified-bp")
+    client = await start_proxy()
+    try:
+        await client.request("initialize", {"adapterID": "pses"})
+        fut = client.send("launch", launch_args(fake, stopOnEntry=True))
+        await client.wait_event("initialized")
+        await client.request(
+            "setBreakpoints",
+            {"source": {"path": fake["script"]}, "breakpoints": [{"line": 6}]},
+        )
+        await client.request("configurationDone")
+        await fut
+        ev = await client.wait_event("stopped")
+        # the user's breakpoint stop reaches the client unchanged...
+        assert ev["body"]["reason"] == "breakpoint"
+        # ...and the proxy never tried to step in from a stop that isn't the
+        # launcher's.
+        assert requests_seen(fake["log"], "stepIn") == []
+        await asyncio.sleep(0.3)
+        assert [e for e in client.events if e["event"] == "stopped"] == []
+    finally:
+        await client.stop()
+
+
+async def test_no_stop_on_entry_sends_no_breakpoints(fake):
+    client = await start_proxy()
+    try:
+        await client.request("initialize", {"adapterID": "pses"})
+        fut = client.send("launch", launch_args(fake, stopOnEntry=False))
+        await client.wait_event("initialized")
+        await client.request("configurationDone")
+        await fut
+        await client.wait_event("terminated")
+        assert requests_seen(fake["log"], "setBreakpoints") == []
+        assert requests_seen(fake["log"], "stepIn") == []
+    finally:
+        await client.stop()
+
+
+async def test_user_breakpoints_pass_through_untouched(fake):
+    """Even under stopOnEntry the client's own list reaches PSES verbatim."""
+    client = await start_proxy()
+    try:
+        await client.request("initialize", {"adapterID": "pses"})
+        fut = client.send("launch", launch_args(fake, stopOnEntry=True))
+        await client.wait_event("initialized")
+        resp = await client.request(
+            "setBreakpoints",
+            {"source": {"path": fake["script"]}, "breakpoints": [{"line": 6}]},
+        )
+        assert [b["line"] for b in resp["body"]["breakpoints"]] == [6]
+        await client.request("configurationDone")
+        await fut
+        await client.wait_event("stopped")
+        mine = [
+            s
+            for s in requests_seen(fake["log"], "setBreakpoints")
+            if s["arguments"]["source"]["path"] == fake["script"]
+        ]
+        assert [b["line"] for b in mine[0]["arguments"]["breakpoints"]] == [6]
+        assert len(mine) == 1  # the proxy never re-sends the user's list
+    finally:
+        await client.stop()
+
+
+async def _launch_to_breakpoint(client, fake):
+    await client.request("initialize", {"adapterID": "pses"})
+    fut = client.send("launch", launch_args(fake))
+    await client.wait_event("initialized")
+    await client.request(
+        "setBreakpoints",
+        {"source": {"path": fake["script"]}, "breakpoints": [{"line": 6}]},
+    )
+    await client.request("configurationDone")
+    await fut
+    ev = await client.wait_event("stopped")
+    assert ev["body"]["reason"] == "breakpoint"
+
+
+async def test_pause_stop_reason_is_rewritten(fake):
+    client = await start_proxy()
+    try:
+        await _launch_to_breakpoint(client, fake)
+        await client.request("pause", {"threadId": 1})
+        ev = await client.wait_event("stopped")
+        assert ev["body"]["reason"] == "pause"
+        # a plain step afterwards keeps its own reason
+        await client.request("next", {"threadId": 1})
+        ev = await client.wait_event("stopped")
+        assert ev["body"]["reason"] == "step"
+    finally:
+        await client.stop()
+
+
+async def test_evaluate_repl_context_is_rewritten_to_watch(fake):
+    client = await start_proxy()
+    try:
+        await _launch_to_breakpoint(client, fake)
+        resp = await client.request("evaluate", {"expression": "$x", "context": "repl"})
+        assert resp["body"]["result"] == "ctx=watch:$x"
+        resp = await client.request(
+            "evaluate", {"expression": "$x", "context": "hover"}
+        )
+        assert resp["body"]["result"] == "ctx=hover:$x"
+        resp = await client.request("evaluate", {"expression": "$x"})
+        assert resp["body"]["result"] == "ctx=watch:$x"
+    finally:
+        await client.stop()
+
+
+async def test_error_block_is_tagged_stderr_and_exit_is_1(fake, monkeypatch):
+    monkeypatch.setenv("FAKE_PSES_MODE", "throw")
+    client = await start_proxy()
+    try:
+        await client.request("initialize", {"adapterID": "pses"})
+        fut = client.send("launch", launch_args(fake))
+        await client.wait_event("initialized")
+        await client.request("configurationDone")
+        await fut
+        exited = await client.wait_event("exited")
+        assert exited["body"]["exitCode"] == 1
+        await client.wait_event("terminated")
+        outs = [e["body"] for e in client.events if e["event"] == "output"]
+        stderr = "".join(o["output"] for o in outs if o["category"] == "stderr")
+        stdout = "".join(o["output"] for o in outs if o["category"] == "stdout")
+        assert stderr.startswith("Exception: /x/s.ps1:2")
+        assert "kaboom" in stderr
+        assert "hello from fake" in stdout and "Exception" not in stdout
+    finally:
+        await client.stop()
