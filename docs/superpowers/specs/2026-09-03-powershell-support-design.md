@@ -395,3 +395,45 @@ CI:
 - **PSES pinned version drift.** The README and Dockerfile pin v4.7.0; a
   newer release that changes the session-file shape or start-script
   parameters would surface as a launch failure with PSES's own output.
+
+## Addendum (2026-09-03, pre-plan probes)
+
+Four further probe results, found while writing the implementation plan,
+amend the sections above. Where they conflict, this addendum wins.
+
+1. **Exit codes are not observable through DAP.** After `terminated`,
+   `evaluate` of `$LASTEXITCODE` / `$?` returns an empty result, and PSES
+   never emits `exited`. The proxy therefore launches a bundled
+   *launcher script* instead of the user's script:
+   `src/tdb/adapters/powershell/tdb_launch.ps1` takes the user script path
+   and its arguments, runs the script with the call operator
+   (`& $Script @ScriptArgs`, so `exit N` returns to the launcher with
+   `$LASTEXITCODE = N`), and prints one sentinel line
+   `"\x1etdb-exit:<code>"` on stdout. The proxy strips the sentinel from the
+   Console View and uses it as the `exited` code. An uncaught terminating
+   error propagates through `&`, so the launcher never reaches the
+   sentinel; PSES sends `terminated`, pwsh prints the concise error view,
+   and the proxy reports exit code **1**. Probe-verified under PSES:
+   `exit 7` -> sentinel 7; `throw` -> no sentinel + concise view naming the
+   *user* script; entry breakpoint on line 1 of the user script still lands
+   on its first executable statement (the launcher's own lines are never
+   breakpointed); breakpoints inside functions hit. Cost: one extra bottom
+   frame `<ScriptBlock>` whose source is `tdb_launch.ps1`, documented in
+   the README. The "Teardown" paragraph's "real code, or 0" wording is
+   replaced by this rule.
+2. **PSES joins launch `args` unquoted** into the PowerShell command line
+   (`. '<script>' arg1 arg2`). An argument containing a space or an
+   apostrophe is split or breaks the parse (the run then terminates with
+   no output). The proxy single-quotes every argument as a PowerShell
+   literal (`'` -> `''`) before forwarding — the launcher path is passed
+   as `script` (PSES escapes that one itself); the user script path and
+   all user args go through the quoting.
+3. **`NO_COLOR=1` and `TERM=dumb` both** switch pwsh 7.6 to plain-text
+   error rendering; the proxy sets both.
+4. **Error header kinds.** The concise view header is
+   `<Kind>: <path>:<line>` where `<Kind>` is `Exception`, a .NET exception
+   class (`MethodInvocationException`), **or a cmdlet name** (`Get-Item:`).
+   Non-terminating errors print the identical block and the script
+   continues with exit code 0, so `parse_powershell_error` MUST return
+   `None` unless `exit_code` is non-zero; the message may span several
+   `|`-prefixed lines and is joined with spaces.
