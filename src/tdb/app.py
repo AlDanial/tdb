@@ -187,6 +187,7 @@ class TdbApp(_AppMessageRoutes, App):
         attach_host: str | None = None,
         attach_port: int | None = None,
         path_mappings: list[tuple[str, str]] | None = None,
+        pause_on_attach: bool = True,
         sub_process: bool = True,
         server_port: int | None = None,
         post_mortem_snapshot: dict | None = None,
@@ -212,6 +213,7 @@ class TdbApp(_AppMessageRoutes, App):
         self._attach_host = attach_host
         self._attach_port = attach_port
         self._path_mappings = path_mappings or []
+        self._pause_on_attach = pause_on_attach
         self._sub_process = sub_process
         self._server_port = server_port
         self._post_mortem_snapshot = post_mortem_snapshot
@@ -491,6 +493,7 @@ class TdbApp(_AppMessageRoutes, App):
                         port=self._attach_port,
                         path_mappings=self._path_mappings or None,
                         program=self._program or None,
+                        pre_arm_pause=self._pause_on_attach,
                     )
                 except OSError as exc:
                     # No server listening, route unreachable, DNS failure,

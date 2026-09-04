@@ -36,6 +36,7 @@ async def setup_headless_session(
     path_mappings: list[tuple[str, str]] | None = None,
     profile: "LanguageProfile | None" = None,
     step_mode: str | None = None,
+    pre_arm_pause: bool = True,
 ) -> tuple[DebugController, ServerEventHandler]:
     """Set up a headless debug session (no TUI, no server).
 
@@ -69,6 +70,7 @@ async def setup_headless_session(
                 port=attach_port,
                 path_mappings=path_mappings,
                 program=program,
+                pre_arm_pause=pre_arm_pause,
             )
         except AdapterNotFoundError as exc:
             print(f"tdb: {exc.hint}", file=sys.stderr)
@@ -143,6 +145,7 @@ async def run_headless(
     attach_port: int | None = None,
     path_mappings: list[tuple[str, str]] | None = None,
     profile: "LanguageProfile | None" = None,
+    pre_arm_pause: bool = True,
 ) -> None:
     """Run the debug server in headless mode (no TUI).
 
@@ -165,6 +168,7 @@ async def run_headless(
         attach_port=attach_port,
         path_mappings=path_mappings,
         profile=profile,
+        pre_arm_pause=pre_arm_pause,
     )
 
     # Create and start the FastAPI server

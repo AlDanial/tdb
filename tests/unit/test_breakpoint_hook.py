@@ -140,7 +140,11 @@ def test_first_call_starts_listener(hook, monkeypatch):
     monkeypatch.setitem(__import__("sys").modules, "debugpy", fake_debugpy)
 
     fake_proc = SimpleNamespace(poll=lambda: None)
-    monkeypatch.setattr("subprocess.Popen", lambda *a, **k: fake_proc)
+    popen_argv: list[list[str]] = []
+    monkeypatch.setattr(
+        "subprocess.Popen",
+        lambda argv, **k: popen_argv.append(list(argv)) or fake_proc,
+    )
 
     hook.breakpoint()
 
@@ -149,3 +153,11 @@ def test_first_call_starts_listener(hook, monkeypatch):
     assert configure_calls and configure_calls[0]["subProcess"] is False
     assert hook._server_port == 4242
     assert hook._subprocess is fake_proc
+
+    (argv,) = popen_argv
+    assert argv[1:3] == ["-m", "tdb"]
+    assert "-r" in argv and f"{hook._SERVER_HOST}:4242" in argv
+    # The hook stops the debuggee itself via debugpy.breakpoint(); tdb's
+    # pre-armed pause would race it and can leave the thread suspended
+    # with no client after quit (see test_controller_pre_arm_pause.py).
+    assert "--no-pause-on-attach" in argv

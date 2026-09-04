@@ -86,9 +86,24 @@ def breakpoint(*args: Any, **kwargs: Any) -> None:
         debugpy.breakpoint()
         return
 
+    # --no-pause-on-attach: tdb normally pre-arms a `pause` on remote
+    # attach so a plain listen()+wait_for_client() program stops at its
+    # first statement. Here debugpy.breakpoint() below is the stop, and the
+    # pause can fire *inside* that call (after its client-connected check,
+    # before it arms its own step). The stop looks fine, but when tdb
+    # quits, disconnect resumes the thread, debugpy.breakpoint() finishes
+    # arming, and the thread suspends again with nobody attached — the
+    # program hangs forever. Seen reliably on Python 3.12+ (sys.monitoring).
     try:
         _subprocess = subprocess.Popen(
-            [sys.executable, "-m", "tdb", "-r", f"{_SERVER_HOST}:{_server_port}"],
+            [
+                sys.executable,
+                "-m",
+                "tdb",
+                "-r",
+                f"{_SERVER_HOST}:{_server_port}",
+                "--no-pause-on-attach",
+            ],
             stdin=sys.stdin,
             stdout=sys.stdout,
             stderr=sys.stderr,

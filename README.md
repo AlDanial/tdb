@@ -177,6 +177,11 @@ tdb -r remotehost:5678  -k my_program.py:42
 # than code on the remote host
 tdb -r remotehost:5678 --local-root /my/code/dir --remote-root /app -k my_program.py:42
 
+# attach to a program that pauses itself (debugpy.breakpoint() right after
+# debugpy.wait_for_client()); without this flag tdb pauses the program on
+# attach, which can leave it suspended after tdb quits
+tdb -r remotehost:5678 --no-pause-on-attach
+
 # separate tdb arguments from debuggee arguments with `--` 
 tdb --python /path/to/venv/bin/python -- my_program.py -k 17 --max 23.3
 ```
