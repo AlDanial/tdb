@@ -1663,18 +1663,6 @@ from tests.integration.perl_adapter_harness import AdapterClient
 
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="POSIX sh shim")
 
-FAKE_CAPS = (
-    json.loads(
-        Path(__file__)
-        .with_name("fake_pses.py")
-        .read_text()
-        .split("CAPS = ")[1]
-        .split("\n}\n")[0]
-        + "\n}"
-    )
-    if False
-    else None
-)  # (not used; kept simple below)
 
 
 @pytest.fixture
@@ -1978,8 +1966,6 @@ async def test_connect_debug_service_windows_branch_is_selected(monkeypatch):
     )
     assert calls == [r"\\.\pipe\tdb-x"]
 ```
-
-Delete the stray `FAKE_CAPS = ...` line before running (it is a leftover; the tests compare against `CAPABILITIES` from the server module).
 
 - [ ] **Step 2: Run tests to verify they fail**
 
@@ -2955,7 +2941,7 @@ git commit -m "PowerShell proxy: stopOnEntry emulation, pause/evaluate rewrites,
 `tests/integration/fixtures/powershell/simple.ps1`:
 
 ```powershell
-# simple: entry stop must land on line 3
+# simple: the entry stop lands on line 2, the first executable statement
 $x = 1
 $y = $x + 1
 Write-Host "sum=$y"
@@ -2963,7 +2949,6 @@ Write-Output "out=$y"
 exit 7
 ```
 
-Wait — the entry stop lands on the first *executable* statement, which is line 2 (`$x = 1`); fix the comment: `# simple: entry stop must land on line 2`.
 
 `functions.ps1`:
 
