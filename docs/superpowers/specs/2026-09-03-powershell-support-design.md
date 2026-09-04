@@ -466,3 +466,22 @@ amend the sections above. Where they conflict, this addendum wins.
    `<Breakpoint>`, `Add`, `Outer`, `<ScriptBlock>` (user script),
    `<ScriptBlock>` (tdb_launch.ps1), then a source-less
    `Interactive Session` frame at the bottom.
+
+## Addendum 3 (2026-09-04, final review)
+
+1. **`PsesAdapter.command()` raises `AdapterNotFoundError`** when pwsh or the
+   PSES module cannot be found (it resolves both through `locate.py`). The
+   body's "never raises; the proxy reports it at launch" is withdrawn: tdb's
+   controller only surfaces a launch error after the adapter's `initialized`
+   event, which PSES never sends when the launch failed, so a proxy-side
+   error was invisible in the TUI. The proxy keeps its own check as a
+   backstop. The CLI prints the hint and exits 2, as for dlv/gdb.
+2. **`parse_powershell_error` ignores blocks attributed to `tdb_launch.ps1`.**
+   `Write-Error` reports its caller's invocation site, so `Write-Error ...;
+   exit N` renders a block naming the launcher's `& $Script` line; treating
+   it as fatal opened a crash modal pointing into tdb's own files. Genuine
+   terminating errors name the user's script and are unaffected.
+3. The stopOnEntry arm requires the launcher breakpoint to come back
+   `verified`; otherwise stopOnEntry degrades to "run to first breakpoint".
+4. pwsh 7.0–7.1 produce a Console warning line; `MIN_PWSH` stays 7.0 and the
+   README documents ≥ 7.2 as supported.
