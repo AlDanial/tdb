@@ -348,3 +348,174 @@ async def test_connect_debug_service_windows_branch_is_selected(monkeypatch):
         "w",
     )
     assert calls == [r"\\.\pipe\tdb-x"]
+
+
+# ---- Task 8: rewrites -------------------------------------------------------
+
+
+async def test_stop_on_entry_adds_and_strips_line1_breakpoint(fake):
+    client = await start_proxy()
+    try:
+        await client.request("initialize", {"adapterID": "pses"})
+        fut = client.send("launch", launch_args(fake, stopOnEntry=True))
+        await client.wait_event("initialized")
+        resp = await client.request(
+            "setBreakpoints",
+            {"source": {"path": fake["script"]}, "breakpoints": [{"line": 6}]},
+        )
+        # the client never sees the synthetic entry breakpoint
+        assert [b["line"] for b in resp["body"]["breakpoints"]] == [6]
+        await client.request("configurationDone")
+        await fut
+        ev = await client.wait_event("stopped")
+        assert ev["body"]["reason"] == "entry"
+        seen = requests_seen(fake["log"], "setBreakpoints")
+        # 1st: user list + synthetic line 1; 2nd (after the entry stop): user list only
+        assert [b["line"] for b in seen[0]["arguments"]["breakpoints"]] == [6, 1]
+        assert [b["line"] for b in seen[-1]["arguments"]["breakpoints"]] == [6]
+    finally:
+        await client.stop()
+
+
+async def test_stop_on_entry_without_user_breakpoints(fake):
+    client = await start_proxy()
+    try:
+        await client.request("initialize", {"adapterID": "pses"})
+        fut = client.send("launch", launch_args(fake, stopOnEntry=True))
+        await client.wait_event("initialized")
+        await client.request("configurationDone")
+        await fut
+        ev = await client.wait_event("stopped")
+        assert ev["body"]["reason"] == "entry"
+        seen = requests_seen(fake["log"], "setBreakpoints")
+        assert [b["line"] for b in seen[0]["arguments"]["breakpoints"]] == [1]
+        assert seen[-1]["arguments"]["breakpoints"] == []
+    finally:
+        await client.stop()
+
+
+async def test_user_breakpoint_on_line1_is_not_duplicated(fake):
+    client = await start_proxy()
+    try:
+        await client.request("initialize", {"adapterID": "pses"})
+        fut = client.send("launch", launch_args(fake, stopOnEntry=True))
+        await client.wait_event("initialized")
+        resp = await client.request(
+            "setBreakpoints",
+            {"source": {"path": fake["script"]}, "breakpoints": [{"line": 1}]},
+        )
+        assert [b["line"] for b in resp["body"]["breakpoints"]] == [1]
+        await client.request("configurationDone")
+        await fut
+        await client.wait_event("stopped")
+        seen = requests_seen(fake["log"], "setBreakpoints")
+        assert all(
+            [b["line"] for b in s["arguments"]["breakpoints"]] == [1] for s in seen
+        )
+    finally:
+        await client.stop()
+
+
+async def test_breakpoints_in_other_files_pass_through(fake):
+    client = await start_proxy()
+    try:
+        await client.request("initialize", {"adapterID": "pses"})
+        fut = client.send("launch", launch_args(fake, stopOnEntry=True))
+        await client.wait_event("initialized")
+        resp = await client.request(
+            "setBreakpoints",
+            {"source": {"path": "/elsewhere/lib.ps1"}, "breakpoints": [{"line": 3}]},
+        )
+        assert [b["line"] for b in resp["body"]["breakpoints"]] == [3]
+        await client.request("configurationDone")
+        await fut
+        await client.wait_event("stopped")
+        other = [
+            s
+            for s in requests_seen(fake["log"], "setBreakpoints")
+            if s["arguments"]["source"]["path"] == "/elsewhere/lib.ps1"
+        ]
+        assert [b["line"] for b in other[0]["arguments"]["breakpoints"]] == [3]
+    finally:
+        await client.stop()
+
+
+async def test_no_stop_on_entry_sends_no_synthetic_breakpoint(fake):
+    client = await start_proxy()
+    try:
+        await client.request("initialize", {"adapterID": "pses"})
+        fut = client.send("launch", launch_args(fake, stopOnEntry=False))
+        await client.wait_event("initialized")
+        await client.request("configurationDone")
+        await fut
+        await client.wait_event("terminated")
+        assert requests_seen(fake["log"], "setBreakpoints") == []
+    finally:
+        await client.stop()
+
+
+async def _launch_to_breakpoint(client, fake):
+    await client.request("initialize", {"adapterID": "pses"})
+    fut = client.send("launch", launch_args(fake))
+    await client.wait_event("initialized")
+    await client.request(
+        "setBreakpoints",
+        {"source": {"path": fake["script"]}, "breakpoints": [{"line": 6}]},
+    )
+    await client.request("configurationDone")
+    await fut
+    ev = await client.wait_event("stopped")
+    assert ev["body"]["reason"] == "breakpoint"
+
+
+async def test_pause_stop_reason_is_rewritten(fake):
+    client = await start_proxy()
+    try:
+        await _launch_to_breakpoint(client, fake)
+        await client.request("pause", {"threadId": 1})
+        ev = await client.wait_event("stopped")
+        assert ev["body"]["reason"] == "pause"
+        # a plain step afterwards keeps its own reason
+        await client.request("next", {"threadId": 1})
+        ev = await client.wait_event("stopped")
+        assert ev["body"]["reason"] == "step"
+    finally:
+        await client.stop()
+
+
+async def test_evaluate_repl_context_is_rewritten_to_watch(fake):
+    client = await start_proxy()
+    try:
+        await _launch_to_breakpoint(client, fake)
+        resp = await client.request("evaluate", {"expression": "$x", "context": "repl"})
+        assert resp["body"]["result"] == "ctx=watch:$x"
+        resp = await client.request(
+            "evaluate", {"expression": "$x", "context": "hover"}
+        )
+        assert resp["body"]["result"] == "ctx=hover:$x"
+        resp = await client.request("evaluate", {"expression": "$x"})
+        assert resp["body"]["result"] == "ctx=watch:$x"
+    finally:
+        await client.stop()
+
+
+async def test_error_block_is_tagged_stderr_and_exit_is_1(fake, monkeypatch):
+    monkeypatch.setenv("FAKE_PSES_MODE", "throw")
+    client = await start_proxy()
+    try:
+        await client.request("initialize", {"adapterID": "pses"})
+        fut = client.send("launch", launch_args(fake))
+        await client.wait_event("initialized")
+        await client.request("configurationDone")
+        await fut
+        exited = await client.wait_event("exited")
+        assert exited["body"]["exitCode"] == 1
+        await client.wait_event("terminated")
+        outs = [e["body"] for e in client.events if e["event"] == "output"]
+        stderr = "".join(o["output"] for o in outs if o["category"] == "stderr")
+        stdout = "".join(o["output"] for o in outs if o["category"] == "stdout")
+        assert stderr.startswith("Exception: /x/s.ps1:2")
+        assert "kaboom" in stderr
+        assert "hello from fake" in stdout and "Exception" not in stdout
+    finally:
+        await client.stop()

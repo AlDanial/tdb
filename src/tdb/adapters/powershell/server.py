@@ -19,8 +19,9 @@ quirks handled here (all probe-verified, see the design spec):
                     sentinel — PSES never sends `exited`); every user arg
                     is single-quoted because PSES joins args unquoted
   env               set on the pwsh process (PSES ignores the launch field)
-  stopOnEntry       PSES ignores it: emulated with a line-1 breakpoint
-                    on the user script (Task 8)
+  stopOnEntry       PSES ignores it: emulated with a line-1 breakpoint on
+                    the user script, stripped from the client's view of the
+                    setBreakpoints reply and removed once the entry stop lands
   pause             PSES reports the stop as "step": rewritten to "pause"
   evaluate          "repl" prints to stdout with an empty result: context
                     rewritten to "watch"
@@ -171,6 +172,8 @@ class PowerShellDapServer:
         self._user_bps: list[dict] = []
         self._main_bps_sent = False
         self._pause_pending = False
+        # setBreakpoints response rewrites, keyed by the *client* request seq
+        self._response_hooks: dict[int, Callable[[dict], dict]] = {}
         # proxy-originated upstream requests awaiting a reply
         self._proxy_requests: dict[int, asyncio.Future] = {}
         # strong refs (asyncio keeps only weak refs to bare tasks)
@@ -229,6 +232,22 @@ class PowerShellDapServer:
         if body:
             msg["body"] = body
         self._write_client(msg)
+
+    def _up_send(self, command: str, arguments: dict) -> None:
+        """Fire-and-forget proxy-originated request to PSES.
+
+        No future is registered: the reply has no client mapping, so the
+        seq translator drops it. Safe from inside `_pump_up` (the only
+        reader of PSES's responses), unlike `_up_request`.
+        """
+        self._write_up(
+            {
+                "seq": self._seqs.next_upstream_seq(),
+                "type": "request",
+                "command": command,
+                "arguments": arguments,
+            }
+        )
 
     async def _up_request(
         self, command: str, arguments: dict, timeout: float = 5.0
@@ -299,6 +318,8 @@ class PowerShellDapServer:
         if self._up_writer is None:
             self.send_error(msg, "no debug session")
             return
+        if msg["command"] in _RESUME_COMMANDS:
+            self._pause_pending = False
         self._write_up(self._seqs.client_request_to_upstream(msg))
 
     # ---- PSES socket side ----
@@ -347,17 +368,18 @@ class PowerShellDapServer:
                 self._start_finish_session()
 
     def _rewrite_response(self, msg: dict) -> dict:
-        """Task 8 hook (setBreakpoints strip). Identity for now."""
-        return msg
+        """Strip the synthetic entry breakpoint from a setBreakpoints
+        response for the main script (it was appended last)."""
+        hook = self._response_hooks.pop(msg["request_seq"], None)
+        return hook(msg) if hook else msg
 
     async def _note_and_filter_event(self, msg: dict) -> bool:
         """Track session state; True -> swallow the event.
 
         Runs inside `_pump_up`, the only reader of PSES's responses: nothing
-        here may `await self._up_request(...)` (it would deadlock). Task 8
-        adds the `stopped`-reason rewrites at the marked point below and must
-        write upstream fire-and-forget (or from a spawned task) for the same
-        reason.
+        here may `await self._up_request(...)` (it would deadlock). The
+        `stopped` rewrites below write upstream with `_up_send`
+        (fire-and-forget) for that reason.
         """
         event = msg.get("event")
         if event == "terminated":
@@ -370,7 +392,30 @@ class PowerShellDapServer:
             return True
         if event == "exited":
             return True  # never observed from PSES; _watch_exit owns it
-        # Task 8: `stopped` rewrites go here — no awaiting _up_request.
+        if event == "stopped":
+            body = dict(msg.get("body") or {})
+            if self._entry_pending:
+                self._entry_pending = False
+                body["reason"] = "entry"
+                if self._entry_synthetic:
+                    # Drop the synthetic line-1 breakpoint before the client
+                    # can observe it (e.g. via a later continue). Sent
+                    # fire-and-forget — we are inside `_pump_up` — but PSES
+                    # handles requests in order while stopped, so it lands
+                    # before any resume the client sends after this event.
+                    self._up_send(
+                        "setBreakpoints",
+                        {
+                            "source": {"path": self._program},
+                            "breakpoints": self._user_bps,
+                        },
+                    )
+                self._pause_pending = False
+            elif self._pause_pending:
+                if body.get("reason") == "step":
+                    body["reason"] = "pause"
+                self._pause_pending = False
+            msg["body"] = body
         return False
 
     def _start_finish_session(self) -> None:
@@ -695,3 +740,72 @@ class PowerShellDapServer:
             await self._up_request("disconnect", {}, timeout=2.0)
         await self._ensure_pwsh_dead()
         self.send_response(request)
+
+    # ---- rewrites ----
+    def _is_main_script(self, args: dict) -> bool:
+        path = (args.get("source") or {}).get("path") or ""
+        return bool(path) and os.path.abspath(path) == self._program
+
+    async def _on_setBreakpoints(self, request: dict) -> None:
+        """While stopOnEntry is pending, the main script's breakpoint list
+        carries an extra line-1 breakpoint that the client never sees."""
+        if self._up_writer is None:
+            self.send_error(request, "no debug session")
+            return
+        args = dict(request.get("arguments") or {})
+        if not (self._entry_pending and self._is_main_script(args)):
+            self._write_up(self._seqs.client_request_to_upstream(request))
+            return
+        self._user_bps = list(args.get("breakpoints") or [])
+        self._main_bps_sent = True
+        bps = list(self._user_bps)
+        self._entry_synthetic = not any(b.get("line") == 1 for b in bps)
+        if self._entry_synthetic:
+            bps.append({"line": 1})
+            n_user = len(self._user_bps)
+
+            def strip(msg: dict) -> dict:
+                body = dict(msg.get("body") or {})
+                body["breakpoints"] = list(body.get("breakpoints") or [])[:n_user]
+                return {**msg, "body": body}
+
+            self._response_hooks[request["seq"]] = strip
+        args["breakpoints"] = bps
+        self._write_up(
+            self._seqs.client_request_to_upstream({**request, "arguments": args})
+        )
+
+    async def _on_configurationDone(self, request: dict) -> None:
+        """Last chance to arm the synthetic entry breakpoint: the client set
+        no breakpoints in the main script."""
+        if self._up_writer is None:
+            self.send_error(request, "no debug session")
+            return
+        if self._entry_pending and not self._main_bps_sent:
+            self._user_bps = []
+            self._entry_synthetic = True
+            self._main_bps_sent = True
+            # Runs in the client loop, not `_pump_up`: awaiting is safe.
+            await self._up_request(
+                "setBreakpoints",
+                {"source": {"path": self._program}, "breakpoints": [{"line": 1}]},
+            )
+        self._write_up(self._seqs.client_request_to_upstream(request))
+
+    async def _on_pause(self, request: dict) -> None:
+        if self._up_writer is None:
+            self.send_error(request, "no debug session")
+            return
+        self._pause_pending = True
+        self._write_up(self._seqs.client_request_to_upstream(request))
+
+    async def _on_evaluate(self, request: dict) -> None:
+        if self._up_writer is None:
+            self.send_error(request, "no debug session")
+            return
+        args = dict(request.get("arguments") or {})
+        if args.get("context", "repl") == "repl":
+            args["context"] = "watch"
+        self._write_up(
+            self._seqs.client_request_to_upstream({**request, "arguments": args})
+        )
