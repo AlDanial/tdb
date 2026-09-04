@@ -3,13 +3,19 @@ fake PSES (tests/unit/fake_pses.py). POSIX only."""
 
 import asyncio
 import json
+import os
+import shutil
+import signal
+import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
+from tdb.adapters.powershell.output import LAUNCHER
 from tdb.adapters.powershell.server import (
     CAPABILITIES,
+    LAUNCHER_CALL_LINE,
     build_pwsh_command,
     connect_debug_service,
 )
@@ -36,14 +42,32 @@ def fake(tmp_path, monkeypatch):
     }
 
 
-def requests_seen(log: Path, command: str) -> list[dict]:
+@pytest.fixture(autouse=True)
+def _reap_fakes(tmp_path):
+    """SIGKILL any fake PSES this test left behind (they ignore SIGTERM and
+    would otherwise pile up across the suite)."""
+    yield
+    if shutil.which("pgrep") is None:  # pragma: no cover - non-POSIX
+        return
+    out = subprocess.run(
+        ["pgrep", "-f", f"fake_pses.py.*{tmp_path}"], capture_output=True, text=True
+    ).stdout
+    for pid in out.split():
+        try:
+            os.kill(int(pid), signal.SIGKILL)
+        except (ProcessLookupError, ValueError, PermissionError):
+            pass
+
+
+def _requests(log: Path) -> list[dict]:
     if not log.exists():
         return []
-    return [
-        json.loads(line)
-        for line in log.read_text().splitlines()
-        if json.loads(line).get("command") == command
-    ]
+    msgs = [json.loads(line) for line in log.read_text().splitlines()]
+    return [m for m in msgs if m.get("command")]
+
+
+def requests_seen(log: Path, command: str) -> list[dict]:
+    return [m for m in _requests(log) if m["command"] == command]
 
 
 async def start_proxy() -> AdapterClient:
@@ -353,31 +377,10 @@ async def test_connect_debug_service_windows_branch_is_selected(monkeypatch):
 # ---- Task 8: rewrites -------------------------------------------------------
 
 
-async def test_stop_on_entry_adds_and_strips_line1_breakpoint(fake):
-    client = await start_proxy()
-    try:
-        await client.request("initialize", {"adapterID": "pses"})
-        fut = client.send("launch", launch_args(fake, stopOnEntry=True))
-        await client.wait_event("initialized")
-        resp = await client.request(
-            "setBreakpoints",
-            {"source": {"path": fake["script"]}, "breakpoints": [{"line": 6}]},
-        )
-        # the client never sees the synthetic entry breakpoint
-        assert [b["line"] for b in resp["body"]["breakpoints"]] == [6]
-        await client.request("configurationDone")
-        await fut
-        ev = await client.wait_event("stopped")
-        assert ev["body"]["reason"] == "entry"
-        seen = requests_seen(fake["log"], "setBreakpoints")
-        # 1st: user list + synthetic line 1; 2nd (after the entry stop): user list only
-        assert [b["line"] for b in seen[0]["arguments"]["breakpoints"]] == [6, 1]
-        assert [b["line"] for b in seen[-1]["arguments"]["breakpoints"]] == [6]
-    finally:
-        await client.stop()
-
-
-async def test_stop_on_entry_without_user_breakpoints(fake):
+async def test_stop_on_entry_breaks_on_the_launcher_then_steps_in(fake):
+    """The entry stop is a breakpoint on the launcher's `& $Script` line
+    followed by a stepIn — a line-1 breakpoint on the user's script binds to
+    a function body when line 1 is a `function`."""
     client = await start_proxy()
     try:
         await client.request("initialize", {"adapterID": "pses"})
@@ -387,60 +390,28 @@ async def test_stop_on_entry_without_user_breakpoints(fake):
         await fut
         ev = await client.wait_event("stopped")
         assert ev["body"]["reason"] == "entry"
+        # exactly one stop reaches the client: the launcher one is swallowed
+        assert [e for e in client.events if e["event"] == "stopped"] == []
         seen = requests_seen(fake["log"], "setBreakpoints")
-        assert [b["line"] for b in seen[0]["arguments"]["breakpoints"]] == [1]
-        assert seen[-1]["arguments"]["breakpoints"] == []
-    finally:
-        await client.stop()
-
-
-async def test_user_breakpoint_on_line1_is_not_duplicated(fake):
-    client = await start_proxy()
-    try:
-        await client.request("initialize", {"adapterID": "pses"})
-        fut = client.send("launch", launch_args(fake, stopOnEntry=True))
-        await client.wait_event("initialized")
-        resp = await client.request(
-            "setBreakpoints",
-            {"source": {"path": fake["script"]}, "breakpoints": [{"line": 1}]},
-        )
-        assert [b["line"] for b in resp["body"]["breakpoints"]] == [1]
-        await client.request("configurationDone")
-        await fut
-        await client.wait_event("stopped")
-        seen = requests_seen(fake["log"], "setBreakpoints")
-        assert all(
-            [b["line"] for b in s["arguments"]["breakpoints"]] == [1] for s in seen
-        )
-    finally:
-        await client.stop()
-
-
-async def test_breakpoints_in_other_files_pass_through(fake):
-    client = await start_proxy()
-    try:
-        await client.request("initialize", {"adapterID": "pses"})
-        fut = client.send("launch", launch_args(fake, stopOnEntry=True))
-        await client.wait_event("initialized")
-        resp = await client.request(
-            "setBreakpoints",
-            {"source": {"path": "/elsewhere/lib.ps1"}, "breakpoints": [{"line": 3}]},
-        )
-        assert [b["line"] for b in resp["body"]["breakpoints"]] == [3]
-        await client.request("configurationDone")
-        await fut
-        await client.wait_event("stopped")
-        other = [
-            s
-            for s in requests_seen(fake["log"], "setBreakpoints")
-            if s["arguments"]["source"]["path"] == "/elsewhere/lib.ps1"
+        assert [
+            (
+                s["arguments"]["source"]["path"],
+                [b["line"] for b in s["arguments"]["breakpoints"]],
+            )
+            for s in seen
+        ] == [(str(LAUNCHER), [LAUNCHER_CALL_LINE]), (str(LAUNCHER), [])]
+        # the breakpoint is cleared before the stepIn that produces the stop
+        order = [
+            r["command"]
+            for r in _requests(fake["log"])
+            if r["command"] in ("setBreakpoints", "stepIn")
         ]
-        assert [b["line"] for b in other[0]["arguments"]["breakpoints"]] == [3]
+        assert order == ["setBreakpoints", "setBreakpoints", "stepIn"]
     finally:
         await client.stop()
 
 
-async def test_no_stop_on_entry_sends_no_synthetic_breakpoint(fake):
+async def test_no_stop_on_entry_sends_no_breakpoints(fake):
     client = await start_proxy()
     try:
         await client.request("initialize", {"adapterID": "pses"})
@@ -450,6 +421,33 @@ async def test_no_stop_on_entry_sends_no_synthetic_breakpoint(fake):
         await fut
         await client.wait_event("terminated")
         assert requests_seen(fake["log"], "setBreakpoints") == []
+        assert requests_seen(fake["log"], "stepIn") == []
+    finally:
+        await client.stop()
+
+
+async def test_user_breakpoints_pass_through_untouched(fake):
+    """Even under stopOnEntry the client's own list reaches PSES verbatim."""
+    client = await start_proxy()
+    try:
+        await client.request("initialize", {"adapterID": "pses"})
+        fut = client.send("launch", launch_args(fake, stopOnEntry=True))
+        await client.wait_event("initialized")
+        resp = await client.request(
+            "setBreakpoints",
+            {"source": {"path": fake["script"]}, "breakpoints": [{"line": 6}]},
+        )
+        assert [b["line"] for b in resp["body"]["breakpoints"]] == [6]
+        await client.request("configurationDone")
+        await fut
+        await client.wait_event("stopped")
+        mine = [
+            s
+            for s in requests_seen(fake["log"], "setBreakpoints")
+            if s["arguments"]["source"]["path"] == fake["script"]
+        ]
+        assert [b["line"] for b in mine[0]["arguments"]["breakpoints"]] == [6]
+        assert len(mine) == 1  # the proxy never re-sends the user's list
     finally:
         await client.stop()
 

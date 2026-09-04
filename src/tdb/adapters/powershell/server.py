@@ -19,9 +19,11 @@ quirks handled here (all probe-verified, see the design spec):
                     sentinel — PSES never sends `exited`); every user arg
                     is single-quoted because PSES joins args unquoted
   env               set on the pwsh process (PSES ignores the launch field)
-  stopOnEntry       PSES ignores it: emulated with a line-1 breakpoint on
-                    the user script, stripped from the client's view of the
-                    setBreakpoints reply and removed once the entry stop lands
+  stopOnEntry       PSES ignores it: emulated with a breakpoint on the
+                    launcher's `& $Script` line plus a `stepIn`, which lands
+                    on the user script's first executable statement (a line-1
+                    breakpoint on the script itself binds to a function body
+                    when line 1 is a `function`, so it cannot be used)
   pause             PSES reports the stop as "step": rewritten to "pause"
   evaluate          "repl" prints to stdout with an empty result: context
                     rewritten to "watch"
@@ -36,6 +38,7 @@ quirks handled here (all probe-verified, see the design spec):
 from __future__ import annotations
 
 import asyncio
+import ctypes
 import json
 import logging
 import os
@@ -74,6 +77,26 @@ CAPABILITIES = {
     "supportsCancelRequest": True,
     "supportsTerminateRequest": True,
 }
+
+_LAUNCHER_CALL = "& $Script @ScriptArgs"
+
+
+def _launcher_call_line(default: int = 12) -> int:
+    """Line in tdb_launch.ps1 that invokes the user's script.
+
+    stopOnEntry breaks here and steps in, which puts the client on the
+    script's first executable statement whatever it is.
+    """
+    try:
+        for i, line in enumerate(LAUNCHER.read_text().splitlines(), 1):
+            if _LAUNCHER_CALL in line:
+                return i
+    except OSError:  # pragma: no cover - the launcher ships with the package
+        pass
+    return default
+
+
+LAUNCHER_CALL_LINE = _launcher_call_line()
 
 MIN_PWSH = (7, 0)
 _SESSION_TIMEOUT_ENV = "TDB_PSES_SESSION_TIMEOUT"  # tests shorten the wait
@@ -134,6 +157,34 @@ async def connect_debug_service(
     return await asyncio.open_unix_connection(name)
 
 
+def _make_pdeathsig() -> Callable[[], None] | None:
+    """Linux only: make the child die with us even if we are SIGKILLed.
+
+    `start_new_session` detaches pwsh from our process group, so an abrupt
+    proxy death (SIGKILL, a crashed host) would otherwise orphan the PSES
+    host. PR_SET_PDEATHSIG (1) asks the kernel to SIGKILL the child when its
+    parent goes. No portable equivalent elsewhere; teardown still handles the
+    orderly case.
+    """
+    if not sys.platform.startswith("linux"):
+        return None
+    try:
+        libc = ctypes.CDLL("libc.so.6", use_errno=True)
+    except (OSError, AttributeError):  # pragma: no cover - exotic libc
+        return None
+
+    def _set() -> None:  # pragma: no cover - runs in the forked child
+        try:
+            libc.prctl(1, signal.SIGKILL)
+        except Exception:
+            pass
+
+    return _set
+
+
+_pdeathsig = _make_pdeathsig()
+
+
 def _parse_version(text: str | None) -> tuple[int, int]:
     try:
         major, minor = (text or "").split(".")[:2]
@@ -164,16 +215,12 @@ class PowerShellDapServer:
         self._terminated_seen = False  # PSES said the script ended
         self._exit_code: int | None = None  # from the launcher's sentinel
         self._classifier = OutputClassifier()
-        # Task 8 state
+        # stopOnEntry emulation / stop-reason rewrites
         self._stop_on_entry = False
-        self._program = ""
-        self._entry_pending = False
-        self._entry_synthetic = False
-        self._user_bps: list[dict] = []
-        self._main_bps_sent = False
+        self._program = ""  # the user's script, absolute (diagnostics)
+        self._entry_pending = False  # armed: the launcher breakpoint is set
+        self._entry_stepping = False  # stepped in: the next stop is the entry
         self._pause_pending = False
-        # setBreakpoints response rewrites, keyed by the *client* request seq
-        self._response_hooks: dict[int, Callable[[dict], dict]] = {}
         # proxy-originated upstream requests awaiting a reply
         self._proxy_requests: dict[int, asyncio.Future] = {}
         # strong refs (asyncio keeps only weak refs to bare tasks)
@@ -349,7 +396,6 @@ class PowerShellDapServer:
                     out = self._seqs.upstream_response_to_client(msg)
                     if out is None:
                         continue
-                    out = self._rewrite_response(out)
                     self._write_client(out)
                 elif mtype == "request":
                     self._write_client(self._seqs.upstream_request_to_client(msg))
@@ -366,12 +412,6 @@ class PowerShellDapServer:
             self._detach_upstream()
             if self._launched and not self._sent_terminated:
                 self._start_finish_session()
-
-    def _rewrite_response(self, msg: dict) -> dict:
-        """Strip the synthetic entry breakpoint from a setBreakpoints
-        response for the main script (it was appended last)."""
-        hook = self._response_hooks.pop(msg["request_seq"], None)
-        return hook(msg) if hook else msg
 
     async def _note_and_filter_event(self, msg: dict) -> bool:
         """Track session state; True -> swallow the event.
@@ -395,21 +435,24 @@ class PowerShellDapServer:
         if event == "stopped":
             body = dict(msg.get("body") or {})
             if self._entry_pending:
+                # The launcher breakpoint fired, just before the user's
+                # script runs. Swallow this stop, drop the breakpoint and
+                # step into the script; the resulting step stop is what the
+                # client sees as the entry stop. Fire-and-forget — we are
+                # inside `_pump_up` — but PSES handles requests in order
+                # while stopped, so both land before anything else.
                 self._entry_pending = False
+                self._entry_stepping = True
+                self._pause_pending = False
+                self._up_send(
+                    "setBreakpoints",
+                    {"source": {"path": str(LAUNCHER)}, "breakpoints": []},
+                )
+                self._up_send("stepIn", {"threadId": body.get("threadId", 1)})
+                return True
+            if self._entry_stepping:
+                self._entry_stepping = False
                 body["reason"] = "entry"
-                if self._entry_synthetic:
-                    # Drop the synthetic line-1 breakpoint before the client
-                    # can observe it (e.g. via a later continue). Sent
-                    # fire-and-forget — we are inside `_pump_up` — but PSES
-                    # handles requests in order while stopped, so it lands
-                    # before any resume the client sends after this event.
-                    self._up_send(
-                        "setBreakpoints",
-                        {
-                            "source": {"path": self._program},
-                            "breakpoints": self._user_bps,
-                        },
-                    )
                 self._pause_pending = False
             elif self._pause_pending:
                 if body.get("reason") == "step":
@@ -509,6 +552,8 @@ class PowerShellDapServer:
             popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
         else:
             popen_kwargs["start_new_session"] = True
+            if _pdeathsig is not None:
+                popen_kwargs["preexec_fn"] = _pdeathsig
         try:
             self._proc = await asyncio.create_subprocess_exec(
                 *cmd,
@@ -554,16 +599,23 @@ class PowerShellDapServer:
             if category is not None:
                 self.send_event("output", {"category": category, "output": line})
         self._watch_exit_task = self._spawn_task(self._watch_exit())
-        # PSES needs its own initialize first (proxy-originated; its
-        # response is swallowed). Then the client's launch, rewritten.
-        self._write_up(
-            {
-                "seq": self._seqs.next_upstream_seq(),
-                "type": "request",
-                "command": "initialize",
-                "arguments": dict(self._client_init_args),
-            }
-        )
+        # PSES needs its own initialize first (proxy-originated; its response
+        # is swallowed). It SILENTLY DROPS any request that arrives before it
+        # has answered — so wait for the reply, then send the rewritten
+        # launch. Safe to await here: `_on_launch` runs on the client loop,
+        # and `_pump_up` (started above) is what delivers the reply.
+        if (
+            await self._up_request("initialize", dict(self._client_init_args), 10.0)
+            is None
+        ):
+            await self._ensure_pwsh_dead()
+            self.send_error(
+                request,
+                "PowerShell Editor Services did not answer `initialize` within "
+                "10s — the debug session could not be started",
+            )
+            await self._writer.drain()
+            return
         fwd = self._seqs.client_request_to_upstream(request)
         fwd["arguments"] = {
             "script": str(LAUNCHER),
@@ -742,54 +794,29 @@ class PowerShellDapServer:
         self.send_response(request)
 
     # ---- rewrites ----
-    def _is_main_script(self, args: dict) -> bool:
-        path = (args.get("source") or {}).get("path") or ""
-        return bool(path) and os.path.abspath(path) == self._program
-
-    async def _on_setBreakpoints(self, request: dict) -> None:
-        """While stopOnEntry is pending, the main script's breakpoint list
-        carries an extra line-1 breakpoint that the client never sees."""
-        if self._up_writer is None:
-            self.send_error(request, "no debug session")
-            return
-        args = dict(request.get("arguments") or {})
-        if not (self._entry_pending and self._is_main_script(args)):
-            self._write_up(self._seqs.client_request_to_upstream(request))
-            return
-        self._user_bps = list(args.get("breakpoints") or [])
-        self._main_bps_sent = True
-        bps = list(self._user_bps)
-        self._entry_synthetic = not any(b.get("line") == 1 for b in bps)
-        if self._entry_synthetic:
-            bps.append({"line": 1})
-            n_user = len(self._user_bps)
-
-            def strip(msg: dict) -> dict:
-                body = dict(msg.get("body") or {})
-                body["breakpoints"] = list(body.get("breakpoints") or [])[:n_user]
-                return {**msg, "body": body}
-
-            self._response_hooks[request["seq"]] = strip
-        args["breakpoints"] = bps
-        self._write_up(
-            self._seqs.client_request_to_upstream({**request, "arguments": args})
-        )
-
     async def _on_configurationDone(self, request: dict) -> None:
-        """Last chance to arm the synthetic entry breakpoint: the client set
-        no breakpoints in the main script."""
+        """Arm the stopOnEntry breakpoint on the launcher, then hand over.
+
+        PSES drops requests sent before it answers, so the breakpoint is
+        awaited (safe: this runs on the client loop, not `_pump_up`) before
+        `configurationDone` lets the script run.
+        """
         if self._up_writer is None:
             self.send_error(request, "no debug session")
             return
-        if self._entry_pending and not self._main_bps_sent:
-            self._user_bps = []
-            self._entry_synthetic = True
-            self._main_bps_sent = True
-            # Runs in the client loop, not `_pump_up`: awaiting is safe.
-            await self._up_request(
+        if self._entry_pending:
+            resp = await self._up_request(
                 "setBreakpoints",
-                {"source": {"path": self._program}, "breakpoints": [{"line": 1}]},
+                {
+                    "source": {"path": str(LAUNCHER)},
+                    "breakpoints": [{"line": LAUNCHER_CALL_LINE}],
+                },
             )
+            if resp is None or not resp.get("success"):
+                # No entry breakpoint: run on rather than mislabel the next
+                # stop (a real breakpoint) as the entry stop.
+                log.warning("could not arm the stopOnEntry breakpoint: %s", resp)
+                self._entry_pending = False
         self._write_up(self._seqs.client_request_to_upstream(request))
 
     async def _on_pause(self, request: dict) -> None:

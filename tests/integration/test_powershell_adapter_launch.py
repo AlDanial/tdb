@@ -6,6 +6,7 @@ import time
 
 import pytest
 
+from tdb.languages.errors import parse_powershell_error
 from tests.integration.powershell_adapter_harness import (
     FIXTURES,
     launch_stopped,
@@ -150,7 +151,10 @@ async def test_write_error_is_not_fatal():
         assert exited["body"]["exitCode"] == 0
         await client.wait_event("terminated")
         assert "still here" in output_text(client, "stdout")
-        assert output_text(client, "stderr") == ""
+        # PowerShell renders a non-terminating error as a ConciseView block,
+        # so it IS tagged stderr — what matters is that tdb's fatal-error
+        # parser ignores it, because the script exited 0.
+        assert parse_powershell_error(output_text(client, "stderr"), 0) is None
     finally:
         await client.stop()
 
