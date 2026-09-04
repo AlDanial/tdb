@@ -268,8 +268,10 @@ and the JSON-RPC / MCP programmatic modes.
 
 Python-specific features are hidden or return "not supported for this
 language" message when debugging other languages: statement-granularity
-stepping (non-Python languages always step per line), the async task /
-process inspectors and wait graph, the evaluate console's trailing-`?` help,
+stepping (non-Python languages step at their debugger's native granularity
+— per line, except PowerShell, whose debugger stops per statement, see
+[PowerShell](#powershell)), the async task / process inspectors and wait
+graph, the evaluate console's trailing-`?` help,
 `--python`/`--pv`, `--no-subprocess`, automatic child-process attachment, and
 the post-mortem / `tdb.breakpoint()` hooks (those hooks live inside Python
 programs by nature). Remote attach (`-r`) also works for Perl (see
@@ -1002,7 +1004,9 @@ stops on each physical line--useful for inspecting how a complex expression is b
 The choice is saved to `~/.config/tdb/config.json`.
 
 Statement mode requires a source-language model and is currently Python-only;
-other languages always step per line (the Step Mode menu says so if you try).
+other languages step at their debugger's native granularity — per line,
+except PowerShell, whose debugger stops per statement, see
+[PowerShell](#powershell) (the Step Mode menu says so if you try).
 
 ### Breakpoints
 
