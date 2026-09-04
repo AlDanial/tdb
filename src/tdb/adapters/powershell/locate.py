@@ -76,9 +76,15 @@ def _vscode_candidates(home: Path) -> list[Path]:
     found: list[tuple[tuple[int, ...], Path]] = []
     for vs in _VSCODE_DIRS:
         ext_root = home / vs / "extensions"
-        if not ext_root.is_dir():
+        try:
+            if not ext_root.is_dir():
+                continue
+            entries = list(ext_root.iterdir())
+        except OSError:
+            # Unreadable extensions dir (e.g. permission denied) — treat as
+            # no candidates here and keep scanning the other VS Code roots.
             continue
-        for entry in ext_root.iterdir():
+        for entry in entries:
             key = _version_key(entry.name)
             if key:
                 found.append((key, entry / "modules" / _MODULE_DIR))

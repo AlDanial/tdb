@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import pytest
@@ -57,6 +58,42 @@ def test_vscode_insiders_and_server_dirs_are_searched(tmp_path):
         / "modules"
     )
     assert find_pses(None, env={}, home=tmp_path) == d
+
+
+@pytest.mark.skipif(
+    hasattr(os, "geteuid") and os.geteuid() == 0,
+    reason="root ignores permission bits",
+)
+def test_unreadable_vscode_extensions_dir_raises_not_found(tmp_path):
+    ext = tmp_path / ".vscode" / "extensions"
+    ext.mkdir(parents=True)
+    ext.chmod(0o000)
+    try:
+        with pytest.raises(FileNotFoundError):
+            find_pses(None, env={}, home=tmp_path)
+    finally:
+        ext.chmod(0o755)
+
+
+@pytest.mark.skipif(
+    hasattr(os, "geteuid") and os.geteuid() == 0,
+    reason="root ignores permission bits",
+)
+def test_unreadable_vscode_dir_does_not_block_other_dirs(tmp_path):
+    unreadable = tmp_path / ".vscode" / "extensions"
+    unreadable.mkdir(parents=True)
+    unreadable.chmod(0o000)
+    d = _make_pses(
+        tmp_path
+        / ".vscode-server"
+        / "extensions"
+        / "ms-vscode.powershell-2025.1.0"
+        / "modules"
+    )
+    try:
+        assert find_pses(None, env={}, home=tmp_path) == d
+    finally:
+        unreadable.chmod(0o755)
 
 
 def test_not_found_message_is_actionable(tmp_path):
