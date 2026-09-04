@@ -53,6 +53,25 @@ RUN apk add --no-cache ocaml5 ocaml5-compiler-libs opam lldb py3-lldb m4 \
 RUN apk add --no-cache go \
  && GOBIN=/usr/local/bin go install github.com/go-delve/delve/cmd/dlv@v1.27.1 \
  && rm -rf /root/go /root/.cache/go-build
+# PowerShell 7 (musl build for Alpine) + PowerShell Editor Services (the
+# DAP server tdb's PowerShell proxy drives). Version pins match README's
+# "PowerShell" section; bump both together. `libstdc++`/`icu-libs`/
+# `lttng-ust` are pwsh's documented Alpine runtime deps.
+ARG PWSH_VERSION=7.6.5
+ARG PSES_VERSION=v4.7.0
+RUN apk add --no-cache libstdc++ icu-libs lttng-ust krb5-libs zlib libgcc \
+ && mkdir -p /opt/microsoft/powershell/7 \
+ && wget -qO /tmp/pwsh.tgz "https://github.com/PowerShell/PowerShell/releases/download/v${PWSH_VERSION}/powershell-${PWSH_VERSION}-linux-musl-x64.tar.gz" \
+ && tar -xzf /tmp/pwsh.tgz -C /opt/microsoft/powershell/7 \
+ && chmod +x /opt/microsoft/powershell/7/pwsh \
+ && ln -s /opt/microsoft/powershell/7/pwsh /usr/local/bin/pwsh \
+ && rm /tmp/pwsh.tgz \
+ && mkdir -p /opt/pses \
+ && wget -qO /tmp/pses.zip "https://github.com/PowerShell/PowerShellEditorServices/releases/download/${PSES_VERSION}/PowerShellEditorServices.zip" \
+ && unzip -q /tmp/pses.zip -d /opt/pses \
+ && rm /tmp/pses.zip \
+ && pwsh -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'
+ENV TDB_PSES_PATH=/opt/pses/PowerShellEditorServices
 RUN adduser -D appuser
 ENV PATH="/app/.venv/bin:$PATH"
 
