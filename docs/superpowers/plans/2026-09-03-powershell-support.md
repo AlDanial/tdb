@@ -1,5 +1,11 @@
 # PowerShell Support Implementation Plan
 
+> **Superseded in part:** the stopOnEntry design described in Tasks 7-8 (a
+> synthetic breakpoint on line 1 of the user's script) was replaced during
+> implementation by spec Addendum 2 — a breakpoint on `tdb_launch.ps1`'s
+> `& $Script` line plus a `stepIn`. The spec is authoritative where the two
+> disagree.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Debug PowerShell 7 scripts in tdb (launch, breakpoints, stepping, variables, evaluate, console output, fatal-error modal, `--run`) through PowerShell Editor Services (PSES).

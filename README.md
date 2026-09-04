@@ -874,6 +874,12 @@ Notes:
   yet. The error block names the launcher's `& $Script` line rather than
   your script's actual line for some error kinds (a known cosmetic
   limitation).
+- The fatal-error modal is gated on a non-zero exit code, since pwsh prints
+  the identical block for terminating and non-terminating errors. A script
+  that reports a non-terminating error and then `exit 3` can therefore still
+  raise the modal, showing the last error block that names a file of yours;
+  blocks attributed to tdb's own `tdb_launch.ps1` are skipped, so a bare
+  `Write-Error` before the `exit` opens no modal at all.
 - `--terminal` and remote attach are not supported for PowerShell yet.
 - Windows PowerShell 5.1 is not supported (pwsh 7 only). Running tdb *on*
   Windows against pwsh is designed for but not yet verified (experimental).
