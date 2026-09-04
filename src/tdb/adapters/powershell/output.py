@@ -29,15 +29,27 @@ def quote_ps_arg(s: str) -> str:
     return "'" + s.replace("'", "''") + "'"
 
 
-def parse_exit_sentinel(line: str) -> int | None:
+def parse_exit_sentinel(line: str) -> tuple[str, int] | None:
+    """Split a stdout line carrying the launcher's exit sentinel.
+
+    Returns ``(text before the sentinel, exit code)``, or None when the
+    line holds no well-formed sentinel. The sentinel is NOT necessarily at
+    the start of the line: a script whose last write is `Write-Host
+    -NoNewline` leaves the cursor mid-line, so the launcher's own
+    Write-Host appends to it. That leading text is real program output and
+    the caller must still show it -- an anchored match would have swallowed
+    the whole line, output included.
+    """
     text = line.rstrip("\r\n")
-    if not text.startswith(EXIT_SENTINEL_PREFIX):
+    idx = text.find(EXIT_SENTINEL_PREFIX)
+    if idx < 0:
         return None
-    tail = text[len(EXIT_SENTINEL_PREFIX) :]
+    tail = text[idx + len(EXIT_SENTINEL_PREFIX) :]
     try:
-        return int(tail)
+        code = int(tail)
     except ValueError:
         return None
+    return text[:idx], code
 
 
 class OutputClassifier:

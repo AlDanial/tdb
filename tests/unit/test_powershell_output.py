@@ -25,14 +25,24 @@ def test_quote_empty():
 
 
 def test_sentinel_parses():
-    assert parse_exit_sentinel(f"{EXIT_SENTINEL_PREFIX}7\n") == 7
-    assert parse_exit_sentinel(f"{EXIT_SENTINEL_PREFIX}0") == 0
+    assert parse_exit_sentinel(f"{EXIT_SENTINEL_PREFIX}7\n") == ("", 7)
+    assert parse_exit_sentinel(f"{EXIT_SENTINEL_PREFIX}0") == ("", 0)
 
 
 def test_sentinel_rejects_other_lines():
     assert parse_exit_sentinel("tdb-exit:7") is None  # no \x1e
     assert parse_exit_sentinel("hello") is None
     assert parse_exit_sentinel(f"{EXIT_SENTINEL_PREFIX}x") is None
+
+
+def test_sentinel_after_write_host_nonewline_keeps_the_output():
+    """`Write-Host -NoNewline "done"` leaves the launcher's Write-Host
+    appending to the same line; the leading text is real program output."""
+    assert parse_exit_sentinel(f"done{EXIT_SENTINEL_PREFIX}5\n") == ("done", 5)
+
+
+def test_malformed_sentinel_after_text_is_not_a_sentinel():
+    assert parse_exit_sentinel(f"done{EXIT_SENTINEL_PREFIX}oops\n") is None
 
 
 def test_classifier_drops_first_prompt_echo_only():

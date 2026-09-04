@@ -42,6 +42,7 @@ import ctypes
 import json
 import logging
 import os
+import re
 import secrets
 import shutil
 import signal
@@ -99,6 +100,9 @@ def _launcher_call_line(default: int = 12) -> int:
 LAUNCHER_CALL_LINE = _launcher_call_line()
 
 MIN_PWSH = (7, 0)
+# Everything tdb was probed against is >= 7.2; 7.0/7.1 still run, with a
+# Console warning (spec addendum 3.4).
+RECOMMENDED_PWSH = (7, 2)
 _SESSION_TIMEOUT_ENV = "TDB_PSES_SESSION_TIMEOUT"  # tests shorten the wait
 _RESUME_COMMANDS = {"continue", "next", "stepIn", "stepOut"}
 
@@ -170,12 +174,18 @@ def _make_pdeathsig() -> Callable[[], None] | None:
         return None
     try:
         libc = ctypes.CDLL("libc.so.6", use_errno=True)
+        # Bind the symbol HERE, in the parent: `preexec_fn` runs between
+        # fork() and exec() in a child with only the forking thread alive,
+        # where ctypes' lazy dlsym-on-attribute-access can deadlock on the
+        # loader lock. Resolving it up front leaves the child with a plain
+        # call on an already-resolved function pointer.
+        prctl = libc.prctl
     except (OSError, AttributeError):  # pragma: no cover - exotic libc
         return None
 
     def _set() -> None:  # pragma: no cover - runs in the forked child
         try:
-            libc.prctl(1, signal.SIGKILL)
+            prctl(1, signal.SIGKILL)
         except Exception:
             pass
 
@@ -185,12 +195,21 @@ def _make_pdeathsig() -> Callable[[], None] | None:
 _pdeathsig = _make_pdeathsig()
 
 
-def _parse_version(text: str | None) -> tuple[int, int]:
-    try:
-        major, minor = (text or "").split(".")[:2]
-        return int(major), int(minor)
-    except ValueError:
+# PSES's session file reports e.g. "7.6.5"; a bare major ("7") and a
+# non-string (or missing) value must both parse without raising.
+_VERSION_RE = re.compile(r"(\d+)(?:\.(\d+))?")
+
+
+def _parse_version(text: object) -> tuple[int, int]:
+    """(major, minor) from a version string; (0, 0) when unrecognizable.
+
+    (0, 0) sorts below MIN_PWSH, so an unreadable version is refused
+    rather than silently accepted.
+    """
+    m = _VERSION_RE.match(str(text or ""))
+    if m is None:
         return (0, 0)
+    return int(m.group(1)), int(m.group(2) or 0)
 
 
 class PowerShellDapServer:
@@ -208,6 +227,9 @@ class PowerShellDapServer:
         self._finishing = False  # a _finish_session task is in flight
         self._shutting_down = False  # run()'s teardown owns the kill now
         self._workdir: str | None = None
+        # PSES's UNIX socket path (POSIX): it lives outside our workdir and
+        # survives a killed pwsh, so teardown unlinks it (_remove_socket).
+        self._socket_path: str | None = None
         self._client_init_args: dict = {}
         self._launched = False
         self._sent_exited = False
@@ -342,6 +364,7 @@ class PowerShellDapServer:
             await self._await_watch_exit()
             await self._close_upstream()
             await self._drain_tasks()
+            self._remove_socket()
             self._cleanup_workdir()
             await self._writer.drain()
 
@@ -487,9 +510,19 @@ class PowerShellDapServer:
             if not line:
                 return
             text = line.decode("utf-8", errors="replace")
-            code = parse_exit_sentinel(text)
-            if code is not None:
-                self._exit_code = code
+            sentinel = parse_exit_sentinel(text)
+            if sentinel is not None:
+                before, self._exit_code = sentinel
+                # `Write-Host -NoNewline` at the end of the script leaves the
+                # launcher's sentinel appended to real output: emit that part
+                # (verbatim -- the script printed no newline) and drop the rest.
+                if before:
+                    category = self._classifier.classify(before)
+                    if category is not None:
+                        self.send_event(
+                            "output", {"category": category, "output": before}
+                        )
+                        await self._writer.drain()
                 continue
             category = self._classifier.classify(text)
             if category is None:
@@ -571,6 +604,8 @@ class PowerShellDapServer:
         early: list[str] = []
         try:
             details = await self._await_session_file(session_file, early)
+            if sys.platform != "win32":
+                self._socket_path = details.get("debugServicePipeName")
             version = _parse_version(details.get("powerShellVersion"))
             if version < MIN_PWSH:
                 raise RuntimeError(
@@ -578,6 +613,23 @@ class PowerShellDapServer:
                     f"tdb needs pwsh >= {MIN_PWSH[0]}.{MIN_PWSH[1]}"
                 )
             reader, writer = await self._connect_with_retry(details)
+            if version < RECOMMENDED_PWSH:
+                # Supported (>= MIN_PWSH) but never exercised: 7.0/7.1
+                # predate the PSES releases tdb was probed against. Say so in
+                # the Console View instead of failing. After the connect, so
+                # a launch that fails anyway adds no console noise.
+                self.send_event(
+                    "output",
+                    {
+                        "category": "console",
+                        "output": (
+                            f"tdb: PowerShell {details.get('powerShellVersion')} "
+                            f"is untested with tdb; "
+                            f"{RECOMMENDED_PWSH[0]}.{RECOMMENDED_PWSH[1]} or "
+                            "newer is recommended.\n"
+                        ),
+                    },
+                )
         except Exception as e:
             await self._ensure_pwsh_dead()
             tail = await self._drain_early_stdout(early)
@@ -585,7 +637,6 @@ class PowerShellDapServer:
             await self._writer.drain()
             return
         self._up_writer = writer
-        self._launched = True
         self._entry_pending = self._stop_on_entry
         up_pump = self._spawn_task(self._pump_up(reader))
         self._pump_tasks = [
@@ -616,6 +667,10 @@ class PowerShellDapServer:
             )
             await self._writer.drain()
             return
+        # Only now is there a session to report the end of: `_launched`
+        # gates `exited`/`terminated` (in _watch_exit and _pump_up), and
+        # the timeout path above must not emit them after a failed launch.
+        self._launched = True
         fwd = self._seqs.client_request_to_upstream(request)
         fwd["arguments"] = {
             "script": str(LAUNCHER),
@@ -775,6 +830,22 @@ class PowerShellDapServer:
             if not task.cancelled() and task.exception() is not None:
                 log.error("background task failed", exc_info=task.exception())
 
+    def _remove_socket(self) -> None:
+        """POSIX: unlink PSES's UNIX socket once pwsh is dead.
+
+        The socket is named after -DebugServicePipeName and lives outside
+        our workdir (the runtime picks the directory), so _cleanup_workdir
+        does not cover it and a killed pwsh leaves it behind. Best effort:
+        any error just means the file is already gone or was never ours.
+        """
+        path, self._socket_path = self._socket_path, None
+        if path is None or sys.platform == "win32":
+            return
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+
     def _cleanup_workdir(self) -> None:
         if self._workdir:
             shutil.rmtree(self._workdir, ignore_errors=True)
@@ -812,9 +883,13 @@ class PowerShellDapServer:
                     "breakpoints": [{"line": LAUNCHER_CALL_LINE}],
                 },
             )
-            if resp is None or not resp.get("success"):
-                # No entry breakpoint: run on rather than mislabel the next
-                # stop (a real breakpoint) as the entry stop.
+            bps = ((resp or {}).get("body") or {}).get("breakpoints") or [{}]
+            verified = isinstance(bps[0], dict) and bps[0].get("verified")
+            if resp is None or not resp.get("success") or not verified:
+                # No *verified* entry breakpoint: it will never fire, and a
+                # still-armed _entry_pending would swallow the user's first
+                # real breakpoint stop and relabel the one after it "entry".
+                # Disarm — stopOnEntry degrades to run-to-first-breakpoint.
                 log.warning("could not arm the stopOnEntry breakpoint: %s", resp)
                 self._entry_pending = False
         self._write_up(self._seqs.client_request_to_upstream(request))

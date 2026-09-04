@@ -16,6 +16,8 @@ from tdb.adapters.powershell.output import LAUNCHER
 from tdb.adapters.powershell.server import (
     CAPABILITIES,
     LAUNCHER_CALL_LINE,
+    PowerShellDapServer,
+    _parse_version,
     build_pwsh_command,
     connect_debug_service,
 )
@@ -143,6 +145,17 @@ async def test_stdout_becomes_output_events_without_prompt_or_sentinel(fake):
         await client.stop()
 
 
+async def _collect_until(client, name: str, timeout: float = 30.0) -> list[str]:
+    """Event names in arrival order, waiting for `name` WITHOUT consuming
+    anything (unlike wait_event, which removes the event it matched)."""
+    for _ in range(int(timeout * 10)):
+        names = [e["event"] for e in client.events]
+        if name in names:
+            return names
+        await asyncio.sleep(0.1)
+    raise AssertionError(f"event {name!r} never arrived; saw {client.events}")
+
+
 async def test_exited_precedes_terminated(fake):
     client = await start_proxy()
     try:
@@ -151,10 +164,71 @@ async def test_exited_precedes_terminated(fake):
         await client.wait_event("initialized")
         await client.request("configurationDone")
         await fut
-        await client.wait_event("terminated")
-        names = [e["event"] for e in client.events] + ["terminated"]
-        # wait_event removed "terminated"; "exited" must have come earlier
+        names = await _collect_until(client, "terminated")
         assert "exited" in names
+        assert names.index("exited") < names.index("terminated")
+    finally:
+        await client.stop()
+
+
+async def test_trailing_output_before_the_sentinel_is_kept(fake, monkeypatch):
+    """`Write-Host -NoNewline` leaves the launcher's sentinel appended to
+    real output: the text before it must still reach the Console View."""
+    monkeypatch.setenv("FAKE_PSES_MODE", "no-newline-exit")
+    client = await start_proxy()
+    try:
+        await client.request("initialize", {"adapterID": "pses"})
+        fut = client.send("launch", launch_args(fake))
+        await client.wait_event("initialized")
+        await client.request("configurationDone")
+        await fut
+        exited = await client.wait_event("exited")
+        assert exited["body"]["exitCode"] == 3
+        outs = [e["body"] for e in client.events if e["event"] == "output"]
+        text = "".join(o["output"] for o in outs if o["category"] == "stdout")
+        assert "done" in text
+        assert "tdb-exit" not in text
+    finally:
+        await client.stop()
+
+
+async def test_old_minor_pwsh_warns_but_runs(fake, monkeypatch):
+    """7.0/7.1 are above MIN_PWSH but untested: a console warning, not a
+    refusal (spec addendum 3.4)."""
+    monkeypatch.setenv("FAKE_PSES_MODE", "old-minor")
+    client = await start_proxy()
+    try:
+        await client.request("initialize", {"adapterID": "pses"})
+        fut = client.send("launch", launch_args(fake))
+        await client.wait_event("initialized")
+        await client.request("configurationDone")
+        assert (await fut)["success"]
+        await client.wait_event("terminated")
+        warnings = [
+            e["body"]["output"]
+            for e in client.events
+            if e["event"] == "output" and e["body"]["category"] == "console"
+        ]
+        assert len(warnings) == 1
+        assert "7.1.5" in warnings[0] and "7.2" in warnings[0]
+    finally:
+        await client.stop()
+
+
+async def test_recent_pwsh_warns_about_nothing(fake):
+    client = await start_proxy()
+    try:
+        await client.request("initialize", {"adapterID": "pses"})
+        fut = client.send("launch", launch_args(fake))
+        await client.wait_event("initialized")
+        await client.request("configurationDone")
+        await fut
+        await client.wait_event("terminated")
+        assert not [
+            e
+            for e in client.events
+            if e["event"] == "output" and e["body"]["category"] == "console"
+        ]
     finally:
         await client.stop()
 
@@ -315,6 +389,42 @@ async def test_socket_death_without_terminated_ends_the_session(fake, monkeypatc
         await client.stop()
 
 
+async def test_remove_socket_unlinks_pses_socket(tmp_path):
+    """Real PSES puts its UNIX socket at /tmp/CoreFxPipe_<pipe name>, outside
+    the proxy's workdir, so _cleanup_workdir cannot reach it and a killed
+    pwsh leaves it behind."""
+    srv = PowerShellDapServer(asyncio.StreamReader(), None)
+    sock = tmp_path / "CoreFxPipe_tdb-pses-1-abcd"
+    sock.write_text("")
+    srv._socket_path = str(sock)
+    srv._remove_socket()
+    assert not sock.exists()
+    assert srv._socket_path is None
+    srv._remove_socket()  # idempotent
+    srv._socket_path = str(sock)
+    srv._remove_socket()  # already gone: no raise
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        ("7.6.5", (7, 6)),
+        ("7.2", (7, 2)),
+        ("7", (7, 0)),  # bare major
+        ("5.1.0", (5, 1)),
+        (None, (0, 0)),  # key missing from the session file
+        ("", (0, 0)),
+        ("preview", (0, 0)),
+        (7, (7, 0)),  # non-string but numeric
+        ({"major": 7}, (0, 0)),  # non-string, unrecognizable
+    ],
+)
+def test_parse_version(value, expected):
+    """(0, 0) sorts below MIN_PWSH, so anything unreadable is refused
+    rather than crashing the launch handler."""
+    assert _parse_version(value) == expected
+
+
 def test_build_pwsh_command(tmp_path):
     cmd = build_pwsh_command(
         "/bin/pwsh",
@@ -407,6 +517,35 @@ async def test_stop_on_entry_breaks_on_the_launcher_then_steps_in(fake):
             if r["command"] in ("setBreakpoints", "stepIn")
         ]
         assert order == ["setBreakpoints", "setBreakpoints", "stepIn"]
+    finally:
+        await client.stop()
+
+
+async def test_unverified_launcher_breakpoint_disarms_stop_on_entry(fake, monkeypatch):
+    """PSES could not bind the launcher breakpoint, so it will never fire.
+    stopOnEntry must degrade to run-to-first-breakpoint rather than stay
+    armed: an armed proxy would swallow the user's real breakpoint stop and
+    relabel the following one "entry" (spec addendum 3.3)."""
+    monkeypatch.setenv("FAKE_PSES_MODE", "unverified-bp")
+    client = await start_proxy()
+    try:
+        await client.request("initialize", {"adapterID": "pses"})
+        fut = client.send("launch", launch_args(fake, stopOnEntry=True))
+        await client.wait_event("initialized")
+        await client.request(
+            "setBreakpoints",
+            {"source": {"path": fake["script"]}, "breakpoints": [{"line": 6}]},
+        )
+        await client.request("configurationDone")
+        await fut
+        ev = await client.wait_event("stopped")
+        # the user's breakpoint stop reaches the client unchanged...
+        assert ev["body"]["reason"] == "breakpoint"
+        # ...and the proxy never tried to step in from a stop that isn't the
+        # launcher's.
+        assert requests_seen(fake["log"], "stepIn") == []
+        await asyncio.sleep(0.3)
+        assert [e for e in client.events if e["event"] == "stopped"] == []
     finally:
         await client.stop()
 

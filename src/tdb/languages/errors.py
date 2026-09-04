@@ -593,6 +593,27 @@ _PS_HEAD_RE = re.compile(r"^(?P<kind>[A-Za-z][\w.-]*): (?P<path>.+?):(?P<line>\d
 _PS_CONT_RE = re.compile(r"^\s*(?:Line \||\d+ \||\|)(?P<rest>.*)$")
 _PS_MSG_RE = re.compile(r"^\s*\|\s?(?P<msg>.*)$")
 
+# tdb's own PowerShell launcher (src/tdb/adapters/powershell/tdb_launch.ps1),
+# by basename so this stays a pure-text module with no adapter import. A
+# block whose header names it is never the user's error -- see
+# _ps_is_launcher_block. tests/unit/test_powershell_errors.py asserts this
+# matches the real LAUNCHER filename.
+PS_LAUNCHER_NAME = "tdb_launch.ps1"
+
+
+def _ps_is_launcher_block(path: str) -> bool:
+    """True when a ConciseView header points into tdb's launcher script.
+
+    `Write-Error` (and any other non-terminating error raised by a cmdlet
+    the script calls) reports its *caller's* invocation site, which under
+    tdb is the launcher's `& $Script @ScriptArgs` line. Such a block says
+    nothing about the user's code, and turning it into a ParsedError opens
+    a crash modal pointing into tdb's own files (spec addendum 3.2).
+    Genuine terminating errors (`throw`, `-ErrorAction Stop`) name the
+    user's script and are unaffected.
+    """
+    return path.replace("\\", "/").rsplit("/", 1)[-1] == PS_LAUNCHER_NAME
+
 
 def parse_powershell_error(
     stderr: str, exit_code: int | None = None
@@ -602,19 +623,21 @@ def parse_powershell_error(
     Returns None unless ``exit_code`` is a non-zero int: PowerShell prints
     the same block for non-terminating errors, after which the script
     continues and exits 0. The LAST block in the text is the fatal one
-    (earlier ones were non-terminating).
+    (earlier ones were non-terminating) -- except blocks attributed to
+    tdb's own launcher, which are skipped entirely (_ps_is_launcher_block):
+    `Write-Error ...; exit N` renders one, and it must not become a modal.
     """
     if not exit_code:
         return None
     lines = [_PS_ANSI_RE.sub("", ln) for ln in stderr.splitlines()]
-    head_idx = None
+    head_idx: int | None = None
+    head: re.Match[str] | None = None
     for i, ln in enumerate(lines):
-        if _PS_HEAD_RE.match(ln):
-            head_idx = i
-    if head_idx is None:
+        m = _PS_HEAD_RE.match(ln)
+        if m is not None and not _ps_is_launcher_block(m.group("path")):
+            head_idx, head = i, m
+    if head_idx is None or head is None:
         return None
-    head = _PS_HEAD_RE.match(lines[head_idx])
-    assert head is not None
     block = [lines[head_idx]]
     msg_parts: list[str] = []
     for ln in lines[head_idx + 1 :]:

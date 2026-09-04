@@ -115,8 +115,9 @@ async def test_set_breakpoint_while_stopped_then_hit():
 
 
 async def test_entry_breakpoint_is_gone_after_entry_stop(tmp_path):
-    """The synthetic line-1 breakpoint must not fire again on a re-run of
-    line 1 (loop back to top)."""
+    """The launcher breakpoint that produced the entry stop is cleared
+    before the stepIn, so nothing extra can stop the script again -- here,
+    a loop that re-runs the script's first lines."""
     p = tmp_path / "twice.ps1"
     p.write_text("$n = 0\nwhile ($n -lt 2) { $n++ }\nWrite-Host done\n")
     client = await start_powershell_adapter()

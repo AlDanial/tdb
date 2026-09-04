@@ -1,10 +1,12 @@
+import shutil
 import sys
+from pathlib import Path
 
 import pytest
 
 from tdb.dap.types import Capabilities
 from tdb.languages import registry
-from tdb.languages.base import LanguageNotSupportedError
+from tdb.languages.base import AdapterNotFoundError, LanguageNotSupportedError
 from tdb.languages.powershell import PsesAdapter, build_powershell_profile
 
 
@@ -33,12 +35,44 @@ def test_unknown_adapter_rejected():
         build_powershell_profile(adapter="bogus")
 
 
-def test_command_is_bundled_proxy():
-    assert PsesAdapter().command() == [
+@pytest.fixture
+def found(tmp_path, monkeypatch):
+    """pwsh + PSES both resolvable, so command() gets past its lookups."""
+    pwsh = tmp_path / "pwsh"
+    pwsh.write_text("#!/bin/sh\n")
+    pses = tmp_path / "PowerShellEditorServices"
+    pses.mkdir()
+    (pses / "Start-EditorServices.ps1").write_text("# stub\n")
+    return {"pwsh": str(pwsh), "pses": str(pses)}
+
+
+def test_command_is_bundled_proxy(found):
+    adapter = PsesAdapter(pwsh_executable=found["pwsh"], pses_dir=found["pses"])
+    assert adapter.command() == [
         sys.executable,
         "-m",
         "tdb.adapters.powershell",
     ]
+
+
+def test_command_raises_when_pwsh_is_missing(found, monkeypatch):
+    """A missing interpreter must surface as AdapterNotFoundError: the CLI
+    prints its hint and exits 2, whereas a proxy-side launch failure never
+    reaches the TUI (spec addendum 3.1)."""
+    monkeypatch.setattr(shutil, "which", lambda name: None)
+    adapter = PsesAdapter(pses_dir=found["pses"])
+    with pytest.raises(AdapterNotFoundError) as exc:
+        adapter.command()
+    assert "pwsh" in exc.value.hint
+
+
+def test_command_raises_when_pses_is_missing(found, monkeypatch, tmp_path):
+    monkeypatch.delenv("TDB_PSES_PATH", raising=False)
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path / "nohome"))
+    adapter = PsesAdapter(pwsh_executable=found["pwsh"])
+    with pytest.raises(AdapterNotFoundError) as exc:
+        adapter.command()
+    assert "PowerShellEditorServices.zip" in exc.value.hint
 
 
 def test_launch_body_carries_overrides():

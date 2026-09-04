@@ -28,6 +28,12 @@ FAKE_PSES_MODE:
   "socket-die"      -> `pause` closes the DAP socket without answering and
                        without `terminated`, while the process stays alive
                        (PSES dying under a surviving pwsh host)
+  "old-minor"       -> session file says powerShellVersion "7.1.5" (supported
+                       but untested: the proxy warns instead of refusing)
+  "unverified-bp"   -> setBreakpoints answers `verified: false` for every
+                       breakpoint (PSES could not bind it)
+  "no-newline-exit" -> the exit sentinel is appended to unterminated script
+                       output on the same line (`Write-Host -NoNewline`)
 """
 
 from __future__ import annotations
@@ -147,7 +153,7 @@ class Fake:
                         "breakpoints": [
                             {
                                 "id": i,
-                                "verified": True,
+                                "verified": mode != "unverified-bp",
                                 "line": b["line"],
                                 "source": args.get("source"),
                             }
@@ -163,6 +169,9 @@ class Fake:
                 if mode == "throw":
                     for ln in ERROR_BLOCK:
                         _out(ln)
+                    self.event(w, "terminated")
+                elif mode == "no-newline-exit":
+                    _out("done" + SENTINEL)
                     self.event(w, "terminated")
                 elif self.bps_seen:
                     self.stopped(w, "breakpoint", 6)
@@ -270,7 +279,7 @@ async def main(argv: list[str]) -> int:
     fake = Fake(os.environ.get("FAKE_PSES_LOG"))
     server = await asyncio.start_unix_server(fake.handle, path=sock)
     if mode != "no-session-file":
-        version = "5.1.0" if mode == "old-version" else "7.6.5"
+        version = {"old-version": "5.1.0", "old-minor": "7.1.5"}.get(mode, "7.6.5")
         Path(session).write_text(
             json.dumps(
                 {
