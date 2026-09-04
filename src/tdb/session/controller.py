@@ -58,6 +58,9 @@ class DebugController:
         # must detach without terminating it (otherwise tdb.breakpoint()
         # and similar attach workflows would kill the user's program).
         self._is_remote_attach: bool = False
+        # Remote attach only: pre-arm a `pause` before configurationDone
+        # (see do_configure). Off for debuggees that stop on their own.
+        self._pre_arm_pause: bool = True
         # Source-root pairs for the current remote attachment. Rust GDB
         # consumes them after its `initialized` event, before breakpoints.
         self._attach_path_mappings: list[tuple[str, str]] = []
@@ -293,8 +296,19 @@ class DebugController:
         port: int,
         path_mappings: list[tuple[str, str]] | None = None,
         program: str | None = None,
+        pre_arm_pause: bool = True,
     ) -> None:
         """Attach to a remote debuggee at host:port.
+
+        `pre_arm_pause=False` skips the pause that do_configure otherwise
+        pre-arms so the debuggee stops at its first statement. Use it when
+        the debuggee stops itself — `tdb.breakpoint()` calls
+        `debugpy.breakpoint()` as soon as `wait_for_client()` returns, and
+        a pre-armed pause can land *inside* that call (after its
+        client-connected check, before it arms its own step). The stop then
+        looks normal, but on quit `disconnect` resumes the thread,
+        `debugpy.breakpoint()` finishes arming, and the thread suspends
+        again with no client to resume it: the program hangs.
 
         DAP sequence (same as launch, but with attach instead):
         1. connect via TCP to debugpy server
@@ -311,6 +325,7 @@ class DebugController:
         self._setup_event_handlers()
         self._launch_params = {}
         self._is_remote_attach = True
+        self._pre_arm_pause = pre_arm_pause
         self._attach_path_mappings = list(path_mappings or [])
 
         if self.profile.adapter.quirks.attach_via_adapter:
@@ -364,9 +379,16 @@ class DebugController:
         # at next traced line" flag inside debugpy; when configurationDone
         # unblocks wait_for_client(), the very first user-code statement
         # trips the flag and emits `stopped` deterministically.
-        # Skipped if the debuggee is already paused (tdb.breakpoint() hook).
+        # Skipped if the debuggee is already paused, or if the caller said
+        # the debuggee stops on its own (`pre_arm_pause=False`; the
+        # tdb.breakpoint() hook does, via `--no-pause-on-attach`). For
+        # the hook the pause is not merely redundant: it can suspend the
+        # thread inside debugpy.breakpoint() itself, and after our
+        # disconnect that call re-suspends the thread with no client
+        # attached — the program never resumes.
         if (
             self._is_remote_attach
+            and self._pre_arm_pause
             and self.profile.adapter.quirks.pre_arm_pause_on_attach
             and self.state.phase != SessionPhase.STOPPED
         ):
