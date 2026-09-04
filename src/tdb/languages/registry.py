@@ -3,10 +3,10 @@
 Detection chain (first hit wins):
   1. caller-supplied --lang (handled upstream in cli.py; detect() is
      only called when --lang was not given)
-  2. file extension (.py -> python, .go -> go, compiled-language source
-     extensions -> actionable error)
+  2. file extension (.py -> python, .go -> go, .ps1/.psm1 -> powershell,
+     compiled-language source extensions -> actionable error)
   3. binary magic bytes (ELF / PE / Mach-O -> cpp)
-  4. shebang mentioning python -> python
+  4. shebang mentioning python -> python; pwsh -> powershell
   5. no match -> error naming --lang
 """
 
@@ -64,6 +64,8 @@ _EXTENSION_MAP = {
     ".bash": "bash",
     ".csh": "tcsh",
     ".tcsh": "tcsh",
+    ".ps1": "powershell",
+    ".psm1": "powershell",
 }
 
 # Source files for compiled languages: debugging the source is a user
@@ -155,6 +157,8 @@ def detect(program: str | None) -> str:
     # (which never contains "csh") so bash shebangs keep winning.
     if head.startswith(b"#!") and b"csh" in head.splitlines()[0]:
         return "tcsh"
+    if head.startswith(b"#!") and b"pwsh" in head.splitlines()[0]:
+        return "powershell"
     raise LanguageNotSupportedError(
         f"cannot determine the language of {program!r} — pass --lang "
         f"(supported: {', '.join(known_languages())})"
@@ -212,3 +216,7 @@ register("rust", build_rust_profile)
 from tdb.languages.go import build_go_profile  # noqa: E402
 
 register("go", build_go_profile)
+
+from tdb.languages.powershell import build_powershell_profile  # noqa: E402
+
+register("powershell", build_powershell_profile)

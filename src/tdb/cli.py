@@ -562,6 +562,14 @@ def _resolve_language(
             "route the debuggee to a caller-provided terminal)"
         )
 
+    # PSES in tdb's debug-only mode has no terminal integration (see
+    # PsesAdapter.launch_body, which raises the same error as a backstop).
+    if args.terminal and profile.adapter.id == "pses":
+        parser.error(
+            "--terminal is not supported for PowerShell yet (PSES has no "
+            "terminal integration in tdb's debug-only mode)"
+        )
+
 
 def _resolve_breakpoint_file(file_part: str, local_roots: list[str]) -> Path | None:
     """Find a `-k FILE:LINE` file on disk.
