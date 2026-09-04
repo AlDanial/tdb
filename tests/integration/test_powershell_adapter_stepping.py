@@ -33,18 +33,30 @@ async def test_next_stepin_stepout():
         line, _ = await _line_and_names(client)
         assert line == 9  # $x = 1
         await _step(client, "next")
+        assert (await _line_and_names(client))[0] == 10  # Write-Host "args=$(…)"
+        # PowerShell steps per *statement*, not per line: the `$( )`
+        # subexpression on line 10 is its own statement, so `next` stops on
+        # line 10 a second time (at its column). VS Code behaves the same;
+        # the proxy deliberately does not coalesce same-line stops.
+        await _step(client, "next")
         assert (await _line_and_names(client))[0] == 10
         await _step(client, "next")
         assert (await _line_and_names(client))[0] == 11  # $y = Outer $x
+        # Same granularity on the way in: stepIn stops on the function's
+        # declaration line first (its body-entry sequence point), then on the
+        # first statement of the body.
         await _step(client, "stepIn")
         line, names = await _line_and_names(client)
-        assert line == 6 and names[1] == "Outer"
+        assert line == 5 and names[1] == "Outer"  # function Outer($v) {
         await _step(client, "stepIn")
         line, names = await _line_and_names(client)
-        assert line == 2 and names[1:3] == ["Add", "Outer"]
+        assert line == 6 and names[1] == "Outer"  # $r = Add $v 2
+        await _step(client, "stepIn")
+        line, names = await _line_and_names(client)
+        assert line == 1 and names[1:3] == ["Add", "Outer"]  # function Add(...) {
         await _step(client, "stepOut")
         line, names = await _line_and_names(client)
-        assert names[1] == "Outer"
+        assert line == 7 and names[1] == "Outer"  # return $r
         await client.request("continue", {"threadId": 1})
         await client.wait_event("terminated")
     finally:
