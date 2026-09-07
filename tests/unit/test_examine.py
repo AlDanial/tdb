@@ -351,6 +351,17 @@ def test_write_reports_broken_sink_once_and_continues():
     assert "tdb: examine #2 written to good.jsonl" in msgs
 
 
+def test_write_unserializable_record_reports_and_writes_nothing():
+    from tdb.examine import write
+
+    sink = io.StringIO()
+    sink.name = "a.jsonl"
+    note = io.StringIO()
+    write({"seq": 3, "bad": {1, 2, 3}}, [sink], notice=note)
+    assert sink.getvalue() == ""
+    assert "tdb: examine: cannot serialize record #3:" in note.getvalue()
+
+
 def test_open_sinks_default_dash_and_path(tmp_path):
     from tdb.examine import close_sinks, open_sinks, sink_names
 

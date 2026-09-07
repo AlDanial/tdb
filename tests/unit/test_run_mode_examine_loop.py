@@ -20,6 +20,19 @@ from tdb.session.state import SessionPhase
 pytestmark = pytest.mark.skipif(os.name == "nt", reason="POSIX signals")
 
 
+class _Sink(io.StringIO):
+    """A StringIO that survives the real `close_sinks()` call: records that
+    close() was requested but keeps the buffer readable so the test can
+    still call getvalue() after run() returns."""
+
+    def __init__(self):
+        super().__init__()
+        self.closed_by_run = False
+
+    def close(self):
+        self.closed_by_run = True
+
+
 class Script:
     """Records controller calls and lets tests decide when a pause lands."""
 
@@ -92,11 +105,6 @@ def _capture_console(script):
 async def _run(script, monkeypatch, sink, *, driver, episode=None):
     monkeypatch.setattr(run_mode, "ConsoleRunHandler", _capture_console(script))
     monkeypatch.setattr(run_mode.examine, "open_sinks", lambda dests: [sink])
-    # close_sinks is exercised for real in test_examine.py; here the sink is
-    # a StringIO the test reads from after run() returns, and the real
-    # close_sinks() would close it (it isn't sys.stdout/sys.stderr) before
-    # that read happens. No-op it rather than weakening the assertions.
-    monkeypatch.setattr(run_mode.examine, "close_sinks", lambda sinks: None)
 
     async def default_episode(controller, handler, console, config, program):
         script.calls.append("episode")
@@ -127,7 +135,7 @@ async def _configure_immediately(console, controller):
 
 
 def _records(sink):
-    return [json.loads(l) for l in sink.getvalue().splitlines()]
+    return [json.loads(line) for line in sink.getvalue().splitlines()]
 
 
 async def _settle():
@@ -136,7 +144,7 @@ async def _settle():
 
 
 async def test_sigusr2_pause_collect_write_continue(script, monkeypatch):
-    sink = io.StringIO()
+    sink = _Sink()
     sink.name = "s"
 
     async def driver():
@@ -155,12 +163,13 @@ async def test_sigusr2_pause_collect_write_continue(script, monkeypatch):
         "continue",
     ]
     assert [r["seq"] for r in _records(sink)] == [1]
+    assert sink.closed_by_run  # run()'s outer finally closes sinks for real
 
 
 async def test_sigquit_and_repeat_presses_coalesce_and_number_sequentially(
     script, monkeypatch
 ):
-    sink = io.StringIO()
+    sink = _Sink()
     sink.name = "s"
 
     async def driver():
@@ -180,7 +189,7 @@ async def test_sigquit_and_repeat_presses_coalesce_and_number_sequentially(
 
 
 async def test_pending_then_landed_completes_without_tui(script, monkeypatch):
-    sink = io.StringIO()
+    sink = _Sink()
     sink.name = "s"
     script.pause_lands = False
 
@@ -207,7 +216,7 @@ async def test_pending_then_landed_completes_without_tui(script, monkeypatch):
 
 
 async def test_ctrl_c_cancels_outstanding_examine_and_opens_tui(script, monkeypatch):
-    sink = io.StringIO()
+    sink = _Sink()
     sink.name = "s"
     script.pause_lands = False
 
@@ -227,7 +236,7 @@ async def test_ctrl_c_cancels_outstanding_examine_and_opens_tui(script, monkeypa
 
 
 async def test_interrupt_wins_over_simultaneous_examine(script, monkeypatch):
-    sink = io.StringIO()
+    sink = _Sink()
     sink.name = "s"
 
     async def driver():
@@ -246,7 +255,7 @@ async def test_interrupt_wins_over_simultaneous_examine(script, monkeypatch):
 
 
 async def test_exit_during_capture_writes_exited_record(script, monkeypatch):
-    sink = io.StringIO()
+    sink = _Sink()
     sink.name = "s"
 
     async def pause(self, timeout=2.0):
@@ -269,7 +278,7 @@ async def test_exit_during_capture_writes_exited_record(script, monkeypatch):
 async def test_late_landing_ctrl_c_stop_still_opens_tui(script, monkeypatch):
     """Regression guard for the stray-pause rule: a Ctrl-C whose pause
     lands late must still open the TUI when the stop arrives."""
-    sink = io.StringIO()
+    sink = _Sink()
     sink.name = "s"
     script.pause_lands = False
 
@@ -286,11 +295,36 @@ async def test_late_landing_ctrl_c_stop_still_opens_tui(script, monkeypatch):
     assert _records(sink) == []
 
 
+async def test_pending_ctrl_c_wins_over_examine_and_drops_it(script, monkeypatch):
+    """A Ctrl-C whose pause hasn't landed yet must not have its stop stolen
+    by a subsequent examine trigger: the examine request is dropped, and
+    the eventual stop still opens the TUI rather than being treated as a
+    stray pause-all stop (interrupt_pending must stay set)."""
+    sink = _Sink()
+    sink.name = "s"
+    script.pause_lands = False
+
+    async def driver():
+        await _settle()
+        os.kill(os.getpid(), signal.SIGINT)
+        await _settle()
+        os.kill(os.getpid(), signal.SIGUSR2)
+        await _settle()
+        script.stop_now("pause")  # the Ctrl-C pause finally lands
+        await _settle()
+        script.console.on_exited(0)
+
+    await _run(script, monkeypatch, sink, driver=driver)
+    assert "episode" in script.calls
+    assert not any(c.startswith("collect") for c in script.calls)
+    assert _records(sink) == []
+
+
 async def test_stray_pause_stop_is_resumed_not_debugged(script, monkeypatch):
     """A `stopped(reason=pause)` with nothing waiting on it (a child's
     late pause-all stop after an examine already resumed everything)
     must be continued, not turned into a TUI episode."""
-    sink = io.StringIO()
+    sink = _Sink()
     sink.name = "s"
 
     async def driver():
@@ -309,7 +343,7 @@ async def test_stray_pause_stop_is_resumed_not_debugged(script, monkeypatch):
 
 async def test_breakpoint_stop_still_opens_tui(script, monkeypatch):
     """The stray-pause rule must not swallow real stops."""
-    sink = io.StringIO()
+    sink = _Sink()
     sink.name = "s"
 
     async def driver():
@@ -325,7 +359,7 @@ async def test_breakpoint_stop_still_opens_tui(script, monkeypatch):
 async def test_examine_signals_ignored_during_episode_and_restored_after(
     script, monkeypatch
 ):
-    sink = io.StringIO()
+    sink = _Sink()
     sink.name = "s"
     seen = {}
 

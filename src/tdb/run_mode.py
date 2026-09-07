@@ -383,7 +383,24 @@ async def run(
                             )
                             continue
 
-                    elif examine_ev.is_set() and not console.stopped.is_set():
+                    elif (
+                        examine_ev.is_set()
+                        and not console.stopped.is_set()
+                        and interrupt_pending
+                    ):
+                        # A Ctrl-C pause is still outstanding: it wins over a
+                        # new examine request rather than letting the examine
+                        # consume the Ctrl-C's eventual stop. Drop the
+                        # request and keep waiting for that stop.
+                        examine_ev.clear()
+                        examine_sig.clear()
+                        continue
+
+                    elif (
+                        examine_ev.is_set()
+                        and not console.stopped.is_set()
+                        and not interrupt_pending
+                    ):
                         examine_ev.clear()
                         trigger = examine_sig[-1] if examine_sig else "SIGUSR2"
                         examine_sig.clear()

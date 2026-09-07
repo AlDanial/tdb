@@ -258,8 +258,17 @@ def write(
 ) -> None:
     """Write `record` as one compact JSON line to every sink and flush.
     A sink that fails is reported once (per sink object) and skipped
-    thereafter; the run continues."""
-    line = json.dumps(record, separators=(",", ":"), ensure_ascii=False) + "\n"
+    thereafter; the run continues. A record that can't be serialized is
+    reported and nothing is written — better than crashing the run loop."""
+    try:
+        line = json.dumps(record, separators=(",", ":"), ensure_ascii=False) + "\n"
+    except (TypeError, ValueError) as exc:
+        print(
+            f"tdb: examine: cannot serialize record #{record.get('seq')}: {exc}",
+            file=notice,
+        )
+        notice.flush()
+        return
     written: list[TextIO] = []
     for s in sinks:
         try:
