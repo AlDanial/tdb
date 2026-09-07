@@ -6,7 +6,7 @@ import asyncio
 
 import pytest
 
-from tdb.dap.types import Thread
+from tdb.dap.types import StackFrame, Thread
 from tdb.session.controller import DebugController
 
 
@@ -91,3 +91,69 @@ def test_adopted_session_disables_restart(controller):
     assert controller.supports_restart is True
     controller.adopted_session = True
     assert controller.supports_restart is False
+
+
+async def test_resolve_frame_falls_back_to_live_top_frame_when_no_stack(
+    controller, monkeypatch
+):
+    """Headless run-mode examine pauses the debuggee without a TUI ever
+    fetching a stack, so state.current_frame_id stays None. evaluate must
+    still resolve a real frame from the stopped thread."""
+    controller.state.enter_stop(7, "pause")
+    assert controller.state.current_frame_id is None
+    seen = []
+
+    async def fake_stack_trace(thread_id, **kw):
+        seen.append(thread_id)
+        return [StackFrame(id=99, name="f")]
+
+    async def fake_threads():
+        raise AssertionError("threads() should not be queried; thread is known")
+
+    monkeypatch.setattr(controller.client, "stack_trace", fake_stack_trace)
+    monkeypatch.setattr(controller.client, "threads", fake_threads)
+    result = await controller.resolve_evaluate_frame_id(controller.client)
+    assert result == 99
+    assert seen == [7]
+
+
+async def test_resolve_frame_queries_threads_when_no_thread_known(
+    controller, monkeypatch
+):
+    assert controller.state.current_thread_id is None
+    seen = []
+
+    async def fake_threads():
+        return [Thread(id=3, name="MainThread")]
+
+    async def fake_stack_trace(thread_id, **kw):
+        seen.append(thread_id)
+        return [StackFrame(id=42, name="g")]
+
+    monkeypatch.setattr(controller.client, "threads", fake_threads)
+    monkeypatch.setattr(controller.client, "stack_trace", fake_stack_trace)
+    result = await controller.resolve_evaluate_frame_id(controller.client)
+    assert result == 42
+    assert seen == [3]
+
+
+async def test_resolve_frame_returns_none_when_lookup_fails(controller, monkeypatch):
+    assert controller.state.current_thread_id is None
+
+    async def fake_threads():
+        raise RuntimeError("adapter gone")
+
+    monkeypatch.setattr(controller.client, "threads", fake_threads)
+    result = await controller.resolve_evaluate_frame_id(controller.client)
+    assert result is None
+
+
+async def test_resolve_frame_prefers_cached_frame(controller, monkeypatch):
+    controller.state.set_stack([StackFrame(id=5, name="h")], current_frame_id=5)
+
+    async def fake_stack_trace(thread_id, **kw):
+        raise AssertionError("should not fetch a live frame; a cached one exists")
+
+    monkeypatch.setattr(controller.client, "stack_trace", fake_stack_trace)
+    result = await controller.resolve_evaluate_frame_id(controller.client)
+    assert result == 5

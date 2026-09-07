@@ -862,24 +862,47 @@ class DebugController:
         """The client (parent or child) that is currently being inspected."""
         return self._active_client
 
-    async def resolve_evaluate_frame_id(self, client: DAPClient) -> int | None:
-        """Return a real DAP frame_id usable for evaluate.
-
-        Falls back to the active thread's top frame when the displayed
-        stack is synthetic (async-task navigation, traceback parse).
-        debugpy rejects unknown frame ids, so without this fallback the
-        first evaluate after such a navigation would error out.
-        """
-        if not self.state.displayed_frames_are_synthetic:
-            return self.state.current_frame_id
-        tid = self.state.current_thread_id
-        if tid is None:
-            return None
+    async def _live_top_frame_id(self, client: DAPClient, thread_id: int) -> int | None:
         try:
-            frames = await client.stack_trace(tid)
+            frames = await client.stack_trace(thread_id)
         except Exception:
             return None
         return frames[0].id if frames else None
+
+    async def resolve_evaluate_frame_id(self, client: DAPClient) -> int | None:
+        """Return a real DAP frame_id usable for evaluate.
+
+        Falls back to a live top-frame lookup when the displayed stack is
+        synthetic (async-task navigation, traceback parse) or when no
+        stack has been fetched yet (headless run-mode examine pauses,
+        which stop the debuggee without ever populating
+        `state.current_frame_id` — there is no TUI around to fetch it).
+        debugpy rejects unknown frame ids, so without this fallback the
+        first evaluate in either case would error out. Guarded end to end
+        so any DAP failure returns None instead of raising.
+        """
+        if not self.state.displayed_frames_are_synthetic:
+            if self.state.current_frame_id is not None:
+                return self.state.current_frame_id
+            # No stack fetched yet (headless run-mode examine): discover
+            # a thread too if one hasn't already been recorded.
+            tid = self.state.current_thread_id
+            if tid is None:
+                try:
+                    threads = await client.threads()
+                except Exception:
+                    return None
+                if not threads:
+                    return None
+                tid = threads[0].id
+            return await self._live_top_frame_id(client, tid)
+        # Synthetic frames: only fall back for an already-known thread —
+        # guessing one here could evaluate against a stack unrelated to
+        # what's displayed.
+        tid = self.state.current_thread_id
+        if tid is None:
+            return None
+        return await self._live_top_frame_id(client, tid)
 
     async def evaluate(self, expression: str) -> str:
         try:

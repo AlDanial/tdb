@@ -336,18 +336,6 @@ async def run(
                 landed: str | None,
                 exit_code_: int | None = None,
             ) -> None:
-                if status == "ok":
-                    # evaluate_on_parent (pid, asyncio tasks) resolves its
-                    # frame from state.current_frame_id, which only
-                    # fetch_stop_info populates — the TUI path does the
-                    # same on adoption. Best-effort: the collector must
-                    # still produce a record even if this fails.
-                    try:
-                        await controller.fetch_stop_info()
-                    except Exception:
-                        log.debug(
-                            "fetch_stop_info before examine failed", exc_info=True
-                        )
                 record = await examine.collect(
                     controller,
                     trigger=trigger,
