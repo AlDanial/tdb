@@ -2,8 +2,6 @@
 is None), pushes breakpoints when the TUI adopts a live session, and
 never offers restart for adopted sessions."""
 
-import asyncio
-
 import pytest
 
 from tdb.dap.types import StackFrame, Thread
@@ -158,14 +156,18 @@ async def test_resolve_frame_returns_none_when_not_started(controller, monkeypat
 
 
 async def test_resolve_frame_returns_none_when_lookup_fails(controller, monkeypatch):
+    controller.state.transition_to(SessionPhase.STOPPED)
     assert controller.state.current_thread_id is None
+    calls = []
 
     async def fake_threads():
+        calls.append("threads")
         raise RuntimeError("adapter gone")
 
     monkeypatch.setattr(controller.client, "threads", fake_threads)
     result = await controller.resolve_evaluate_frame_id(controller.client)
     assert result is None
+    assert calls == ["threads"]  # fails silently-vacuous if the fake is never reached
 
 
 async def test_resolve_frame_prefers_cached_frame(controller, monkeypatch):
@@ -200,14 +202,18 @@ async def test_resolve_frame_returns_none_while_running(controller, monkeypatch)
 
 
 async def test_resolve_frame_returns_none_when_no_threads(controller, monkeypatch):
+    controller.state.transition_to(SessionPhase.STOPPED)
     assert controller.state.current_thread_id is None
+    calls = []
 
     async def fake_threads():
+        calls.append("threads")
         return []
 
     monkeypatch.setattr(controller.client, "threads", fake_threads)
     result = await controller.resolve_evaluate_frame_id(controller.client)
     assert result is None
+    assert calls == ["threads"]  # fails silently-vacuous if the fake is never reached
 
 
 async def test_resolve_frame_returns_none_when_stack_trace_fails(
@@ -215,13 +221,16 @@ async def test_resolve_frame_returns_none_when_stack_trace_fails(
 ):
     controller.state.enter_stop(7, "pause")
     assert controller.state.current_frame_id is None
+    calls = []
 
     async def fake_stack_trace(thread_id, **kw):
+        calls.append(thread_id)
         raise RuntimeError("adapter gone")
 
     monkeypatch.setattr(controller.client, "stack_trace", fake_stack_trace)
     result = await controller.resolve_evaluate_frame_id(controller.client)
     assert result is None
+    assert calls == [7]  # fails silently-vacuous if the fake is never reached
 
 
 async def test_resolve_frame_returns_none_when_stack_trace_empty(
@@ -229,10 +238,13 @@ async def test_resolve_frame_returns_none_when_stack_trace_empty(
 ):
     controller.state.enter_stop(7, "pause")
     assert controller.state.current_frame_id is None
+    calls = []
 
     async def fake_stack_trace(thread_id, **kw):
+        calls.append(thread_id)
         return []
 
     monkeypatch.setattr(controller.client, "stack_trace", fake_stack_trace)
     result = await controller.resolve_evaluate_frame_id(controller.client)
     assert result is None
+    assert calls == [7]  # fails silently-vacuous if the fake is never reached
