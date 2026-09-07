@@ -3,6 +3,7 @@ exit-code passthrough, output streaming, SIGUSR1 -> pause -> episode ->
 detach -> resume -> second episode -> terminate."""
 
 import asyncio
+import json
 import os
 import shutil
 import signal
@@ -217,3 +218,156 @@ async def test_ruby_exit_code_passthrough(tmp_path, capfd):
     )
     assert code == 7
     assert "rbye" in capfd.readouterr().out
+
+
+THREAD_SCRIPT = """\
+import threading, time
+def spin():
+    while True:
+        time.sleep(0.01)
+threading.Thread(target=spin, name="spinner", daemon=True).start()
+while True:
+    time.sleep(0.01)
+"""
+
+ASYNC_SCRIPT = """\
+import asyncio
+async def waiter(lock):
+    async with lock:
+        await asyncio.sleep(3600)
+async def main():
+    lock = asyncio.Lock()
+    asyncio.create_task(waiter(lock), name="holder")
+    await asyncio.sleep(0)
+    asyncio.create_task(waiter(lock), name="blocked")
+    while True:
+        await asyncio.sleep(0.01)
+asyncio.run(main())
+"""
+
+MP_SCRIPT = """\
+import multiprocessing, time
+def child():
+    while True:
+        time.sleep(0.01)
+if __name__ == "__main__":
+    p = multiprocessing.Process(target=child, name="kid")
+    p.start()
+    while True:
+        time.sleep(0.01)
+"""
+
+
+async def _examine_once(
+    program: str, dests: list[str], captures_wanted: int = 1, settle: float = 1.0
+):
+    """Run `program` headless, send SIGUSR2 `captures_wanted` times once
+    the debuggee is running, then terminate via a TUI episode.
+
+    `settle` is the pause after the debuggee starts running but before
+    the first SIGUSR2, giving it time to reach a representative state —
+    e.g. the multiprocessing test needs longer than the default 1.0s
+    for the child's fork+attach to land before the parent is paused.
+    Captures after the first are still spaced 1.0s apart, which is
+    enough for the pause/emit/resume cycle to land."""
+    box = {}
+
+    def ready(controller):
+        box["controller"] = controller
+
+    async def fake_episode(controller, handler, console, config, program):
+        return False  # terminate
+
+    async def pulses():
+        await _wait_until(
+            lambda: (
+                box.get("controller") is not None
+                and box["controller"].state.phase is SessionPhase.RUNNING
+            )
+        )
+        await asyncio.sleep(settle)
+        for _ in range(captures_wanted):
+            os.kill(os.getpid(), signal.SIGUSR2)
+            await asyncio.sleep(1.0)
+        await _wait_until(lambda: box["controller"].state.phase is SessionPhase.RUNNING)
+        os.kill(os.getpid(), signal.SIGUSR1)
+
+    task = asyncio.create_task(pulses())
+    code = await asyncio.wait_for(
+        run_mode.run(
+            program=program,
+            config=TdbConfig(),
+            tui_episode=fake_episode,
+            on_session_ready=ready,
+            examine_dests=dests,
+        ),
+        timeout=90.0,
+    )
+    await task
+    return code
+
+
+def _stdout_records(capfd):
+    out = capfd.readouterr().out
+    return [json.loads(l) for l in out.splitlines() if l.startswith("{")]
+
+
+async def test_examine_threads_to_stdout(tmp_path, capfd):
+    p = tmp_path / "threads.py"
+    p.write_text(THREAD_SCRIPT)
+    await _examine_once(str(p), ["-"])
+    recs = _stdout_records(capfd)
+    assert len(recs) == 1
+    rec = recs[0]
+    assert rec["schema"] == 1 and rec["status"] == "ok" and rec["trigger"] == "SIGUSR2"
+    assert rec["language"] == "python" and rec["program"] == str(p)
+    assert "landed_at" in rec and rec["elapsed_s"] >= 0
+    parent = rec["processes"][0]
+    assert parent["role"] == "parent" and isinstance(parent["pid"], int)
+    names = {t["name"] for t in parent["threads"]}
+    assert "spinner" in names
+    spinner = next(t for t in parent["threads"] if t["name"] == "spinner")
+    assert any(
+        f["function"] == "spin" and f["file"] == str(p) for f in spinner["frames"]
+    )
+    assert "goroutines" not in rec and "rust_concurrency" not in rec
+
+
+async def test_examine_asyncio_tasks(tmp_path, capfd):
+    p = tmp_path / "tasks.py"
+    p.write_text(ASYNC_SCRIPT)
+    await _examine_once(str(p), ["-"])
+    rec = _stdout_records(capfd)[0]
+    tasks = {t["name"]: t for t in rec["processes"][0].get("tasks", [])}
+    assert {"holder", "blocked"} <= set(tasks)
+    assert tasks["blocked"]["awaiting"] == "Lock.acquire"
+
+
+async def test_examine_multiprocessing_children(tmp_path, capfd):
+    p = tmp_path / "mp.py"
+    p.write_text(MP_SCRIPT)
+    await _examine_once(str(p), ["-"], settle=3.0)
+    rec = _stdout_records(capfd)[0]
+    roles = [pr["role"] for pr in rec["processes"]]
+    assert roles[0] == "parent" and "child" in roles
+    child = next(pr for pr in rec["processes"] if pr["role"] == "child")
+    assert isinstance(child["pid"], int)
+    assert any(
+        f["function"] == "child" for t in child["threads"] for f in t["frames"]
+    ), rec
+
+
+async def test_examine_log_file_appends_across_captures(tmp_path, capfd):
+    p = tmp_path / "threads.py"
+    p.write_text(THREAD_SCRIPT)
+    log = tmp_path / "hang.jsonl"
+    log.write_text('{"pre":true}\n')
+    await _examine_once(str(p), [str(log)], captures_wanted=2)
+    lines = log.read_text().splitlines()
+    assert lines[0] == '{"pre":true}'
+    seqs = [json.loads(l)["seq"] for l in lines[1:]]
+    assert seqs == [1, 2]
+    captured = capfd.readouterr()
+    assert f"examine #1 written to {log}" in captured.err
+    assert f"examine #2 written to {log}" in captured.err
+    assert not [l for l in captured.out.splitlines() if l.startswith("{")]
