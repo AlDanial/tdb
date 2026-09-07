@@ -1,3 +1,4 @@
+import subprocess
 import sys
 
 import pytest
@@ -6,11 +7,50 @@ from tdb.languages.base import LanguageNotSupportedError
 from tdb.languages.cpp import quote_debugger_arg
 from tdb.languages.ocaml import (
     EarlybirdAdapter,
+    OCamlGdbAdapter,
     OCamlLldbAdapter,
     _with_runparam,
     build_ocaml_profile,
     formatter_script_path,
 )
+
+
+def test_gdb_stop_on_entry_discovers_project_ocaml_sources(tmp_path, monkeypatch):
+    source = tmp_path / "p1.ml"
+    source.write_text("let () = print_endline \"hello\"\n")
+    program = tmp_path / "p1.exe"
+    program.write_bytes(b"ELF")
+
+    class SourcesResult:
+        stdout = (
+            "Source files for which symbols have been read in:\n\n"
+            f"./stdlib/stdlib.ml, {source}, missing.ml\n"
+        )
+
+    class LineResult:
+        stdout = f"Breakpoint 1 at 0x123: file {source}, line 2.\n"
+
+    results = iter((SourcesResult(), LineResult()))
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: next(results))
+
+    assert OCamlGdbAdapter().initial_source_breakpoints(
+        program=str(program), cwd=str(tmp_path), stop_on_entry=True
+    ) == ((str(source), 2),)
+
+
+def test_gdb_does_not_discover_entry_sources_when_stop_on_entry_is_disabled(
+    tmp_path, monkeypatch
+):
+    def unexpected_run(*args, **kwargs):
+        raise AssertionError("must not spawn the source-discovery gdb")
+
+    monkeypatch.setattr(subprocess, "run", unexpected_run)
+
+    assert OCamlGdbAdapter().initial_source_breakpoints(
+        program=str(tmp_path / "p1.exe"),
+        cwd=str(tmp_path),
+        stop_on_entry=False,
+    ) == ()
 
 
 def _native_launch_body(adapter):
@@ -59,6 +99,12 @@ def test_earlybird_launch_body_injects_runparam_even_with_no_env():
         opts={},
     )
     assert body["env"] == {"OCAMLRUNPARAM": "b"}
+
+
+def test_gdb_uses_private_instruction_entry_stop_before_ocaml_entry():
+    body = _native_launch_body(OCamlGdbAdapter())
+    assert body["stopAtBeginningOfMainSubprogram"] is False
+    assert body["stopOnEntry"] is True
 
 
 def test_earlybird_launch_body_rejects_external_terminal():
