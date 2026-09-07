@@ -222,13 +222,13 @@ The language is auto-detected from the debug target:
    `.psm1` → PowerShell. (`.ml` / `.mli` do *not* auto-select OCaml, see
    point 6.)
 3. Native executables (ELF, Mach-O, PE magic bytes) → C/C++, unless
-   byte-sniffing finds an OCaml marker (a native binary's
+   byte-checking finds an OCaml marker (a native binary's
    `caml_program`/`caml_startup` runtime symbols, a bytecode file's
    trailing `Caml1999` marker, or a `#!...ocamlrun` shebang) → OCaml
    (native or bytecode respectively), or a Go buildinfo blob (the marker
    `go version` itself locates, scanned in the first 16MB of the file) →
    Go. A stripped native OCaml binary, or a Go binary whose buildinfo
-   blob sits beyond the 16MB scan window, that byte-sniffing can't
+   blob sits beyond the 16MB scan window, that byte-checking can't
    identify falls back to C/C++; force it with `--lang ocaml` or `--lang
    go` respectively. Rust is never inferred from an executable; select it
    explicitly with `--lang rust`.
@@ -356,7 +356,7 @@ picture:
   reaches `tdb`). Run the program outside the debugger to see the
   backtrace instead.
 - No Windows support, no remote attach, and a stripped native binary that
-  byte-sniffing can't identify needs `--lang ocaml`.
+  byte-checking can't identify needs `--lang ocaml`.
 
 **Go limitations (v1):**
 
@@ -685,18 +685,35 @@ does). Always pass the **built executable** to `tdb`, never the `.ml`
 source, as in `tdb ./_build/default/bin/main.exe`, not `tdb main.ml` (which
 errors with this exact guidance).
 
+Earlybird additionally as a fragile relative path matching so for
+best results provide a fully quallified path to the source files.
+
+```
+ocamlc -g -o my_program.byte "$PWD/my_program.ml"
+```
+
+Then, to ensure transition from bytecode to OCaml source in the
+Code view, provide an explicit temporary breakpoint (`-t`) 
+at the first line of execution:
+
+```
+tdb --lang ocaml --adapter ocamlearlybird -t "$PWD/my_program.ml:2" ./my_program.byte
+```
+
 **OCaml version:** tdb requires **OCaml ≥ 4.12**. Older runtimes print
 `Printexc` backtraces without function names, which the fatal-error
 modal's parser does not understand (frames would be dropped and the
 modal would wrongly suggest recompiling with `-g`).
 
-```bash
-tdb ./_build/default/bin/main.exe          # native, lldb-dap
-tdb --adapter gdb ./_build/default/bin/main.exe   # native, gdb
-tdb ./_build/default/bin/main.byte         # bytecode, ocamlearlybird
-```
+With native GDB, the default entry stop is translated to the first
+executable line in project OCaml source; the generated C/ELF startup code is
+not shown.
+Unfortunately OCaml's native debug information does not always identify
+tihs line correctly.
+`--no-stop-on-entry` and explicit CLI breakpoints retain their
+usual behavior.
 
-A stripped native binary that byte-sniffing can't identify as OCaml falls
+A stripped native binary that byte-checking can't identify as OCaml falls
 back to C/C++; force it with `--lang ocaml`. Override the adapter or point
 at a non-`PATH` install in `config.json` (see
 [Configuration](#configuration)):

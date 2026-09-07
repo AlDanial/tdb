@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 import shutil
+import subprocess
 import sys
 from importlib import resources
 from pathlib import Path
@@ -213,20 +214,94 @@ class OCamlGdbAdapter(GdbDapAdapter):
     script) and no pre-run breakpoint (gdb DAP has no initCommands);
     the parse-on-exit error modal still works via OCAMLRUNPARAM=b."""
 
-    quirks = AdapterQuirks()  # no native remote attach for OCaml yet
+    quirks = AdapterQuirks(
+        bootstrap_stop_for_entry_breakpoints=True,
+    )  # no native remote attach for OCaml yet
+
+    def initial_source_breakpoints(
+        self, *, program: str, cwd: str, stop_on_entry: bool
+    ) -> tuple[tuple[str, int], ...]:
+        if not stop_on_entry:
+            return ()
+
+        # OCaml's generated C `main` has no line table, so GDB's
+        # stopAtBeginningOfMainSubprogram silently runs past it. Ask a short
+        # batch GDB process for the executable's source inventory, then map
+        # each project .ml file's first line back to its generated entry
+        # function. The first project unit the program initializes becomes
+        # the visible entry stop.
+        exe = self._executable or shutil.which("gdb") or "gdb"
+        try:
+            result = subprocess.run(
+                [exe, "-q", "-nx", "-batch", program, "-ex", "info sources"],
+                cwd=cwd,
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return ()
+
+        root = Path(cwd).resolve()
+        sources: set[str] = set()
+        for match in re.finditer(r"(?:/|\.?\.?/)?[^,\s]+[.]ml\b", result.stdout):
+            candidate = Path(match.group(0))
+            if not candidate.is_absolute():
+                candidate = root / candidate
+            try:
+                resolved = candidate.resolve()
+                resolved.relative_to(root)
+            except (OSError, ValueError):
+                continue
+            if resolved.is_file():
+                sources.add(str(resolved))
+        locations: list[tuple[str, int]] = []
+        for source in sorted(sources):
+            try:
+                line_result = subprocess.run(
+                    [
+                        exe,
+                        "-q",
+                        "-nx",
+                        "-batch",
+                        program,
+                        "-ex",
+                        f"break {source}:1",
+                    ],
+                    cwd=cwd,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                    check=False,
+                )
+            except (OSError, subprocess.SubprocessError):
+                continue
+            match = re.search(r"\bline (\d+)\b", line_result.stdout)
+            if match:
+                locations.append((source, int(match.group(1))))
+        return tuple(locations)
 
     def launch_body(
         self, *, program, args, cwd, env, stop_on_entry, console, opts: dict[str, Any]
     ) -> dict[str, Any]:
-        return super().launch_body(
+        body = super().launch_body(
             program=program,
             args=args,
             cwd=cwd,
             env=_with_runparam(env),
-            stop_on_entry=stop_on_entry,
+            # GDB cannot stop at OCaml's generated, line-less C main.
+            # initial_source_breakpoints() implements this at project
+            # OCaml source instead.
+            stop_on_entry=False,
             console=console,
             opts=opts,
         )
+        # `start` cannot find OCaml's generated, line-less C main. `starti`
+        # gives the controller a private loader stop at which the executable's
+        # symbols are available; it then installs the OCaml entry breakpoint.
+        body["stopOnEntry"] = stop_on_entry
+        return body
 
 
 class EarlybirdAdapter(AdapterSpec):

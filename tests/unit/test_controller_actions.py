@@ -31,6 +31,7 @@ from tdb.dap.types import (
     Variable,
 )
 from tdb.languages.base import (
+    AdapterQuirks,
     AdapterSpec,
     LanguageProfile,
     Presentation,
@@ -817,6 +818,64 @@ async def test_do_configure_sends_breakpoints_then_configuration_done():
     order = [c[0] for c in fake.calls]
     assert order.index("setBreakpoints") < order.index("configurationDone")
     assert ctrl.state.phase is SessionPhase.RUNNING
+
+
+async def test_do_configure_seeds_adapter_entry_source_breakpoints(monkeypatch):
+    handler = _RecordingHandler()
+    ctrl = DebugController(handler)
+    fake = _FakeDAP()
+    ctrl.client = fake
+    monkeypatch.setattr(
+        ctrl.profile.adapter,
+        "initial_source_breakpoints",
+        lambda **kwargs: (("/p/main.ml", 7),),
+    )
+    ctrl._launch_params = {
+        "program": "/p/main.exe",
+        "cwd": "/p",
+        "stop_on_entry": True,
+    }
+    ctrl._launch_future = _resolved_launch_future()
+
+    await ctrl.do_configure()
+
+    assert fake.calls_to("setBreakpoints") == [
+        ("setBreakpoints", "/p/main.ml", (7,))
+    ]
+
+
+async def test_do_configure_bootstraps_symbols_then_resumes_to_entry_function(
+    monkeypatch,
+):
+    handler = _RecordingHandler()
+    ctrl = DebugController(handler)
+    fake = _FakeDAP()
+    ctrl.client = fake
+    monkeypatch.setattr(
+        ctrl.profile.adapter,
+        "quirks",
+        AdapterQuirks(bootstrap_stop_for_entry_breakpoints=True),
+    )
+    monkeypatch.setattr(
+        ctrl.profile.adapter,
+        "initial_source_breakpoints",
+        lambda **kwargs: (("/p/main.ml", 7),),
+    )
+    ctrl._launch_params = {
+        "program": "/p/main.exe",
+        "cwd": "/p",
+        "stop_on_entry": True,
+    }
+    ctrl._launch_future = _resolved_launch_future()
+    ctrl.state.enter_stop(1, "entry")
+
+    await ctrl.do_configure()
+
+    order = [call[0] for call in fake.calls]
+    assert order.index("configurationDone") < order.index("setBreakpoints")
+    assert order.index("setBreakpoints") < order.index("continue")
+    assert ctrl.state.phase is SessionPhase.RUNNING
+    assert ctrl._suppress_next_stop is False
 
 
 async def test_do_configure_prearms_pause_for_remote_attach():

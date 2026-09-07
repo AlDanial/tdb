@@ -40,6 +40,8 @@ class DebugController:
         self.client = DAPClient(profile.adapter)
         self.state = DebugState()
         self._terminal: str | None = None
+        self._launch_params: dict[str, Any] = {}
+        self._suppress_next_stop: bool = False
         self._lock = asyncio.Lock()
         # Child process debug sessions (pid → DAPClient) — owned by
         # ChildProcessManager in session/child_processes.py.
@@ -361,7 +363,34 @@ class DebugController:
         ):
             await self.client.evaluate(command, context="repl")
 
-        # Send breakpoints (skip if globally disabled; also filter per-bp enabled)
+        # Some native language runtimes enter through generated C code rather
+        # than a source-bearing `main`. Their adapter can implement the normal
+        # stop-on-entry contract with hidden source breakpoints that land in
+        # source-bearing language entry code.
+        entry_locations: tuple[tuple[str, int], ...] = ()
+        if not self._is_remote_attach and self._launch_params:
+            p = self._launch_params
+            entry_locations = self.profile.adapter.initial_source_breakpoints(
+                program=p["program"],
+                cwd=p["cwd"],
+                stop_on_entry=p["stop_on_entry"],
+            )
+            bootstrap_entry = (
+                bool(entry_locations)
+                and self.profile.adapter.quirks.bootstrap_stop_for_entry_breakpoints
+            )
+            if entry_locations and not bootstrap_entry:
+                for source_path, line in entry_locations:
+                    await self._send_breakpoints(
+                        source_path, [SourceBreakpoint(line=line)]
+                    )
+        else:
+            bootstrap_entry = False
+
+        if bootstrap_entry:
+            self._suppress_next_stop = True
+
+        # Send breakpoints (skip if globally disabled; also filter per-bp enabled).
         if not self.state.breakpoints_disabled:
             for source_path, bps in self.state.breakpoints.items():
                 await self._send_breakpoints(
@@ -411,6 +440,27 @@ class DebugController:
         response = await asyncio.wait_for(self._launch_future, timeout=timeout)
         if not response.success:
             raise Exception(f"Launch failed: {response.message}")
+
+        if bootstrap_entry:
+            # GDB loads executable symbols as part of configurationDone and
+            # stops privately at the first machine instruction (`starti`).
+            # Install resolved source breakpoints only now: GDB DAP can hang
+            # when asked to resolve an OCaml source breakpoint before `file`
+            # has loaded the executable's DWARF.
+            if self.state.phase != SessionPhase.STOPPED:
+                await asyncio.wait_for(self._stopped_event.wait(), timeout=10)
+            for source_path, line in entry_locations:
+                user_bps = self._enabled_bps(
+                    self.state.breakpoints.get(source_path, [])
+                )
+                if not any(bp.line == line for bp in user_bps):
+                    user_bps = [SourceBreakpoint(line=line), *user_bps]
+                await self._send_breakpoints(source_path, user_bps)
+            self._suppress_next_stop = False
+            self.state.transition_to(SessionPhase.RUNNING)
+            self.state.clear_frame_data()
+            self._stopped_event.clear()
+            await self._resume_client(self.client)
 
         # gdb's `target remote` attach leaves the inferior stopped at the
         # stub's entry point; its stopped event has already landed by the
@@ -1076,7 +1126,8 @@ class DebugController:
 
         self._active_client = self.client
         self._stopped_event.set()
-        self.event_handler.on_stopped(thread_id, reason, description, text)
+        if not self._suppress_next_stop:
+            self.event_handler.on_stopped(thread_id, reason, description, text)
         if self._child_clients and reason not in ("pause",):
             self._spawn_bg(self._pause_children())
 

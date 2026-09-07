@@ -70,6 +70,10 @@ class AdapterQuirks:
     # program" uniformly.
     resume_after_remote_attach: bool = False
 
+    # The adapter must first stop at the loader entry so symbols are loaded;
+    # the controller then installs initial_source_breakpoints and resumes.
+    bootstrap_stop_for_entry_breakpoints: bool = False
+
 
 class AdapterSpec:
     """How to spawn and speak to one debug adapter. Subclass per adapter.
@@ -130,6 +134,17 @@ class AdapterSpec:
         Attach adapters may need source-path configuration that DAP has
         no portable request for.  The controller runs these commands
         after `initialized` and before `setBreakpoints`.
+        """
+        return ()
+
+    def initial_source_breakpoints(
+        self, *, program: str, cwd: str, stop_on_entry: bool
+    ) -> tuple[tuple[str, int], ...]:
+        """Source locations that should implement entry-stop.
+
+        Most adapters implement stop-on-entry directly in their launch
+        request. Language adapters may return source locations when their native
+        debugger's generic entry point is outside user code.
         """
         return ()
 
