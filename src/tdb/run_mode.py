@@ -334,6 +334,13 @@ async def run(
             # True after a Ctrl-C pause that hasn't landed yet: the stop
             # that eventually arrives must open the TUI.
             interrupt_pending = False
+            # True from the moment an examine capture resumes the program
+            # until the next interrupt, examine, or TUI episode. Only in
+            # that window can a "pause" stop be a stray leftover of the
+            # capture's pause-all; outside it (e.g. an embedding caller
+            # pausing via `controller.pause()` from `on_session_ready`)
+            # a pause stop must open the TUI like any other stop.
+            examine_resumed = False
 
             async def emit(
                 status: str,
@@ -366,11 +373,13 @@ async def run(
             async def finish_capture(seq_: int, trigger: str, requested: str) -> None:
                 """Common tail of a landed examine pause: emit the "ok"
                 record, clear the examine trigger state, and resume."""
+                nonlocal examine_resumed
                 await emit("ok", seq_, trigger, requested, examine.now_iso())
                 examine_ev.clear()
                 examine_sig.clear()
                 console.stopped.clear()
                 await controller.continue_()
+                examine_resumed = True
 
             try:
                 while True:
@@ -387,6 +396,7 @@ async def run(
                         examine_sig.clear()
                         outstanding = None  # Ctrl-C supersedes a pending examine
                         interrupt_pending = False
+                        examine_resumed = False
                         ok = await controller.pause(timeout=_PAUSE_TIMEOUT)
                         if console.exited.is_set():
                             # Died between the signal and the pause landing.
@@ -429,6 +439,7 @@ async def run(
                         examine_sig.clear()
                         if outstanding is not None:
                             continue  # one capture at a time; wait for it to land
+                        examine_resumed = False
                         seq += 1
                         requested = examine.now_iso()
                         ok = await controller.pause(timeout=_PAUSE_TIMEOUT)
@@ -459,15 +470,16 @@ async def run(
 
                     elif (
                         console.stopped.is_set()
+                        and examine_resumed
                         and not interrupt_pending
                         and not interrupt.is_set()
                         and console.last_stop is not None
                         and console.last_stop[1] == "pause"
                     ):
-                        # Stray pause-all stop: nobody is waiting for it. Typical
-                        # cause is a child process whose `stopped` event for an
-                        # examine pause arrives after we already resumed every
-                        # client (the parent's stop is what released the wait).
+                        # Stray pause-all stop after an examine capture: a child
+                        # process whose `stopped` event for the capture's pause
+                        # arrives after we already resumed every client (the
+                        # parent's stop is what released the wait).
                         # Resume again — harmless for anything already running —
                         # rather than opening the TUI on a pause nobody asked for.
                         console.stopped.clear()
@@ -478,6 +490,7 @@ async def run(
                     # landed late, or on a spontaneous stop (a breakpoint set
                     # during a previous episode).
                     interrupt_pending = False
+                    examine_resumed = False
                     interrupt.clear()
                     examine_ev.clear()
                     examine_sig.clear()

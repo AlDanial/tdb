@@ -358,6 +358,26 @@ async def test_stray_pause_stop_is_resumed_not_debugged(script, monkeypatch):
     assert [r["seq"] for r in _records(sink)] == [1]
 
 
+async def test_external_pause_stop_opens_tui_when_no_examine_ran(script, monkeypatch):
+    """Regression: a pause requested outside the loop (an embedding caller
+    using `on_session_ready` + `controller.pause()`, as the Rust run-mode
+    probe does) stops with reason "pause" and no signal. Before any examine
+    capture has resumed the program there can be no stray child stop, so
+    that stop must open the TUI, not be silently continued."""
+    sink = _Sink()
+    sink.name = "s"
+
+    async def driver():
+        await _settle()
+        script.stop_now("pause")  # external controller.pause() landed
+        await _settle()
+        script.console.on_exited(0)
+
+    await _run(script, monkeypatch, sink, driver=driver)
+    assert "episode" in script.calls
+    assert not any(c.startswith("collect") for c in script.calls)
+
+
 async def test_breakpoint_stop_still_opens_tui(script, monkeypatch):
     """The stray-pause rule must not swallow real stops."""
     sink = _Sink()
