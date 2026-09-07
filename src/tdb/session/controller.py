@@ -942,9 +942,9 @@ class DebugController:
                 else:
                     threads = await self.client.threads()
                     if threads:
-                        frame_id = await self._live_top_frame_id(
-                            self.client, threads[0].id
-                        )
+                        frames = await self.client.stack_trace(threads[0].id)
+                        if frames:
+                            frame_id = frames[0].id
                 result, _ = await self.client.evaluate(
                     expression,
                     frame_id=frame_id,
