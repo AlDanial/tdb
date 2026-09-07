@@ -166,6 +166,7 @@ async def collect(
     requested_at: str,
     landed_at: str | None,
     launched_at: float,
+    program: str | None = None,
     status: str = "ok",
     exit_code: int | None = None,
 ) -> dict[str, Any]:
@@ -182,7 +183,7 @@ async def collect(
         record["landed_at"] = landed_at
     record["elapsed_s"] = round(time.monotonic() - launched_at, 1)
     record["language"] = controller.profile.id
-    record["program"] = getattr(controller, "program", None)
+    record["program"] = program
     if exit_code is not None:
         record["exit_code"] = exit_code
     record["processes"] = []

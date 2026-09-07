@@ -374,3 +374,17 @@ def test_open_sinks_bad_path_raises_and_creates_no_dirs(tmp_path):
     with pytest.raises(OSError):
         open_sinks([str(target)])
     assert not (tmp_path / "missing").exists()
+
+
+def test_examine_signal_names_per_platform():
+    import os
+    import signal as _signal
+
+    from tdb.run_mode import EXAMINE_KEY, EXAMINE_SIGNALS
+
+    if os.name == "nt":
+        assert EXAMINE_SIGNALS == (_signal.SIGBREAK,)
+        assert EXAMINE_KEY == "Ctrl-Break"
+    else:
+        assert EXAMINE_SIGNALS == (_signal.SIGQUIT, _signal.SIGUSR2)
+        assert EXAMINE_KEY == "Ctrl-\\"
