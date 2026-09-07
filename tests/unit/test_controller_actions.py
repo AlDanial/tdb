@@ -839,9 +839,7 @@ async def test_do_configure_seeds_adapter_entry_source_breakpoints(monkeypatch):
 
     await ctrl.do_configure()
 
-    assert fake.calls_to("setBreakpoints") == [
-        ("setBreakpoints", "/p/main.ml", (7,))
-    ]
+    assert fake.calls_to("setBreakpoints") == [("setBreakpoints", "/p/main.ml", (7,))]
 
 
 async def test_do_configure_bootstraps_symbols_then_resumes_to_entry_function(

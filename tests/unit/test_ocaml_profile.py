@@ -17,7 +17,7 @@ from tdb.languages.ocaml import (
 
 def test_gdb_stop_on_entry_discovers_project_ocaml_sources(tmp_path, monkeypatch):
     source = tmp_path / "p1.ml"
-    source.write_text("let () = print_endline \"hello\"\n")
+    source.write_text('let () = print_endline "hello"\n')
     program = tmp_path / "p1.exe"
     program.write_bytes(b"ELF")
 
@@ -46,11 +46,14 @@ def test_gdb_does_not_discover_entry_sources_when_stop_on_entry_is_disabled(
 
     monkeypatch.setattr(subprocess, "run", unexpected_run)
 
-    assert OCamlGdbAdapter().initial_source_breakpoints(
-        program=str(tmp_path / "p1.exe"),
-        cwd=str(tmp_path),
-        stop_on_entry=False,
-    ) == ()
+    assert (
+        OCamlGdbAdapter().initial_source_breakpoints(
+            program=str(tmp_path / "p1.exe"),
+            cwd=str(tmp_path),
+            stop_on_entry=False,
+        )
+        == ()
+    )
 
 
 def _native_launch_body(adapter):
