@@ -254,12 +254,17 @@ _reported_broken: set[int] = set()
 
 
 def write(
-    record: dict[str, Any], sinks: list[TextIO], *, notice: TextIO = sys.stderr
+    record: dict[str, Any], sinks: list[TextIO], *, notice: TextIO | None = None
 ) -> None:
     """Write `record` as one compact JSON line to every sink and flush.
     A sink that fails is reported once (per sink object) and skipped
     thereafter; the run continues. A record that can't be serialized is
-    reported and nothing is written — better than crashing the run loop."""
+    reported and nothing is written — better than crashing the run loop.
+    `notice` defaults to the *current* `sys.stderr` (resolved at call
+    time, not bound at import time) so a caller that redirects stderr —
+    including pytest's capture fixtures — sees these notices."""
+    if notice is None:
+        notice = sys.stderr
     try:
         line = json.dumps(record, separators=(",", ":"), ensure_ascii=False) + "\n"
     except (TypeError, ValueError) as exc:

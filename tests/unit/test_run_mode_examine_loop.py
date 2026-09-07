@@ -74,12 +74,16 @@ def script(monkeypatch):
     async def stop(self):
         s.calls.append("stop")
 
+    async def fetch_stop_info(self):
+        s.calls.append("fetch_stop_info")
+
     for name, fn in [
         ("start", start),
         ("do_configure", do_configure),
         ("pause", pause),
         ("continue_", continue_),
         ("stop", stop),
+        ("fetch_stop_info", fetch_stop_info),
     ]:
         monkeypatch.setattr(DebugController, name, fn)
 
@@ -159,6 +163,7 @@ async def test_sigusr2_pause_collect_write_continue(script, monkeypatch):
         "start",
         "configure",
         "pause",
+        "fetch_stop_info",
         "collect:ok:1:SIGUSR2",
         "continue",
     ]
@@ -208,6 +213,7 @@ async def test_pending_then_landed_completes_without_tui(script, monkeypatch):
         "configure",
         "pause",
         "collect:pending:1:SIGUSR2",
+        "fetch_stop_info",
         "collect:ok:1:SIGUSR2",
         "continue",
     ]

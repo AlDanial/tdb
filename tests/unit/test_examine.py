@@ -362,6 +362,21 @@ def test_write_unserializable_record_reports_and_writes_nothing():
     assert "tdb: examine: cannot serialize record #3:" in note.getvalue()
 
 
+def test_write_default_notice_uses_current_sys_stderr(monkeypatch):
+    """`notice` must resolve to sys.stderr at call time, not whatever
+    sys.stderr was when tdb.examine was imported — otherwise a caller
+    that redirects stderr (including pytest's capture fixtures) never
+    sees these notices."""
+    from tdb.examine import write
+
+    fake_stderr = io.StringIO()
+    monkeypatch.setattr(sys, "stderr", fake_stderr)
+    sink = io.StringIO()
+    sink.name = "a.jsonl"
+    write({"seq": 5}, [sink])
+    assert "tdb: examine #5 written to" in fake_stderr.getvalue()
+
+
 def test_open_sinks_default_dash_and_path(tmp_path):
     from tdb.examine import close_sinks, open_sinks, sink_names
 
