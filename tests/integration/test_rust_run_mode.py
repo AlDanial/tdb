@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 import signal
@@ -60,18 +61,23 @@ async def test_run_mode_examine_includes_rust_concurrency(
             os.kill(os.getpid(), signal.SIGUSR1)
 
         task = asyncio.create_task(pulses())
-        await asyncio.wait_for(
-            run_mode.run(
-                program=target.program,
-                args=target.arguments(port, control=True),
-                profile=build_rust_profile(adapter=adapter),
-                config=TdbConfig(),
-                tui_episode=episode,
-                examine_dests=["-"],
-            ),
-            WAIT * 3,
-        )
-        await task
+        try:
+            await asyncio.wait_for(
+                run_mode.run(
+                    program=target.program,
+                    args=target.arguments(port, control=True),
+                    profile=build_rust_profile(adapter=adapter),
+                    config=TdbConfig(),
+                    tui_episode=episode,
+                    examine_dests=["-"],
+                ),
+                WAIT * 3,
+            )
+        finally:
+            if not task.done():
+                task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
 
     recs = [
         json.loads(line)

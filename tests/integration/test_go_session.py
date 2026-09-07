@@ -10,21 +10,28 @@ Skipped wholesale when the `go` toolchain or `dlv` is missing.
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import json
+import os
 import shutil
+import signal
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
+from tdb import run_mode
 from tdb.dap.types import SourceBreakpoint
 from tdb.go_concurrency.collector import GoConcurrencyCollector
 from tdb.go_concurrency.models import GoFindingKind, GoroutineState
 from tdb.languages import registry
 from tdb.languages.errors import parse_go_error
 from tdb.languages.go import build_go_profile
+from tdb.persist import TdbConfig
 from tdb.server.event_handler import ServerEventHandler
 from tdb.session.controller import DebugController
+from tdb.session.state import SessionPhase
 
 pytestmark = pytest.mark.skipif(
     shutil.which("go") is None or shutil.which("dlv") is None,
@@ -343,14 +350,6 @@ async def test_pid_attach_exposes_goroutines(tmp_path_factory):
 async def test_run_mode_examine_includes_goroutines(capfd):
     """`tdb --run` + SIGUSR2 on a Go program: the record carries the
     goroutine snapshot under `goroutines` and no Rust key."""
-    import json
-    import os
-    import signal
-
-    from tdb import run_mode
-    from tdb.persist import TdbConfig
-    from tdb.session.state import SessionPhase
-
     box = {}
 
     def ready(controller):
@@ -373,18 +372,23 @@ async def test_run_mode_examine_includes_goroutines(capfd):
         os.kill(os.getpid(), signal.SIGUSR1)
 
     task = asyncio.create_task(pulses())
-    await asyncio.wait_for(
-        run_mode.run(
-            program=str(GO_BLOCKED_SRC),
-            config=TdbConfig(),
-            profile=build_go_profile(),
-            tui_episode=episode,
-            on_session_ready=ready,
-            examine_dests=["-"],
-        ),
-        timeout=WAIT * 4,
-    )
-    await task
+    try:
+        await asyncio.wait_for(
+            run_mode.run(
+                program=str(GO_BLOCKED_SRC),
+                config=TdbConfig(),
+                profile=build_go_profile(),
+                tui_episode=episode,
+                on_session_ready=ready,
+                examine_dests=["-"],
+            ),
+            timeout=WAIT * 4,
+        )
+    finally:
+        if not task.done():
+            task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
     recs = [
         json.loads(line)
         for line in capfd.readouterr().out.splitlines()
