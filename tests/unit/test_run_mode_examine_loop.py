@@ -5,10 +5,12 @@ process itself (POSIX only), exactly as a terminal would deliver them."""
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import io
 import json
 import os
 import signal
+import sys
 
 import pytest
 
@@ -114,20 +116,35 @@ async def _run(script, monkeypatch, sink, *, driver, episode=None):
         script.console.initialized.set()
         await driver()
 
+    driver_task: list[asyncio.Task] = []
+
     def on_ready(controller):
-        asyncio.get_running_loop().create_task(ready_then_drive(controller))
+        driver_task.append(
+            asyncio.get_running_loop().create_task(ready_then_drive(controller))
+        )
 
     monkeypatch.setattr(run_mode, "configure_when_initialized", _configure_immediately)
-    return await asyncio.wait_for(
-        run_mode.run(
-            program="/p.py",
-            config=TdbConfig(),
-            tui_episode=episode or default_episode,
-            on_session_ready=on_ready,
-            examine_dests=["-"],
-        ),
-        timeout=10,
-    )
+    try:
+        return await asyncio.wait_for(
+            run_mode.run(
+                program="/p.py",
+                config=TdbConfig(),
+                tui_episode=episode or default_episode,
+                on_session_ready=on_ready,
+                examine_dests=["-"],
+            ),
+            timeout=10,
+        )
+    finally:
+        # If run() ends early (e.g. an assertion failure elsewhere), the
+        # driver task must not keep running: its later os.kill(...,
+        # SIGQUIT) would fire after handlers are restored to SIG_DFL and
+        # core-dump the test process.
+        if driver_task and not driver_task[0].done():
+            driver_task[0].cancel()
+        if driver_task:
+            with contextlib.suppress(asyncio.CancelledError):
+                await driver_task[0]
 
 
 async def _configure_immediately(console, controller):
@@ -377,3 +394,23 @@ async def test_examine_signals_ignored_during_episode_and_restored_after(
     assert seen["during"] is signal.SIG_IGN
     assert signal.getsignal(signal.SIGQUIT) is signal.SIG_DFL
     assert signal.getsignal(signal.SIGUSR2) is signal.SIG_DFL
+
+
+async def test_partial_stdout_line_gets_newline_before_record(script, monkeypatch):
+    """A debuggee that prints without a trailing newline leaves stdout
+    mid-line; the examine record written next must not be appended to
+    it — run() must insert a newline first."""
+    buf = io.StringIO()
+    monkeypatch.setattr(sys, "stdout", buf)
+
+    async def driver():
+        await _settle()
+        script.console.on_output("progress...", "stdout")
+        os.kill(os.getpid(), signal.SIGUSR2)
+        await _settle()
+        script.console.on_exited(0)
+
+    await _run(script, monkeypatch, buf, driver=driver)
+    assert (
+        buf.getvalue() == 'progress...\n{"seq":1,"status":"ok","trigger":"SIGUSR2"}\n'
+    )

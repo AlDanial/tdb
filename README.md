@@ -1450,8 +1450,14 @@ debuggee itself never receives the signal (`tdb`'s adapter runs in its own proce
 group), so its own `SIGINT` handling is undisturbed.
 
 **Examining without opening the TUI:** press `Ctrl-\` in the terminal (`Ctrl-Break` on
-Windows), or, on Unix, send `SIGUSR2` to `tdb`'s pid: `kill -USR2 <tdb pid>`. `tdb`
-pauses the program, writes one JSON line describing the call stack of every thread
+Windows), or, on Unix, send `SIGUSR2` to `tdb`'s pid: `kill -USR2 <tdb pid>`.
+
+**Windows caveat:** the Ctrl-Break trigger is untested. Unlike Ctrl-C, a console
+Ctrl-Break is delivered to every process attached to the console, including the debug
+adapter and the program itself, so it may terminate the program instead of snapshotting
+it. There is no signal-based alternative on Windows.
+
+`tdb` pauses the program, writes one JSON line describing the call stack of every thread
 (plus asyncio tasks and multiprocessing children for Python, goroutines for Go, and
 the concurrency snapshot for Rust), and resumes the program. Ctrl-C behavior is
 unchanged. By default the line goes to stdout; `--examine-log DEST` sends it to a file
@@ -1480,13 +1486,15 @@ Frames are innermost first. `tasks` appears only for Python programs with live a
 tasks; `goroutines` only for Go; `rust_concurrency` only for Rust. `status` is
 `"pending"` when the pause could not land within a few seconds (the program is blocked
 inside a single call) -- a second record with the same `seq` and `status: "ok"` follows
-when it does land. `errors` lists any sub-collector that failed, so a partial record is
-explicit about what is missing. A stderr line confirms each capture and where it went.
+when it does land. If you press Ctrl-C or the program exits before it lands, no
+completing record is written. `errors` lists any sub-collector that failed, so a partial
+record is explicit about what is missing. A stderr line confirms each capture and where
+it went.
 
 Narrow a long capture with `jq`, for example only threads with a frame in your own code:
 
 ```bash
-jq -c '.processes[].threads[] | select(.frames[].file | test("/work/"))' hang.jsonl
+jq -c '.processes[].threads[] | select(any(.frames[]; .file != null and (.file|test("/work/"))))' hang.jsonl
 ```
 
 **Quitting an adopted session** adds a third choice to the usual quit dialog:

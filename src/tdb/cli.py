@@ -63,9 +63,9 @@ def build_parser() -> argparse.ArgumentParser:
         "all breakpoints. Press Ctrl-C (or send SIGUSR1 on Unix) to "
         "pause it and open the debugger at the current line; quitting "
         "the debugger can detach and resume the program. For "
-        "inspecting programs that appear to be hung. Ctrl-\\ (Ctrl-Break "
-        "on Windows) or SIGUSR2 instead writes a JSON stack snapshot of "
-        "every thread and resumes; see --examine-log.",
+        "inspecting programs that appear to be hung. Ctrl-\\ (or SIGUSR2 "
+        "on Unix; Ctrl-Break on Windows, untested) instead writes a JSON "
+        "stack snapshot of every thread and resumes; see --examine-log.",
     )
     parser.add_argument(
         "--examine-log",
@@ -73,7 +73,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=[],
         metavar="DEST",
         help="With --run: where each stack snapshot goes when you press "
-        "Ctrl-\\ (Ctrl-Break on Windows) or send SIGUSR2. DEST is '-' for "
+        "Ctrl-\\ (Ctrl-Break on Windows, untested) or send SIGUSR2. DEST is '-' for "
         "stdout or a file path (opened in append mode). May be repeated "
         "to write to several places. Default: stdout.",
     )

@@ -121,6 +121,7 @@ async def test_resolve_frame_falls_back_to_live_top_frame_when_no_stack(
 async def test_resolve_frame_queries_threads_when_no_thread_known(
     controller, monkeypatch
 ):
+    controller.state.transition_to(SessionPhase.STOPPED)
     assert controller.state.current_thread_id is None
     seen = []
 
@@ -136,6 +137,24 @@ async def test_resolve_frame_queries_threads_when_no_thread_known(
     result = await controller.resolve_evaluate_frame_id(controller.client)
     assert result == 42
     assert seen == [3]
+
+
+async def test_resolve_frame_returns_none_when_not_started(controller, monkeypatch):
+    """Nothing to resolve against unless the session is STOPPED; a
+    NOT_STARTED (or RUNNING) controller must return None without making
+    any DAP requests."""
+    assert controller.state.phase is SessionPhase.NOT_STARTED
+
+    async def fake_threads():
+        raise AssertionError("must not be called")
+
+    async def fake_stack_trace(thread_id, **kw):
+        raise AssertionError("must not be called")
+
+    monkeypatch.setattr(controller.client, "threads", fake_threads)
+    monkeypatch.setattr(controller.client, "stack_trace", fake_stack_trace)
+    result = await controller.resolve_evaluate_frame_id(controller.client)
+    assert result is None
 
 
 async def test_resolve_frame_returns_none_when_lookup_fails(controller, monkeypatch):

@@ -38,3 +38,17 @@ async def test_terminated_without_exit_code_ends_run_phase():
     h.on_terminated()
     assert h.exited.is_set()
     assert h.exit_code is None
+
+
+async def test_stdout_at_line_start_tracks_trailing_newline(capsys):
+    h = ConsoleRunHandler()
+    assert h.stdout_at_line_start is True
+
+    h.on_output("abc", "stdout")
+    assert h.stdout_at_line_start is False
+
+    h.on_output("x\n", "stdout")
+    assert h.stdout_at_line_start is True
+
+    h.on_output("no newline", "stderr")
+    assert h.stdout_at_line_start is True

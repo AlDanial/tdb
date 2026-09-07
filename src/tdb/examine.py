@@ -182,12 +182,19 @@ async def collect(
     if landed_at is not None:
         record["landed_at"] = landed_at
     record["elapsed_s"] = round(time.monotonic() - launched_at, 1)
-    record["language"] = controller.profile.id
+    errors: list[str] = []
+    # Guarded separately from the rest of the header: `profile` can be a
+    # property that raises (e.g. a partially-initialized controller), and
+    # the collector-never-raises contract must hold even for the header.
+    try:
+        record["language"] = controller.profile.id
+    except Exception as exc:
+        record["language"] = None
+        errors.append(f"header: {exc}")
     record["program"] = program
     if exit_code is not None:
         record["exit_code"] = exit_code
     record["processes"] = []
-    errors: list[str] = []
     record["errors"] = errors
     if status != "ok":
         return record
@@ -226,7 +233,8 @@ def open_sinks(dests: list[str] | None) -> list[TextIO]:
         if d == STDOUT_DEST:
             sinks.append(sys.stdout)
         else:
-            sinks.append(open(d, "a", encoding="utf-8"))
+            # newline="": keep \n line endings on Windows instead of \r\n.
+            sinks.append(open(d, "a", encoding="utf-8", newline=""))
     return sinks
 
 

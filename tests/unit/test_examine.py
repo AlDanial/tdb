@@ -125,6 +125,29 @@ async def test_threads_and_frames_innermost_first_with_null_source():
     assert client.levels_seen == [200, 200]
 
 
+async def test_header_survives_profile_access_raising():
+    """The collector-never-raises contract covers the header too: a
+    controller whose `profile` access raises must still yield a record
+    with language=None and a recorded error, not an exception. Uses
+    status="pending" so collect() doesn't also touch `profile` a second
+    time via the (separately unguarded) parent-pid lookup."""
+
+    class Controller:
+        state = SimpleNamespace(is_terminated=False, is_running=False)
+        client = FakeClient([], {})
+        _child_clients: dict = {}
+
+        @property
+        def profile(self):
+            raise RuntimeError("boom")
+
+    rec = await _collect(Controller(), status="pending", landed_at=None)
+    assert rec["language"] is None
+    assert rec["errors"] == ["header: boom"]
+    for key in ("schema", "seq", "trigger", "status", "requested_at", "program"):
+        assert key in rec
+
+
 async def test_pid_null_when_not_python():
     ctrl = make_controller(language="bash", task_inspection=False)
     rec = await _collect(ctrl)

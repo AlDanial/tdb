@@ -884,9 +884,10 @@ class DebugController:
         if not self.state.displayed_frames_are_synthetic:
             if self.state.current_frame_id is not None:
                 return self.state.current_frame_id
-            if self.state.is_running:
-                # Nothing to resolve against while running; the headless
-                # examine path always runs this with the session STOPPED.
+            if self.state.phase is not SessionPhase.STOPPED:
+                # Nothing to resolve against unless the session is
+                # stopped; the headless examine path always runs this
+                # with the session STOPPED.
                 return None
             # No stack fetched yet (headless run-mode examine): discover
             # a thread too if one hasn't already been recorded.
@@ -941,9 +942,9 @@ class DebugController:
                 else:
                     threads = await self.client.threads()
                     if threads:
-                        frames = await self.client.stack_trace(threads[0].id)
-                        if frames:
-                            frame_id = frames[0].id
+                        frame_id = await self._live_top_frame_id(
+                            self.client, threads[0].id
+                        )
                 result, _ = await self.client.evaluate(
                     expression,
                     frame_id=frame_id,

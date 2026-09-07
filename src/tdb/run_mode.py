@@ -43,6 +43,11 @@ class ConsoleRunHandler:
         self.exited = asyncio.Event()
         self.exit_code: int | None = None
         self.last_stop: tuple[int | None, str, str | None, str | None] | None = None
+        # Tracks whether the debuggee's stdout stream is at the start of a
+        # fresh line: a program that prints without a trailing newline
+        # leaves stdout mid-line, and an examine record written next would
+        # be appended to it, corrupting the JSONL stream.
+        self.stdout_at_line_start: bool = True
 
     def on_initialized(self) -> None:
         self.initialized.set()
@@ -71,6 +76,8 @@ class ConsoleRunHandler:
         stream = sys.stderr if category == "stderr" else sys.stdout
         stream.write(text)
         stream.flush()
+        if category != "stderr" and text:
+            self.stdout_at_line_start = text.endswith("\n")
 
     def on_external_terminal_started(self) -> None:
         pass
@@ -347,7 +354,23 @@ async def run(
                     status=status,
                     exit_code=exit_code_,
                 )
+                if (
+                    any(s is sys.stdout for s in sinks)
+                    and not console.stdout_at_line_start
+                ):
+                    sys.stdout.write("\n")
+                    sys.stdout.flush()
+                    console.stdout_at_line_start = True
                 examine.write(record, sinks)
+
+            async def finish_capture(seq_: int, trigger: str, requested: str) -> None:
+                """Common tail of a landed examine pause: emit the "ok"
+                record, clear the examine trigger state, and resume."""
+                await emit("ok", seq_, trigger, requested, examine.now_iso())
+                examine_ev.clear()
+                examine_sig.clear()
+                console.stopped.clear()
+                await controller.continue_()
 
             try:
                 while True:
@@ -424,22 +447,14 @@ async def run(
                             )
                             outstanding = (seq, trigger, requested)
                             continue
-                        await emit("ok", seq, trigger, requested, examine.now_iso())
-                        examine_ev.clear()
-                        examine_sig.clear()
-                        console.stopped.clear()
-                        await controller.continue_()
+                        await finish_capture(seq, trigger, requested)
                         continue
 
                     elif console.stopped.is_set() and outstanding is not None:
                         # A deferred examine's pause finally landed.
                         seq_, trigger, requested = outstanding
                         outstanding = None
-                        await emit("ok", seq_, trigger, requested, examine.now_iso())
-                        examine_ev.clear()
-                        examine_sig.clear()
-                        console.stopped.clear()
-                        await controller.continue_()
+                        await finish_capture(seq_, trigger, requested)
                         continue
 
                     elif (
