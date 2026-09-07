@@ -207,3 +207,73 @@ async def collect(
     await _add_children(controller, svc, record, errors)
     await _add_concurrency(controller, svc, record, errors)
     return record
+
+
+# --- sinks -----------------------------------------------------------------
+
+STDOUT_DEST = "-"
+
+
+def open_sinks(dests: list[str] | None) -> list[TextIO]:
+    """Resolve --examine-log DESTs. Files open in append mode up front so
+    a bad path fails before the program launches; directories are not
+    created. OSError propagates to the caller."""
+    if not dests:
+        return [sys.stdout]
+    sinks: list[TextIO] = []
+    for d in dests:
+        if d == STDOUT_DEST:
+            sinks.append(sys.stdout)
+        else:
+            sinks.append(open(d, "a", encoding="utf-8"))
+    return sinks
+
+
+def close_sinks(sinks: list[TextIO]) -> None:
+    for s in sinks:
+        if s is sys.stdout or s is sys.stderr:
+            continue
+        try:
+            s.close()
+        except Exception:
+            log.debug("closing examine sink failed", exc_info=True)
+
+
+def _sink_name(s: TextIO) -> str:
+    if s is sys.stdout:
+        return "stdout"
+    return str(getattr(s, "name", "?"))
+
+
+def sink_names(sinks: list[TextIO]) -> str:
+    return ", ".join(_sink_name(s) for s in sinks)
+
+
+_reported_broken: set[int] = set()
+
+
+def write(
+    record: dict[str, Any], sinks: list[TextIO], *, notice: TextIO = sys.stderr
+) -> None:
+    """Write `record` as one compact JSON line to every sink and flush.
+    A sink that fails is reported once (per sink object) and skipped
+    thereafter; the run continues."""
+    line = json.dumps(record, separators=(",", ":"), ensure_ascii=False) + "\n"
+    written: list[TextIO] = []
+    for s in sinks:
+        try:
+            s.write(line)
+            s.flush()
+            written.append(s)
+        except Exception as exc:
+            if id(s) not in _reported_broken:
+                _reported_broken.add(id(s))
+                print(
+                    f"tdb: examine: cannot write to {_sink_name(s)}: {exc}", file=notice
+                )
+    if written:
+        print(
+            f"tdb: examine #{record.get('seq')} written to {sink_names(written)}",
+            file=notice,
+        )
+    notice.flush()

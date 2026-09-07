@@ -4,7 +4,9 @@ controller. All DAP traffic is faked; no adapter, no TUI."""
 from __future__ import annotations
 
 import asyncio
+import io
 import json
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -303,3 +305,72 @@ async def test_concurrency_snapshot_failure_recorded(inspect_factory):
     )
     assert "goroutines" not in rec
     assert "goroutines: dlv gone" in rec["errors"]
+
+
+class BrokenSink(io.StringIO):
+    name = "broken.jsonl"
+
+    def write(self, s):
+        raise OSError("disk full")
+
+
+def test_write_serializes_once_compact_newline_and_flushes():
+    from tdb.examine import write
+
+    class Sink(io.StringIO):
+        name = "a.jsonl"
+        flushes = 0
+
+        def flush(self):
+            self.flushes += 1
+            super().flush()
+
+    a, b = Sink(), Sink()
+    b.name = "b.jsonl"
+    note = io.StringIO()
+    write({"schema": 1, "seq": 2, "x": [1, 2]}, [a, b], notice=note)
+    assert a.getvalue() == '{"schema":1,"seq":2,"x":[1,2]}\n'
+    assert a.getvalue() == b.getvalue()
+    assert a.flushes >= 1 and b.flushes >= 1
+    assert note.getvalue() == "tdb: examine #2 written to a.jsonl, b.jsonl\n"
+
+
+def test_write_reports_broken_sink_once_and_continues():
+    from tdb.examine import write
+
+    good = io.StringIO()
+    good.name = "good.jsonl"
+    bad = BrokenSink()
+    note = io.StringIO()
+    write({"seq": 1}, [bad, good], notice=note)
+    write({"seq": 2}, [bad, good], notice=note)
+    assert good.getvalue().count("\n") == 2
+    msgs = note.getvalue().splitlines()
+    assert sum("broken.jsonl" in m and "disk full" in m for m in msgs) == 1
+    assert "tdb: examine #1 written to good.jsonl" in msgs
+    assert "tdb: examine #2 written to good.jsonl" in msgs
+
+
+def test_open_sinks_default_dash_and_path(tmp_path):
+    from tdb.examine import close_sinks, open_sinks, sink_names
+
+    assert open_sinks(None) == [sys.stdout]
+    assert open_sinks([]) == [sys.stdout]
+    p = tmp_path / "hang.jsonl"
+    p.write_text("existing\n")
+    sinks = open_sinks(["-", str(p)])
+    assert sinks[0] is sys.stdout
+    assert sink_names(sinks) == f"stdout, {p}"
+    sinks[1].write("new\n")
+    close_sinks(sinks)
+    assert sinks[1].closed and not sys.stdout.closed
+    assert p.read_text() == "existing\nnew\n"  # append, never truncate
+
+
+def test_open_sinks_bad_path_raises_and_creates_no_dirs(tmp_path):
+    from tdb.examine import open_sinks
+
+    target = tmp_path / "missing" / "hang.jsonl"
+    with pytest.raises(OSError):
+        open_sinks([str(target)])
+    assert not (tmp_path / "missing").exists()
