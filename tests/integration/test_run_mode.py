@@ -3,6 +3,7 @@ exit-code passthrough, output streaming, SIGUSR1 -> pause -> episode ->
 detach -> resume -> second episode -> terminate."""
 
 import asyncio
+import contextlib
 import json
 import os
 import shutil
@@ -293,17 +294,22 @@ async def _examine_once(
         os.kill(os.getpid(), signal.SIGUSR1)
 
     task = asyncio.create_task(pulses())
-    code = await asyncio.wait_for(
-        run_mode.run(
-            program=program,
-            config=TdbConfig(),
-            tui_episode=fake_episode,
-            on_session_ready=ready,
-            examine_dests=dests,
-        ),
-        timeout=90.0,
-    )
-    await task
+    try:
+        code = await asyncio.wait_for(
+            run_mode.run(
+                program=program,
+                config=TdbConfig(),
+                tui_episode=fake_episode,
+                on_session_ready=ready,
+                examine_dests=dests,
+            ),
+            timeout=90.0,
+        )
+    finally:
+        if not task.done():
+            task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
     return code
 
 

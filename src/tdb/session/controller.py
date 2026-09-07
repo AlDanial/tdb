@@ -884,6 +884,10 @@ class DebugController:
         if not self.state.displayed_frames_are_synthetic:
             if self.state.current_frame_id is not None:
                 return self.state.current_frame_id
+            if self.state.is_running:
+                # Nothing to resolve against while running; the headless
+                # examine path always runs this with the session STOPPED.
+                return None
             # No stack fetched yet (headless run-mode examine): discover
             # a thread too if one hasn't already been recorded.
             tid = self.state.current_thread_id

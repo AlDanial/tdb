@@ -8,6 +8,7 @@ import pytest
 
 from tdb.dap.types import StackFrame, Thread
 from tdb.session.controller import DebugController
+from tdb.session.state import SessionPhase
 
 
 class _NullHandler:
@@ -157,3 +158,62 @@ async def test_resolve_frame_prefers_cached_frame(controller, monkeypatch):
     monkeypatch.setattr(controller.client, "stack_trace", fake_stack_trace)
     result = await controller.resolve_evaluate_frame_id(controller.client)
     assert result == 5
+
+
+async def test_resolve_frame_returns_none_while_running(controller, monkeypatch):
+    """The TUI's evaluate console and completions call this on every
+    keystroke, including while the debuggee is RUNNING (the cached frame
+    id is cleared on every continue). There is nothing to resolve against
+    while running, and issuing threads()/stackTrace() round-trips in that
+    state would block on a 30s DAP timeout for no benefit."""
+    controller.state.transition_to(SessionPhase.RUNNING)
+
+    async def fake_threads():
+        raise AssertionError("must not be called")
+
+    async def fake_stack_trace(thread_id, **kw):
+        raise AssertionError("must not be called")
+
+    monkeypatch.setattr(controller.client, "threads", fake_threads)
+    monkeypatch.setattr(controller.client, "stack_trace", fake_stack_trace)
+    result = await controller.resolve_evaluate_frame_id(controller.client)
+    assert result is None
+
+
+async def test_resolve_frame_returns_none_when_no_threads(controller, monkeypatch):
+    assert controller.state.current_thread_id is None
+
+    async def fake_threads():
+        return []
+
+    monkeypatch.setattr(controller.client, "threads", fake_threads)
+    result = await controller.resolve_evaluate_frame_id(controller.client)
+    assert result is None
+
+
+async def test_resolve_frame_returns_none_when_stack_trace_fails(
+    controller, monkeypatch
+):
+    controller.state.enter_stop(7, "pause")
+    assert controller.state.current_frame_id is None
+
+    async def fake_stack_trace(thread_id, **kw):
+        raise RuntimeError("adapter gone")
+
+    monkeypatch.setattr(controller.client, "stack_trace", fake_stack_trace)
+    result = await controller.resolve_evaluate_frame_id(controller.client)
+    assert result is None
+
+
+async def test_resolve_frame_returns_none_when_stack_trace_empty(
+    controller, monkeypatch
+):
+    controller.state.enter_stop(7, "pause")
+    assert controller.state.current_frame_id is None
+
+    async def fake_stack_trace(thread_id, **kw):
+        return []
+
+    monkeypatch.setattr(controller.client, "stack_trace", fake_stack_trace)
+    result = await controller.resolve_evaluate_frame_id(controller.client)
+    assert result is None
