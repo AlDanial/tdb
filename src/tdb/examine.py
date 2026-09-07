@@ -21,6 +21,8 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any, TextIO
 
 from tdb._timeouts import EXAMINE_CHILD
+from tdb.session.errors import SessionGateError
+from tdb.session.inspect_service import InspectService
 
 if TYPE_CHECKING:
     from tdb.dap.client import DAPClient
@@ -72,6 +74,90 @@ async def _parent_pid(controller: "DebugController", errors: list[str]) -> int |
         return None
 
 
+def _task_dict(t: Any) -> dict[str, Any]:
+    return {
+        "name": t.name,
+        "state": t.state,
+        "awaiting": t.awaiting,
+        "frames": list(t.stack),
+    }
+
+
+async def _add_tasks(
+    svc: InspectService, parent: dict[str, Any], errors: list[str]
+) -> None:
+    try:
+        tasks = await svc.collect_tasks()
+    except SessionGateError:
+        return  # language doesn't support task inspection
+    except Exception as exc:
+        errors.append(f"tasks: {exc}")
+        return
+    if tasks:
+        parent["tasks"] = [_task_dict(t) for t in tasks]
+
+
+async def _process_names(svc: InspectService, errors: list[str]) -> dict[int, str]:
+    try:
+        return {
+            p.pid: p.name for p in await svc.collect_processes() if p.pid is not None
+        }
+    except SessionGateError:
+        return {}
+    except Exception as exc:
+        errors.append(f"processes: {exc}")
+        return {}
+
+
+async def _add_children(
+    controller: "DebugController",
+    svc: InspectService,
+    record: dict[str, Any],
+    errors: list[str],
+) -> None:
+    children = dict(getattr(controller, "_child_clients", {}))
+    if not children:
+        return
+    names = await _process_names(svc, errors)
+    for pid in sorted(children):
+        entry: dict[str, Any] = {
+            "pid": pid,
+            "role": "child",
+            "name": names.get(pid),
+            "threads": [],
+        }
+        try:
+            entry["threads"] = await asyncio.wait_for(
+                _threads_of(children[pid]), timeout=EXAMINE_CHILD
+            )
+        except asyncio.TimeoutError:
+            errors.append(f"child {pid}: timeout")
+        except Exception as exc:
+            errors.append(f"child {pid}: {exc}")
+        record["processes"].append(entry)
+
+
+async def _add_concurrency(
+    controller: "DebugController",
+    svc: InspectService,
+    record: dict[str, Any],
+    errors: list[str],
+) -> None:
+    kind = controller.profile.capabilities.concurrency_inspection
+    if kind == "go":
+        key, fetch = "goroutines", svc.collect_go_concurrency
+    elif kind == "rust":
+        key, fetch = "rust_concurrency", svc.collect_rust_concurrency
+    else:
+        return
+    try:
+        record[key] = (await fetch()).to_dict()
+    except SessionGateError:
+        return
+    except Exception as exc:
+        errors.append(f"{key}: {exc}")
+
+
 async def collect(
     controller: "DebugController",
     *,
@@ -105,6 +191,7 @@ async def collect(
     if status != "ok":
         return record
 
+    svc = InspectService(lambda: controller)
     parent: dict[str, Any] = {
         "pid": await _parent_pid(controller, errors),
         "role": "parent",
@@ -115,5 +202,8 @@ async def collect(
         parent["threads"] = await _threads_of(controller.client)
     except Exception as exc:
         errors.append(f"parent threads: {exc}")
+    await _add_tasks(svc, parent, errors)
     record["processes"].append(parent)
+    await _add_children(controller, svc, record, errors)
+    await _add_concurrency(controller, svc, record, errors)
     return record

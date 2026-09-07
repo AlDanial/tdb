@@ -154,3 +154,152 @@ async def test_pending_and_exited_records_skip_dap():
     assert ex["status"] == "exited"
     assert ex["exit_code"] == 7
     assert ex["processes"] == []
+
+
+class FakeInspect:
+    """Stands in for InspectService; each method either returns its
+    configured value or raises."""
+
+    def __init__(self, *, tasks=None, processes=None, go=None, rust=None):
+        self._tasks, self._processes, self._go, self._rust = tasks, processes, go, rust
+
+    async def collect_tasks(self):
+        return _maybe(self._tasks)
+
+    async def collect_processes(self):
+        return _maybe(self._processes)
+
+    async def collect_go_concurrency(self):
+        return _maybe(self._go)
+
+    async def collect_rust_concurrency(self):
+        return _maybe(self._rust)
+
+
+def _maybe(v):
+    if isinstance(v, Exception):
+        raise v
+    return v if v is not None else []
+
+
+class Dictable:
+    def __init__(self, d):
+        self._d = d
+
+    def to_dict(self):
+        return self._d
+
+
+@pytest.fixture
+def inspect_factory(monkeypatch):
+    """Patch examine.InspectService to return a preconfigured FakeInspect."""
+    from tdb import examine
+
+    def install(fake):
+        monkeypatch.setattr(examine, "InspectService", lambda provider: fake)
+        return fake
+
+    return install
+
+
+async def test_python_tasks_and_process_name(inspect_factory):
+    task = SimpleNamespace(
+        name="worker-2",
+        state="PENDING",
+        awaiting="Lock.acquire",
+        stack=["run (/home/al/app.py:18)"],
+    )
+    inspect_factory(FakeInspect(tasks=[task], processes=[]))
+    ctrl = make_controller()
+    rec = await _collect(ctrl)
+    parent = rec["processes"][0]
+    assert parent["tasks"] == [
+        {
+            "name": "worker-2",
+            "state": "PENDING",
+            "awaiting": "Lock.acquire",
+            "frames": ["run (/home/al/app.py:18)"],
+        }
+    ]
+    assert "goroutines" not in rec and "rust_concurrency" not in rec
+
+
+async def test_tasks_key_absent_when_none_and_when_unsupported(inspect_factory):
+    inspect_factory(FakeInspect(tasks=[], processes=[]))
+    rec = await _collect(make_controller())
+    assert "tasks" not in rec["processes"][0]
+    inspect_factory(FakeInspect(tasks=SessionGateError("unsupported")))
+    rec = await _collect(make_controller(language="bash", task_inspection=False))
+    assert "tasks" not in rec["processes"][0]
+    assert rec["errors"] == []  # unsupported is not an error
+
+
+async def test_task_collector_failure_recorded(inspect_factory):
+    inspect_factory(FakeInspect(tasks=RuntimeError("evaluate failed"), processes=[]))
+    rec = await _collect(make_controller())
+    assert "tasks" not in rec["processes"][0]
+    assert "tasks: evaluate failed" in rec["errors"]
+
+
+async def test_children_follow_parent_in_pid_order(inspect_factory):
+    inspect_factory(
+        FakeInspect(
+            tasks=[],
+            processes=[
+                SimpleNamespace(name="Process-2", pid=5002),
+                SimpleNamespace(name="Process-1", pid=5001),
+            ],
+        )
+    )
+    c1 = FakeClient([Thread(id=1, name="MainThread")], {1: [frame("f", "/c.py", 3)]})
+    c2 = FakeClient([Thread(id=1, name="MainThread")], {1: []})
+    ctrl = make_controller(children={5002: c2, 5001: c1})
+    rec = await _collect(ctrl)
+    procs = rec["processes"]
+    assert [p["role"] for p in procs] == ["parent", "child", "child"]
+    assert [p["pid"] for p in procs[1:]] == [5001, 5002]
+    assert [p["name"] for p in procs[1:]] == ["Process-1", "Process-2"]
+    assert procs[1]["threads"][0]["frames"] == [
+        {"function": "f", "file": "/c.py", "line": 3}
+    ]
+
+
+async def test_slow_child_times_out_others_still_captured(inspect_factory, monkeypatch):
+    from tdb import examine
+
+    monkeypatch.setattr(examine, "EXAMINE_CHILD", 0.05)
+    inspect_factory(FakeInspect(tasks=[], processes=[]))
+    slow = FakeClient([Thread(id=1, name="T")], {}, delay=1.0)
+    fast = FakeClient([Thread(id=1, name="T")], {1: [frame("g", "/d.py", 9)]})
+    ctrl = make_controller(children={7001: slow, 7002: fast})
+    rec = await _collect(ctrl)
+    assert rec["processes"][1]["threads"] == []
+    assert "child 7001: timeout" in rec["errors"]
+    assert rec["processes"][2]["threads"][0]["frames"][0]["function"] == "g"
+
+
+async def test_go_snapshot_key_only_for_go(inspect_factory):
+    inspect_factory(FakeInspect(go=Dictable({"goroutines": [{"goid": 1}]})))
+    rec = await _collect(
+        make_controller(language="go", task_inspection=False, concurrency="go")
+    )
+    assert rec["goroutines"] == {"goroutines": [{"goid": 1}]}
+    assert "rust_concurrency" not in rec and "tasks" not in rec["processes"][0]
+
+
+async def test_rust_snapshot_key_only_for_rust(inspect_factory):
+    inspect_factory(FakeInspect(rust=Dictable({"threads": []})))
+    rec = await _collect(
+        make_controller(language="rust", task_inspection=False, concurrency="rust")
+    )
+    assert rec["rust_concurrency"] == {"threads": []}
+    assert "goroutines" not in rec
+
+
+async def test_concurrency_snapshot_failure_recorded(inspect_factory):
+    inspect_factory(FakeInspect(go=RuntimeError("dlv gone")))
+    rec = await _collect(
+        make_controller(language="go", task_inspection=False, concurrency="go")
+    )
+    assert "goroutines" not in rec
+    assert "goroutines: dlv gone" in rec["errors"]
