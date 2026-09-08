@@ -63,7 +63,19 @@ def build_parser() -> argparse.ArgumentParser:
         "all breakpoints. Press Ctrl-C (or send SIGUSR1 on Unix) to "
         "pause it and open the debugger at the current line; quitting "
         "the debugger can detach and resume the program. For "
-        "inspecting programs that appear to be hung.",
+        "inspecting programs that appear to be hung. Ctrl-\\ (or SIGUSR2 "
+        "on Unix; Ctrl-Break on Windows, untested) instead writes a JSON "
+        "stack snapshot of every thread and resumes; see --examine-log.",
+    )
+    parser.add_argument(
+        "--examine-log",
+        action="append",
+        default=[],
+        metavar="DEST",
+        help="With --run: where each stack snapshot goes when you press "
+        "Ctrl-\\ (Ctrl-Break on Windows, untested) or send SIGUSR2. DEST is '-' for "
+        "stdout or a file path (opened in append mode). May be repeated "
+        "to write to several places. Default: stdout.",
     )
     parser.add_argument(
         "--test",
@@ -728,6 +740,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             if value:
                 parser.error(f"--run cannot be combined with {flag}")
 
+    if args.examine_log and not args.run:
+        parser.error("--examine-log requires --run")
+
     if args.eval:
         # -e owns the whole session lifecycle (headless run, its own
         # transient breakpoints, output on the terminal) — every mode
@@ -999,6 +1014,7 @@ def _run_run(args: argparse.Namespace) -> None:
             sub_process=not args.no_subprocess,
             profile=args.profile,
             config=load_config(),
+            examine_dests=args.examine_log,
         )
     )
     sys.exit(code)

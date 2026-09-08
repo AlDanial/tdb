@@ -14,10 +14,12 @@ import logging
 import os
 import signal
 import sys
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Awaitable, Callable
 
+from tdb import examine
 from tdb.session.controller import DebugController
 from tdb.session.event_bus import SwappableEventHandler
 
@@ -41,6 +43,11 @@ class ConsoleRunHandler:
         self.exited = asyncio.Event()
         self.exit_code: int | None = None
         self.last_stop: tuple[int | None, str, str | None, str | None] | None = None
+        # Tracks whether the debuggee's stdout stream is at the start of a
+        # fresh line: a program that prints without a trailing newline
+        # leaves stdout mid-line, and an examine record written next would
+        # be appended to it, corrupting the JSONL stream.
+        self.stdout_at_line_start: bool = True
 
     def on_initialized(self) -> None:
         self.initialized.set()
@@ -69,6 +76,8 @@ class ConsoleRunHandler:
         stream = sys.stderr if category == "stderr" else sys.stdout
         stream.write(text)
         stream.flush()
+        if category != "stderr" and text:
+            self.stdout_at_line_start = text.endswith("\n")
 
     def on_external_terminal_started(self) -> None:
         pass
@@ -133,8 +142,26 @@ TuiEpisode = Callable[
 _PAUSE_TIMEOUT = 5.0
 
 
-def _arm_signals(loop: asyncio.AbstractEventLoop, trigger: Callable[[], None]) -> list:
-    """Route SIGINT (and SIGUSR1 on POSIX) to `trigger`.
+# Examine trigger signals per platform: the terminal driver turns
+# Ctrl-\ into SIGQUIT (POSIX) and Ctrl-Break into SIGBREAK (Windows)
+# while the terminal stays in cooked mode, so tdb never touches
+# terminal settings. SIGUSR2 mirrors the SIGUSR1 convention for
+# out-of-band triggering from another terminal.
+if os.name != "nt":
+    EXAMINE_SIGNALS: tuple[signal.Signals, ...] = (signal.SIGQUIT, signal.SIGUSR2)
+    EXAMINE_KEY = "Ctrl-\\"
+else:  # pragma: no cover - Windows only
+    EXAMINE_SIGNALS = (signal.SIGBREAK,)
+    EXAMINE_KEY = "Ctrl-Break"
+
+
+def _arm_signals(
+    loop: asyncio.AbstractEventLoop,
+    trigger: Callable[[], None],
+    examine_trigger: Callable[[str], None] | None = None,
+) -> list:
+    """Route SIGINT (and SIGUSR1 on POSIX) to `trigger`, and the examine
+    signals to `examine_trigger(signal_name)` when given.
 
     Returns the list of signals actually armed. Failure (non-main
     thread — embedded use, some test runners) degrades to "no signal
@@ -146,9 +173,22 @@ def _arm_signals(loop: asyncio.AbstractEventLoop, trigger: Callable[[], None]) -
             for sig in (signal.SIGINT, signal.SIGUSR1):
                 loop.add_signal_handler(sig, trigger)
                 installed.append(sig)
+            if examine_trigger is not None:
+                for sig in EXAMINE_SIGNALS:
+                    loop.add_signal_handler(sig, examine_trigger, sig.name)
+                    installed.append(sig)
         else:
             signal.signal(signal.SIGINT, lambda *_: loop.call_soon_threadsafe(trigger))
             installed.append(signal.SIGINT)
+            if examine_trigger is not None:
+                for sig in EXAMINE_SIGNALS:
+                    signal.signal(
+                        sig,
+                        lambda *_, _n=sig.name: loop.call_soon_threadsafe(
+                            examine_trigger, _n
+                        ),
+                    )
+                    installed.append(sig)
     except (ValueError, NotImplementedError, RuntimeError):
         log.warning("cannot install run-mode signal handlers", exc_info=True)
     return installed
@@ -159,8 +199,9 @@ def _disarm_signals(
 ) -> None:
     """Remove run-mode handlers.
 
-    ignore=True while a TUI episode owns the terminal: a stray SIGUSR1
-    must be a no-op, not the default action (which kills the process).
+    ignore=True while a TUI episode owns the terminal: a stray SIGUSR1 or
+    SIGUSR2 must be a no-op, not the default action (which kills the
+    process — SIGQUIT's default even dumps core).
     ignore=False on final exit: restore Python defaults.
     """
     for sig in installed:
@@ -222,6 +263,7 @@ async def run(
     config: "TdbConfig | None" = None,
     tui_episode: TuiEpisode | None = None,
     on_session_ready: Callable[[DebugController], None] | None = None,
+    examine_dests: list[str] | None = None,
 ) -> int:
     """Run `program` headless; signals open TUI episodes. Returns tdb's
     exit code (the debuggee's when it exits during the run phase)."""
@@ -229,77 +271,244 @@ async def run(
 
     if config is None:
         config = load_config()
+    try:
+        sinks = examine.open_sinks(examine_dests)
+    except OSError as exc:
+        print(f"tdb: cannot open examine log: {exc}", file=sys.stderr)
+        return 2
     console = ConsoleRunHandler()
     handler = SwappableEventHandler(console)
     controller = DebugController(handler, profile=profile)
     controller.step_mode = config.step_mode
     controller.adopted_session = True  # restart is never offered in run mode
 
-    bail = await start_session(
-        controller,
-        program=program,
-        args=args,
-        cwd=cwd or str(Path.cwd()),
-        stop_on_entry=False,
-        just_my_code=just_my_code,
-        python=python,
-        sub_process=sub_process,
-    )
-    if bail is not None:
-        return bail
+    launched_at = time.monotonic()
+    try:
+        bail = await start_session(
+            controller,
+            program=program,
+            args=args,
+            cwd=cwd or str(Path.cwd()),
+            stop_on_entry=False,
+            just_my_code=just_my_code,
+            python=python,
+            sub_process=sub_process,
+        )
+        if bail is not None:
+            return bail
 
-    async with stop_session_on_error(controller):
-        await configure_when_initialized(console, controller)
-        if on_session_ready is not None:
-            on_session_ready(controller)
+        async with stop_session_on_error(controller):
+            await configure_when_initialized(console, controller)
+            if on_session_ready is not None:
+                on_session_ready(controller)
 
-        hint = "Ctrl-C" if os.name == "nt" else f"Ctrl-C or `kill -USR1 {os.getpid()}`"
-        print(f"tdb: running {program} — {hint} opens the debugger", file=sys.stderr)
+            pid = os.getpid()
+            hint = "Ctrl-C" if os.name == "nt" else f"Ctrl-C or `kill -USR1 {pid}`"
+            ehint = (
+                EXAMINE_KEY
+                if os.name == "nt"
+                else f"{EXAMINE_KEY} or `kill -USR2 {pid}`"
+            )
+            print(
+                f"tdb: running {program} — {hint} opens the debugger; "
+                f"{ehint} writes a stack snapshot to {examine.sink_names(sinks)}",
+                file=sys.stderr,
+            )
 
-        loop = asyncio.get_running_loop()
-        interrupt = asyncio.Event()
-        episode = tui_episode or _default_tui_episode
-        installed = _arm_signals(loop, interrupt.set)
-        exit_code = 0
-        try:
-            while True:
-                await _wait_first(console.exited, interrupt, console.stopped)
-                if console.exited.is_set():
-                    exit_code = console.exit_code or 0
-                    break
-                if interrupt.is_set() and not console.stopped.is_set():
-                    interrupt.clear()
-                    ok = await controller.pause(timeout=_PAUSE_TIMEOUT)
-                    if console.exited.is_set():
-                        # Died between the signal and the pause landing.
-                        exit_code = console.exit_code or 0
-                        print(
-                            f"tdb: program exited (code {exit_code}) before "
-                            "the debugger could open",
-                            file=sys.stderr,
-                        )
-                        break
-                    if not ok:
-                        print(
-                            "tdb: pause requested — the program is blocked inside "
-                            "a single call; the debugger opens when it returns",
-                            file=sys.stderr,
-                        )
-                        continue
-                # Reached on a landed pause, or on a spontaneous stop (a
-                # breakpoint set during a previous episode).
-                interrupt.clear()
-                _disarm_signals(loop, installed, ignore=True)
-                detach = await episode(controller, handler, console, config, program)
-                handler.retarget(console)
+            loop = asyncio.get_running_loop()
+            interrupt = asyncio.Event()
+            examine_ev = asyncio.Event()
+            examine_sig: list[str] = []  # name of the signal that set examine_ev
+
+            def on_examine(name: str) -> None:
+                examine_sig.append(name)
+                examine_ev.set()
+
+            episode = tui_episode or _default_tui_episode
+            installed = _arm_signals(loop, interrupt.set, on_examine)
+            exit_code = 0
+            seq = 0
+            # (seq, trigger, requested_at) of a capture whose pause hasn't
+            # landed yet; completed on the next stopped event.
+            outstanding: tuple[int, str, str] | None = None
+            # True after a Ctrl-C pause that hasn't landed yet: the stop
+            # that eventually arrives must open the TUI.
+            interrupt_pending = False
+            # True from the moment an examine capture resumes the program
+            # until the next interrupt, examine, or TUI episode. Only in
+            # that window can a "pause" stop be a stray leftover of the
+            # capture's pause-all; outside it (e.g. an embedding caller
+            # pausing via `controller.pause()` from `on_session_ready`)
+            # a pause stop must open the TUI like any other stop.
+            examine_resumed = False
+
+            async def emit(
+                status: str,
+                seq_: int,
+                trigger: str,
+                requested: str,
+                landed: str | None,
+                exit_code_: int | None = None,
+            ) -> None:
+                record = await examine.collect(
+                    controller,
+                    trigger=trigger,
+                    seq=seq_,
+                    requested_at=requested,
+                    landed_at=landed,
+                    launched_at=launched_at,
+                    program=program,
+                    status=status,
+                    exit_code=exit_code_,
+                )
+                if (
+                    any(s is sys.stdout for s in sinks)
+                    and not console.stdout_at_line_start
+                ):
+                    sys.stdout.write("\n")
+                    sys.stdout.flush()
+                    console.stdout_at_line_start = True
+                examine.write(record, sinks)
+
+            async def finish_capture(seq_: int, trigger: str, requested: str) -> None:
+                """Common tail of a landed examine pause: emit the "ok"
+                record, clear the examine trigger state, and resume."""
+                nonlocal examine_resumed
+                await emit("ok", seq_, trigger, requested, examine.now_iso())
+                examine_ev.clear()
+                examine_sig.clear()
                 console.stopped.clear()
-                if controller.state.is_terminated:
-                    break
-                if not detach:
-                    await controller.stop()
-                    break
                 await controller.continue_()
-                installed = _arm_signals(loop, interrupt.set)
-        finally:
-            _disarm_signals(loop, installed, ignore=False)
-        return exit_code
+                examine_resumed = True
+
+            try:
+                while True:
+                    await _wait_first(
+                        console.exited, interrupt, console.stopped, examine_ev
+                    )
+                    if console.exited.is_set():
+                        exit_code = console.exit_code or 0
+                        break
+
+                    if interrupt.is_set() and not console.stopped.is_set():
+                        interrupt.clear()
+                        examine_ev.clear()
+                        examine_sig.clear()
+                        outstanding = None  # Ctrl-C supersedes a pending examine
+                        interrupt_pending = False
+                        examine_resumed = False
+                        ok = await controller.pause(timeout=_PAUSE_TIMEOUT)
+                        if console.exited.is_set():
+                            # Died between the signal and the pause landing.
+                            exit_code = console.exit_code or 0
+                            print(
+                                f"tdb: program exited (code {exit_code}) before "
+                                "the debugger could open",
+                                file=sys.stderr,
+                            )
+                            break
+                        if not ok:
+                            interrupt_pending = True
+                            print(
+                                "tdb: pause requested — the program is blocked inside "
+                                "a single call; the debugger opens when it returns",
+                                file=sys.stderr,
+                            )
+                            continue
+
+                    elif (
+                        examine_ev.is_set()
+                        and not console.stopped.is_set()
+                        and interrupt_pending
+                    ):
+                        # A Ctrl-C pause is still outstanding: it wins over a
+                        # new examine request rather than letting the examine
+                        # consume the Ctrl-C's eventual stop. Drop the
+                        # request and keep waiting for that stop.
+                        examine_ev.clear()
+                        examine_sig.clear()
+                        continue
+
+                    elif (
+                        examine_ev.is_set()
+                        and not console.stopped.is_set()
+                        and not interrupt_pending
+                    ):
+                        examine_ev.clear()
+                        trigger = examine_sig[-1] if examine_sig else "SIGUSR2"
+                        examine_sig.clear()
+                        if outstanding is not None:
+                            continue  # one capture at a time; wait for it to land
+                        examine_resumed = False
+                        seq += 1
+                        requested = examine.now_iso()
+                        ok = await controller.pause(timeout=_PAUSE_TIMEOUT)
+                        if console.exited.is_set():
+                            exit_code = console.exit_code or 0
+                            await emit(
+                                "exited", seq, trigger, requested, None, exit_code
+                            )
+                            break
+                        if not ok:
+                            await emit("pending", seq, trigger, requested, None)
+                            print(
+                                "tdb: pause requested — the program is blocked inside "
+                                "a single call; the snapshot is written when it returns",
+                                file=sys.stderr,
+                            )
+                            outstanding = (seq, trigger, requested)
+                            continue
+                        await finish_capture(seq, trigger, requested)
+                        continue
+
+                    elif console.stopped.is_set() and outstanding is not None:
+                        # A deferred examine's pause finally landed.
+                        seq_, trigger, requested = outstanding
+                        outstanding = None
+                        await finish_capture(seq_, trigger, requested)
+                        continue
+
+                    elif (
+                        console.stopped.is_set()
+                        and examine_resumed
+                        and not interrupt_pending
+                        and not interrupt.is_set()
+                        and console.last_stop is not None
+                        and console.last_stop[1] == "pause"
+                    ):
+                        # Stray pause-all stop after an examine capture: a child
+                        # process whose `stopped` event for the capture's pause
+                        # arrives after we already resumed every client (the
+                        # parent's stop is what released the wait).
+                        # Resume again — harmless for anything already running —
+                        # rather than opening the TUI on a pause nobody asked for.
+                        console.stopped.clear()
+                        await controller.continue_()
+                        continue
+
+                    # Reached on a landed Ctrl-C pause, on a Ctrl-C pause that
+                    # landed late, or on a spontaneous stop (a breakpoint set
+                    # during a previous episode).
+                    interrupt_pending = False
+                    examine_resumed = False
+                    interrupt.clear()
+                    examine_ev.clear()
+                    examine_sig.clear()
+                    _disarm_signals(loop, installed, ignore=True)
+                    detach = await episode(
+                        controller, handler, console, config, program
+                    )
+                    handler.retarget(console)
+                    console.stopped.clear()
+                    if controller.state.is_terminated:
+                        break
+                    if not detach:
+                        await controller.stop()
+                        break
+                    await controller.continue_()
+                    installed = _arm_signals(loop, interrupt.set, on_examine)
+            finally:
+                _disarm_signals(loop, installed, ignore=False)
+            return exit_code
+    finally:
+        examine.close_sinks(sinks)

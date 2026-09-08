@@ -53,6 +53,13 @@ DAP_CHILD_ATTACH = 30.0
 ADAPTER_LISTEN = 15.0
 """Timeout for spawn_tcp adapter to announce its listening port."""
 
+# Run-mode examine reads each child process's threads and stacks in
+# turn. A child that is mid-fork or wedged in native code can leave
+# `threads` unanswered; bound it so one slow child can't stall the
+# whole snapshot (the parent and other children still get captured).
+EXAMINE_CHILD = 2.0
+"""Per-child-process budget for the examine collector."""
+
 
 # --- RPC handler waits ---------------------------------------------------
 # Step / continue can run a long tail in multi-process programs: after

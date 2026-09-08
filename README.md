@@ -1449,6 +1449,54 @@ available (breakpoints, stepping, variable inspection, the evaluate console). Th
 debuggee itself never receives the signal (`tdb`'s adapter runs in its own process
 group), so its own `SIGINT` handling is undisturbed.
 
+**Examining without opening the TUI:** press `Ctrl-\` in the terminal (`Ctrl-Break` on
+Windows), or, on Unix, send `SIGUSR2` to `tdb`'s pid: `kill -USR2 <tdb pid>`.
+
+**Windows caveat:** the Ctrl-Break trigger is untested. Unlike Ctrl-C, a console
+Ctrl-Break is delivered to every process attached to the console, including the debug
+adapter and the program itself, so it may terminate the program instead of snapshotting
+it. There is no signal-based alternative on Windows.
+
+`tdb` pauses the program, writes one JSON line describing the call stack of every thread
+(plus asyncio tasks and multiprocessing children for Python, goroutines for Go, and
+the concurrency snapshot for Rust), and resumes the program. Ctrl-C behavior is
+unchanged. By default the line goes to stdout; `--examine-log DEST` sends it to a file
+instead (`-` means stdout; repeat the flag to write to several places):
+
+```bash
+tdb --run --examine-log hang.jsonl my_program.py     # file only, appended
+tdb --run --examine-log - --examine-log hang.jsonl my_program.py   # both
+```
+
+Each record looks like (abridged):
+
+```json
+{"schema":1,"seq":1,"trigger":"SIGQUIT","status":"ok",
+ "requested_at":"2026-09-07T14:02:11.482-07:00","landed_at":"2026-09-07T14:02:11.511-07:00",
+ "elapsed_s":87.3,"language":"python","program":"/home/al/work/app.py",
+ "processes":[{"pid":41213,"role":"parent","name":null,
+   "threads":[{"id":1,"name":"MainThread","frames":[
+     {"function":"wait","file":"/usr/lib/python3.13/threading.py","line":359},
+     {"function":"main","file":"/home/al/work/app.py","line":42}]}],
+   "tasks":[{"name":"worker-2","state":"PENDING","awaiting":"Lock.acquire","frames":["run (/home/al/work/app.py:18)"]}]}],
+ "errors":[]}
+```
+
+Frames are innermost first. `tasks` appears only for Python programs with live asyncio
+tasks; `goroutines` only for Go; `rust_concurrency` only for Rust. `status` is
+`"pending"` when the pause could not land within a few seconds (the program is blocked
+inside a single call) -- a second record with the same `seq` and `status: "ok"` follows
+when it does land. If you press Ctrl-C or the program exits before it lands, no
+completing record is written. `errors` lists any sub-collector that failed, so a partial
+record is explicit about what is missing. A stderr line confirms each capture and where
+it went.
+
+Narrow a long capture with `jq`, for example only threads with a frame in your own code:
+
+```bash
+jq -c '.processes[].threads[] | select(any(.frames[]; .file != null and (.file|test("/work/"))))' hang.jsonl
+```
+
 **Quitting an adopted session** adds a third choice to the usual quit dialog:
 - `d` (or `q`) -- detach and resume: the program keeps running headlessly; interrupt it
   again later the same way.
@@ -1789,6 +1837,7 @@ usage: tdb [-h] [-v] [-r [HOST:]PORT] [--cwd CWD] [--no-stop-on-entry]
 | `--server` | Enable JSON-RPC server alongside TUI |
 | `--headless` | JSON-RPC server only, no TUI |
 | `--server-port PORT` | Server port (default: 8150) |
+| `--examine-log DEST` | With --run: write each Ctrl-\ / SIGUSR2 stack snapshot to DEST (- = stdout; repeatable) |
 
 ## Configuration
 

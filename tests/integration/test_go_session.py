@@ -10,21 +10,28 @@ Skipped wholesale when the `go` toolchain or `dlv` is missing.
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import json
+import os
 import shutil
+import signal
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
+from tdb import run_mode
 from tdb.dap.types import SourceBreakpoint
 from tdb.go_concurrency.collector import GoConcurrencyCollector
 from tdb.go_concurrency.models import GoFindingKind, GoroutineState
 from tdb.languages import registry
 from tdb.languages.errors import parse_go_error
 from tdb.languages.go import build_go_profile
+from tdb.persist import TdbConfig
 from tdb.server.event_handler import ServerEventHandler
 from tdb.session.controller import DebugController
+from tdb.session.state import SessionPhase
 
 pytestmark = pytest.mark.skipif(
     shutil.which("go") is None or shutil.which("dlv") is None,
@@ -338,3 +345,60 @@ async def test_pid_attach_exposes_goroutines(tmp_path_factory):
                 proc.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 pass
+
+
+async def test_run_mode_examine_includes_goroutines(capfd):
+    """`tdb --run` + SIGUSR2 on a Go program: the record carries the
+    goroutine snapshot under `goroutines` and no Rust key."""
+    box = {}
+
+    def ready(controller):
+        box["controller"] = controller
+
+    async def episode(controller, handler, console, config, program):
+        return False  # terminate
+
+    async def pulses():
+        deadline = asyncio.get_running_loop().time() + WAIT
+        while not (
+            box.get("controller") is not None
+            and box["controller"].state.phase is SessionPhase.RUNNING
+        ):
+            assert asyncio.get_running_loop().time() < deadline
+            await asyncio.sleep(0.05)
+        await asyncio.sleep(1.0)  # let the workers park
+        os.kill(os.getpid(), signal.SIGUSR2)
+        await asyncio.sleep(3.0)  # capture + resume
+        os.kill(os.getpid(), signal.SIGUSR1)
+
+    task = asyncio.create_task(pulses())
+    try:
+        await asyncio.wait_for(
+            run_mode.run(
+                program=str(GO_BLOCKED_SRC),
+                config=TdbConfig(),
+                profile=build_go_profile(),
+                tui_episode=episode,
+                on_session_ready=ready,
+                examine_dests=["-"],
+            ),
+            timeout=WAIT * 4,
+        )
+    finally:
+        if not task.done():
+            task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+    recs = [
+        json.loads(line)
+        for line in capfd.readouterr().out.splitlines()
+        if line.startswith("{")
+    ]
+    assert len(recs) == 1, recs
+    rec = recs[0]
+    assert rec["status"] == "ok" and rec["language"] == "go"
+    assert "rust_concurrency" not in rec
+    assert "tasks" not in rec["processes"][0]
+    assert len(rec["goroutines"]["goroutines"]) >= 5
+    assert rec["processes"][0]["threads"], rec
+    assert rec["errors"] == [], rec
