@@ -136,6 +136,56 @@ async def test_pause_falls_back_to_placeholder_id_for_child_when_threads_rejecte
     assert child.pause_calls == [1]
 
 
+async def test_pause_bounds_parent_thread_lookup_before_placeholder_fallback():
+    ctrl = _make_controller(thread_id=None)
+    started = asyncio.Event()
+    blocker = asyncio.Event()
+
+    async def hang_threads() -> list:
+        started.set()
+        await blocker.wait()
+        return []
+
+    ctrl.client.threads = hang_threads
+
+    async def fire_stopped_soon():
+        await started.wait()
+        while not ctrl.client.pause_calls:
+            await asyncio.sleep(0)
+        ctrl._on_stopped(_stopped_event())
+
+    asyncio.create_task(fire_stopped_soon())
+    result = await asyncio.wait_for(ctrl.pause(timeout=0.1), timeout=0.4)
+    assert result is True
+    assert ctrl.client.pause_calls == [1]
+
+
+async def test_pause_bounds_child_thread_lookup_before_placeholder_fallback():
+    ctrl = _make_controller()
+    child = _StubChildClient()
+    ctrl._child_clients[321] = child
+    started = asyncio.Event()
+    blocker = asyncio.Event()
+
+    async def hang_threads() -> list:
+        started.set()
+        await blocker.wait()
+        return []
+
+    child.threads = hang_threads
+
+    async def fire_stopped_soon():
+        await started.wait()
+        await asyncio.sleep(0.01)
+        ctrl._on_stopped(_stopped_event())
+
+    asyncio.create_task(fire_stopped_soon())
+    result = await asyncio.wait_for(ctrl.pause(timeout=0.1), timeout=0.4)
+    assert result is True
+    assert ctrl.client.pause_calls == [1]
+    assert child.pause_calls == [1]
+
+
 # --- Successful and failed timeouts -----------------------------------
 
 
