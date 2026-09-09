@@ -698,9 +698,19 @@ class DebugController:
             return False
         for pid, child in list(self._child_clients.items()):
             try:
-                threads = await child.threads()
-                if threads:
-                    await child.pause(threads[0].id)
+                child_thread_id = None
+                try:
+                    threads = await child.threads()
+                    if threads:
+                        child_thread_id = threads[0].id
+                except Exception:
+                    log.debug(
+                        "thread query for child pause failed; trying placeholder id",
+                        exc_info=True,
+                    )
+                    child_thread_id = 1
+                if child_thread_id is not None:
+                    await child.pause(child_thread_id)
             except Exception:
                 log.exception("DAP pause request failed for child pid=%s", pid)
         try:

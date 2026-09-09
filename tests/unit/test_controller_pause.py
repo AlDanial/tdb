@@ -44,6 +44,17 @@ class _StubDAPClient:
         return []
 
 
+class _StubChildClient:
+    def __init__(self) -> None:
+        self.pause_calls: list[int] = []
+
+    async def pause(self, thread_id: int) -> None:
+        self.pause_calls.append(thread_id)
+
+    async def threads(self) -> list:
+        return []
+
+
 def _make_controller(thread_id: int | None = 1) -> DebugController:
     ctrl = DebugController(_NoopHandler())
     ctrl.client = _StubDAPClient()
@@ -103,6 +114,26 @@ async def test_pause_falls_back_to_placeholder_id_when_threads_rejected():
     asyncio.create_task(fire_stopped_soon())
     assert await ctrl.pause(timeout=1.0) is True
     assert ctrl.client.pause_calls == [1]  # placeholder id went out
+
+
+async def test_pause_falls_back_to_placeholder_id_for_child_when_threads_rejected():
+    ctrl = _make_controller()
+    child = _StubChildClient()
+    ctrl._child_clients[321] = child
+
+    async def reject_threads() -> list:
+        raise DAPError("threads", "notStopped")
+
+    child.threads = reject_threads
+
+    async def fire_stopped_soon():
+        await asyncio.sleep(0.01)
+        ctrl._on_stopped(_stopped_event())
+
+    asyncio.create_task(fire_stopped_soon())
+    assert await ctrl.pause(timeout=1.0) is True
+    assert ctrl.client.pause_calls == [1]
+    assert child.pause_calls == [1]
 
 
 # --- Successful and failed timeouts -----------------------------------
