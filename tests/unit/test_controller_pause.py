@@ -232,6 +232,31 @@ async def test_pause_gives_child_pause_request_the_full_remaining_budget():
     assert child.pause_calls == [1]
 
 
+async def test_pause_still_targets_later_children_after_first_stop_event():
+    ctrl = _make_controller()
+    first = _StubChildClient()
+    second = _StubChildClient()
+    ctrl._child_clients[321] = first
+    ctrl._child_clients[654] = second
+
+    async def one_thread() -> list:
+        return [type("T", (), {"id": 1})()]
+
+    first.threads = one_thread
+    second.threads = one_thread
+
+    async def first_pause(thread_id: int) -> None:
+        first.pause_calls.append(thread_id)
+        ctrl._on_stopped(_stopped_event())
+
+    first.pause = first_pause
+
+    assert await ctrl.pause(timeout=0.1) is True
+    assert ctrl.client.pause_calls == [1]
+    assert first.pause_calls == [1]
+    assert second.pause_calls == [1]
+
+
 # --- Successful and failed timeouts -----------------------------------
 
 

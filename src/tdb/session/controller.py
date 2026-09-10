@@ -731,8 +731,6 @@ class DebugController:
                     await await_pause_request(lambda: child.pause(child_thread_id))
             except (asyncio.TimeoutError, ConnectionError, DAPError):
                 log.exception("DAP pause request failed for child pid=%s", pid)
-            if self._stopped_event.is_set():
-                return True
         try:
             wait_time = remaining()
             if wait_time <= 0:
