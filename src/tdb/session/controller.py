@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from tdb.dap.client import DAPClient
+from tdb.dap.client import DAPClient, DAPError
 from tdb.dap.messages import Event
 from tdb.dap.types import DEFERRED_VERIFICATION_MESSAGE, Breakpoint, SourceBreakpoint
 from .event_bus import DebugEventHandler
@@ -694,7 +694,7 @@ class DebugController:
                 if not threads:
                     return False
                 thread_id = threads[0].id
-            except Exception:
+            except (asyncio.TimeoutError, ConnectionError, DAPError):
                 # gdb's DAP (< 17) rejects `threads` while the inferior
                 # is running (notStopped), yet its `pause` ignores the
                 # threadId and interrupts every thread — so a placeholder
@@ -711,7 +711,7 @@ class DebugController:
         self._stopped_event.clear()
         try:
             await await_pause_request(lambda: self.client.pause(thread_id))
-        except Exception:
+        except (asyncio.TimeoutError, ConnectionError, DAPError):
             log.exception("DAP pause request failed for parent")
             return False
         for pid, child in list(self._child_clients.items()):
@@ -721,7 +721,7 @@ class DebugController:
                     threads = await await_thread_lookup(child.threads)
                     if threads:
                         child_thread_id = threads[0].id
-                except Exception:
+                except (asyncio.TimeoutError, ConnectionError, DAPError):
                     log.debug(
                         "thread query for child pause failed; trying placeholder id",
                         exc_info=True,
@@ -729,7 +729,7 @@ class DebugController:
                     child_thread_id = 1
                 if child_thread_id is not None:
                     await await_pause_request(lambda: child.pause(child_thread_id))
-            except Exception:
+            except (asyncio.TimeoutError, ConnectionError, DAPError):
                 log.exception("DAP pause request failed for child pid=%s", pid)
             if self._stopped_event.is_set():
                 return True
