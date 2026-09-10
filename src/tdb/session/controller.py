@@ -673,8 +673,14 @@ class DebugController:
         def remaining() -> float:
             return max(0.0, deadline - time.monotonic())
 
-        async def await_before_deadline(factory):
+        async def await_thread_lookup(factory):
             wait_time = remaining() / 2
+            if wait_time <= 0:
+                raise asyncio.TimeoutError
+            return await asyncio.wait_for(factory(), timeout=wait_time)
+
+        async def await_pause_request(factory):
+            wait_time = remaining()
             if wait_time <= 0:
                 raise asyncio.TimeoutError
             return await asyncio.wait_for(factory(), timeout=wait_time)
@@ -684,7 +690,7 @@ class DebugController:
             # Run mode: the debuggee has never stopped, so no stop event
             # ever recorded a thread id. Ask the adapter directly.
             try:
-                threads = await await_before_deadline(self.client.threads)
+                threads = await await_thread_lookup(self.client.threads)
                 if not threads:
                     return False
                 thread_id = threads[0].id
@@ -704,7 +710,7 @@ class DebugController:
         # doesn't make us return True instantly.
         self._stopped_event.clear()
         try:
-            await await_before_deadline(lambda: self.client.pause(thread_id))
+            await await_pause_request(lambda: self.client.pause(thread_id))
         except Exception:
             log.exception("DAP pause request failed for parent")
             return False
@@ -712,7 +718,7 @@ class DebugController:
             try:
                 child_thread_id = None
                 try:
-                    threads = await await_before_deadline(child.threads)
+                    threads = await await_thread_lookup(child.threads)
                     if threads:
                         child_thread_id = threads[0].id
                 except Exception:
@@ -722,7 +728,7 @@ class DebugController:
                     )
                     child_thread_id = 1
                 if child_thread_id is not None:
-                    await await_before_deadline(lambda: child.pause(child_thread_id))
+                    await await_pause_request(lambda: child.pause(child_thread_id))
             except Exception:
                 log.exception("DAP pause request failed for child pid=%s", pid)
             if self._stopped_event.is_set():

@@ -186,6 +186,52 @@ async def test_pause_bounds_child_thread_lookup_before_placeholder_fallback():
     assert child.pause_calls == [1]
 
 
+async def test_pause_gives_parent_pause_request_the_full_remaining_budget():
+    ctrl = _make_controller()
+
+    async def slow_pause(thread_id: int) -> None:
+        await asyncio.sleep(0.08)
+        ctrl.client.pause_calls.append(thread_id)
+
+    ctrl.client.pause = slow_pause
+
+    async def fire_stopped_soon():
+        await asyncio.sleep(0.01)
+        ctrl._on_stopped(_stopped_event())
+
+    asyncio.create_task(fire_stopped_soon())
+    result = await asyncio.wait_for(ctrl.pause(timeout=0.1), timeout=0.4)
+    assert result is True
+    assert ctrl.client.pause_calls == [1]
+
+
+async def test_pause_gives_child_pause_request_the_full_remaining_budget():
+    ctrl = _make_controller()
+    child = _StubChildClient()
+    ctrl._child_clients[321] = child
+
+    async def one_thread() -> list:
+        return [type("T", (), {"id": 1})()]
+
+    child.threads = one_thread
+
+    async def slow_pause(thread_id: int) -> None:
+        await asyncio.sleep(0.08)
+        child.pause_calls.append(thread_id)
+
+    child.pause = slow_pause
+
+    async def fire_stopped_soon():
+        await asyncio.sleep(0.01)
+        ctrl._on_stopped(_stopped_event())
+
+    asyncio.create_task(fire_stopped_soon())
+    result = await asyncio.wait_for(ctrl.pause(timeout=0.1), timeout=0.4)
+    assert result is True
+    assert ctrl.client.pause_calls == [1]
+    assert child.pause_calls == [1]
+
+
 # --- Successful and failed timeouts -----------------------------------
 
 
