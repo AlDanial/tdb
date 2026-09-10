@@ -116,6 +116,18 @@ async def test_pause_falls_back_to_placeholder_id_when_threads_rejected():
     assert ctrl.client.pause_calls == [1]  # placeholder id went out
 
 
+async def test_pause_does_not_use_placeholder_for_other_thread_query_errors():
+    ctrl = _make_controller(thread_id=None)
+
+    async def reject_threads() -> list:
+        raise DAPError("threads", "adapter exploded")
+
+    ctrl.client.threads = reject_threads
+
+    assert await ctrl.pause(timeout=0.1) is False
+    assert ctrl.client.pause_calls == []
+
+
 async def test_pause_falls_back_to_placeholder_id_for_child_when_threads_rejected():
     ctrl = _make_controller()
     child = _StubChildClient()

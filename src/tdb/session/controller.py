@@ -685,31 +685,42 @@ class DebugController:
                 raise asyncio.TimeoutError
             return await asyncio.wait_for(factory(), timeout=wait_time)
 
+        def is_not_stopped(exc: DAPError) -> bool:
+            return "notStopped" in str(exc)
+
         thread_id = self.state.current_thread_id
-        if thread_id is None:
-            # Run mode: the debuggee has never stopped, so no stop event
-            # ever recorded a thread id. Ask the adapter directly.
-            try:
-                threads = await await_thread_lookup(self.client.threads)
-                if not threads:
-                    return False
-                thread_id = threads[0].id
-            except (asyncio.TimeoutError, ConnectionError, DAPError):
-                # gdb's DAP (< 17) rejects `threads` while the inferior
-                # is running (notStopped), yet its `pause` ignores the
-                # threadId and interrupts every thread — so a placeholder
-                # id still lands the interrupt. Adapters that do validate
-                # the id fail the pause request below and we return
-                # False, same as before this fallback.
-                log.debug(
-                    "thread query for pause failed; trying placeholder id",
-                    exc_info=True,
-                )
-                thread_id = 1
-        # Clear before sending so a stale set() from a previous stop
-        # doesn't make us return True instantly.
-        self._stopped_event.clear()
         try:
+            if thread_id is None:
+                # Run mode: the debuggee has never stopped, so no stop event
+                # ever recorded a thread id. Ask the adapter directly.
+                try:
+                    threads = await await_thread_lookup(self.client.threads)
+                    if not threads:
+                        return False
+                    thread_id = threads[0].id
+                except asyncio.TimeoutError:
+                    log.debug(
+                        "thread query for pause timed out; trying placeholder id",
+                        exc_info=True,
+                    )
+                    thread_id = 1
+                except DAPError as exc:
+                    if not is_not_stopped(exc):
+                        raise
+                    # gdb's DAP (< 17) rejects `threads` while the inferior
+                    # is running (notStopped), yet its `pause` ignores the
+                    # threadId and interrupts every thread — so a placeholder
+                    # id still lands the interrupt. Adapters that do validate
+                    # the id fail the pause request below and we return
+                    # False, same as before this fallback.
+                    log.debug(
+                        "thread query for pause failed; trying placeholder id",
+                        exc_info=True,
+                    )
+                    thread_id = 1
+            # Clear before sending so a stale set() from a previous stop
+            # doesn't make us return True instantly.
+            self._stopped_event.clear()
             await await_pause_request(lambda: self.client.pause(thread_id))
         except (asyncio.TimeoutError, ConnectionError, DAPError):
             log.exception("DAP pause request failed for parent")
@@ -721,7 +732,15 @@ class DebugController:
                     threads = await await_thread_lookup(child.threads)
                     if threads:
                         child_thread_id = threads[0].id
-                except (asyncio.TimeoutError, ConnectionError, DAPError):
+                except asyncio.TimeoutError:
+                    log.debug(
+                        "thread query for child pause timed out; trying placeholder id",
+                        exc_info=True,
+                    )
+                    child_thread_id = 1
+                except DAPError as exc:
+                    if not is_not_stopped(exc):
+                        raise
                     log.debug(
                         "thread query for child pause failed; trying placeholder id",
                         exc_info=True,
