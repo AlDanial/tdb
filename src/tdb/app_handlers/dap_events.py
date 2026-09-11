@@ -85,6 +85,7 @@ class DapEventCoordinator:
         self.app._update_thread_count()
         self.app._fetch_process_count()
         self.app._fetch_async_task_count()
+        self.app.stop_settled.set()
 
         if message.reason == "exception":
             self.app.panels.exception_modal_shown = True
@@ -152,6 +153,7 @@ class DapEventCoordinator:
             self.app.panels.dismiss_rust_concurrency()
             self.app._stderr_buffer.clear()
             self.app.panels.exception_modal_shown = False
+            self.app.stop_settled.clear()
             self.app._update_ui_state()
         except Exception:
             log.exception("Error handling continued event")
@@ -176,6 +178,7 @@ class DapEventCoordinator:
             self.app._update_ui_state()
         except Exception:
             log.exception("Error handling terminated event")
+        self.app.stop_settled.set()
 
     async def _wait_for_stderr_quiescent(
         self,

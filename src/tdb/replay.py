@@ -80,7 +80,7 @@ def load_recording(path: str) -> Recording:
 BLOCKING_ACTIONS = {"next", "step_in", "step_out", "continue", "wait_for_stop"}
 
 
-def _profile_from_header(header: dict):
+def profile_from_header(header: dict):
     from tdb.languages import registry
     from tdb.persist import load_config
 
@@ -119,9 +119,15 @@ async def run_replay(
     timing: bool = False,
     replay_timeout: float = 30.0,
     echo=print,
+    interval: float | None = None,
 ) -> int:
     """Feed every record through the RPC dispatch table. Returns the
-    number of failed commands (0 == clean replay)."""
+    number of failed commands (0 == clean replay).
+
+    Pacing: `interval` (seconds) sleeps a fixed delay before every
+    command; otherwise `timing` reproduces the recorded gaps; otherwise
+    commands run back to back.
+    """
     from tdb.server.handlers import ControllerRef, RpcHandlers
     from tdb.server.rpc_types import RpcResponse
     from tdb.server.runner import setup_headless_session
@@ -138,7 +144,7 @@ async def run_replay(
             stop_on_entry=True,
             just_my_code=not h.get("no_just_my_code", False),
             python=h.get("python"),
-            profile=_profile_from_header(h),
+            profile=profile_from_header(h),
             step_mode=h.get("step_mode"),
         )
     else:
@@ -149,7 +155,7 @@ async def run_replay(
             attach_host=h["host"],
             attach_port=h["port"],
             path_mappings=[tuple(pm) for pm in (h.get("path_mappings") or [])] or None,
-            profile=_profile_from_header(h),
+            profile=profile_from_header(h),
             step_mode=h.get("step_mode"),
         )
 
@@ -160,8 +166,12 @@ async def run_replay(
     saw_quit = False
     try:
         for rec in recording.records:
-            if timing and rec["t"] > prev_t:
-                await asyncio.sleep(rec["t"] - prev_t)
+            if interval is not None:
+                delay = interval
+            else:
+                delay = rec["t"] - prev_t if timing else 0.0
+            if delay > 0:
+                await asyncio.sleep(delay)
             prev_t = rec["t"]
             params = list(rec["params"])
             if rec["action"] in BLOCKING_ACTIONS and not params:
@@ -200,13 +210,23 @@ async def run_replay(
     return errors
 
 
-def replay_main(path: str, timing: bool, replay_timeout: float) -> None:
+def replay_main(
+    path: str,
+    timing: bool,
+    replay_timeout: float,
+    interval: float | None = None,
+) -> None:
     try:
         recording = load_recording(path)
     except (OSError, RecordingError) as e:
         print(f"tdb: {e}", file=sys.stderr)
         sys.exit(2)
     errors = asyncio.run(
-        run_replay(recording, timing=timing, replay_timeout=replay_timeout)
+        run_replay(
+            recording,
+            timing=timing,
+            replay_timeout=replay_timeout,
+            interval=interval,
+        )
     )
     sys.exit(0 if errors == 0 else 1)

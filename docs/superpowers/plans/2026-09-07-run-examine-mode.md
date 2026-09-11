@@ -143,7 +143,9 @@ def make_controller(
 
 
 def frame(name, path, line):
-    return StackFrame(id=1, name=name, source=Source(path=path) if path else None, line=line)
+    return StackFrame(
+        id=1, name=name, source=Source(path=path) if path else None, line=line
+    )
 
 
 async def _collect(controller, **kw):
@@ -179,8 +181,10 @@ async def test_threads_and_frames_innermost_first_with_null_source():
     client = FakeClient(
         [Thread(id=1, name="MainThread"), Thread(id=2, name="worker")],
         {
-            1: [frame("wait", "/usr/lib/python3.13/threading.py", 359),
-                frame("main", "/home/al/app.py", 42)],
+            1: [
+                frame("wait", "/usr/lib/python3.13/threading.py", 359),
+                frame("main", "/home/al/app.py", 42),
+            ],
             2: [frame("<native>", None, 0)],
         },
     )
@@ -314,7 +318,9 @@ async def _threads_of(client: "DAPClient") -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for t in await client.threads():
         frames = await client.stack_trace(t.id, levels=EXAMINE_FRAME_CAP)
-        out.append({"id": t.id, "name": t.name, "frames": [_frame_dict(f) for f in frames]})
+        out.append(
+            {"id": t.id, "name": t.name, "frames": [_frame_dict(f) for f in frames]}
+        )
     return out
 
 
@@ -455,7 +461,9 @@ def inspect_factory(monkeypatch):
 
 async def test_python_tasks_and_process_name(inspect_factory):
     task = SimpleNamespace(
-        name="worker-2", state="PENDING", awaiting="Lock.acquire",
+        name="worker-2",
+        state="PENDING",
+        awaiting="Lock.acquire",
         stack=["run (/home/al/app.py:18)"],
     )
     inspect_factory(FakeInspect(tasks=[task], processes=[]))
@@ -463,8 +471,12 @@ async def test_python_tasks_and_process_name(inspect_factory):
     rec = await _collect(ctrl)
     parent = rec["processes"][0]
     assert parent["tasks"] == [
-        {"name": "worker-2", "state": "PENDING", "awaiting": "Lock.acquire",
-         "frames": ["run (/home/al/app.py:18)"]}
+        {
+            "name": "worker-2",
+            "state": "PENDING",
+            "awaiting": "Lock.acquire",
+            "frames": ["run (/home/al/app.py:18)"],
+        }
     ]
     assert "goroutines" not in rec and "rust_concurrency" not in rec
 
@@ -487,11 +499,15 @@ async def test_task_collector_failure_recorded(inspect_factory):
 
 
 async def test_children_follow_parent_in_pid_order(inspect_factory):
-    inspect_factory(FakeInspect(
-        tasks=[],
-        processes=[SimpleNamespace(name="Process-2", pid=5002),
-                   SimpleNamespace(name="Process-1", pid=5001)],
-    ))
+    inspect_factory(
+        FakeInspect(
+            tasks=[],
+            processes=[
+                SimpleNamespace(name="Process-2", pid=5002),
+                SimpleNamespace(name="Process-1", pid=5001),
+            ],
+        )
+    )
     c1 = FakeClient([Thread(id=1, name="MainThread")], {1: [frame("f", "/c.py", 3)]})
     c2 = FakeClient([Thread(id=1, name="MainThread")], {1: []})
     ctrl = make_controller(children={5002: c2, 5001: c1})
@@ -500,7 +516,9 @@ async def test_children_follow_parent_in_pid_order(inspect_factory):
     assert [p["role"] for p in procs] == ["parent", "child", "child"]
     assert [p["pid"] for p in procs[1:]] == [5001, 5002]
     assert [p["name"] for p in procs[1:]] == ["Process-1", "Process-2"]
-    assert procs[1]["threads"][0]["frames"] == [{"function": "f", "file": "/c.py", "line": 3}]
+    assert procs[1]["threads"][0]["frames"] == [
+        {"function": "f", "file": "/c.py", "line": 3}
+    ]
 
 
 async def test_slow_child_times_out_others_still_captured(inspect_factory, monkeypatch):
@@ -519,21 +537,27 @@ async def test_slow_child_times_out_others_still_captured(inspect_factory, monke
 
 async def test_go_snapshot_key_only_for_go(inspect_factory):
     inspect_factory(FakeInspect(go=Dictable({"goroutines": [{"goid": 1}]})))
-    rec = await _collect(make_controller(language="go", task_inspection=False, concurrency="go"))
+    rec = await _collect(
+        make_controller(language="go", task_inspection=False, concurrency="go")
+    )
     assert rec["goroutines"] == {"goroutines": [{"goid": 1}]}
     assert "rust_concurrency" not in rec and "tasks" not in rec["processes"][0]
 
 
 async def test_rust_snapshot_key_only_for_rust(inspect_factory):
     inspect_factory(FakeInspect(rust=Dictable({"threads": []})))
-    rec = await _collect(make_controller(language="rust", task_inspection=False, concurrency="rust"))
+    rec = await _collect(
+        make_controller(language="rust", task_inspection=False, concurrency="rust")
+    )
     assert rec["rust_concurrency"] == {"threads": []}
     assert "goroutines" not in rec
 
 
 async def test_concurrency_snapshot_failure_recorded(inspect_factory):
     inspect_factory(FakeInspect(go=RuntimeError("dlv gone")))
-    rec = await _collect(make_controller(language="go", task_inspection=False, concurrency="go"))
+    rec = await _collect(
+        make_controller(language="go", task_inspection=False, concurrency="go")
+    )
     assert "goroutines" not in rec
     assert "goroutines: dlv gone" in rec["errors"]
 ```
@@ -556,10 +580,17 @@ Add helpers after `_parent_pid`:
 
 ```python
 def _task_dict(t: Any) -> dict[str, Any]:
-    return {"name": t.name, "state": t.state, "awaiting": t.awaiting, "frames": list(t.stack)}
+    return {
+        "name": t.name,
+        "state": t.state,
+        "awaiting": t.awaiting,
+        "frames": list(t.stack),
+    }
 
 
-async def _add_tasks(svc: InspectService, parent: dict[str, Any], errors: list[str]) -> None:
+async def _add_tasks(
+    svc: InspectService, parent: dict[str, Any], errors: list[str]
+) -> None:
     try:
         tasks = await svc.collect_tasks()
     except SessionGateError:
@@ -573,7 +604,9 @@ async def _add_tasks(svc: InspectService, parent: dict[str, Any], errors: list[s
 
 async def _process_names(svc: InspectService, errors: list[str]) -> dict[int, str]:
     try:
-        return {p.pid: p.name for p in await svc.collect_processes() if p.pid is not None}
+        return {
+            p.pid: p.name for p in await svc.collect_processes() if p.pid is not None
+        }
     except SessionGateError:
         return {}
     except Exception as exc:
@@ -593,7 +626,10 @@ async def _add_children(
     names = await _process_names(svc, errors)
     for pid in sorted(children):
         entry: dict[str, Any] = {
-            "pid": pid, "role": "child", "name": names.get(pid), "threads": [],
+            "pid": pid,
+            "role": "child",
+            "name": names.get(pid),
+            "threads": [],
         }
         try:
             entry["threads"] = await asyncio.wait_for(
@@ -811,7 +847,9 @@ def sink_names(sinks: list[TextIO]) -> str:
 _reported_broken: set[int] = set()
 
 
-def write(record: dict[str, Any], sinks: list[TextIO], *, notice: TextIO = sys.stderr) -> None:
+def write(
+    record: dict[str, Any], sinks: list[TextIO], *, notice: TextIO = sys.stderr
+) -> None:
     """Write `record` as one compact JSON line to every sink and flush.
     A sink that fails is reported once (per sink object) and skipped
     thereafter; the run continues."""
@@ -825,9 +863,14 @@ def write(record: dict[str, Any], sinks: list[TextIO], *, notice: TextIO = sys.s
         except Exception as exc:
             if id(s) not in _reported_broken:
                 _reported_broken.add(id(s))
-                print(f"tdb: examine: cannot write to {_sink_name(s)}: {exc}", file=notice)
+                print(
+                    f"tdb: examine: cannot write to {_sink_name(s)}: {exc}", file=notice
+                )
     if written:
-        print(f"tdb: examine #{record.get('seq')} written to {sink_names(written)}", file=notice)
+        print(
+            f"tdb: examine #{record.get('seq')} written to {sink_names(written)}",
+            file=notice,
+        )
     notice.flush()
 ```
 
@@ -944,8 +987,13 @@ def script(monkeypatch):
     async def stop(self):
         s.calls.append("stop")
 
-    for name, fn in [("start", start), ("do_configure", do_configure),
-                     ("pause", pause), ("continue_", continue_), ("stop", stop)]:
+    for name, fn in [
+        ("start", start),
+        ("do_configure", do_configure),
+        ("pause", pause),
+        ("continue_", continue_),
+        ("stop", stop),
+    ]:
         monkeypatch.setattr(DebugController, name, fn)
 
     async def fake_collect(controller, **kw):
@@ -984,9 +1032,13 @@ async def _run(script, monkeypatch, sink, *, driver, episode=None):
 
     monkeypatch.setattr(run_mode, "configure_when_initialized", _configure_immediately)
     return await asyncio.wait_for(
-        run_mode.run(program="/p.py", config=TdbConfig(),
-                     tui_episode=episode or default_episode,
-                     on_session_ready=on_ready, examine_dests=["-"]),
+        run_mode.run(
+            program="/p.py",
+            config=TdbConfig(),
+            tui_episode=episode or default_episode,
+            on_session_ready=on_ready,
+            examine_dests=["-"],
+        ),
         timeout=10,
     )
 
@@ -1005,7 +1057,8 @@ async def _settle():
 
 
 async def test_sigusr2_pause_collect_write_continue(script, monkeypatch):
-    sink = io.StringIO(); sink.name = "s"
+    sink = io.StringIO()
+    sink.name = "s"
 
     async def driver():
         await _settle()
@@ -1015,12 +1068,21 @@ async def test_sigusr2_pause_collect_write_continue(script, monkeypatch):
 
     code = await _run(script, monkeypatch, sink, driver=driver)
     assert code == 0
-    assert script.calls == ["start", "configure", "pause", "collect:ok:1:SIGUSR2", "continue"]
+    assert script.calls == [
+        "start",
+        "configure",
+        "pause",
+        "collect:ok:1:SIGUSR2",
+        "continue",
+    ]
     assert [r["seq"] for r in _records(sink)] == [1]
 
 
-async def test_sigquit_and_repeat_presses_coalesce_and_number_sequentially(script, monkeypatch):
-    sink = io.StringIO(); sink.name = "s"
+async def test_sigquit_and_repeat_presses_coalesce_and_number_sequentially(
+    script, monkeypatch
+):
+    sink = io.StringIO()
+    sink.name = "s"
 
     async def driver():
         await _settle()
@@ -1039,27 +1101,35 @@ async def test_sigquit_and_repeat_presses_coalesce_and_number_sequentially(scrip
 
 
 async def test_pending_then_landed_completes_without_tui(script, monkeypatch):
-    sink = io.StringIO(); sink.name = "s"
+    sink = io.StringIO()
+    sink.name = "s"
     script.pause_lands = False
 
     async def driver():
         await _settle()
         os.kill(os.getpid(), signal.SIGUSR2)
         await _settle()
-        script.stop_now()          # the pause finally lands
+        script.stop_now()  # the pause finally lands
         await _settle()
         script.console.on_exited(0)
 
     await _run(script, monkeypatch, sink, driver=driver)
     assert "episode" not in script.calls
-    assert script.calls == ["start", "configure", "pause",
-                            "collect:pending:1:SIGUSR2", "collect:ok:1:SIGUSR2", "continue"]
+    assert script.calls == [
+        "start",
+        "configure",
+        "pause",
+        "collect:pending:1:SIGUSR2",
+        "collect:ok:1:SIGUSR2",
+        "continue",
+    ]
     recs = _records(sink)
     assert [(r["seq"], r["status"]) for r in recs] == [(1, "pending"), (1, "ok")]
 
 
 async def test_ctrl_c_cancels_outstanding_examine_and_opens_tui(script, monkeypatch):
-    sink = io.StringIO(); sink.name = "s"
+    sink = io.StringIO()
+    sink.name = "s"
     script.pause_lands = False
 
     async def driver():
@@ -1078,7 +1148,8 @@ async def test_ctrl_c_cancels_outstanding_examine_and_opens_tui(script, monkeypa
 
 
 async def test_interrupt_wins_over_simultaneous_examine(script, monkeypatch):
-    sink = io.StringIO(); sink.name = "s"
+    sink = io.StringIO()
+    sink.name = "s"
 
     async def driver():
         await _settle()
@@ -1096,7 +1167,8 @@ async def test_interrupt_wins_over_simultaneous_examine(script, monkeypatch):
 
 
 async def test_exit_during_capture_writes_exited_record(script, monkeypatch):
-    sink = io.StringIO(); sink.name = "s"
+    sink = io.StringIO()
+    sink.name = "s"
 
     async def pause(self, timeout=2.0):
         script.calls.append("pause")
@@ -1118,14 +1190,15 @@ async def test_exit_during_capture_writes_exited_record(script, monkeypatch):
 async def test_late_landing_ctrl_c_stop_still_opens_tui(script, monkeypatch):
     """Regression guard for the stray-pause rule: a Ctrl-C whose pause
     lands late must still open the TUI when the stop arrives."""
-    sink = io.StringIO(); sink.name = "s"
+    sink = io.StringIO()
+    sink.name = "s"
     script.pause_lands = False
 
     async def driver():
         await _settle()
         os.kill(os.getpid(), signal.SIGINT)
         await _settle()
-        script.stop_now("pause")   # the Ctrl-C pause finally lands
+        script.stop_now("pause")  # the Ctrl-C pause finally lands
         await _settle()
         script.console.on_exited(0)
 
@@ -1138,13 +1211,14 @@ async def test_stray_pause_stop_is_resumed_not_debugged(script, monkeypatch):
     """A `stopped(reason=pause)` with nothing waiting on it (a child's
     late pause-all stop after an examine already resumed everything)
     must be continued, not turned into a TUI episode."""
-    sink = io.StringIO(); sink.name = "s"
+    sink = io.StringIO()
+    sink.name = "s"
 
     async def driver():
         await _settle()
         os.kill(os.getpid(), signal.SIGUSR2)
         await _settle()
-        script.stop_now("pause")   # late child stop
+        script.stop_now("pause")  # late child stop
         await _settle()
         script.console.on_exited(0)
 
@@ -1156,7 +1230,8 @@ async def test_stray_pause_stop_is_resumed_not_debugged(script, monkeypatch):
 
 async def test_breakpoint_stop_still_opens_tui(script, monkeypatch):
     """The stray-pause rule must not swallow real stops."""
-    sink = io.StringIO(); sink.name = "s"
+    sink = io.StringIO()
+    sink.name = "s"
 
     async def driver():
         await _settle()
@@ -1168,8 +1243,11 @@ async def test_breakpoint_stop_still_opens_tui(script, monkeypatch):
     assert "episode" in script.calls
 
 
-async def test_examine_signals_ignored_during_episode_and_restored_after(script, monkeypatch):
-    sink = io.StringIO(); sink.name = "s"
+async def test_examine_signals_ignored_during_episode_and_restored_after(
+    script, monkeypatch
+):
+    sink = io.StringIO()
+    sink.name = "s"
     seen = {}
 
     async def episode(controller, handler, console, config, program):
@@ -1291,189 +1369,205 @@ Change the signature: add `examine_dests: list[str] | None = None,` after `on_se
 Replace the body of `run()` from `console = ConsoleRunHandler()` through the end of the function with:
 
 ```python
-    try:
-        sinks = examine.open_sinks(examine_dests)
-    except OSError as exc:
-        print(f"tdb: cannot open examine log: {exc}", file=sys.stderr)
-        return 2
-    console = ConsoleRunHandler()
-    handler = SwappableEventHandler(console)
-    controller = DebugController(handler, profile=profile)
-    controller.step_mode = config.step_mode
-    controller.adopted_session = True  # restart is never offered in run mode
+try:
+    sinks = examine.open_sinks(examine_dests)
+except OSError as exc:
+    print(f"tdb: cannot open examine log: {exc}", file=sys.stderr)
+    return 2
+console = ConsoleRunHandler()
+handler = SwappableEventHandler(console)
+controller = DebugController(handler, profile=profile)
+controller.step_mode = config.step_mode
+controller.adopted_session = True  # restart is never offered in run mode
 
-    import time
+import time
 
-    launched_at = time.monotonic()
-    try:
-        bail = await start_session(
-            controller,
-            program=program,
-            args=args,
-            cwd=cwd or str(Path.cwd()),
-            stop_on_entry=False,
-            just_my_code=just_my_code,
-            python=python,
-            sub_process=sub_process,
+launched_at = time.monotonic()
+try:
+    bail = await start_session(
+        controller,
+        program=program,
+        args=args,
+        cwd=cwd or str(Path.cwd()),
+        stop_on_entry=False,
+        just_my_code=just_my_code,
+        python=python,
+        sub_process=sub_process,
+    )
+    if bail is not None:
+        return bail
+
+    async with stop_session_on_error(controller):
+        await configure_when_initialized(console, controller)
+        if on_session_ready is not None:
+            on_session_ready(controller)
+
+        pid = os.getpid()
+        hint = "Ctrl-C" if os.name == "nt" else f"Ctrl-C or `kill -USR1 {pid}`"
+        ehint = (
+            EXAMINE_KEY if os.name == "nt" else f"{EXAMINE_KEY} or `kill -USR2 {pid}`"
         )
-        if bail is not None:
-            return bail
+        print(
+            f"tdb: running {program} — {hint} opens the debugger; "
+            f"{ehint} writes a stack snapshot to {examine.sink_names(sinks)}",
+            file=sys.stderr,
+        )
 
-        async with stop_session_on_error(controller):
-            await configure_when_initialized(console, controller)
-            if on_session_ready is not None:
-                on_session_ready(controller)
+        loop = asyncio.get_running_loop()
+        interrupt = asyncio.Event()
+        examine_ev = asyncio.Event()
+        examine_sig: list[str] = []  # name of the signal that set examine_ev
 
-            pid = os.getpid()
-            hint = "Ctrl-C" if os.name == "nt" else f"Ctrl-C or `kill -USR1 {pid}`"
-            ehint = EXAMINE_KEY if os.name == "nt" else f"{EXAMINE_KEY} or `kill -USR2 {pid}`"
-            print(
-                f"tdb: running {program} — {hint} opens the debugger; "
-                f"{ehint} writes a stack snapshot to {examine.sink_names(sinks)}",
-                file=sys.stderr,
+        def on_examine(name: str) -> None:
+            examine_sig.append(name)
+            examine_ev.set()
+
+        episode = tui_episode or _default_tui_episode
+        installed = _arm_signals(loop, interrupt.set, on_examine)
+        exit_code = 0
+        seq = 0
+        # (seq, trigger, requested_at) of a capture whose pause hasn't
+        # landed yet; completed on the next stopped event.
+        outstanding: tuple[int, str, str] | None = None
+        # True after a Ctrl-C pause that hasn't landed yet: the stop
+        # that eventually arrives must open the TUI.
+        interrupt_pending = False
+
+        async def emit(
+            status: str,
+            seq_: int,
+            trigger: str,
+            requested: str,
+            landed: str | None,
+            exit_code_: int | None = None,
+        ) -> None:
+            record = await examine.collect(
+                controller,
+                trigger=trigger,
+                seq=seq_,
+                requested_at=requested,
+                landed_at=landed,
+                launched_at=launched_at,
+                program=program,
+                status=status,
+                exit_code=exit_code_,
             )
+            examine.write(record, sinks)
 
-            loop = asyncio.get_running_loop()
-            interrupt = asyncio.Event()
-            examine_ev = asyncio.Event()
-            examine_sig: list[str] = []  # name of the signal that set examine_ev
-
-            def on_examine(name: str) -> None:
-                examine_sig.append(name)
-                examine_ev.set()
-
-            episode = tui_episode or _default_tui_episode
-            installed = _arm_signals(loop, interrupt.set, on_examine)
-            exit_code = 0
-            seq = 0
-            # (seq, trigger, requested_at) of a capture whose pause hasn't
-            # landed yet; completed on the next stopped event.
-            outstanding: tuple[int, str, str] | None = None
-            # True after a Ctrl-C pause that hasn't landed yet: the stop
-            # that eventually arrives must open the TUI.
-            interrupt_pending = False
-
-            async def emit(status: str, seq_: int, trigger: str, requested: str,
-                           landed: str | None, exit_code_: int | None = None) -> None:
-                record = await examine.collect(
-                    controller, trigger=trigger, seq=seq_, requested_at=requested,
-                    landed_at=landed, launched_at=launched_at, program=program,
-                    status=status, exit_code=exit_code_,
+        try:
+            while True:
+                await _wait_first(
+                    console.exited, interrupt, console.stopped, examine_ev
                 )
-                examine.write(record, sinks)
+                if console.exited.is_set():
+                    exit_code = console.exit_code or 0
+                    break
 
-            try:
-                while True:
-                    await _wait_first(console.exited, interrupt, console.stopped, examine_ev)
-                    if console.exited.is_set():
-                        exit_code = console.exit_code or 0
-                        break
-
-                    if interrupt.is_set() and not console.stopped.is_set():
-                        interrupt.clear()
-                        examine_ev.clear()
-                        examine_sig.clear()
-                        outstanding = None  # Ctrl-C supersedes a pending examine
-                        interrupt_pending = False
-                        ok = await controller.pause(timeout=_PAUSE_TIMEOUT)
-                        if console.exited.is_set():
-                            # Died between the signal and the pause landing.
-                            exit_code = console.exit_code or 0
-                            print(
-                                f"tdb: program exited (code {exit_code}) before "
-                                "the debugger could open",
-                                file=sys.stderr,
-                            )
-                            break
-                        if not ok:
-                            interrupt_pending = True
-                            print(
-                                "tdb: pause requested — the program is blocked inside "
-                                "a single call; the debugger opens when it returns",
-                                file=sys.stderr,
-                            )
-                            continue
-
-                    elif examine_ev.is_set() and not console.stopped.is_set():
-                        examine_ev.clear()
-                        trigger = examine_sig[-1] if examine_sig else "SIGUSR2"
-                        examine_sig.clear()
-                        if outstanding is not None:
-                            continue  # one capture at a time; wait for it to land
-                        seq += 1
-                        requested = examine.now_iso()
-                        ok = await controller.pause(timeout=_PAUSE_TIMEOUT)
-                        if console.exited.is_set():
-                            exit_code = console.exit_code or 0
-                            await emit("exited", seq, trigger, requested, None, exit_code)
-                            break
-                        if not ok:
-                            await emit("pending", seq, trigger, requested, None)
-                            print(
-                                "tdb: pause requested — the program is blocked inside "
-                                "a single call; the snapshot is written when it returns",
-                                file=sys.stderr,
-                            )
-                            outstanding = (seq, trigger, requested)
-                            continue
-                        await emit("ok", seq, trigger, requested, examine.now_iso())
-                        examine_ev.clear()
-                        examine_sig.clear()
-                        console.stopped.clear()
-                        await controller.continue_()
-                        continue
-
-                    elif console.stopped.is_set() and outstanding is not None:
-                        # A deferred examine's pause finally landed.
-                        seq_, trigger, requested = outstanding
-                        outstanding = None
-                        await emit("ok", seq_, trigger, requested, examine.now_iso())
-                        examine_ev.clear()
-                        examine_sig.clear()
-                        console.stopped.clear()
-                        await controller.continue_()
-                        continue
-
-                    elif (
-                        console.stopped.is_set()
-                        and not interrupt_pending
-                        and not interrupt.is_set()
-                        and console.last_stop is not None
-                        and console.last_stop[1] == "pause"
-                    ):
-                        # Stray pause-all stop: nobody is waiting for it. Typical
-                        # cause is a child process whose `stopped` event for an
-                        # examine pause arrives after we already resumed every
-                        # client (the parent's stop is what released the wait).
-                        # Resume again — harmless for anything already running —
-                        # rather than opening the TUI on a pause nobody asked for.
-                        console.stopped.clear()
-                        await controller.continue_()
-                        continue
-
-                    # Reached on a landed Ctrl-C pause, on a Ctrl-C pause that
-                    # landed late, or on a spontaneous stop (a breakpoint set
-                    # during a previous episode).
-                    interrupt_pending = False
+                if interrupt.is_set() and not console.stopped.is_set():
                     interrupt.clear()
                     examine_ev.clear()
                     examine_sig.clear()
-                    _disarm_signals(loop, installed, ignore=True)
-                    detach = await episode(controller, handler, console, config, program)
-                    handler.retarget(console)
+                    outstanding = None  # Ctrl-C supersedes a pending examine
+                    interrupt_pending = False
+                    ok = await controller.pause(timeout=_PAUSE_TIMEOUT)
+                    if console.exited.is_set():
+                        # Died between the signal and the pause landing.
+                        exit_code = console.exit_code or 0
+                        print(
+                            f"tdb: program exited (code {exit_code}) before "
+                            "the debugger could open",
+                            file=sys.stderr,
+                        )
+                        break
+                    if not ok:
+                        interrupt_pending = True
+                        print(
+                            "tdb: pause requested — the program is blocked inside "
+                            "a single call; the debugger opens when it returns",
+                            file=sys.stderr,
+                        )
+                        continue
+
+                elif examine_ev.is_set() and not console.stopped.is_set():
+                    examine_ev.clear()
+                    trigger = examine_sig[-1] if examine_sig else "SIGUSR2"
+                    examine_sig.clear()
+                    if outstanding is not None:
+                        continue  # one capture at a time; wait for it to land
+                    seq += 1
+                    requested = examine.now_iso()
+                    ok = await controller.pause(timeout=_PAUSE_TIMEOUT)
+                    if console.exited.is_set():
+                        exit_code = console.exit_code or 0
+                        await emit("exited", seq, trigger, requested, None, exit_code)
+                        break
+                    if not ok:
+                        await emit("pending", seq, trigger, requested, None)
+                        print(
+                            "tdb: pause requested — the program is blocked inside "
+                            "a single call; the snapshot is written when it returns",
+                            file=sys.stderr,
+                        )
+                        outstanding = (seq, trigger, requested)
+                        continue
+                    await emit("ok", seq, trigger, requested, examine.now_iso())
+                    examine_ev.clear()
+                    examine_sig.clear()
                     console.stopped.clear()
-                    if controller.state.is_terminated:
-                        break
-                    if not detach:
-                        await controller.stop()
-                        break
                     await controller.continue_()
-                    installed = _arm_signals(loop, interrupt.set, on_examine)
-            finally:
-                _disarm_signals(loop, installed, ignore=False)
-            return exit_code
-    finally:
-        examine.close_sinks(sinks)
+                    continue
+
+                elif console.stopped.is_set() and outstanding is not None:
+                    # A deferred examine's pause finally landed.
+                    seq_, trigger, requested = outstanding
+                    outstanding = None
+                    await emit("ok", seq_, trigger, requested, examine.now_iso())
+                    examine_ev.clear()
+                    examine_sig.clear()
+                    console.stopped.clear()
+                    await controller.continue_()
+                    continue
+
+                elif (
+                    console.stopped.is_set()
+                    and not interrupt_pending
+                    and not interrupt.is_set()
+                    and console.last_stop is not None
+                    and console.last_stop[1] == "pause"
+                ):
+                    # Stray pause-all stop: nobody is waiting for it. Typical
+                    # cause is a child process whose `stopped` event for an
+                    # examine pause arrives after we already resumed every
+                    # client (the parent's stop is what released the wait).
+                    # Resume again — harmless for anything already running —
+                    # rather than opening the TUI on a pause nobody asked for.
+                    console.stopped.clear()
+                    await controller.continue_()
+                    continue
+
+                # Reached on a landed Ctrl-C pause, on a Ctrl-C pause that
+                # landed late, or on a spontaneous stop (a breakpoint set
+                # during a previous episode).
+                interrupt_pending = False
+                interrupt.clear()
+                examine_ev.clear()
+                examine_sig.clear()
+                _disarm_signals(loop, installed, ignore=True)
+                detach = await episode(controller, handler, console, config, program)
+                handler.retarget(console)
+                console.stopped.clear()
+                if controller.state.is_terminated:
+                    break
+                if not detach:
+                    await controller.stop()
+                    break
+                await controller.continue_()
+                installed = _arm_signals(loop, interrupt.set, on_examine)
+        finally:
+            _disarm_signals(loop, installed, ignore=False)
+        return exit_code
+finally:
+    examine.close_sinks(sinks)
 ```
 
 Move `import time` to the module's import block (alphabetical, after `sys`) rather than leaving it inline.
@@ -1592,9 +1686,10 @@ In `build_parser()` in `src/tdb/cli.py`, directly after the `--run` `add_argumen
 Extend the `--run` help string by appending one clause:
 
 ```python
-        "inspecting programs that appear to be hung. Ctrl-\\ (Ctrl-Break "
-        "on Windows) or SIGUSR2 instead writes a JSON stack snapshot of "
-        "every thread and resumes; see --examine-log.",
+"inspecting programs that appear to be hung. Ctrl-\\ (Ctrl-Break"
+
+"on Windows) or SIGUSR2 instead writes a JSON stack snapshot of "
+("every thread and resumes; see --examine-log.",)
 ```
 
 - [ ] **Step 4: Add validation**
@@ -1690,8 +1785,10 @@ async def _examine_once(program: str, dests: list[str], captures_wanted: int = 1
 
     async def pulses():
         await _wait_until(
-            lambda: box.get("controller") is not None
-            and box["controller"].state.phase is SessionPhase.RUNNING
+            lambda: (
+                box.get("controller") is not None
+                and box["controller"].state.phase is SessionPhase.RUNNING
+            )
         )
         for _ in range(captures_wanted):
             os.kill(os.getpid(), signal.SIGUSR2)
@@ -1701,9 +1798,13 @@ async def _examine_once(program: str, dests: list[str], captures_wanted: int = 1
 
     task = asyncio.create_task(pulses())
     code = await asyncio.wait_for(
-        run_mode.run(program=program, config=TdbConfig(),
-                     tui_episode=fake_episode, on_session_ready=ready,
-                     examine_dests=dests),
+        run_mode.run(
+            program=program,
+            config=TdbConfig(),
+            tui_episode=fake_episode,
+            on_session_ready=ready,
+            examine_dests=dests,
+        ),
         timeout=90.0,
     )
     await task
@@ -1730,7 +1831,9 @@ async def test_examine_threads_to_stdout(tmp_path, capfd):
     names = {t["name"] for t in parent["threads"]}
     assert "spinner" in names
     spinner = next(t for t in parent["threads"] if t["name"] == "spinner")
-    assert any(f["function"] == "spin" and f["file"] == str(p) for f in spinner["frames"])
+    assert any(
+        f["function"] == "spin" and f["file"] == str(p) for f in spinner["frames"]
+    )
     assert "goroutines" not in rec and "rust_concurrency" not in rec
 
 

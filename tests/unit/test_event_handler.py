@@ -115,6 +115,7 @@ def test_continued_dismisses_rust_workspace():
             self.controller = DebugController(ServerEventHandler())
             self._stderr_buffer: list[str] = []
             self.panels = UIPanels()
+            self.stop_settled = asyncio.Event()
             self.ui_state_updates = 0
 
         def _update_ui_state(self) -> None:
@@ -147,6 +148,7 @@ def test_exited_dismisses_rust_workspace_without_terminated_event():
             self.controller = DebugController(ServerEventHandler())
             self._stderr_buffer: list[str] = []
             self.panels = UIPanels()
+            self.stop_settled = asyncio.Event()
 
         def query_one(self, selector, _type=None):
             raise AssertionError("console output is irrelevant to lifecycle cleanup")
