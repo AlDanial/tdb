@@ -1,4 +1,4 @@
-"""FastMCP server exposing tdb as a Model Context Protocol tool surface.
+"""MCPServer (mcp 2.x SDK) exposing tdb as a Model Context Protocol tool surface.
 
 17 curated tools (not 26 auto-generated) so the agent's tool list stays
 small and focused. Tool wrappers translate kwargs → JSON-RPC `params`
@@ -22,7 +22,7 @@ import json
 import logging
 from typing import Literal
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 
 from tdb.server.rpc_types import RpcResponse
 from .session import McpSession
@@ -30,8 +30,8 @@ from .session import McpSession
 log = logging.getLogger(__name__)
 
 
-# Single shared session for the entry-point's FastMCP instance. Tests
-# construct their own session + FastMCP via `build_mcp(session=...)` so
+# Single shared session for the entry-point's MCPServer instance. Tests
+# construct their own session + MCPServer via `build_mcp(session=...)` so
 # they don't collide with this module-level state.
 _session = McpSession()
 
@@ -80,13 +80,16 @@ def _parse_path_mappings(
     return out
 
 
-def build_mcp(session: McpSession | None = None) -> FastMCP:
-    """Build a FastMCP instance wired to the given session (or the
+def build_mcp(session: McpSession | None = None) -> MCPServer:
+    """Build an MCPServer instance wired to the given session (or the
     module-level shared one). Factored out so tests can construct an
     isolated server."""
     sess = session or _session
-    mcp = FastMCP(
-        "tdb",
+    # mcp 2.x reordered MCPServer's positional parameters (name, title,
+    # description, instructions, ...) — keep everything after `name`
+    # keyword-only so `instructions` can't silently land in `title`.
+    mcp = MCPServer(
+        name="tdb",
         instructions=(
             "tdb is a Python debugger driven via DAP. Use `debug_launch` "
             "or `debug_attach` to start a session, `control` to step / "
@@ -349,7 +352,7 @@ def build_mcp(session: McpSession | None = None) -> FastMCP:
 
 
 def main() -> None:
-    """Entry point for `tdb-mcp` / `python -m tdb.mcp`. Starts FastMCP
+    """Entry point for `tdb-mcp` / `python -m tdb.mcp`. Starts MCPServer
     on stdio — control returns when the client disconnects."""
     logging.basicConfig(level=logging.WARNING)
     mcp = build_mcp()

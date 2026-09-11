@@ -47,7 +47,7 @@ It specifically supports modules
 
 - supports remote attachment to Python, Perl, Ruby, Rust, C/C++, and Go programs
 
-- includes a JSON-RPC server mode, an MCP mode, and a `SKILL.md` file that enable
+- includes a JSON-RPC server mode, an MCP (v2) mode, and a `SKILL.md` file that enable
 programmatic debug control, making it suitable for
 automated, headless debugging workflows and AI-assisted debugging
 
@@ -269,7 +269,7 @@ non-standard location, or change a language's default adapter, add to
 Core debugging works identically for every language: breakpoints (incl.
 conditions and persistence), stepping, continue/pause, run-to-cursor, stack
 navigation, variable inspection, the evaluate console, syntax highlighting,
-and the JSON-RPC / MCP programmatic modes.
+and the JSON-RPC / MCP (v2) programmatic modes.
 
 Python-specific features are hidden or return "not supported for this
 language" message when debugging other languages: statement-granularity
@@ -1725,9 +1725,10 @@ lists), breakpoint enable/disable toggles, variable expansions when the
 adapter reports no `evaluateName` (currently the Perl adapter), and
 File > Open program switches.
 
-## MCP Integration
+## MCP v2 Integration
 
-tdb ships a Model Context Protocol (MCP) server (`tdb-mcp`) that exposes
+tdb ships a Model Context Protocol (MCP), version 2,
+server (`tdb-mcp`) that exposes
 the debugger as a curated set of tools an AI agent can call. The MCP
 server is a third in-process consumer of the same dispatch handlers the
 TUI and the HTTP server use so an agent gets the same lock semantics,

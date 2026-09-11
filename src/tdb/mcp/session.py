@@ -4,7 +4,7 @@ One MCP server process serves one stdio client, which drives one debug
 session at a time. This class is the third in-process consumer of
 `RpcHandlers` (after the TUI and FastAPI server); it mirrors the
 launch / attach sequence in `server.runner.run_headless` minus the
-uvicorn part (FastMCP owns the event loop instead).
+uvicorn part (the mcp SDK's MCPServer owns the event loop instead).
 
 Tool wrappers in `tdb.mcp.server` call `_call(action, params)` to
 dispatch through `RpcHandlers.dispatch_table()`. The dispatcher's lock
