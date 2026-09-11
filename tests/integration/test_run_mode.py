@@ -246,9 +246,21 @@ async def main():
 asyncio.run(main())
 """
 
+# The child touches CHILD_READY as its first act inside `child()`, so the
+# marker's existence means "the child is parked in the frame the examine
+# assertion looks for" — not merely "the child process exists". Attach
+# (`debugpyAttach` -> a client in `controller._child_clients`) and arrival
+# in `child()` are separate events and can land in either order; the test
+# waits for both instead of guessing a settle time. The path is derived
+# from __file__ so it works under every start method (`fork` inherits it,
+# `spawn`/`forkserver` recompute it when they re-import __main__).
 MP_SCRIPT = """\
-import multiprocessing, time
+import multiprocessing, os, time
+CHILD_READY = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "child-ready"
+)
 def child():
+    open(CHILD_READY, "w").close()
     while True:
         time.sleep(0.01)
 if __name__ == "__main__":
@@ -260,20 +272,34 @@ if __name__ == "__main__":
 
 
 async def _examine_once(
-    program: str, dests: list[str], captures_wanted: int = 1, settle: float = 1.0
+    program: str,
+    dests: list[str],
+    captures_wanted: int = 1,
+    settle: float = 1.0,
+    ready=None,
+    landed=None,
 ):
     """Run `program` headless, send SIGUSR2 `captures_wanted` times once
     the debuggee is running, then terminate via a TUI episode.
 
-    `settle` is the pause after the debuggee starts running but before
-    the first SIGUSR2, giving it time to reach a representative state —
-    e.g. the multiprocessing test needs longer than the default 1.0s
-    for the child's fork+attach to land before the parent is paused.
-    Captures after the first are still spaced 1.0s apart, which is
-    enough for the pause/emit/resume cycle to land."""
+    Two hooks replace wall-clock guesses where the caller can name the
+    condition it is actually waiting for:
+
+    `ready(controller)` is polled after the debuggee reaches RUNNING and
+    before the first SIGUSR2. It should return True once the debuggee has
+    reached the state the capture is meant to snapshot. Callers that pass
+    it get no `settle` sleep at all; callers that don't fall back to
+    sleeping `settle` seconds.
+
+    `landed(n)` is polled after the nth SIGUSR2 (1-based) and should
+    return True once that capture's record has been written. Without it
+    the harness sleeps a flat 1.0s per capture and hopes, which loses the
+    race on a loaded runner: SIGUSR1 then terminates the session while
+    the capture is still outstanding and the "ok" record is never
+    written."""
     box = {}
 
-    def ready(controller):
+    def on_ready(controller):
         box["controller"] = controller
 
     async def fake_episode(controller, handler, console, config, program):
@@ -286,10 +312,16 @@ async def _examine_once(
                 and box["controller"].state.phase is SessionPhase.RUNNING
             )
         )
-        await asyncio.sleep(settle)
-        for _ in range(captures_wanted):
+        if ready is None:
+            await asyncio.sleep(settle)
+        else:
+            await _wait_until(lambda: ready(box["controller"]))
+        for n in range(1, captures_wanted + 1):
             os.kill(os.getpid(), signal.SIGUSR2)
-            await asyncio.sleep(1.0)
+            if landed is None:
+                await asyncio.sleep(1.0)
+            else:
+                await _wait_until(lambda n=n: landed(n))
         await _wait_until(lambda: box["controller"].state.phase is SessionPhase.RUNNING)
         os.kill(os.getpid(), signal.SIGUSR1)
 
@@ -300,7 +332,7 @@ async def _examine_once(
                 program=program,
                 config=TdbConfig(),
                 tui_episode=fake_episode,
-                on_session_ready=ready,
+                on_session_ready=on_ready,
                 examine_dests=dests,
             ),
             timeout=90.0,
@@ -316,6 +348,28 @@ async def _examine_once(
 def _stdout_records(capfd):
     out = capfd.readouterr().out
     return [json.loads(l) for l in out.splitlines() if l.startswith("{")]
+
+
+def _ok_records(path):
+    """Completed records in an examine log, newest last.
+
+    A capture whose pause doesn't land inside run mode's `_PAUSE_TIMEOUT`
+    emits a `status: "pending"` placeholder first and the real record
+    later under the same `seq`, so "the first line in the file" is not
+    reliably the snapshot under test. Filtering on status is also what
+    makes the file safe to poll while the run is still in progress: a
+    record only reaches "ok" once it is fully collected."""
+    if not path.exists():
+        return []
+    out = []
+    for line in path.read_text().splitlines():
+        try:
+            rec = json.loads(line)
+        except ValueError:
+            continue  # a partially flushed line; it'll be whole next poll
+        if rec.get("status") == "ok":
+            out.append(rec)
+    return out
 
 
 async def test_examine_threads_to_stdout(tmp_path, capfd):
@@ -352,14 +406,36 @@ async def test_examine_asyncio_tasks(tmp_path, capfd):
 async def test_examine_multiprocessing_children(tmp_path, capfd):
     p = tmp_path / "mp.py"
     p.write_text(MP_SCRIPT)
-    await _examine_once(str(p), ["-"], settle=3.0)
-    rec = _stdout_records(capfd)[0]
-    roles = [pr["role"] for pr in rec["processes"]]
-    assert roles[0] == "parent" and "child" in roles
-    child = next(pr for pr in rec["processes"] if pr["role"] == "child")
-    assert isinstance(child["pid"], int)
+    child_ready = tmp_path / "child-ready"
+    log = tmp_path / "mp.jsonl"
+
+    await _examine_once(
+        str(p),
+        [str(log)],
+        # Snapshot only once the child is both attached and parked in
+        # `child()`; a 3s sleep was standing in for both and lost the race
+        # whenever the runner was busy.
+        ready=lambda c: c.has_child_clients() and child_ready.exists(),
+        landed=lambda n: len(_ok_records(log)) >= n,
+    )
+
+    recs = _ok_records(log)
+    raw = log.read_text() if log.exists() else "<log never created>"
+    assert recs, f"no completed examine record written; log contents:\n{raw}"
+    rec = recs[0]
+    assert rec["processes"][0]["role"] == "parent"
+    children = [pr for pr in rec["processes"] if pr["role"] == "child"]
+    # `any`, not `next`: under `spawn`/`forkserver` the parent can own more
+    # than one tracked child (the forkserver itself attaches too), and
+    # `_add_children` orders them by pid, so the first child is not
+    # necessarily the worker running `child()`.
+    assert children, rec
+    assert all(isinstance(pr["pid"], int) for pr in children)
     assert any(
-        f["function"] == "child" for t in child["threads"] for f in t["frames"]
+        f["function"] == "child"
+        for pr in children
+        for t in pr["threads"]
+        for f in t["frames"]
     ), rec
 
 
