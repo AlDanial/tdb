@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -662,17 +664,31 @@ class DebugController:
         it without a Python frame to trace, so the user gets no
         visible response. Callers should surface a notification on
         False so the keypress isn't silently swallowed.
+
+        `timeout` bounds the whole call, not just the final wait. Every
+        DAP round-trip on this path draws from one deadline, because a
+        process that cannot service a request is exactly the case pause
+        exists for: it would otherwise block for DAP_REQUEST (30s) per
+        unresponsive process before the stop wait even starts.
         """
         if self.state.is_terminated:
             return False
         if self.state.phase == SessionPhase.STOPPED:
             return True  # already stopped — nothing to wait for
+
+        deadline = time.monotonic() + timeout
+
+        def remaining() -> float:
+            return max(0.0, deadline - time.monotonic())
+
         thread_id = self.state.current_thread_id
         if thread_id is None:
             # Run mode: the debuggee has never stopped, so no stop event
             # ever recorded a thread id. Ask the adapter directly.
             try:
-                threads = await self.client.threads()
+                threads = await asyncio.wait_for(
+                    self.client.threads(), timeout=remaining() / 2
+                )
                 if not threads:
                     return False
                 thread_id = threads[0].id
@@ -682,7 +698,9 @@ class DebugController:
                 # threadId and interrupts every thread — so a placeholder
                 # id still lands the interrupt. Adapters that do validate
                 # the id fail the pause request below and we return
-                # False, same as before this fallback.
+                # False, same as before this fallback. A timeout lands
+                # here too: an adapter that won't answer `threads` is no
+                # more likely to answer it if we keep waiting.
                 log.debug(
                     "thread query for pause failed; trying placeholder id",
                     exc_info=True,
@@ -692,19 +710,47 @@ class DebugController:
         # doesn't make us return True instantly.
         self._stopped_event.clear()
         try:
-            await self.client.pause(thread_id)
+            await asyncio.wait_for(self.client.pause(thread_id), timeout=remaining())
         except Exception:
             log.exception("DAP pause request failed for parent")
             return False
-        for pid, child in list(self._child_clients.items()):
+
+        # Children are paused concurrently, not one after another, and
+        # each is bounded. A child parked in a blocking syscall never
+        # services `threads` — multiprocessing's `forkserver` and
+        # `resource_tracker` helpers spend their entire lives in one, and
+        # since Python 3.14 `forkserver` is the default start method on
+        # Linux, so an ordinary `multiprocessing` program now has two of
+        # them. Serially and unbounded that is 30s of dead time each.
+        async def _pause_child(pid: int, child: DAPClient) -> None:
             try:
-                threads = await child.threads()
+                threads = await asyncio.wait_for(
+                    child.threads(), timeout=remaining() / 2
+                )
                 if threads:
-                    await child.pause(threads[0].id)
+                    await asyncio.wait_for(
+                        child.pause(threads[0].id), timeout=remaining()
+                    )
+            except asyncio.TimeoutError:
+                log.debug("pause: child pid=%s unresponsive within budget", pid)
             except Exception:
                 log.exception("DAP pause request failed for child pid=%s", pid)
+
+        children = list(self._child_clients.items())
+        if children:
+            # Half the remaining budget for the fan-out, half kept for the
+            # stop wait: a child that can't be reached must not consume the
+            # window in which the parent's own stop would have arrived.
+            with contextlib.suppress(asyncio.TimeoutError):
+                await asyncio.wait_for(
+                    asyncio.gather(
+                        *(_pause_child(pid, c) for pid, c in children),
+                        return_exceptions=True,
+                    ),
+                    timeout=remaining() / 2,
+                )
         try:
-            await asyncio.wait_for(self._stopped_event.wait(), timeout=timeout)
+            await asyncio.wait_for(self._stopped_event.wait(), timeout=remaining())
             return True
         except asyncio.TimeoutError:
             return False
