@@ -231,3 +231,23 @@ def test_replay_only_flags_rejected_without_replay(capsys, flag, value):
     with pytest.raises(SystemExit):
         parse_args(argv)
     assert flag in capsys.readouterr().err
+
+
+async def test_replay_fixed_interval_sleeps_before_each_command(tmp_path, monkeypatch):
+    path, _ = make_recording(
+        tmp_path,
+        [
+            ("set_breakpoint", [f"{tmp_path}/toy.py:3"]),
+            ("continue", []),
+            ("quit", []),
+        ],
+    )
+    slept: list[float] = []
+
+    async def fake_sleep(s):
+        slept.append(s)
+
+    monkeypatch.setattr("tdb.replay.asyncio.sleep", fake_sleep)
+    errors = await run_replay(load_recording(path), interval=0.75, echo=lambda _s: None)
+    assert errors == 0
+    assert slept == [0.75, 0.75, 0.75]

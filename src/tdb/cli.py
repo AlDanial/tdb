@@ -6,6 +6,13 @@ import argparse
 import shutil
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from tdb.app import TdbApp
+    from tdb.persist import TdbConfig
+    from tdb.replay import Recording
+    from tdb.replay_tui import ReplayDriver
 
 
 def _get_version() -> str:
@@ -212,9 +219,34 @@ def build_parser() -> argparse.ArgumentParser:
         "RPC dispatch, printing a transcript.",
     )
     parser.add_argument(
+        "--replay-tui",
+        metavar="FILE",
+        default=None,
+        help="Replay a --record session inside the TUI so you can watch "
+        "it: launches the recorded program and performs each recorded "
+        "action (breakpoints, stepping, evaluate, ...) at the recorded "
+        "pace. The TUI stays open afterwards unless the recording ends "
+        "with quit.",
+    )
+    parser.add_argument(
+        "--replay-quiet",
+        action="store_true",
+        help="With --replay-tui: do not pop up a toast for each replayed "
+        "action (errors and the final summary are still shown).",
+    )
+    parser.add_argument(
         "--timing",
         action="store_true",
-        help="With --replay: reproduce the recorded pacing between commands.",
+        help="With --replay: reproduce the recorded pacing between commands "
+        "(--replay-tui always does).",
+    )
+    parser.add_argument(
+        "--replay-interval",
+        type=float,
+        default=None,
+        metavar="S",
+        help="With --replay/--replay-tui: wait S seconds before each "
+        "action instead of reproducing the recorded gaps.",
     )
     parser.add_argument(
         "--replay-timeout",
@@ -731,6 +763,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             ("-t/--to-line", args.to_line),
             ("--record", args.record),
             ("--replay", args.replay),
+            ("--replay-tui", args.replay_tui),
             ("--headless", args.headless),
             ("--server", args.server),
             ("--mcp", args.mcp),
@@ -757,6 +790,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             ("-t/--to-line", args.to_line),
             ("--record", args.record),
             ("--replay", args.replay),
+            ("--replay-tui", args.replay_tui),
             ("--headless", args.headless),
             ("--server", args.server),
             ("--mcp", args.mcp),
@@ -790,23 +824,38 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "combined with --server, --headless, --post-mortem, or --mcp"
         )
 
-    if args.replay:
+    if args.replay and args.replay_tui:
+        parser.error("--replay-tui cannot be combined with --replay")
+    if args.replay_quiet and not args.replay_tui:
+        parser.error("--replay-quiet has no effect without --replay-tui")
+    if args.replay_interval is not None:
+        if not (args.replay or args.replay_tui):
+            parser.error(
+                "--replay-interval has no effect without --replay/--replay-tui"
+            )
+        if args.timing:
+            parser.error("--replay-interval cannot be combined with --timing")
+        if args.replay_interval < 0:
+            parser.error("--replay-interval must be >= 0")
+    for flag, value in (("--replay", args.replay), ("--replay-tui", args.replay_tui)):
+        if not value:
+            continue
         if getattr(args, "program", None):
             parser.error(
-                "--replay takes no program argument (the recording "
+                f"{flag} takes no program argument (the recording "
                 "header supplies the program)"
             )
         if args.record or args.headless or args.server or args.post_mortem or args.mcp:
             parser.error(
-                "--replay cannot be combined with --record, "
+                f"{flag} cannot be combined with --record, "
                 "--server, --headless, --post-mortem, or --mcp"
             )
         return args
 
     if args.timing:
-        parser.error("--timing has no effect without --replay")
+        parser.error("--timing has no effect without --replay/--replay-tui")
     if args.replay_timeout != 30.0:
-        parser.error("--replay-timeout has no effect without --replay")
+        parser.error("--replay-timeout has no effect without --replay/--replay-tui")
 
     if args.doc or args.doc_text or args.post_mortem or args.mcp:
         return args
@@ -877,7 +926,14 @@ def main(argv: list[str] | None = None) -> None:
     elif args.replay:
         from tdb.replay import replay_main
 
-        replay_main(args.replay, timing=args.timing, replay_timeout=args.replay_timeout)
+        replay_main(
+            args.replay,
+            timing=args.timing,
+            replay_timeout=args.replay_timeout,
+            interval=args.replay_interval,
+        )
+    elif args.replay_tui:
+        _run_replay_tui(args)
     elif args.run:
         _run_run(args)
     elif args.eval:
@@ -1038,6 +1094,91 @@ def _run_eval(args: argparse.Namespace) -> None:
         )
     )
     sys.exit(code)
+
+
+def build_replay_tui_app(
+    recording: "Recording",
+    *,
+    label: str,
+    config: "TdbConfig",
+    replay_timeout: float = 30.0,
+    announce: bool = True,
+    interval: float | None = None,
+) -> "tuple[TdbApp, ReplayDriver]":
+    """Build the TUI + driver pair for `--replay-tui` from a recording.
+
+    Shared by the CLI and the integration tests so both exercise the
+    same wiring. Like headless replay, the program is always parked at
+    entry: the recording's own records install breakpoints and carry
+    the explicit `continue` for sessions that did not stop on entry.
+    """
+    from tdb.app import TdbApp
+    from tdb.replay import profile_from_header
+    from tdb.replay_tui import ReplayDriver
+
+    h = recording.header
+    if h.get("step_mode"):
+        config.step_mode = h["step_mode"]
+    driver = ReplayDriver(
+        recording,
+        label=label,
+        replay_timeout=replay_timeout,
+        announce=announce,
+        interval=interval,
+    )
+    common = dict(config=config, profile=profile_from_header(h), replay_driver=driver)
+    if h["mode"] == "launch":
+        app = TdbApp(
+            program=h["program"],
+            args=list(h.get("args") or []),
+            cwd=h["cwd"],
+            stop_on_entry=True,
+            just_my_code=not h.get("no_just_my_code", False),
+            python=h.get("python"),
+            **common,
+        )
+    else:
+        app = TdbApp(
+            program=h.get("program") or "",
+            attach_host=h["host"],
+            attach_port=h["port"],
+            path_mappings=[tuple(pm) for pm in (h.get("path_mappings") or [])] or None,
+            **common,
+        )
+    return app, driver
+
+
+def _run_replay_tui(args: argparse.Namespace) -> None:
+    """Replay a recording inside the TUI (`--replay-tui`)."""
+    from tdb.persist import load_config, save_config
+    from tdb.replay import RecordingError, load_recording
+
+    try:
+        recording = load_recording(args.replay_tui)
+    except (OSError, RecordingError) as e:
+        print(f"tdb: {e}", file=sys.stderr)
+        sys.exit(2)
+
+    config = load_config()
+    if args.keybindings is not None:
+        config.keybindings = args.keybindings
+        save_config(config)
+
+    app, driver = build_replay_tui_app(
+        recording,
+        label=Path(args.replay_tui).name,
+        config=config,
+        replay_timeout=args.replay_timeout,
+        announce=not args.replay_quiet,
+        interval=args.replay_interval,
+    )
+    app.run()
+    if app._startup_error:
+        print(app._startup_error, file=sys.stderr)
+        sys.exit(app.return_code or 2)
+    if app.return_code:
+        sys.exit(app.return_code)
+    sys.exit(0 if driver.errors == 0 else 1)
 
 
 def _run_tui(args: argparse.Namespace) -> None:

@@ -156,3 +156,30 @@ async def test_variable_expand_without_evaluate_name_records_nothing(
     var_view = app.query_one("#variable-view", VariableView)
     await app.on_tdb_app_lazy_load_variables(app.LazyLoadVariables(7, var_view.root))
     assert cap.records == []
+
+
+async def test_main_view_expansion_with_source_records_inspect(app_cap, monkeypatch):
+    # The real VariableView posts LazyLoadVariables(ref, node, source=self);
+    # the hook must treat the main view like source=None (only the
+    # Processes-modal view is exempt).
+    app, cap, _ = app_cap
+    app.controller.state.variables = {
+        5: [
+            Variable(
+                name="data", value="{...}", variables_reference=7, evaluate_name="data"
+            )
+        ]
+    }
+
+    class FakeClient:
+        async def variables(self, ref):
+            return []
+
+    monkeypatch.setattr(
+        type(app.controller), "active_client", property(lambda self: FakeClient())
+    )
+    var_view = app.query_one("#variable-view", VariableView)
+    await app.on_tdb_app_lazy_load_variables(
+        app.LazyLoadVariables(7, var_view.root, var_view)
+    )
+    assert cap.records == [("inspect", ["data"])]

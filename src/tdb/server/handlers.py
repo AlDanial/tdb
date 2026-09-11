@@ -70,7 +70,7 @@ class HandlerRef:
         self.h = new_handler
 
 
-def _parse_file_line(spec: str) -> tuple[str, int]:
+def parse_file_line(spec: str) -> tuple[str, int]:
     """Split 'file:line' into (resolved_path, line). Raises ValueError on bad input."""
     if ":" not in spec:
         raise ValueError("expected 'file:line'")
@@ -332,7 +332,7 @@ class RpcHandlers:
         if not params:
             return RpcResponse.error("params[0] must be 'file:line'")
         try:
-            source_path, line = _parse_file_line(str(params[0]))
+            source_path, line = parse_file_line(str(params[0]))
         except ValueError:
             return RpcResponse.error("params[0] must be 'file:line'")
         condition = str(params[1]) if len(params) > 1 and params[1] else None
@@ -364,7 +364,7 @@ class RpcHandlers:
         if not params:
             return RpcResponse.error("params[0] must be 'file:line'")
         try:
-            source_path, line = _parse_file_line(str(params[0]))
+            source_path, line = parse_file_line(str(params[0]))
         except ValueError:
             return RpcResponse.error("params[0] must be 'file:line'")
         await self.controller.remove_breakpoint(source_path, line)

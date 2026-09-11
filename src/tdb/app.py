@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from pathlib import Path
@@ -54,6 +55,7 @@ from tdb import __version__ as tdb_version
 
 if TYPE_CHECKING:
     from tdb.languages.base import LanguageProfile
+    from tdb.replay_tui import ReplayDriver
     from tdb.session.event_bus import SwappableEventHandler
 
 log = logging.getLogger(__name__)
@@ -196,9 +198,15 @@ class TdbApp(_AppMessageRoutes, App):
         adopted_controller: "DebugController | None" = None,
         adopted_handler: "SwappableEventHandler | None" = None,
         adopted_stop: tuple | None = None,
+        replay_driver: "ReplayDriver | None" = None,
     ) -> None:
         super().__init__()
         self._program = program
+        self._replay_driver = replay_driver
+        # Set by the DAP stopped/terminated handlers once the panels
+        # reflect a *final* stop (statement-mode intermediate stops never
+        # set it); cleared on continue. `tdb --replay-tui` paces on it.
+        self.stop_settled = asyncio.Event()
         self._args = args
         self._cwd = cwd
         self._stop_on_entry = stop_on_entry
@@ -400,6 +408,13 @@ class TdbApp(_AppMessageRoutes, App):
         self._start_session()
         if self._server_port is not None:
             self._start_server()
+        if self._replay_driver is not None:
+            self.run_worker(
+                self._replay_driver.run(self),
+                name="replay-driver",
+                group="replay",
+                exit_on_error=False,
+            )
 
     def _enter_post_mortem(self, code_view: CodeView) -> None:
         """Populate the UI from a frozen crash snapshot (no DAP session)."""
@@ -1008,8 +1023,13 @@ class TdbApp(_AppMessageRoutes, App):
         except Exception:
             log.exception("Error executing debug action: %s", message.action)
 
-    async def _navigate_stack(self, up: bool) -> None:
-        """Move to the next/previous frame in the call stack."""
+    async def _navigate_stack(self, up: bool) -> bool:
+        """Move to the next/previous frame in the call stack.
+
+        Returns True when the frame changed (False at either end of the
+        stack, or on error).
+        """
+        moved = False
         try:
             moved = await self.controller.navigate_stack(up)
             if moved:
@@ -1017,6 +1037,7 @@ class TdbApp(_AppMessageRoutes, App):
         except Exception:
             log.exception("Error navigating stack")
         self._update_ui_state()
+        return moved
 
     def on_code_view_show_last_traceback(
         self,
@@ -1265,7 +1286,9 @@ class TdbApp(_AppMessageRoutes, App):
         # `inspect` of the variable's evaluatable expression when the
         # adapter provided one (DAP evaluateName). Modal expansions and
         # evaluate_name-less variables (e.g. the perl adapter) are skipped.
-        if source is None:
+        # The main VariableView posts itself as `source`; legacy callers
+        # pass None — both mean the main view.
+        if source is None or source.id == "variable-view":
             expanded = next(
                 (
                     v

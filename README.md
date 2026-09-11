@@ -1521,7 +1521,7 @@ language.
 blocking external call or syscall, the pause can't land until that call returns --
 `tdb` prints a notice and opens the TUI once the stop actually arrives.
 
-**Incompatible flags:** `-r`, `-k`/`-t`, `--record`, `--replay`, `--server`,
+**Incompatible flags:** `-r`, `-k`/`-t`, `--record`, `--replay`, `--replay-tui`, `--server`,
 `--headless`, `--mcp`, `--terminal`.
 
 ### Eval Mode (`-e`/`--eval`)
@@ -1564,7 +1564,7 @@ evaluated in each child process that reaches it.
   the eval point matches that bound line, so the expression still runs.
 
 **Incompatible flags:** `--run`, `-r`, `-a`, `-k`/`-t`, `--record`,
-`--replay`, `--server`, `--headless`, `--mcp`, `--terminal`.
+`--replay`, `--replay-tui`, `--server`, `--headless`, `--mcp`, `--terminal`.
 
 ### Keybinding Schemes
 
@@ -1686,14 +1686,29 @@ written to `session.jsonl` as
 JSON-RPC commands. Works with launch mode (any language) and `-r`
 remote attach.
 
-Replay it two ways:
+Replay it three ways:
 
+- `tdb --replay-tui session.jsonl` opens the normal TUI on the recorded
+  program and performs every recorded action in front of you, at the
+  recorded pace: breakpoints appear in the Code View, steps and continues
+  move the cursor, Evaluate entries echo into the console with their
+  results, stack navigation and variable expansion play out in their
+  panels. The title bar shows progress (`tdb ▶ session.jsonl 3/11`) and a
+  toast announces each action (`--replay-quiet` turns those toasts off).
+  A failed action raises an error toast and replay continues. When the recording does not end with `quit`, the
+  debugger stays open at the final stop for you to carry on by hand.
+  `--replay-interval S` waits a fixed S seconds before each action
+  instead of reproducing the recorded gaps. `--replay-timeout S` bounds
+  each stop-wait (default 30 s). Exit code 0
+  iff every action succeeded. Don't type into the TUI while it is
+  replaying: stray keystrokes interleave with the recorded actions.
 - `tdb --replay session.jsonl` launches the recorded
   program headless, feeds every recorded command through the same RPC
   dispatch `tdb --server` uses, and prints a transcript (recorded time,
   command, verbatim result, interleaved program output). Exit code 0 iff
   every command succeeded. Add `--timing` to reproduce the original
-  pacing, `--replay-timeout S` to bound each stop-wait (default 30 s).
+  pacing or `--replay-interval S` for a fixed delay before each command,
+  `--replay-timeout S` to bound each stop-wait (default 30 s).
 - Against a live server: start `tdb --server prog.py`, then feed line 2
   onward of the file to `POST /rpc` . Each line is a valid request body:
 
@@ -1837,6 +1852,13 @@ usage: tdb [-h] [-v] [-r [HOST:]PORT] [--cwd CWD] [--no-stop-on-entry]
 | `--server` | Enable JSON-RPC server alongside TUI |
 | `--headless` | JSON-RPC server only, no TUI |
 | `--server-port PORT` | Server port (default: 8150) |
+| `--record FILE` | Record this TUI session's debugging actions to FILE (JSON-RPC lines) |
+| `--replay FILE` | Replay a recording headless, printing a transcript (no program argument) |
+| `--replay-tui FILE` | Replay a recording inside the TUI at the recorded pace, so you can watch it |
+| `--replay-quiet` | With `--replay-tui`: no per-action toasts (errors and the final summary still show) |
+| `--timing` | With `--replay`: reproduce the recorded pacing (`--replay-tui` always does) |
+| `--replay-interval S` | With `--replay`/`--replay-tui`: fixed S-second delay before each action instead of the recorded gaps |
+| `--replay-timeout S` | With `--replay`/`--replay-tui`: per-action stop-wait timeout (default 30) |
 | `--examine-log DEST` | With --run: write each Ctrl-\ / SIGUSR2 stack snapshot to DEST (- = stdout; repeatable) |
 
 ## Configuration

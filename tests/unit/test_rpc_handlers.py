@@ -15,7 +15,7 @@ import pytest
 from tdb.dap.types import SourceBreakpoint, Thread
 from tdb.rust_concurrency.models import ConcurrencySnapshot, ThreadAnalysis, ThreadState
 from tdb.server.event_handler import ServerEventHandler
-from tdb.server.handlers import ControllerRef, RpcHandlers, _parse_file_line
+from tdb.server.handlers import ControllerRef, RpcHandlers, parse_file_line
 from tdb.session.controller import DebugController
 from tdb.session.state import SessionPhase
 
@@ -56,33 +56,33 @@ def handlers() -> RpcHandlers:
     return RpcHandlers(ControllerRef(controller), eh)
 
 
-# --- _parse_file_line ---------------------------------------------------
+# --- parse_file_line ---------------------------------------------------
 
 
-def test_parse_file_line_resolves_path(tmp_path):
+def testparse_file_line_resolves_path(tmp_path):
     f = tmp_path / "x.py"
     f.write_text("\n")
-    p, line = _parse_file_line(f"{f}:42")
+    p, line = parse_file_line(f"{f}:42")
     assert p == str(f.resolve())
     assert line == 42
 
 
-def test_parse_file_line_handles_drive_letter_style(tmp_path):
+def testparse_file_line_handles_drive_letter_style(tmp_path):
     """rsplit(':', 1) should split on the LAST colon, leaving Windows-style
     'C:/path:line' intact."""
-    p, line = _parse_file_line("C:/foo/bar.py:7")
+    p, line = parse_file_line("C:/foo/bar.py:7")
     assert p.endswith("bar.py")
     assert line == 7
 
 
-def test_parse_file_line_rejects_no_colon():
+def testparse_file_line_rejects_no_colon():
     with pytest.raises(ValueError):
-        _parse_file_line("nocolon")
+        parse_file_line("nocolon")
 
 
-def test_parse_file_line_rejects_non_numeric_line():
+def testparse_file_line_rejects_non_numeric_line():
     with pytest.raises(ValueError):
-        _parse_file_line("/x.py:abc")
+        parse_file_line("/x.py:abc")
 
 
 # --- Dispatch table -----------------------------------------------------

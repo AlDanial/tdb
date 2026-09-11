@@ -86,18 +86,23 @@ class EvaluateConsole(Vertical):
     def on__eval_input_tab_pressed(self, event: _EvalInput.TabPressed) -> None:
         self.post_message(self.CompletionRequested(event.text, event.column))
 
+    def echo_expression(self, expression: str) -> None:
+        """Append `expression` to the history and echo it as a `>>>` line.
+
+        Shared by the Enter handler and `tdb --replay-tui`, which shows
+        each recorded evaluate exactly as the original keystrokes did.
+        """
+        self._history.append(expression)
+        self._history_idx = len(self._history)
+        output = self.query_one("#eval-output", RichLog)
+        output.write(Text(f">>> {expression}", style="bold cyan"))
+
     def on_input_submitted(self, event: Input.Submitted) -> None:
         expression = event.value.strip()
         if not expression:
             return
 
-        # Add to history
-        self._history.append(expression)
-        self._history_idx = len(self._history)
-
-        # Show the expression in the output
-        output = self.query_one("#eval-output", RichLog)
-        output.write(Text(f">>> {expression}", style="bold cyan"))
+        self.echo_expression(expression)
 
         # Clear input
         input_widget = self.query_one("#eval-input", _EvalInput)
