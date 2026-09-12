@@ -80,7 +80,7 @@ def test_control_enumerates_every_supported_action(mcp_tools):
     dispatches — drift here would mean MCP exposes / hides actions
     the HTTP API does not."""
     control = next(t for t in mcp_tools if t.name == "control")
-    action_enum = set(control.inputSchema["properties"]["action"]["enum"])
+    action_enum = set(control.input_schema["properties"]["action"]["enum"])
     assert action_enum == {
         "continue",
         "next",
@@ -96,13 +96,39 @@ def test_control_default_timeout_is_30s(mcp_tools):
     an agent polling a runaway program gets a 'still running' return
     promptly, long enough that normal step+stop completes in one call."""
     control = next(t for t in mcp_tools if t.name == "control")
-    assert control.inputSchema["properties"]["timeout_s"]["default"] == 30.0
+    assert control.input_schema["properties"]["timeout_s"]["default"] == 30.0
 
 
 def test_debug_attach_accepts_rust_program_and_profile_selection(mcp_tools):
     attach = next(tool for tool in mcp_tools if tool.name == "debug_attach")
-    properties = attach.inputSchema["properties"]
+    properties = attach.input_schema["properties"]
     assert {"program", "lang", "adapter"} <= properties.keys()
+
+
+# --- In-process tool invocation (mcp 2.x call_tool contract) -----------
+
+
+def test_call_tool_returns_call_tool_result_with_text_content():
+    """mcp 2.x wraps a tool's bare `str` return in a CallToolResult.
+    Pin the shape agents actually receive: one TextContent block
+    carrying the wrapper's string, and `is_error` False even when the
+    text is an `Error:`-prefixed tdb response (tdb signals failure in
+    the payload, not at the protocol level)."""
+    mcp = build_mcp(session=McpSession())
+    result = asyncio.run(mcp.call_tool("status", {}))
+    assert result.is_error is False
+    assert len(result.content) == 1
+    assert result.content[0].type == "text"
+    assert result.content[0].text.startswith("Error: No active debug session")
+
+
+def test_server_instructions_survive_construction():
+    """mcp 2.x reordered MCPServer's positional parameters so a
+    positional `instructions` silently lands in `title`. Pin that the
+    agent-facing instructions are actually attached."""
+    mcp = build_mcp(session=McpSession())
+    assert mcp.name == "tdb"
+    assert "debug_launch" in (mcp.instructions or "")
 
 
 # --- _format ------------------------------------------------------------
