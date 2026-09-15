@@ -864,3 +864,45 @@ def test_remote_attach_allows_ruby():
 def test_remote_attach_still_rejects_bash():
     with pytest.raises(SystemExit):
         parse_args(["-r", "5678", "--lang", "bash"])
+
+
+# --- --info -----------------------------------------------------------------
+
+
+def test_info_flag_short_circuits_program_check():
+    """--info prints install facts and exits; no program needed."""
+    args = parse_args(["--info"])
+    assert args.info is True
+    assert args.program is None
+
+
+def test_info_flag_default_false(tmp_path):
+    prog = tmp_path / "x.py"
+    prog.write_text("\n")
+    args = parse_args([str(prog)])
+    assert args.info is False
+
+
+def test_info_main_prints_dirs_and_about(capsys, monkeypatch):
+    """End-to-end: `tdb --info` writes the install dir, the PadWalker
+    source dir, cache dir and status, and the About-modal text to stdout.
+    The status probe is stubbed so this stays fast and perl-free."""
+    from tdb import __version__
+    from tdb.adapters.perl import padwalker as pw
+    from tdb.app_helpers import install_dir
+    from tdb.cli import main as cli_main
+
+    monkeypatch.setattr(pw, "padwalker_status", lambda perl="perl": "STUBBED-STATUS")
+    cli_main(["--info"])
+    out = capsys.readouterr().out
+    assert install_dir() in out
+    assert pw.padwalker_dir() in out
+    assert str(pw.cache_root()) in out
+    assert "STUBBED-STATUS" in out
+    assert f"tdb v{__version__}" in out
+    assert "https://github.com/AlDanial/tdb" in out
+    # Plain text: no Rich markup leaks into the terminal output.
+    assert "[bold]" not in out
+    # About text first, install/Perl facts last.
+    assert out.index(f"tdb v{__version__}") < out.index("tdb installation directory")
+    assert out.index("tdb installation directory") < out.index("STUBBED-STATUS")

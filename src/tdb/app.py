@@ -6,7 +6,6 @@ import asyncio
 import logging
 import os
 from pathlib import Path
-from textwrap import dedent
 from typing import TYPE_CHECKING
 
 from textual import work
@@ -43,7 +42,7 @@ from tdb.widgets.modals import (
 from tdb.widgets.full_contents_modal import FullContentsModal
 from tdb.widgets.stack_view import StackView
 from tdb.widgets.status_bar import StatusBar
-from tdb.app_helpers import find_readme, unquote_dap_string
+from tdb.app_helpers import about_text, find_readme, unquote_dap_string
 from tdb.persist import (
     TdbConfig,
     load_breakpoints,
@@ -51,7 +50,6 @@ from tdb.persist import (
     save_config,
 )
 from tdb.widgets.variable_view import VariableView
-from tdb import __version__ as tdb_version
 
 if TYPE_CHECKING:
     from tdb.languages.base import LanguageProfile
@@ -1495,16 +1493,7 @@ class TdbApp(_AppMessageRoutes, App):
         self.push_screen(_DocumentationModal(readme))
 
     def action_about(self) -> None:
-        body = dedent(f"""\
-            [bold]tdb v{tdb_version}[/bold]
-            by Al Danial (with Claude Code)
-            Copyright (c) 2026
-
-            GitHub: https://github.com/AlDanial/tdb
-            PyPI  : https://pypi.org/project/textual-debugger/
-
-            A TUI Python debugger based on debugpy and textual""")
-        self.push_screen(_AboutModal(body))
+        self.push_screen(_AboutModal(about_text(markup=True)))
 
     # --- Async tasks ---
 

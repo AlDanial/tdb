@@ -61,28 +61,6 @@ to have `tdb` pop open automatically at the first uncaught exception
 making it suitable for operation in non-graphical environments (mouse support is
 available in graphical environments)
 
-## Acknowledgments
-
-Thank you:
-
-- Will McGugan for the amazing `textual` module.
-`tdb` would be a pale shadow of itself had I used any other TUI framework.
-Fantastic work, Will.
-
-- Microsoft for the Debug Adapter Protocol (DAP) and releasing
-its implementation in `debugpy` and the Python Debugger extension for Visual Studio Code
-as open source.
-
-- Anthropic, for providing access to Claude Code through the
-[Claude for Open Source](https://claude.com/contact-sales/claude-for-oss) program.
-`tdb` was made almost entirely with Claude Code.
-
-- OpenAI, for providing access to Codex through the
-[Codex for Open Source](https://developers.openai.com/community/codex-for-oss) program.
-
-This project was inspired by Andreas Klöckner's excellent [pudb](https://pypi.org/project/pudb/)
-Python debugger.
-
 ## Gallery
 <p align="center">
   <img src="https://github.com/AlDanial/tdb/blob/main/gallery/async_breakpoint.png" alt="at breakpoint" width="300">
@@ -121,6 +99,10 @@ uvx --from textual-debugger tdb  my_program.py
 ```bash
 # show comprehensive documentation in a terminal-based Markdown viewer
 tdb --doc
+
+# show where tdb is installed, where its bundled Perl PadWalker module
+# lives, and the Help > About text
+tdb --info
 
 # debug a script (stops at first line by default)
 tdb my_program.py
@@ -473,6 +455,24 @@ metadata for broader primitives and stronger ownership evidence.
 `perl` ≥ 5.18 on `PATH`. It drives stock `perl5db` under the
 hood, so it works with any Perl already on the system.
 
+The [PadWalker](https://metacpan.org/pod/PadWalker) module v2.5, by Robin Houston,
+is bundled with `tdb`.  PadWalker provides a more complete view of lexical variables
+in outer/caller frames and therefore provides a richer debugging experience.
+PadWalker is an XS (compiled) module, so the bundled copy has to be built
+against the exact perl that runs your program.  `tdb` does this for you on the
+first Perl launch: if the perl in use cannot already load PadWalker (from CPAN
+or a distro package), `tdb` compiles the bundled sources, caches the result
+per interpreter under its config directory (`~/.config/tdb/padwalker/` on
+Linux/macOS, `%APPDATA%\\tdb\\padwalker\\` on Windows), and prepends that
+directory to the debuggee's `PERL5LIB`.  The build takes about a second and
+needs perl's headers (`libperl-dev` on Debian/Ubuntu, `perl-devel` on
+Fedora/RHEL) plus a C compiler; Strawberry Perl on Windows ships both.  When
+the build is not possible, `tdb` prints a one-line notice on the console and
+falls back to a read-only pad walk, so outer-frame lexicals degrade but
+debugging otherwise proceeds.  `tdb --info` reports the source directory, the
+cache directory, and whether a build exists for the `perl` on your `PATH`.
+`TDB_PADWALKER_CACHE` overrides the cache location.
+
 **Launching a script:**
 
 ```bash
@@ -568,13 +568,6 @@ export PERL5LIB=/opt/tdb-perl:$PERL5LIB
 (`Devel/TdbRemote.pm` locates `helpers.pl` next to itself at runtime, so keep
 the two files in the same relative layout shown above; `helpers.pl` is a
 sibling of the `Devel/` directory, not inside it.)
-
-**PadWalker (optional but recommended):** inspecting lexical (`my`)
-variables in the *current* frame always works. Lexicals in outer/caller
-frames need the `PadWalker` module installed on the debuggee's Perl; without
-it, tdb falls back to a read-only pad walk that can't reach fully into
-enclosing scopes, and outer-frame variable listings degrade accordingly.
-Install with `cpanm PadWalker` (or your distro's package) for full fidelity.
 
 **Pause is unavailable in attach mode.** Launch-mode sessions (`tdb
 script.pl`) support pausing a running program at any time. Remote-attach
@@ -1826,7 +1819,7 @@ usage: tdb [-h] [-v] [-r [HOST:]PORT] [--cwd CWD] [--no-stop-on-entry]
            [--keybindings {default,vim,emacs}]
            [--terminal {xterm,konsole,gnome-terminal,ghostty,kitty,iterm2,warp,wezterm,terminator}]
            [--local-root PATH] [--remote-root PATH]
-           [--server] [--headless] [-k FILE:LINE|LINE] [--server-port SERVER_PORT] [-d] [--doc-text]
+           [--server] [--headless] [-k FILE:LINE|LINE] [--server-port SERVER_PORT] [-d] [--doc-text] [--info]
            [program] [args ...]
 ```
 
@@ -1920,6 +1913,28 @@ fires as expected.
 ## License
 
 MIT
+
+## Acknowledgments
+
+Thank you:
+
+- Will McGugan for the amazing `textual` module.
+`tdb` would be a pale shadow of itself had I used any other TUI framework.
+Fantastic work, Will.
+
+- Microsoft for the Debug Adapter Protocol (DAP) and releasing
+its implementation in `debugpy` and the Python Debugger extension for Visual Studio Code
+as open source.
+
+- Anthropic, for providing access to Claude Code through the
+[Claude for Open Source](https://claude.com/contact-sales/claude-for-oss) program.
+`tdb` was made almost entirely with Claude Code.
+
+- OpenAI, for providing access to Codex through the
+[Codex for Open Source](https://developers.openai.com/community/codex-for-oss) program.
+
+This project was inspired by Andreas Klöckner's excellent [pudb](https://pypi.org/project/pudb/)
+Python debugger.
 
 
 ## Known Problems

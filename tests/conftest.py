@@ -24,6 +24,29 @@ from collections.abc import AsyncIterator  # noqa: E402
 import pytest  # noqa: E402
 
 
+@pytest.fixture(autouse=True, scope="session")
+def _isolate_padwalker_cache(tmp_path_factory):
+    """Perl launches may compile the bundled PadWalker into the config
+    dir; point that cache at a per-session temp dir instead. The env var
+    is inherited by adapter subprocesses (tdb.adapters.perl).
+
+    Session-scoped and deliberately NOT using `monkeypatch`: a
+    function-scoped autouse fixture here would be set up before every
+    test's own fixtures and so torn down after them, reordering
+    teardown for tests that patch sys.platform / os.close and expect
+    their patches gone before their own cleanup runs."""
+    import os
+
+    key = "TDB_PADWALKER_CACHE"
+    previous = os.environ.get(key)
+    os.environ[key] = str(tmp_path_factory.getbasetemp() / "padwalker-cache")
+    yield
+    if previous is None:
+        os.environ.pop(key, None)
+    else:
+        os.environ[key] = previous
+
+
 @pytest.fixture(scope="session")
 def tcsh_path() -> Path:
     found = shutil.which("tcsh")
