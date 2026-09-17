@@ -994,10 +994,12 @@ Leaving Edit mode, quitting, restarting, or opening another file with
 unsaved changes prompts: `s` save, `d` discard, `Esc` keep editing.
 
 Saving does not change the running program. tdb shifts your breakpoints
-to their new lines, clears the current-line marker, and reminds you to
-press `R` to restart with the new code. Edit mode is unavailable for
-sources that are not on this machine (remote attach), during replay, and
-in post-mortem mode.
+to their new lines, clears the current-line marker, and (when restart is
+available) reminds you to press `R` to restart with the new code. In
+`tdb --run` sessions, which cannot restart, you will see only "Saved
+`<file>`." Edit mode is unavailable when no file is loaded, for sources
+that are not on this machine (remote attach), during replay, and in
+post-mortem mode.
 
 The `Edit` menu (`Alt+E`) offers Save, Revert to Disk, Discard and Exit
 Edit Mode, and Open in $EDITOR, which suspends tdb, runs `$VISUAL` /
