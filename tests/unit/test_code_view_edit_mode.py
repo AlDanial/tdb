@@ -283,6 +283,27 @@ async def test_revert_to_disk_restores_text_and_stays_editing(tmp_path):
         assert app.query_one(CodeEditor).text == "x = 1\ny = 2\n"
 
 
+async def test_non_utf8_file_refuses_edit(tmp_path):
+    """A Latin-1 byte sequence that isn't valid UTF-8 decodes with
+    U+FFFD substitutions for display; editing it would save those
+    substitutions back permanently, so Edit mode must refuse (I4)."""
+    app = _CVApp()
+    async with app.run_test():
+        cv = app.query_one("#cv", CodeView)
+        p = tmp_path / "latin1.py"
+        # 'café' in Latin-1: the trailing 0xe9 is not valid UTF-8.
+        p.write_bytes(b"# caf\xe9\nx = 1\n")
+        cv.load_file(str(p))
+        assert "�" in cv.lines()[0]  # loaded for display via replace
+        reason = cv.edit_refusal_reason()
+        assert reason is not None
+        assert "not valid UTF-8" in reason
+        assert await cv.enter_edit_mode() is False
+        # A subsequent clean UTF-8 load clears the flag.
+        cv.load_file(_write(tmp_path))
+        assert cv.edit_refusal_reason() is None
+
+
 async def test_focus_on_code_view_redirects_to_editor(tmp_path):
     app = _CVApp()
     async with app.run_test() as pilot:

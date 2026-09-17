@@ -443,11 +443,16 @@ class CodeView(ScrollableContainer, can_focus=True):
         # True when the displayed text came from a readable local file
         # (load_file success). load_content (remote source) clears it.
         self._source_is_local: bool = False
+        # True when load_file had to fall back to errors="replace"
+        # (the file is not valid UTF-8): editing would save the
+        # U+FFFD substitutions back permanently, so Edit mode refuses.
+        self._source_lossy: bool = False
         self._had_trailing_newline: bool = True
         # A load_file/load_content that arrived while editing another
         # file. Applied when the editor closes.
         self._deferred_source: tuple[str, str] | None = None
         self._deferred_is_local: bool = True
+        self._deferred_is_lossy: bool = False
 
     def compose(self):
         self._content = _CodeContent(self)
@@ -624,6 +629,8 @@ class CodeView(ScrollableContainer, can_focus=True):
             return "No file is loaded."
         if not self._source_is_local:
             return "This source is not on this machine, so it cannot be edited."
+        if self._source_lossy:
+            return "This file is not valid UTF-8, so it cannot be edited in tdb."
         return None
 
     def _announce_mode(self) -> None:
@@ -755,7 +762,10 @@ class CodeView(ScrollableContainer, can_focus=True):
         self._deferred_source = None
         if deferred is not None:
             self._install_source(
-                deferred[0], deferred[1], is_local=self._deferred_is_local
+                deferred[0],
+                deferred[1],
+                is_local=self._deferred_is_local,
+                is_lossy=self._deferred_is_lossy,
             )
         elif reload_from_disk and self.source_path is not None:
             self.load_file(self.source_path)
@@ -954,12 +964,24 @@ class CodeView(ScrollableContainer, can_focus=True):
 
     def load_file(self, path: str) -> None:
         try:
-            text = Path(path).read_text(encoding="utf-8", errors="replace")
+            raw = Path(path).read_bytes()
             is_local = True
         except OSError:
-            text = f"<Could not read {path}>"
-            is_local = False
-        self._install_source(text, path, is_local=is_local)
+            self._install_source(f"<Could not read {path}>", path, is_local=False)
+            return
+        try:
+            # Strict decode first: a clean UTF-8 file must never be
+            # flagged lossy even though errors="replace" would also
+            # "succeed" on it.
+            text = raw.decode("utf-8")
+            is_lossy = False
+        except UnicodeDecodeError:
+            # Not valid UTF-8: still show *something* (U+FFFD in place
+            # of the bad bytes), but refuse Edit mode for it — saving
+            # those substitutions back would corrupt the file (I4).
+            text = raw.decode("utf-8", errors="replace")
+            is_lossy = True
+        self._install_source(text, path, is_local=is_local, is_lossy=is_lossy)
 
     def load_content(self, content: str, path: str) -> None:
         """Install source code from an in-memory string.
@@ -971,15 +993,18 @@ class CodeView(ScrollableContainer, can_focus=True):
         lookups and "did the displayed file change?" checks keep
         working unchanged.
         """
-        self._install_source(content, path, is_local=False)
+        self._install_source(content, path, is_local=False, is_lossy=False)
 
-    def _install_source(self, text: str, path: str, *, is_local: bool = True) -> None:
+    def _install_source(
+        self, text: str, path: str, *, is_local: bool = True, is_lossy: bool = False
+    ) -> None:
         """Shared body of load_file / load_content."""
         if self._editor is not None and path != self.source_path:
             # A stop in another file arrived mid-edit. Don't yank the
             # editor away; show that file once the editor closes.
             self._deferred_source = (text, path)
             self._deferred_is_local = is_local
+            self._deferred_is_lossy = is_lossy
             return
         # A later stop back in the edited file (or any load that isn't
         # deferred) makes any previously-queued deferred source stale —
@@ -990,6 +1015,7 @@ class CodeView(ScrollableContainer, can_focus=True):
 
         self.source_path = path
         self._source_is_local = is_local
+        self._source_lossy = is_lossy
         self._had_trailing_newline = text.endswith("\n")
         self._lines = text.splitlines()
         # Step units underpin the "breakpoints land on logical statement
