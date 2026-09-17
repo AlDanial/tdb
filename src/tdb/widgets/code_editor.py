@@ -153,9 +153,10 @@ class CodeEditor(TextArea):
         # widget's `_on_key` runs — our layer would never see it.
         # Claiming it here (Screen._binding_chain's "filter out keys
         # consumed by a focused widget" pass) strips that App-level
-        # binding out of the chain whenever a layer is installed to
-        # handle it, so ctrl+p (emacs cursor-up) reaches `_on_key`.
-        if key == "ctrl+p" and self._layer is not None:
+        # binding out of the chain, so ctrl+p (emacs cursor-up) reaches
+        # `_on_key`. Only the emacs scheme binds ctrl+p to anything —
+        # vim and Notepad users keep the command palette.
+        if key == "ctrl+p" and self.scheme == "emacs":
             return True
         return super().check_consume_key(key, character)
 

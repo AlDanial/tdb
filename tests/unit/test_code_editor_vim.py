@@ -277,6 +277,17 @@ async def test_linewise_put_after_on_phantom_last_row():
         assert ed.cursor_location == (3, 0)
 
 
+async def test_ctrl_p_not_claimed_from_app_on_vim_scheme():
+    """check_consume_key must not strip the App's ctrl+p (command
+    palette) priority binding for vim users — only emacs binds ctrl+p
+    to cursor-up, so only emacs needs it stolen from the chain."""
+    app = _EdApp()
+    async with app.run_test():
+        ed = app.query_one("#ed", CodeEditor)
+        assert ed._layer is not None
+        assert ed.check_consume_key("ctrl+p") is False
+
+
 async def test_ctrl_s_in_normal_mode_saves_instead_of_being_swallowed():
     app = _EdApp()
     async with app.run_test() as pilot:

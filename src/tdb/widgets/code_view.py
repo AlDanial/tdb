@@ -767,6 +767,12 @@ class CodeView(ScrollableContainer, can_focus=True):
                 is_local=self._deferred_is_local,
                 is_lossy=self._deferred_is_lossy,
             )
+            if self.current_line is not None:
+                # current_line may have been set (by a stop event) while
+                # this source was still queued, so its watcher never got
+                # a chance to scroll to it — the pane was hidden behind
+                # the editor. Catch up now that it's installed.
+                self.goto_line(self.current_line)
         elif reload_from_disk and self.source_path is not None:
             self.load_file(self.source_path)
         elif self.source_path is not None and text != self._editor_text():

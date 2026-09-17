@@ -283,6 +283,30 @@ async def test_revert_to_disk_restores_text_and_stays_editing(tmp_path):
         assert app.query_one(CodeEditor).text == "x = 1\ny = 2\n"
 
 
+async def test_teardown_scrolls_to_current_line_for_deferred_source(tmp_path):
+    """A stop reported for another file while still editing sets
+    current_line without moving the (invisible) code pane's scroll.
+    Once the deferred source installs on teardown, the view must catch
+    up and scroll to that stop location."""
+    app = _CVApp()
+    async with app.run_test() as pilot:
+        cv = app.query_one("#cv", CodeView)
+        first = _write(tmp_path)
+        other = str(tmp_path / "other.py")
+        Path(other).write_text("a\nb\nc\n")
+        cv.load_file(first)
+        await pilot.press("escape", "escape")
+        await pilot.pause()
+        cv.load_file(other)  # deferred: still editing `first`
+        cv.current_line = 3  # simulated stop reported for other.py
+        calls: list[int] = []
+        cv.goto_line = lambda line: calls.append(line)
+        cv.leave_edit_mode()
+        await pilot.pause()
+        assert cv.source_path == other
+        assert 3 in calls
+
+
 async def test_non_utf8_file_refuses_edit(tmp_path):
     """A Latin-1 byte sequence that isn't valid UTF-8 decodes with
     U+FFFD substitutions for display; editing it would save those

@@ -119,6 +119,16 @@ async def test_plain_ctrl_s_is_search_not_save():
         assert app.searches == [False]
 
 
+async def test_ctrl_p_claimed_from_app_on_emacs_scheme():
+    """emacs binds ctrl+p to cursor-up, so it must strip the App's
+    ctrl+p (command palette) priority binding out of the chain."""
+    app = _EdApp()
+    async with app.run_test():
+        ed = app.query_one("#ed", CodeEditor)
+        assert ed._layer is not None
+        assert ed.check_consume_key("ctrl+p") is True
+
+
 async def test_escape_leaves():
     app = _EdApp()
     async with app.run_test() as pilot:
