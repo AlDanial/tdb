@@ -120,6 +120,23 @@ async def test_typing_marks_dirty_and_save_writes_file(tmp_path):
         assert app.saved == [(path, ["x = 1", "y = 2"], ["x = 10", "y = 2"])]
 
 
+async def test_save_then_leave_reinstalls_source_for_rerender(tmp_path):
+    app = _CVApp()
+    async with app.run_test() as pilot:
+        cv = app.query_one("#cv", CodeView)
+        path = _write(tmp_path)
+        cv.load_file(path)
+        await pilot.press("escape", "escape")
+        await pilot.pause()
+        await pilot.press("z")
+        await pilot.press("ctrl+s")
+        await pilot.pause()
+        await pilot.press("escape")
+        await pilot.pause()
+        assert cv.lines()[0] == "zx = 1"
+        assert cv._line_text(0).plain.endswith("zx = 1")
+
+
 async def test_leave_with_dirty_buffer_prompts_and_cancel_keeps_editing(tmp_path):
     app = _CVApp()
     async with app.run_test() as pilot:

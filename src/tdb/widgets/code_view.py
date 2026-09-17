@@ -725,10 +725,11 @@ class CodeView(ScrollableContainer, can_focus=True):
             return False
         old_lines = list(self._lines)
         self._editor.mark_clean()
-        # Keep the viewer's model in step so a later teardown without
-        # further edits is a no-op, and FileSaved's new_lines are right.
-        self._had_trailing_newline = text.endswith("\n")
-        self._lines = text.splitlines()
+        # Reinstall so the (hidden) code pane's highlighting, step units,
+        # valid breakpoint lines, and max width all catch up with the
+        # saved text — not just self._lines. This also keeps a later
+        # teardown's `text != self._editor_text()` check a correct no-op.
+        self._install_source(text, self.source_path)
         self.post_message(
             self.FileSaved(self.source_path, old_lines, list(self._lines))
         )
