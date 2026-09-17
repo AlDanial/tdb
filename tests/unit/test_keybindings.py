@@ -91,3 +91,34 @@ def test_emacs_ctrl_f_b_page_motions():
     cfg = KeybindingConfig.from_scheme("emacs")
     assert cfg.lookup(Mode.NAVIGATION, "ctrl+f") == "page_down"
     assert cfg.lookup(Mode.NAVIGATION, "ctrl+b") == "page_up"
+
+
+def test_edit_mode_exists_and_lookup_is_inert():
+    cfg = KeybindingConfig.from_scheme("vim")
+    assert Mode.EDIT.value == "Edit"
+    # Edit mode never routes keys through the nav/debug/shared tables:
+    # the editor widget owns every key while it has focus.
+    assert cfg.lookup(Mode.EDIT, "up") is None
+    assert cfg.lookup(Mode.EDIT, "q") is None
+    assert cfg.lookup(Mode.EDIT, "j") is None
+
+
+def test_scheme_labels():
+    from tdb.keybindings import scheme_label
+
+    assert scheme_label("vim") == "Vim"
+    assert scheme_label("emacs") == "Emacs"
+    assert scheme_label("default") == "Notepad-style"
+    assert scheme_label("bogus") == "bogus"
+
+
+def test_format_bindings_edit_mode_per_scheme():
+    notepad = KeybindingConfig.from_scheme("default").format_bindings(Mode.EDIT)
+    emacs = KeybindingConfig.from_scheme("emacs").format_bindings(Mode.EDIT)
+    vim = KeybindingConfig.from_scheme("vim").format_bindings(Mode.EDIT)
+    keys = lambda rows: [k for k, _ in rows]
+    assert "Ctrl+S" in keys(notepad) and "Ctrl+X Ctrl+S" not in keys(notepad)
+    assert "Ctrl+X Ctrl+S" in keys(emacs)
+    assert ":w" in keys(vim) and "i a I A o O" in keys(vim)
+    for rows in (notepad, emacs, vim):
+        assert all(isinstance(k, str) and isinstance(d, str) for k, d in rows)
