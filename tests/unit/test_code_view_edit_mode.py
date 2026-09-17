@@ -231,6 +231,30 @@ async def test_load_for_other_file_is_deferred_while_editing(tmp_path):
         assert cv.lines() == ["o = 1"]
 
 
+async def test_stale_deferred_source_cleared_by_same_file_reload(tmp_path):
+    """A stop in another file arrives mid-edit (deferred); a later stop
+    back in the edited file goes through the non-deferred branch. That
+    must clear the stale deferred source, or leaving Edit mode installs
+    the wrong file (I2)."""
+    app = _CVApp()
+    async with app.run_test() as pilot:
+        cv = app.query_one("#cv", CodeView)
+        first = _write(tmp_path)
+        other = str(tmp_path / "other.py")
+        Path(other).write_text("o = 1\n")
+        cv.load_file(first)
+        await pilot.press("escape", "escape")
+        await pilot.pause()
+        cv.load_file(other)  # deferred: still editing `first`
+        assert cv.is_editing
+        cv.load_file(first)  # stop back in the edited file: non-deferred path
+        assert cv.is_editing
+        cv.leave_edit_mode()
+        await pilot.pause()
+        assert cv.source_path == first
+        assert cv.lines() == ["x = 1", "y = 2"]
+
+
 async def test_arrow_keys_reach_editor_in_edit_mode(tmp_path):
     app = _CVApp()
     async with app.run_test() as pilot:

@@ -981,6 +981,11 @@ class CodeView(ScrollableContainer, can_focus=True):
             self._deferred_source = (text, path)
             self._deferred_is_local = is_local
             return
+        # A later stop back in the edited file (or any load that isn't
+        # deferred) makes any previously-queued deferred source stale —
+        # without this, leaving Edit mode would install that stale file
+        # even though the debuggee is stopped elsewhere (I2).
+        self._deferred_source = None
         from tdb.source_analysis import compute_step_units
 
         self.source_path = path
