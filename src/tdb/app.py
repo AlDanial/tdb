@@ -1652,7 +1652,10 @@ class TdbApp(_AppMessageRoutes, App):
         argv = resolve_external_editor() + [path]
         try:
             with self.suspend():
-                await asyncio.to_thread(subprocess.run, argv, check=False)
+                # Deliberately blocking: suspend() stops the driver's writer
+                # thread without gating rendering, so the event loop must
+                # not run while the terminal belongs to the external editor.
+                subprocess.run(argv, check=False)  # noqa: ASYNC221
         except OSError as exc:
             self.notify(
                 f"Could not run {argv[0]}: {exc}", title="Edit", severity="error"
