@@ -302,6 +302,249 @@ class EmacsLayer:
         ed.move_cursor(start)
 
 
+class VimLayer:
+    """Vim-lite: a normal/insert/command state machine over TextArea.
+
+    Insert mode passes every key through to TextArea (so typing is
+    native). Normal mode swallows everything it does not understand,
+    so a stray letter never edits the buffer. Deliberately NOT vim:
+    no visual mode, registers, text objects, `.` repeat, or macros.
+    """
+
+    # Key names Textual delivers for the punctuation we use.
+    _KEYS: ClassVar[dict[str, str]] = {
+        "dollar_sign": "$",
+        "circumflex_accent": "^",
+        "colon": ":",
+        "slash": "/",
+        "question_mark": "?",
+        "exclamation_mark": "!",
+    }
+
+    def __init__(self, editor: CodeEditor) -> None:
+        self.ed = editor
+        self._submode = "normal"
+        self._command = ""
+        self.count = ""
+        self.pending = ""  # "", "d", "y", "g"
+        self.yank_buffer = ""
+        self.yank_linewise = False
+
+    # ---- state exposed to CodeEditor / CodeView ----
+
+    @property
+    def submode(self) -> str:
+        return self._submode
+
+    @property
+    def command_text(self) -> str:
+        return self._command
+
+    def _set_submode(self, submode: str) -> None:
+        self._submode = submode
+        self.ed.post_message(CodeEditor.SubmodeChanged())
+
+    def _take_count(self) -> tuple[int, bool]:
+        had = bool(self.count)
+        n = int(self.count) if had else 1
+        self.count = ""
+        return max(1, n), had
+
+    # ---- dispatch ----
+
+    def handle_key(self, event: Key) -> bool:
+        key = self._KEYS.get(event.key, event.key)
+        if self._submode == "insert":
+            if key == "escape":
+                self._set_submode("normal")
+                return True
+            return False  # native TextArea typing
+        if self._submode == "command":
+            return self._handle_command_key(key, event.character)
+        return self._handle_normal_key(key)
+
+    # ---- command line ----
+
+    def _handle_command_key(self, key: str, char: str | None) -> bool:
+        if key == "escape":
+            self._command = ""
+            self._set_submode("normal")
+        elif key == "enter":
+            cmd = self._command.strip()
+            self._command = ""
+            self._set_submode("normal")
+            self._run_command(cmd)
+        elif key == "backspace":
+            self._command = self._command[:-1]
+            self.ed.post_message(CodeEditor.SubmodeChanged())
+        elif char is not None and char.isprintable():
+            self._command += char
+            self.ed.post_message(CodeEditor.SubmodeChanged())
+        return True
+
+    def _run_command(self, cmd: str) -> None:
+        ed = self.ed
+        if cmd == "w":
+            ed.post_message(CodeEditor.SaveRequested())
+        elif cmd == "q":
+            ed.post_message(CodeEditor.LeaveRequested())
+        elif cmd == "q!":
+            ed.post_message(CodeEditor.LeaveRequested(discard=True))
+        elif cmd in ("wq", "x"):
+            ed.post_message(CodeEditor.SaveRequested())
+            ed.post_message(CodeEditor.LeaveRequested())
+        elif cmd.isdigit():
+            line = max(1, min(int(cmd), ed.document.line_count))
+            ed.move_cursor((line - 1, 0))
+        elif cmd:
+            ed.app.notify(f"Unknown command: :{cmd}", title="Edit", severity="warning")
+
+    # ---- normal mode ----
+
+    def _handle_normal_key(self, key: str) -> bool:
+        ed = self.ed
+
+        # Count prefix ('0' alone is a motion)
+        if key.isdigit() and (self.count or key != "0"):
+            self.count += key
+            return True
+
+        if self.pending:
+            op, self.pending = self.pending, ""
+            return self._handle_operator(op, key)
+
+        count, had_count = self._take_count()
+        row, col = ed.cursor_location
+        line = ed.document.get_line(row)
+
+        if key == "escape":
+            return False  # CodeEditor turns this into LeaveRequested
+        if key in ("h", "left"):
+            for _ in range(count):
+                ed.action_cursor_left()
+        elif key in ("l", "right"):
+            for _ in range(count):
+                ed.action_cursor_right()
+        elif key in ("j", "down"):
+            for _ in range(count):
+                ed.action_cursor_down()
+        elif key in ("k", "up"):
+            for _ in range(count):
+                ed.action_cursor_up()
+        elif key == "w":
+            for _ in range(count):
+                self._word_start_next()
+        elif key == "b":
+            for _ in range(count):
+                ed.action_cursor_word_left()
+        elif key == "e":
+            for _ in range(count):
+                self._word_end()
+        elif key == "0":
+            ed.move_cursor((row, 0))
+        elif key == "^":
+            ed.move_cursor((row, len(line) - len(line.lstrip())))
+        elif key == "$":
+            ed.move_cursor((row, len(line)))
+        elif key == "G":
+            if had_count:
+                ed.move_cursor((min(count, ed.document.line_count) - 1, 0))
+            else:
+                ed.move_cursor((ed.document.line_count - 1, 0))
+        elif key == "g":
+            self.pending = "g"
+        elif key in ("ctrl+f", "pagedown"):
+            ed.action_cursor_page_down()
+        elif key in ("ctrl+b", "pageup"):
+            ed.action_cursor_page_up()
+        elif key == "i":
+            self._set_submode("insert")
+        elif key == "a":
+            if col < len(line):
+                ed.move_cursor((row, col + 1))
+            self._set_submode("insert")
+        elif key == "I":
+            ed.move_cursor((row, len(line) - len(line.lstrip())))
+            self._set_submode("insert")
+        elif key == "A":
+            ed.move_cursor((row, len(line)))
+            self._set_submode("insert")
+        elif key == "o":
+            ed.insert("\n", (row, len(line)))
+            self._set_submode("insert")
+        elif key == "O":
+            ed.insert("\n", (row, 0))
+            ed.move_cursor((row, 0))
+            self._set_submode("insert")
+        elif key == ":":
+            self._command = ""
+            self._set_submode("command")
+        elif key == "/":
+            ed.post_message(CodeEditor.SearchRequested(backward=False))
+        elif key == "?":
+            ed.post_message(CodeEditor.SearchRequested(backward=True))
+        elif key == "n":
+            ed.post_message(CodeEditor.SearchStepRequested(forward=True))
+        elif key == "N":
+            ed.post_message(CodeEditor.SearchStepRequested(forward=False))
+        elif key in ("d", "y"):
+            self.pending = key
+            self.count = str(count) if had_count else ""
+        else:
+            self._edit_key(key, count)  # Task 7; swallows unknown keys
+        return True
+
+    def _handle_operator(self, op: str, key: str) -> bool:
+        """Second key of gg / dd / dw / yy. Task 7 fills in d/y."""
+        if op == "g":
+            if key == "g":
+                self.ed.move_cursor((0, 0))
+            self.count = ""
+            return True
+        count, _ = self._take_count()
+        return self._operator(op, key, count)
+
+    def _operator(self, op: str, key: str, count: int) -> bool:
+        return True  # Task 7
+
+    def _edit_key(self, key: str, count: int) -> None:
+        return None  # Task 7
+
+    def _word_start_next(self) -> None:
+        """`w`: move to the start of the next word.
+
+        Textual's `action_cursor_word_right` (used for emacs `M-f`)
+        lands at the END of the current/next word, not vim's
+        start-of-next-word. Land there, then skip the whitespace run
+        that follows so the cursor sits on the next word's first
+        character. At/past end of line, continue onto the first
+        non-blank of the next line; stays put at end of document.
+        """
+        ed = self.ed
+        ed.action_cursor_word_right()
+        row, col = ed.cursor_location
+        line = ed.document.get_line(row)
+        while col < len(line) and line[col] in (" ", "\t"):
+            col += 1
+            ed.move_cursor((row, col))
+        if col >= len(line) and row + 1 < ed.document.line_count:
+            next_row = row + 1
+            next_line = ed.document.get_line(next_row)
+            first_non_blank = len(next_line) - len(next_line.lstrip(" \t"))
+            ed.move_cursor((next_row, first_non_blank))
+
+    def _word_end(self) -> None:
+        """Approximate `e`: jump to the last char of the next word."""
+        ed = self.ed
+        ed.action_cursor_word_right()
+        row, col = ed.cursor_location
+        line = ed.document.get_line(row)
+        # word_right lands after the word (on the space); step back onto
+        # its last character when we're not at a line boundary.
+        if col > 0 and (col >= len(line) or line[col] == " "):
+            ed.move_cursor((row, col - 1))
+
+
 class _UnsavedChangesModal(ModalScreen[str]):
     """Save / Discard / Cancel prompt used by every path that would
     abandon unsaved edits (leave Edit mode, quit, restart, open)."""
