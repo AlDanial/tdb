@@ -4,6 +4,8 @@ quit and restart (Task 9 appends to this file)."""
 
 from __future__ import annotations
 
+import subprocess
+from contextlib import contextmanager
 from pathlib import Path
 
 from tdb.app import TdbApp
@@ -198,3 +200,84 @@ async def test_q_during_unsaved_prompt_does_not_push_confirm(tmp_path):
         await pilot.pause()
         assert isinstance(app.screen, _UnsavedChangesModal)
         assert not any(isinstance(s, _QuitConfirmModal) for s in app.screen_stack)
+
+
+# ---- Task 10: Edit menu + $EDITOR ----
+
+
+async def test_edit_menu_exists_and_alt_e_opens_it():
+    app = TdbApp(program="", config=TdbConfig())
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        from tdb.widgets.menu_bar import MenuBar
+
+        bar = app.query_one("#menu-bar", MenuBar)
+        assert "Edit" in bar._menus
+        assert bar._menus["Edit"] == [
+            "Save",
+            "Revert to Disk",
+            "Discard and Exit Edit Mode",
+            "Open in $EDITOR",
+        ]
+        await pilot.press("alt+e")
+        await pilot.pause()
+        assert bar._open_menu == "Edit"
+
+
+async def test_edit_menu_save_and_discard(tmp_path):
+    app = TdbApp(program="", config=TdbConfig(keybindings="default"))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        path = _write(tmp_path)
+        notes: list[str] = []
+        app.notify = lambda msg, **kw: notes.append(msg)
+        app._edit_menu_action("Save")
+        assert notes[-1].startswith("Nothing to save")
+        cv = await _enter_edit(app, pilot, path)
+        await pilot.press("z")
+        app._edit_menu_action("Save")
+        await pilot.pause()
+        assert Path(path).read_text(encoding="utf-8").startswith("z")
+        await pilot.press("q")
+        app._edit_menu_action("Revert to Disk")
+        assert not cv.is_dirty and cv.is_editing
+        await pilot.press("q")
+        app._edit_menu_action("Discard and Exit Edit Mode")
+        await pilot.pause()
+        assert not cv.is_editing
+        assert Path(path).read_text(encoding="utf-8") == "zx = 1\ny = 2\nz = 3\n"
+
+
+async def test_open_in_external_editor_reloads_and_remaps(tmp_path, monkeypatch):
+    app = TdbApp(program="", config=TdbConfig(keybindings="default"))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        path = _write(tmp_path)
+        cv = app.query_one("#code-view", CodeView)
+        cv.load_file(path)
+        app.controller.state.breakpoints[path] = [SourceBreakpoint(line=2)]
+
+        async def fake_replace(source_path, bps):
+            app.controller.state.breakpoints[source_path] = list(bps)
+
+        app.controller.replace_breakpoints = fake_replace
+        monkeypatch.setenv("EDITOR", "fake-editor")
+
+        @contextmanager
+        def fake_suspend():
+            yield
+
+        monkeypatch.setattr(app, "suspend", fake_suspend)
+        calls: list[list[str]] = []
+
+        def fake_run(argv, **kw):
+            calls.append(list(argv))
+            Path(path).write_text("# new\nx = 1\ny = 2\nz = 3\n", encoding="utf-8")
+            return subprocess.CompletedProcess(argv, 0)
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+        await app._open_in_external_editor()
+        await pilot.pause()
+        assert calls == [["fake-editor", path]]
+        assert cv.lines()[0] == "# new"
+        assert [bp.line for bp in app.controller.state.breakpoints[path]] == [3]

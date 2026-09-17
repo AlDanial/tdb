@@ -147,6 +147,7 @@ class TdbApp(_AppMessageRoutes, App):
         # gets ctrl+right delivered to tdb, which still opens the menu.
         Binding("alt+f,ctrl+right", "menu_file", "File menu", show=False),
         Binding("alt+c", "menu_configure", "Configure menu", show=False),
+        Binding("alt+e", "menu_edit", "Edit menu", show=False),
         Binding("alt+t", "menu_threads", "Threads", show=False),
         Binding("alt+p", "menu_processes", "Processes", show=False),
         Binding("alt+a", "menu_async_tasks", "Async Tasks", show=False),
@@ -313,6 +314,12 @@ class TdbApp(_AppMessageRoutes, App):
         leading_action_labels = {"open-file-label": "File"}
         yield MenuBar(
             {
+                "Edit": [
+                    "Save",
+                    "Revert to Disk",
+                    "Discard and Exit Edit Mode",
+                    "Open in $EDITOR",
+                ],
                 "Configure": ["Color Theme", "Keybindings", "Step Mode"],
                 "Help": ["Documentation", "About"],
             },
@@ -1460,7 +1467,9 @@ class TdbApp(_AppMessageRoutes, App):
         menu_bar = self.query_one("#menu-bar", MenuBar)
         menu_bar._close_all()
 
-        if menu == "Configure" and item == "Color Theme":
+        if menu == "Edit":
+            self._edit_menu_action(item)
+        elif menu == "Configure" and item == "Color Theme":
             self.action_color_theme()
         elif menu == "Configure" and item == "Keybindings":
             self.action_keybindings()
@@ -1590,6 +1599,73 @@ class TdbApp(_AppMessageRoutes, App):
 
     def action_menu_configure(self) -> None:
         self.query_one("#menu-bar", MenuBar).open_menu("Configure")
+
+    def action_menu_edit(self) -> None:
+        self.query_one("#menu-bar", MenuBar).open_menu("Edit")
+
+    def _edit_menu_action(self, item: str) -> None:
+        code_view = self.query_one("#code-view", CodeView)
+        if item == "Save":
+            if not code_view.is_editing:
+                self.notify("Nothing to save: not in Edit mode.", title="Edit")
+            elif not code_view.is_dirty:
+                self.notify("No unsaved changes.", title="Edit")
+            else:
+                code_view.save_file()
+        elif item == "Revert to Disk":
+            if not code_view.is_editing or not code_view.is_dirty:
+                self.notify("No unsaved changes.", title="Edit")
+            elif code_view.revert_to_disk():
+                self.notify("Reverted to the on-disk contents.", title="Edit")
+        elif item == "Discard and Exit Edit Mode":
+            if not code_view.is_editing:
+                self.notify("Not in Edit mode.", title="Edit")
+            else:
+                code_view.leave_edit_mode(discard=True)
+        elif item == "Open in $EDITOR":
+            self.run_worker(self._open_in_external_editor(), name="external-editor")
+
+    async def _open_in_external_editor(self) -> None:
+        """Suspend the TUI, run $VISUAL / $EDITOR on the current file,
+        then reload it and remap breakpoints if it changed on disk."""
+        import subprocess
+
+        from tdb.source_edit import resolve_external_editor
+
+        code_view = self.query_one("#code-view", CodeView)
+        reason = code_view.edit_refusal_reason()
+        if reason is not None:
+            self.notify(reason, title="Edit", severity="warning")
+            return
+        if not await self._confirm_discard_edits():
+            return
+        if code_view.is_editing:
+            # Buffer is clean or just saved; the file on disk is current.
+            code_view.leave_edit_mode(discard=True)
+        path = code_view.source_path
+        assert path is not None
+        old_lines = code_view.lines()
+        try:
+            before = os.stat(path).st_mtime_ns
+        except OSError:
+            before = None
+        argv = resolve_external_editor() + [path]
+        try:
+            with self.suspend():
+                await asyncio.to_thread(subprocess.run, argv, check=False)
+        except OSError as exc:
+            self.notify(
+                f"Could not run {argv[0]}: {exc}", title="Edit", severity="error"
+            )
+            return
+        try:
+            after = os.stat(path).st_mtime_ns
+        except OSError:
+            after = None
+        if after == before:
+            return
+        code_view.load_file(path)
+        self.post_message(CodeView.FileSaved(path, old_lines, code_view.lines()))
 
     def action_menu_threads(self) -> None:
         self._close_open_menu()
