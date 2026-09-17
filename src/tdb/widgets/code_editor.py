@@ -306,10 +306,29 @@ class VimLayer:
     """Vim-lite: a normal/insert/command state machine over TextArea.
 
     Insert mode passes every key through to TextArea (so typing is
-    native). Normal mode swallows everything it does not understand,
-    so a stray letter never edits the buffer. Deliberately NOT vim:
-    no visual mode, registers, text objects, `.` repeat, or macros.
+    native). Normal and command mode swallow keys that would insert or
+    edit the buffer (a stray letter never edits it); everything else
+    (Ctrl+S, Ctrl+Q, Alt+*, the Ctrl+O/V/E pane-focus keys, ...) is
+    left unhandled so it bubbles to CodeEditor and the App. Deliberately
+    NOT vim: no visual mode, registers, text objects, `.` repeat, or
+    macros.
     """
+
+    # Keys TextArea itself binds to an edit; normal mode still needs to
+    # swallow these even though they are not "would insert" characters.
+    _NORMAL_EDIT_KEYS: ClassVar[frozenset[str]] = frozenset(
+        {
+            "ctrl+k",
+            "ctrl+u",
+            "ctrl+w",
+            "ctrl+x",
+            "ctrl+v",
+            "backspace",
+            "delete",
+            "enter",
+            "tab",
+        }
+    )
 
     # Key names Textual delivers for the punctuation we use.
     _KEYS: ClassVar[dict[str, str]] = {
@@ -361,7 +380,7 @@ class VimLayer:
             return False  # native TextArea typing
         if self._submode == "command":
             return self._handle_command_key(key, event.character)
-        return self._handle_normal_key(key)
+        return self._handle_normal_key(key, event.character)
 
     # ---- command line ----
 
@@ -380,6 +399,8 @@ class VimLayer:
         elif char is not None and char.isprintable():
             self._command += char
             self.ed.post_message(CodeEditor.SubmodeChanged())
+        else:
+            return False  # e.g. ctrl+q, alt+*: let it bubble
         return True
 
     def _run_command(self, cmd: str) -> None:
@@ -401,7 +422,7 @@ class VimLayer:
 
     # ---- normal mode ----
 
-    def _handle_normal_key(self, key: str) -> bool:
+    def _handle_normal_key(self, key: str, char: str | None = None) -> bool:
         ed = self.ed
 
         # Count prefix ('0' alone is a motion)
@@ -490,8 +511,15 @@ class VimLayer:
         elif key in ("d", "y"):
             self.pending = key
             self.count = str(count) if had_count else ""
-        else:
-            self._edit_key(key, count)  # Task 7; swallows unknown keys
+        elif not self._edit_key(key, count):
+            # Not a recognized vim-lite command. Swallow it only if it
+            # would type (a printable char) or is one of TextArea's own
+            # edit bindings; everything else (ctrl+s, ctrl+q, alt+*,
+            # the pane-focus ctrl+o/v/e ...) bubbles up so CodeEditor and
+            # the App still see it.
+            typed = char is not None and char.isprintable()
+            if not (typed or key in self._NORMAL_EDIT_KEYS):
+                return False
         return True
 
     def _handle_operator(self, op: str, key: str) -> bool:
@@ -544,7 +572,10 @@ class VimLayer:
             start = (row - 1, len(ed.document.get_line(row - 1))) if row > 0 else (0, 0)
         return start, end, text
 
-    def _edit_key(self, key: str, count: int) -> None:
+    def _edit_key(self, key: str, count: int) -> bool:
+        """Recognized vim-lite edit commands. Returns False (unhandled)
+        for anything else, so the caller can decide whether to swallow
+        or let it bubble."""
         ed = self.ed
         row, col = ed.cursor_location
         line = ed.document.get_line(row)
@@ -577,7 +608,9 @@ class VimLayer:
         elif key == "ctrl+r":
             for _ in range(count):
                 ed.redo()
-        # anything else: swallowed
+        else:
+            return False
+        return True
 
     def _join_line(self) -> None:
         ed = self.ed

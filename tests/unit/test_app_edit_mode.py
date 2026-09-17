@@ -170,6 +170,23 @@ async def test_restart_with_dirty_buffer_prompts_and_discard_proceeds(
         assert Path(path).read_text(encoding="utf-8") == "x = 1\ny = 2\nz = 3\n"
 
 
+async def test_ctrl_q_with_dirty_buffer_on_vim_normal_mode_prompts(tmp_path):
+    app = TdbApp(program="", config=TdbConfig(keybindings="vim"))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        cv = await _enter_edit(app, pilot, _write(tmp_path))
+        ed = app.query_one(CodeEditor)
+        assert ed.submode == "normal"
+        await pilot.press("i", "z", "escape")  # dirty via insert, back to normal
+        assert cv.is_dirty and ed.submode == "normal"
+        await pilot.press("ctrl+q")
+        await pilot.pause()
+        assert isinstance(app.screen, _UnsavedChangesModal)
+        await pilot.press("escape")
+        await pilot.pause()
+        assert cv.is_editing and cv.is_dirty
+
+
 async def test_double_ctrl_q_does_not_stack_prompts(tmp_path):
     app = TdbApp(program="", config=TdbConfig(keybindings="default"))
     async with app.run_test() as pilot:

@@ -277,6 +277,40 @@ async def test_linewise_put_after_on_phantom_last_row():
         assert ed.cursor_location == (3, 0)
 
 
+async def test_ctrl_s_in_normal_mode_saves_instead_of_being_swallowed():
+    app = _EdApp()
+    async with app.run_test() as pilot:
+        ed = app.query_one("#ed", CodeEditor)
+        assert ed.submode == "normal"
+        await pilot.press("ctrl+s")
+        assert app.saves == 1
+        assert ed.text == TEXT  # not typed into the buffer
+
+
+async def test_ctrl_q_in_normal_mode_bubbles_to_app():
+    app = _EdApp()
+    async with app.run_test() as pilot:
+        ed = app.query_one("#ed", CodeEditor)
+        assert ed.submode == "normal"
+        await pilot.press("ctrl+q")
+        # No app-level ctrl+q binding is wired up in this bare harness, so
+        # bubbling just means the layer did not swallow it: the buffer is
+        # untouched and no edit-mode message fired.
+        assert ed.text == TEXT
+        assert app.leave == [] and app.saves == 0
+
+
+async def test_ctrl_q_in_command_mode_bubbles_to_app():
+    app = _EdApp()
+    async with app.run_test() as pilot:
+        ed = app.query_one("#ed", CodeEditor)
+        await pilot.press(":")
+        assert ed.submode == "command"
+        await pilot.press("ctrl+q")
+        assert ed.submode == "command"  # key bubbled, command line untouched
+        assert ed.command_text == ""
+
+
 async def test_charwise_put_places_cursor_on_pasted_text():
     app = _EdApp(text="ab\n")
     async with app.run_test() as pilot:

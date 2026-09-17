@@ -155,6 +155,7 @@ _VIM_EDIT_HELP: list[tuple[str, str]] = [
     ("i a I A o O", "Enter insert mode"),
     ("/ ? n N", "Search forward / backward, next / previous"),
     (":w", "Save file"),
+    ("Ctrl+S", "Save file"),
     (":q :wq :q!", "Leave Edit mode (save / discard)"),
     (":N", "Go to line N"),
     ("Esc", "Insert -> normal; normal -> leave Edit mode"),
