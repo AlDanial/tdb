@@ -1011,6 +1011,9 @@ extra: `uv pip install "textual-debugger[edit]"` (highlights Python, Bash,
 Go, and Rust; other languages edit as plain text). Highlighting in the
 normal Code View is unaffected.
 
+CRLF source files are written back with LF line endings after a save in
+Edit mode (a v1 limitation — no CRLF round-trip yet).
+
 > **Note:** Many terminals send the byte sequence `ESC+f` for `Alt+F`, which Textual's
 ANSI parser rewrites to `Ctrl+Right` (the readline "forward-word" convention).
 `tdb` binds both so `Alt+F` works as expected.

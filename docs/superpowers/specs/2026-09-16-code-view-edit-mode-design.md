@@ -82,7 +82,7 @@ editor state:
 | Edit, clean | `Code [Edit]` |
 | Edit, unsaved | `Code [Edit*]` |
 | Edit, vim insert | `Code [Edit:INSERT]` / `Code [Edit:INSERT*]` |
-| Edit, vim command line | `Code [Edit:]` with the typed command shown in the footer |
+| Edit, vim command line | `Code [Edit :wq]` — the typed command shown in the pane title itself, not the footer |
 
 `CodeView.ModeChanged` is posted on every transition, as today, and
 additionally whenever the dirty flag or vim sub-mode changes so the
@@ -168,16 +168,16 @@ operate on `TextArea` rather than on `CodeView` actions.
 |-----|--------|
 | Arrows, Home, End, PageUp, PageDown | Move |
 | Shift + movement | Select |
-| Insert | Toggle insert / overwrite (see note) |
+| Insert | Swallowed (see note) |
 | Delete, Backspace | Delete right / left |
 | Ctrl+Z / Ctrl+Y | Undo / redo |
 | Ctrl+X / Ctrl+C / Ctrl+V | Cut / copy / paste |
 | Ctrl+S | Save |
 | Esc | Leave Edit mode |
 
-Note on Insert: `TextArea` has no overwrite mode. Insert is bound to a
-no-op with a footer hint "Insert mode" so the key does nothing
-surprising; overwrite mode is not implemented.
+Note on Insert: `TextArea` has no overwrite mode. Insert is swallowed
+silently (no footer hint) so the key does nothing surprising;
+overwrite mode is not implemented.
 
 **Emacs**
 
@@ -250,9 +250,13 @@ radio buttons read `Vim`, `Emacs`, `Notepad-style`.
 
 1. Encode `editor.text` as UTF-8, preserving the original
    trailing-newline state.
-2. Write to `<dir>/.<name>.tdb-tmp` in the target's directory, flush
-   and fsync, then `os.replace` onto the target. This is atomic on
-   POSIX and Windows.
+2. Resolve `source_path` to its real target with `os.path.realpath`
+   (so saving through a symlink writes the linked-to file, not a new
+   regular file in its place), write to `<dir>/.<name>.tdb-tmp` in the
+   resolved target's directory, flush and fsync, copy the target's
+   file mode onto the temp file (tolerating a missing target — a new
+   file just keeps the umask mode), then `os.replace` onto the
+   resolved target. This is atomic on POSIX and Windows.
 3. On `OSError` (read-only filesystem, permission denied, missing
    directory): remove the temp file if it exists, `app.notify` with
    the error, keep the buffer dirty, return `False`.
@@ -320,14 +324,14 @@ pick up the remapped lines automatically.
 
 | Item | Behavior |
 |------|----------|
-| Save | `code_view.save_file()`; enters Edit mode first if not editing so the user sees the result |
-| Revert to Disk | Reload the file, discarding edits, after the unsaved-changes modal |
-| Discard and Exit Edit Mode | `leave_edit_mode(discard=True)` after the modal |
+| Save | `code_view.save_file()`; when not editing, only `app.notify`s ("Nothing to save: not in Edit mode.") — it does not enter Edit mode |
+| Revert to Disk | `code_view.revert_to_disk()`: replaces the buffer with the on-disk text *in place*, staying in Edit mode. No modal — this action itself only discards buffer content in favor of disk content, so nothing further needs confirming — and it is undoable via the editor's own undo |
+| Discard and Exit Edit Mode | `leave_edit_mode(discard=True)`, with no unsaved-changes modal — the menu item's name already says what it does, so a second confirmation would be redundant |
 | Open in $EDITOR | See below |
 
 Menu items act on the current file whether or not Edit mode is active;
-Save and Discard are no-ops with a notification when there is nothing
-to save or discard.
+Save and Revert to Disk are no-ops with a notification when there is
+nothing to save or nothing unsaved to revert.
 
 **Open in $EDITOR**: resolve `$VISUAL`, then `$EDITOR`; on Windows fall
 back to `notepad`, on POSIX to `vi`. Refuse with a notification in
@@ -335,8 +339,12 @@ the same cases that refuse Edit mode, plus when a dirty tdb buffer
 exists (the modal offers to save first). Run
 `with self.app.suspend(): subprocess.run([editor, path])`. On return,
 reload the file and run the post-save hook if the mtime changed. The
-editor command is split with `shlex` on POSIX so `EDITOR="code -w"`
-works; on Windows the string is passed as-is.
+editor command is split with `shlex.split(value)` on POSIX so
+`EDITOR="code -w"` works; on Windows it is split with
+`shlex.split(value, posix=False)` (POSIX quoting/escaping rules don't
+apply to Windows paths, e.g. backslashes), so
+`EDITOR="C:\Tools\ed.exe -n"` becomes `["C:\Tools\ed.exe", "-n"]`
+rather than one unresolvable argv[0].
 
 Alt+E opens the Edit menu, following the existing Alt+letter
 convention in `menu_bar.py`. The first letter is highlighted green.
@@ -370,6 +378,14 @@ works without highlighting when the extra is absent. README documents
   matching the existing terminal quirk documented in the README.
 - Read-only config directories are already tolerated; saving the
   source file follows the same tolerate-`OSError` rule.
+- CRLF source files: `load_file` splits the on-disk text into
+  `self._lines` with `str.splitlines()`, which discards the original
+  line-ending characters, and `CodeView._editor_text()` rejoins them
+  with `\n`. A CRLF file therefore enters the editor (and is written
+  back by `save_file()`) with LF line endings, not its original CRLF.
+  This is a known v1 limitation (no CRLF round-trip); a later spec can
+  restore the original per-file line ending on save if it matters in
+  practice.
 
 ### 9. Testing
 
