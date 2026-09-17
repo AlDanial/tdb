@@ -785,6 +785,16 @@ class DebugController:
         if self.state.is_ready and not self.state.is_terminated:
             await self._send_breakpoints(source_path, self._enabled_bps(bps))
 
+    async def replace_breakpoints(
+        self, source_path: str, bps: list[SourceBreakpoint]
+    ) -> None:
+        """Replace one file's breakpoint list wholesale (used after an
+        edit shifts line numbers) and push it to the adapter when a
+        session is live."""
+        self.state.breakpoints[source_path] = list(bps)
+        if self.state.is_ready and not self.state.is_terminated:
+            await self._send_breakpoints(source_path, self._enabled_bps(bps))
+
     async def toggle_breakpoint_enabled(self, source_path: str, line: int) -> None:
         """Toggle the enabled state of a single breakpoint.
 

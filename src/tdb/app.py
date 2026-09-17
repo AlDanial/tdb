@@ -21,7 +21,8 @@ from tdb.languages.base import AdapterNotFoundError
 from tdb.session.controller import DebugController
 from tdb.session.messages import DapStopped
 from tdb.session.textual_handler import TextualEventHandler
-from tdb.keybindings import KeybindingConfig
+from tdb.keybindings import KeybindingConfig, Mode
+from tdb.source_edit import remap_breakpoints
 from tdb.widgets.breakpoint_view import BreakpointView
 from tdb.widgets.code_view import CodeView, _BreakpointConditionModal
 from tdb.widgets.console_view import ConsoleView
@@ -340,6 +341,10 @@ class TdbApp(_AppMessageRoutes, App):
 
         code_view = self.query_one("#code-view", CodeView)
         code_view.keybindings = KeybindingConfig.from_scheme(self._config.keybindings)
+        # Replay drives the UI from a recording; post-mortem shows a
+        # frozen snapshot. Neither has a file the user should edit.
+        if self._replay_driver is not None or self._post_mortem_snapshot is not None:
+            code_view.edit_enabled = False
         code_view.lexer_name = self.controller.profile.presentation.lexer
         stack_view = self.query_one("#stack-view", StackView)
         stack_view.name_filter = self.controller.profile.presentation.frame_name
@@ -459,17 +464,42 @@ class TdbApp(_AppMessageRoutes, App):
         code_view.focus()
 
     def _update_code_title(self, code_view: CodeView) -> None:
-        mode_label = code_view.mode.value
-        styled = (
-            f"[red]{mode_label}[/]"
-            if mode_label.lower() == "navigation"
-            else mode_label
-        )
+        label = code_view.mode_label()
+        if code_view.mode == Mode.NAVIGATION:
+            styled = f"[red]{label}[/]"
+        elif code_view.mode == Mode.EDIT:
+            styled = f"[yellow]{label}[/]"
+        else:
+            styled = label
         code_view.border_title = f"[bold orange]C[/]ode \\[{styled}]"
 
     def on_code_view_mode_changed(self, message: CodeView.ModeChanged) -> None:
         code_view = self.query_one("#code-view", CodeView)
         self._update_code_title(code_view)
+
+    async def on_code_view_file_saved(self, message: CodeView.FileSaved) -> None:
+        """After a save: shift this file's breakpoints across the edit,
+        re-push them, drop the stale current-line marker, and tell the
+        user how to run the new code. No hot reload."""
+        state = self.controller.state
+        code_view = self.query_one("#code-view", CodeView)
+        old = state.breakpoints.get(message.path, [])
+        if old:
+            new = remap_breakpoints(message.old_lines, message.new_lines, old)
+            try:
+                await self.controller.replace_breakpoints(message.path, new)
+            except Exception:
+                log.exception("Error re-pushing breakpoints after save")
+                state.breakpoints[message.path] = new
+            self.post_message(self.BreakpointsChanged())
+        code_view.current_line = None
+        name = Path(message.path).name
+        if self.controller.supports_restart and not state.is_post_mortem:
+            self.notify(
+                f"Saved {name}. Press R to restart with the new code.", title="Edit"
+            )
+        else:
+            self.notify(f"Saved {name}.", title="Edit")
 
     @work(exclusive=True)
     async def _adopt_session(self) -> None:
