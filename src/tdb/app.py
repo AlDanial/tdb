@@ -726,6 +726,15 @@ class TdbApp(_AppMessageRoutes, App):
         if not await self._confirm_discard_edits():
             return
 
+        # The guard above only handles UNSAVED edits; a clean buffer (or
+        # one just saved) still leaves the editor mounted on the old
+        # file, which would defer the new file's load instead of
+        # showing it. A restart — plain or File > Open — always means
+        # "back to Debug mode", so close it now.
+        code_view = self.query_one("#code-view", CodeView)
+        if code_view.is_editing:
+            code_view.leave_edit_mode(discard=True)
+
         if new_program is None:
             self.recorder.record("restart", [])
             # Replay always relaunches parked at entry (see replay.py);

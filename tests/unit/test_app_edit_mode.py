@@ -187,6 +187,32 @@ async def test_ctrl_q_with_dirty_buffer_on_vim_normal_mode_prompts(tmp_path):
         assert cv.is_editing and cv.is_dirty
 
 
+async def test_file_open_while_editing_leaves_edit_mode_for_new_file(
+    tmp_path, monkeypatch
+):
+    app = TdbApp(program="", config=TdbConfig(keybindings="default"))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        path = _write(tmp_path)
+        other = str(Path(tmp_path) / "other.py")
+        Path(other).write_text("a = 1\nb = 2\n", encoding="utf-8")
+        cv = await _enter_edit(app, pilot, path)
+        # Buffer stays clean here: this exercises File > Open's own
+        # discard, not the unsaved-edits guard already covered above.
+        assert not cv.is_dirty
+        monkeypatch.setattr(app, "_start_session", lambda *a, **kw: None)
+
+        async def fake_stop():
+            return None
+
+        app.controller.stop = fake_stop
+        app._restart_session(new_program=other, start_immediately=False)
+        await pilot.pause()
+        await pilot.pause()
+        assert not cv.is_editing
+        assert cv.source_path == other
+
+
 async def test_double_ctrl_q_does_not_stack_prompts(tmp_path):
     app = TdbApp(program="", config=TdbConfig(keybindings="default"))
     async with app.run_test() as pilot:
