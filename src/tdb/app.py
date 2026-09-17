@@ -24,6 +24,7 @@ from tdb.session.textual_handler import TextualEventHandler
 from tdb.keybindings import KeybindingConfig, Mode
 from tdb.source_edit import remap_breakpoints
 from tdb.widgets.breakpoint_view import BreakpointView
+from tdb.widgets.code_editor import _UnsavedChangesModal
 from tdb.widgets.code_view import CodeView, _BreakpointConditionModal
 from tdb.widgets.console_view import ConsoleView
 from tdb.widgets.evaluate_console import EvaluateConsole
@@ -463,6 +464,25 @@ class TdbApp(_AppMessageRoutes, App):
 
         code_view.focus()
 
+    async def _confirm_discard_edits(self) -> bool:
+        """Worker-only. True when it is safe to abandon the Code View's
+        edit buffer: nothing unsaved, or the user chose Save (and it
+        succeeded) or Discard. False on Cancel or a failed save.
+        Awaits a modal, so callers must run inside a worker."""
+        code_view = self.query_one("#code-view", CodeView)
+        if not code_view.is_dirty:
+            return True
+        name = Path(code_view.source_path).name if code_view.source_path else "buffer"
+        result = await self.push_screen(
+            _UnsavedChangesModal(name), wait_for_dismiss=True
+        )
+        if result == "save":
+            return code_view.save_file()
+        if result == "discard":
+            code_view.discard_edits()
+            return True
+        return False
+
     def _update_code_title(self, code_view: CodeView) -> None:
         label = code_view.mode_label()
         if code_view.mode == Mode.NAVIGATION:
@@ -681,6 +701,10 @@ class TdbApp(_AppMessageRoutes, App):
                 "Restart is not available in remote-attach / tdb.breakpoint() mode.",
                 severity="warning",
             )
+            return
+
+        # Restart is the moment the user wants the new code on disk.
+        if not await self._confirm_discard_edits():
             return
 
         if new_program is None:
@@ -1611,6 +1635,14 @@ class TdbApp(_AppMessageRoutes, App):
             # through the detach/terminate choice.
             self.action_confirm_quit()
             return
+        if self._is_quitting:
+            return
+        # The unsaved-edits prompt awaits a modal, which needs a worker.
+        self.run_worker(self._quit_debugger_flow(), name="quit")
+
+    async def _quit_debugger_flow(self) -> None:
+        if not await self._confirm_discard_edits():
+            return
         # Idempotent: Ctrl+Q and the q-confirm path both land here, and
         # `controller.stop()` can take a moment when many child DAP
         # sessions need to be torn down — without this guard, a second
@@ -1631,6 +1663,8 @@ class TdbApp(_AppMessageRoutes, App):
 
     async def _detach_and_exit(self) -> None:
         """Leave the debuggee running; run_mode resumes it after exit."""
+        if not await self._confirm_discard_edits():
+            return
         if self._is_quitting:
             return
         self._is_quitting = True
@@ -1642,6 +1676,8 @@ class TdbApp(_AppMessageRoutes, App):
         self.exit()
 
     async def _terminate_and_exit(self) -> None:
+        if not await self._confirm_discard_edits():
+            return
         if self._is_quitting:
             return
         self._is_quitting = True

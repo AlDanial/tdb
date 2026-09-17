@@ -321,7 +321,7 @@ async def test_inspect_unknown_expression_is_error(app_pilot):
 
 
 async def test_quit_closes_the_app(app_pilot, monkeypatch):
-    app, _ = app_pilot
+    app, pilot = app_pilot
 
     async def fake_stop():
         return None
@@ -329,6 +329,8 @@ async def test_quit_closes_the_app(app_pilot, monkeypatch):
     monkeypatch.setattr(app.controller, "stop", fake_stop)
     driver = make_driver(recording(("quit", []), ("evaluate", ["never"])))
     assert await driver.run(app) == 0
+    # action_quit_debugger now runs the unsaved-edits guard in a worker.
+    await pilot.pause()
     assert app._exit
     assert len(driver.transcript) == 1  # nothing after quit
 
