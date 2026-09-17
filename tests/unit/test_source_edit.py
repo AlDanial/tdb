@@ -38,6 +38,25 @@ def test_atomic_write_keeps_text_without_trailing_newline(tmp_path):
     assert target.read_bytes() == b"no newline at end"
 
 
+def test_atomic_write_updates_symlink_target_not_the_link(tmp_path):
+    real = tmp_path / "real.py"
+    real.write_text("old\n", encoding="utf-8")
+    link = tmp_path / "prog.py"
+    link.symlink_to(real)
+    atomic_write_text(str(link), "new\n")
+    assert link.is_symlink()
+    assert os.path.realpath(str(link)) == str(real)
+    assert real.read_text(encoding="utf-8") == "new\n"
+
+
+def test_atomic_write_preserves_file_mode(tmp_path):
+    target = tmp_path / "script.py"
+    target.write_text("old\n", encoding="utf-8")
+    os.chmod(target, 0o755)
+    atomic_write_text(str(target), "new\n")
+    assert (os.stat(target).st_mode & 0o777) == 0o755
+
+
 def test_atomic_write_raises_oserror_and_leaves_no_temp(tmp_path, monkeypatch):
     target = tmp_path / "prog.py"
     target.write_text("keep me\n", encoding="utf-8")

@@ -17,6 +17,7 @@ from __future__ import annotations
 import difflib
 import os
 import shlex
+import shutil
 import sys
 from collections.abc import Iterable, Mapping, Sequence
 
@@ -24,16 +25,29 @@ from tdb.dap.types import SourceBreakpoint
 
 
 def atomic_write_text(path: str, text: str) -> None:
-    """Write `text` (UTF-8) to `path` atomically. Raises OSError."""
-    directory = os.path.dirname(path) or "."
-    name = os.path.basename(path)
+    """Write `text` (UTF-8) to `path` atomically. Raises OSError.
+
+    `path` is resolved to its real target first: `os.replace` on a
+    symlink would replace the link itself with a regular file, leaving
+    the real file untouched. The temp file is created next to the
+    resolved target (so `os.replace` stays on one filesystem) and its
+    mode is copied from the existing target when there is one, so a
+    `chmod +x` script doesn't lose its executable bit to umask on save.
+    """
+    target = os.path.realpath(path)
+    directory = os.path.dirname(target) or "."
+    name = os.path.basename(target)
     tmp = os.path.join(directory, f".{name}.tdb-tmp")
     try:
         with open(tmp, "w", encoding="utf-8", newline="") as fh:
             fh.write(text)
             fh.flush()
             os.fsync(fh.fileno())
-        os.replace(tmp, path)
+        try:
+            shutil.copymode(target, tmp)
+        except OSError:
+            pass  # target doesn't exist yet (new file): keep umask mode
+        os.replace(tmp, target)
     except OSError:
         try:
             os.unlink(tmp)
