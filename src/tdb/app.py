@@ -1639,6 +1639,8 @@ class TdbApp(_AppMessageRoutes, App):
         then reload it and remap breakpoints if it changed on disk."""
         import subprocess
 
+        from textual.app import SuspendNotSupported
+
         from tdb.source_edit import resolve_external_editor
 
         code_view = self.query_one("#code-view", CodeView)
@@ -1665,6 +1667,13 @@ class TdbApp(_AppMessageRoutes, App):
                 # thread without gating rendering, so the event loop must
                 # not run while the terminal belongs to the external editor.
                 subprocess.run(argv, check=False)  # noqa: ASYNC221
+        except SuspendNotSupported:
+            self.notify(
+                "This terminal cannot suspend tdb to run an external editor.",
+                title="Edit",
+                severity="error",
+            )
+            return
         except OSError as exc:
             self.notify(
                 f"Could not run {argv[0]}: {exc}", title="Edit", severity="error"

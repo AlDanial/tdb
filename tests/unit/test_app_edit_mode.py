@@ -291,6 +291,36 @@ async def test_edit_menu_save_and_discard(tmp_path):
         assert Path(path).read_text(encoding="utf-8") == "zx = 1\ny = 2\nz = 3\n"
 
 
+async def test_open_in_external_editor_notifies_when_suspend_unsupported(
+    tmp_path, monkeypatch
+):
+    from textual.app import SuspendNotSupported
+
+    app = TdbApp(program="", config=TdbConfig(keybindings="default"))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        path = _write(tmp_path)
+        cv = app.query_one("#code-view", CodeView)
+        cv.load_file(path)
+        monkeypatch.setenv("EDITOR", "fake-editor")
+
+        @contextmanager
+        def fake_suspend():
+            raise SuspendNotSupported()
+            yield  # pragma: no cover - unreachable, makes this a generator
+
+        monkeypatch.setattr(app, "suspend", fake_suspend)
+        run_calls: list[list[str]] = []
+        monkeypatch.setattr(
+            subprocess, "run", lambda argv, **kw: run_calls.append(list(argv))
+        )
+        notes: list[str] = []
+        app.notify = lambda msg, **kw: notes.append(msg)
+        await app._open_in_external_editor()
+        assert run_calls == []
+        assert any("cannot suspend" in n for n in notes)
+
+
 async def test_open_in_external_editor_reloads_and_remaps(tmp_path, monkeypatch):
     app = TdbApp(program="", config=TdbConfig(keybindings="default"))
     async with app.run_test() as pilot:
