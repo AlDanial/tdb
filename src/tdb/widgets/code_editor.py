@@ -505,10 +505,114 @@ class VimLayer:
         return self._operator(op, key, count)
 
     def _operator(self, op: str, key: str, count: int) -> bool:
-        return True  # Task 7
+        ed = self.ed
+        row, _ = ed.cursor_location
+        if key == op:  # dd / yy
+            start, end, text = self._line_range(row, count)
+            self.yank_buffer, self.yank_linewise = text, True
+            if op == "d":
+                ed.delete(start, end)
+                ed.move_cursor((min(row, ed.document.line_count - 1), 0))
+        elif op == "d" and key == "w":
+            start = ed.cursor_location
+            for _ in range(count):
+                self._word_start_next()
+            end = ed.cursor_location
+            self.yank_buffer, self.yank_linewise = ed.get_text_range(start, end), False
+            ed.delete(start, end)
+            ed.move_cursor(start)
+        # any other second key: operator cancelled
+        return True
+
+    def _line_range(
+        self, row: int, count: int
+    ) -> tuple[tuple[int, int], tuple[int, int], str]:
+        """Location span covering `count` whole lines from `row`, and
+        the text (always newline-terminated) they contain. Deleting the
+        last line takes the preceding newline instead of a trailing one."""
+        ed = self.ed
+        last = ed.document.line_count - 1
+        end_row = min(row + count, last + 1)
+        if end_row <= last:
+            start, end = (row, 0), (end_row, 0)
+            text = ed.get_text_range(start, end)
+        else:
+            end = ed.document.end
+            text = ed.get_text_range((row, 0), end)
+            if not text.endswith("\n"):
+                text += "\n"
+            start = (row - 1, len(ed.document.get_line(row - 1))) if row > 0 else (0, 0)
+        return start, end, text
 
     def _edit_key(self, key: str, count: int) -> None:
-        return None  # Task 7
+        ed = self.ed
+        row, col = ed.cursor_location
+        line = ed.document.get_line(row)
+        if key == "x":
+            end_col = min(len(line), col + count)
+            if end_col > col:
+                self.yank_buffer, self.yank_linewise = line[col:end_col], False
+                ed.delete((row, col), (row, end_col))
+                ed.move_cursor((row, col))
+        elif key == "X":
+            start_col = max(0, col - count)
+            if start_col < col:
+                self.yank_buffer, self.yank_linewise = line[start_col:col], False
+                ed.delete((row, start_col), (row, col))
+                ed.move_cursor((row, start_col))
+        elif key == "D":
+            self.yank_buffer, self.yank_linewise = line[col:], False
+            ed.delete((row, col), (row, len(line)))
+            ed.move_cursor((row, col))
+        elif key == "J":
+            for _ in range(count):
+                self._join_line()
+        elif key == "p":
+            self._put(after=True)
+        elif key == "P":
+            self._put(after=False)
+        elif key == "u":
+            for _ in range(count):
+                ed.undo()
+        elif key == "ctrl+r":
+            for _ in range(count):
+                ed.redo()
+        # anything else: swallowed
+
+    def _join_line(self) -> None:
+        ed = self.ed
+        row, _ = ed.cursor_location
+        if row + 1 >= ed.document.line_count:
+            return
+        line = ed.document.get_line(row)
+        nxt = ed.document.get_line(row + 1)
+        trimmed_len = len(line.rstrip(" \t"))
+        lead = len(nxt) - len(nxt.lstrip(" \t"))
+        ed.replace(" " if nxt.strip() else "", (row, trimmed_len), (row + 1, lead))
+        ed.move_cursor((row, trimmed_len))
+
+    def _put(self, *, after: bool) -> None:
+        ed = self.ed
+        if not self.yank_buffer:
+            return
+        row, col = ed.cursor_location
+        if self.yank_linewise:
+            text = self.yank_buffer
+            if after:
+                if row + 1 < ed.document.line_count:
+                    ed.insert(text, (row + 1, 0))
+                    ed.move_cursor((row + 1, 0))
+                else:
+                    line = ed.document.get_line(row)
+                    ed.insert("\n" + text.rstrip("\n"), (row, len(line)))
+                    ed.move_cursor((row + 1, 0))
+            else:
+                ed.insert(text, (row, 0))
+                ed.move_cursor((row, 0))
+        else:
+            line = ed.document.get_line(row)
+            at = (row, min(len(line), col + 1)) if after else (row, col)
+            ed.insert(self.yank_buffer, at)
 
     def _word_start_next(self) -> None:
         """`w`: move to the start of the next word.

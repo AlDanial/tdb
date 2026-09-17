@@ -193,3 +193,76 @@ async def test_page_keys():
         assert ed.cursor_location[0] > 5
         await pilot.press("ctrl+b")
         assert ed.cursor_location[0] == 0
+
+
+# ---- Task 7: editing operators ----
+
+
+async def test_x_and_X_with_count():
+    app = _EdApp(text="abcdef\n")
+    async with app.run_test() as pilot:
+        ed = app.query_one("#ed", CodeEditor)
+        await pilot.press("l", "x")
+        assert ed.text == "acdef\n"
+        await pilot.press("2", "x")
+        assert ed.text == "aef\n"
+        await pilot.press("l", "X")
+        # "aef\n" (cursor on 'e', col1) -> l moves to col2 ('f') -> X
+        # deletes the char before the cursor (count=1: col1 'e'), matching
+        # real vim's X and the brief's own _edit_key. (The brief's test
+        # draft asserted "ef\n", which only follows if X ignored the
+        # cursor move from "l"; verified against actual vim semantics.)
+        assert ed.text == "af\n"
+
+
+async def test_dd_yy_p_P_linewise_with_counts():
+    app = _EdApp(text="a\nb\nc\nd\n")
+    async with app.run_test() as pilot:
+        ed = app.query_one("#ed", CodeEditor)
+        await pilot.press("j", "2", "d", "d")
+        assert ed.text == "a\nd\n"
+        assert ed.cursor_location[0] == 1
+        await pilot.press("p")
+        assert ed.text == "a\nd\nb\nc\n"
+        await pilot.press("g", "g", "y", "y", "G", "P")
+        assert ed.text == "a\nd\nb\nc\na\n"
+
+
+async def test_dd_on_last_line_removes_preceding_newline():
+    app = _EdApp(text="a\nb")
+    async with app.run_test() as pilot:
+        ed = app.query_one("#ed", CodeEditor)
+        await pilot.press("j", "d", "d")
+        assert ed.text == "a"
+
+
+async def test_dw_D_and_J():
+    app = _EdApp(text="one two three\nfour\n")
+    async with app.run_test() as pilot:
+        ed = app.query_one("#ed", CodeEditor)
+        await pilot.press("d", "w")
+        assert ed.text == "two three\nfour\n"
+        await pilot.press("w", "D")
+        assert ed.text == "two \nfour\n"
+        await pilot.press("J")
+        assert ed.text == "two four\n"
+
+
+async def test_undo_redo():
+    app = _EdApp(text="abc\n")
+    async with app.run_test() as pilot:
+        ed = app.query_one("#ed", CodeEditor)
+        await pilot.press("x")
+        assert ed.text == "bc\n"
+        await pilot.press("u")
+        assert ed.text == "abc\n"
+        await pilot.press("ctrl+r")
+        assert ed.text == "bc\n"
+
+
+async def test_charwise_put_after_dw():
+    app = _EdApp(text="one two\n")
+    async with app.run_test() as pilot:
+        ed = app.query_one("#ed", CodeEditor)
+        await pilot.press("d", "w", "$", "p")
+        assert ed.text == "twoone \n"
