@@ -469,13 +469,25 @@ class TdbApp(_AppMessageRoutes, App):
         edit buffer: nothing unsaved, or the user chose Save (and it
         succeeded) or Discard. False on Cancel or a failed save.
         Awaits a modal, so callers must run inside a worker."""
+        if isinstance(self.screen, _UnsavedChangesModal):
+            # A prompt is already up (another quit/restart flow owns it).
+            return False
         code_view = self.query_one("#code-view", CodeView)
         if not code_view.is_dirty:
             return True
         name = Path(code_view.source_path).name if code_view.source_path else "buffer"
-        result = await self.push_screen(
-            _UnsavedChangesModal(name), wait_for_dismiss=True
-        )
+        try:
+            result = await self.push_screen(
+                _UnsavedChangesModal(name), wait_for_dismiss=True
+            )
+        except asyncio.CancelledError:
+            # self.screen raises ScreenStackError once the stack is empty
+            # (e.g. app shutdown racing this cancellation), so check the
+            # stack directly rather than the `.screen` property.
+            stack = self.screen_stack
+            if stack and isinstance(stack[-1], _UnsavedChangesModal):
+                self.pop_screen()
+            raise
         if result == "save":
             return code_view.save_file()
         if result == "discard":
@@ -1764,7 +1776,9 @@ class TdbApp(_AppMessageRoutes, App):
 
     def action_confirm_quit(self) -> None:
         if self._adopted:
-            if self._is_quitting or isinstance(self.screen, _DetachQuitModal):
+            if self._is_quitting or isinstance(
+                self.screen, (_DetachQuitModal, _UnsavedChangesModal)
+            ):
                 return
 
             def on_dismiss_adopted(result: str | None) -> None:
@@ -1777,8 +1791,11 @@ class TdbApp(_AppMessageRoutes, App):
             return
 
         # Don't reopen the modal once a quit is already in flight; also
-        # don't double-push it if it's currently the active screen.
-        if self._is_quitting or isinstance(self.screen, _QuitConfirmModal):
+        # don't double-push it if it's currently the active screen, and
+        # don't stack it on top of an in-flight unsaved-edits prompt.
+        if self._is_quitting or isinstance(
+            self.screen, (_QuitConfirmModal, _UnsavedChangesModal)
+        ):
             return
 
         def on_dismiss(confirmed: bool | None) -> None:

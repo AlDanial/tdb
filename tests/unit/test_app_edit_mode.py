@@ -11,6 +11,7 @@ from tdb.dap.types import SourceBreakpoint
 from tdb.persist import TdbConfig
 from tdb.widgets.code_editor import CodeEditor, _UnsavedChangesModal
 from tdb.widgets.code_view import CodeView
+from tdb.widgets.modals import _QuitConfirmModal
 
 
 def _write(tmp_path: Path, text: str = "x = 1\ny = 2\nz = 3\n") -> str:
@@ -165,3 +166,35 @@ async def test_restart_with_dirty_buffer_prompts_and_discard_proceeds(
         assert not cv.is_editing
         assert "restart" in recorded
         assert Path(path).read_text(encoding="utf-8") == "x = 1\ny = 2\nz = 3\n"
+
+
+async def test_double_ctrl_q_does_not_stack_prompts(tmp_path):
+    app = TdbApp(program="", config=TdbConfig(keybindings="default"))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        cv = await _enter_edit(app, pilot, _write(tmp_path))
+        await pilot.press("z")
+        exits: list[str] = []
+        app.exit = lambda *a, **kw: exits.append("exit")
+        await pilot.press("ctrl+q")
+        await pilot.pause()
+        await pilot.press("ctrl+q")
+        await pilot.pause()
+        assert sum(isinstance(s, _UnsavedChangesModal) for s in app.screen_stack) == 1
+        await pilot.press("escape")
+        await pilot.pause()
+        assert exits == [] and cv.is_editing
+
+
+async def test_q_during_unsaved_prompt_does_not_push_confirm(tmp_path):
+    app = TdbApp(program="", config=TdbConfig(keybindings="default"))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await _enter_edit(app, pilot, _write(tmp_path))
+        await pilot.press("z")
+        await pilot.press("ctrl+q")
+        await pilot.pause()
+        await pilot.press("q")
+        await pilot.pause()
+        assert isinstance(app.screen, _UnsavedChangesModal)
+        assert not any(isinstance(s, _QuitConfirmModal) for s in app.screen_stack)
