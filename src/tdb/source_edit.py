@@ -126,12 +126,16 @@ def resolve_external_editor(
 ) -> list[str]:
     """Command (argv prefix) for the user's editor: $VISUAL, then
     $EDITOR, then a platform default. POSIX values are shlex-split so
-    `EDITOR="code -w"` works; Windows values are passed verbatim."""
+    `EDITOR="code -w"` works; Windows values are split with
+    `shlex.split(value, posix=False)` (POSIX quote/escape rules don't
+    apply to Windows paths and args, e.g. backslashes), so
+    `EDITOR="C:\\Tools\\ed.exe -n"` becomes `["C:\\Tools\\ed.exe", "-n"]`
+    instead of one unresolvable argv[0]."""
     env = os.environ if env is None else env
     platform = sys.platform if platform is None else platform
     windows = platform.startswith("win")
     for var in ("VISUAL", "EDITOR"):
         value = env.get(var, "").strip()
         if value:
-            return [value] if windows else shlex.split(value)
+            return shlex.split(value, posix=False) if windows else shlex.split(value)
     return ["notepad"] if windows else ["vi"]

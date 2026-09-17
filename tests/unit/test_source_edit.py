@@ -146,8 +146,14 @@ def test_resolve_editor_prefers_visual_then_editor_posix():
     assert resolve_external_editor({}, "linux") == ["vi"]
 
 
-def test_resolve_editor_windows_passes_value_verbatim():
+def test_resolve_editor_windows_splits_with_posix_false():
     assert resolve_external_editor({"EDITOR": "C:\\Tools\\ed.exe -n"}, "win32") == [
-        "C:\\Tools\\ed.exe -n"
+        "C:\\Tools\\ed.exe",
+        "-n",
+    ]
+    assert resolve_external_editor({"EDITOR": 'code -w "My Dir"'}, "win32") == [
+        "code",
+        "-w",
+        '"My Dir"',
     ]
     assert resolve_external_editor({}, "win32") == ["notepad"]
