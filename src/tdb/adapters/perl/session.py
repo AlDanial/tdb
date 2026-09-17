@@ -20,6 +20,7 @@ import tempfile
 from typing import Awaitable, Callable
 
 from tdb.adapters.perl.protocol import StreamParser
+from tdb.adapters.perl import padwalker as _padwalker
 
 log = logging.getLogger(__name__)
 
@@ -48,6 +49,12 @@ def helpers_path() -> str:
 def compile_shim_path() -> str:
     ref = importlib.resources.files("tdb.adapters.perl") / "Devel" / "TdbCompile.pm"
     return str(ref)
+
+
+# Re-exported for callers/tests that reach PadWalker helpers via this module.
+padwalker_dir = _padwalker.padwalker_dir
+with_perl5lib = _padwalker.with_perl5lib
+ensure_padwalker = _padwalker.ensure_padwalker
 
 
 class PerlSession:
@@ -137,6 +144,14 @@ class PerlSession:
         server = await asyncio.start_server(_on_connect, "127.0.0.1", 0)
         port = server.sockets[0].getsockname()[1]
         child_env = dict(env or os.environ)
+        # Bundled PadWalker (outer-frame lexicals): probe/build/cache runs
+        # perl a few times, so keep it off the event loop. Looked up via
+        # the module attribute so tests can monkeypatch `ensure_padwalker`.
+        pw = await asyncio.to_thread(ensure_padwalker, perl, child_env)
+        if pw.lib_dir:
+            child_env = with_perl5lib(child_env, pw.lib_dir)
+        if pw.message:
+            self._on_output(pw.message + "\n", "console")
         child_env["PERLDB_OPTS"] = f"RemotePort=127.0.0.1:{port}"
         # Devel::TdbCompile (this adapter's own compile-phase shim --
         # see that module's header) arms perl5db to trap during

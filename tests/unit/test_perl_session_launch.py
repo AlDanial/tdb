@@ -14,6 +14,7 @@ warning instead of crashing the debuggee's perl process.
 from __future__ import annotations
 
 import asyncio
+import os
 
 from tdb.adapters.perl import session as session_mod
 from tdb.adapters.perl.session import PerlSession
@@ -238,3 +239,102 @@ def test_perl_single_quote_escapes_backslashes():
         session_mod._perl_single_quote("\\\\server\\share\\h.pl")
         == "'\\\\\\\\server\\\\share\\\\h.pl'"
     )
+
+
+# --- PERL5LIB / bundled PadWalker ------------------------------------------
+
+
+def test_padwalker_dir_contains_sources():
+    d = session_mod.padwalker_dir()
+    for name in ("PadWalker.pm", "PadWalker.xs", "Makefile.PL"):
+        assert os.path.isfile(os.path.join(d, name)), name
+
+
+def test_with_perl5lib_sets_when_unset():
+    env = {"HOME": "/x"}
+    out = session_mod.with_perl5lib(env, "/adapters")
+    assert out["PERL5LIB"] == "/adapters"
+    assert env == {"HOME": "/x"}  # input not mutated
+
+
+def test_with_perl5lib_prepends_existing():
+    env = {"PERL5LIB": "/a" + os.pathsep + "/b"}
+    out = session_mod.with_perl5lib(env, "/adapters")
+    assert out["PERL5LIB"] == os.pathsep.join(["/adapters", "/a", "/b"])
+
+
+def test_with_perl5lib_does_not_duplicate():
+    env = {"PERL5LIB": os.pathsep.join(["/a", "/adapters"])}
+    out = session_mod.with_perl5lib(env, "/adapters")
+    assert out["PERL5LIB"] == os.pathsep.join(["/adapters", "/a"])
+
+
+def test_with_perl5lib_ignores_empty_existing():
+    env = {"PERL5LIB": ""}
+    out = session_mod.with_perl5lib(env, "/adapters")
+    assert out["PERL5LIB"] == "/adapters"
+
+
+def _stub_padwalker(monkeypatch, result):
+    monkeypatch.setattr(session_mod, "ensure_padwalker", lambda perl, env: result)
+
+
+async def _capture_launch(tmp_path, monkeypatch, env):
+    monkeypatch.setattr(session_mod.asyncio, "start_server", _fake_start_server)
+    captured: dict = {}
+
+    async def fake_create_subprocess_exec(*argv, **kwargs):
+        captured["env"] = kwargs.get("env")
+        return _FakeProcess()
+
+    monkeypatch.setattr(
+        session_mod.asyncio, "create_subprocess_exec", fake_create_subprocess_exec
+    )
+    outputs: list[tuple[str, str]] = []
+    session = PerlSession(on_output=lambda t, c: outputs.append((t, c)), on_stop=lambda: None)
+
+    async def _noop_await_prompt(timeout: float, terminal: bool = False) -> None:
+        pass
+
+    async def _noop_command(text: str, timeout: float = 20.0) -> list:
+        return []
+
+    session._await_prompt = _noop_await_prompt  # type: ignore[method-assign]
+    session.command = _noop_command  # type: ignore[method-assign]
+    await session.launch(program=str(tmp_path / "prog.pl"), args=[], cwd=str(tmp_path), env=env)
+    return captured["env"], outputs
+
+
+async def test_launch_prepends_padwalker_build_dir_to_perl5lib(tmp_path, monkeypatch):
+    """When ensure_padwalker resolves a build dir, it must lead the
+    debuggee's PERL5LIB, ahead of whatever the user already had there,
+    and its notice must reach the console once."""
+    from tdb.adapters.perl.padwalker import PadWalkerResult
+
+    _stub_padwalker(
+        monkeypatch, PadWalkerResult("/cache/pw", "built", "tdb: built PadWalker")
+    )
+    env, outputs = await _capture_launch(tmp_path, monkeypatch, {"PERL5LIB": "/user/lib"})
+    assert env["PERL5LIB"].split(os.pathsep) == ["/cache/pw", "/user/lib"]
+    assert outputs == [("tdb: built PadWalker\n", "console")]
+
+
+async def test_launch_leaves_perl5lib_alone_for_native_padwalker(tmp_path, monkeypatch):
+    from tdb.adapters.perl.padwalker import PadWalkerResult
+
+    _stub_padwalker(monkeypatch, PadWalkerResult(None, "native"))
+    env, outputs = await _capture_launch(tmp_path, monkeypatch, {"PERL5LIB": "/user/lib"})
+    assert env["PERL5LIB"] == "/user/lib"
+    assert outputs == []
+
+
+async def test_launch_reports_unavailable_padwalker_and_continues(tmp_path, monkeypatch):
+    from tdb.adapters.perl.padwalker import PadWalkerResult
+
+    _stub_padwalker(
+        monkeypatch, PadWalkerResult(None, "unavailable", "tdb: PadWalker unavailable: x")
+    )
+    env, outputs = await _capture_launch(tmp_path, monkeypatch, {})
+    assert "PERL5LIB" not in env
+    assert outputs == [("tdb: PadWalker unavailable: x\n", "console")]
+    assert env["PERLDB_OPTS"].startswith("RemotePort=")

@@ -323,6 +323,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print README.md to stdout as wrapped plain text and exit "
         "(useful for `tdb --doc-text | less`, piping to a file, etc.)",
     )
+    parser.add_argument(
+        "--info",
+        action="store_true",
+        help="Print tdb's installation directory, the directory of the "
+        "bundled Perl PadWalker module, and the Help > About text, then exit",
+    )
     return parser
 
 
@@ -749,8 +755,8 @@ def _snap_breakpoints(args: argparse.Namespace) -> None:
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """Public entry: build parser, parse argv, run post-processing.
 
-    Short-circuit modes (`--doc`, `--doc-text`, `--post-mortem`) skip
-    the launch-related validation since they don't run a debuggee.
+    Short-circuit modes (`--doc`, `--doc-text`, `--info`, `--post-mortem`)
+    skip the launch-related validation since they don't run a debuggee.
     """
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -857,7 +863,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     if args.replay_timeout != 30.0:
         parser.error("--replay-timeout has no effect without --replay/--replay-tui")
 
-    if args.doc or args.doc_text or args.post_mortem or args.mcp:
+    if args.doc or args.doc_text or args.info or args.post_mortem or args.mcp:
         return args
 
     _validate_terminal_choice(args, parser)
@@ -919,6 +925,8 @@ def main(argv: list[str] | None = None) -> None:
         _run_doc()
     elif args.doc_text:
         _run_doc_text()
+    elif args.info:
+        _run_info()
     elif args.post_mortem:
         _run_post_mortem(args)
     elif args.mcp:
@@ -976,6 +984,13 @@ def _run_doc() -> None:
             yield Footer()
 
     _DocApp().run()
+
+
+def _run_info() -> None:
+    """Print install location, bundled PadWalker dir, and About text."""
+    from tdb.app_helpers import info_text
+
+    print(info_text())
 
 
 def _run_doc_text() -> None:

@@ -10,6 +10,57 @@ import ast
 from pathlib import Path
 
 
+def install_dir() -> str:
+    """Directory of the installed `tdb` package (site-packages/tdb, or
+    src/tdb in a checkout / editable install)."""
+    import tdb as _tdb_pkg
+
+    return str(Path(_tdb_pkg.__file__).resolve().parent)
+
+
+def about_text(*, markup: bool) -> str:
+    """The About box text, shared by the Help > About modal and `tdb --info`.
+
+    `markup=True` wraps the title line in Rich/Textual [bold] tags for the
+    modal; `markup=False` yields plain text for the terminal.
+    """
+    from textwrap import dedent
+
+    from tdb import __version__
+
+    title = f"tdb v{__version__}"
+    if markup:
+        title = f"[bold]{title}[/bold]"
+    return dedent(f"""\
+        {title}
+        by Al Danial (with Claude Code)
+        Copyright (c) 2026
+
+        GitHub: https://github.com/AlDanial/tdb
+        PyPI  : https://pypi.org/project/textual-debugger/
+
+        A TUI Python debugger based on debugpy and textual""")
+
+
+def info_text() -> str:
+    """Body of `tdb --info`: where tdb lives, where the bundled PadWalker
+    sources and per-perl builds live (so Perl users can put a build on
+    PERL5LIB by hand, e.g. for a remote debuggee), then the About text.
+    Read-only: never triggers a build."""
+    from tdb.adapters.perl.padwalker import cache_root, padwalker_dir, padwalker_status
+
+    return (
+        about_text(markup=False)
+        + "\n\n"
+        f"tdb installation directory   : {install_dir()}\n"
+        f"Perl PadWalker sources       : {padwalker_dir()}\n"
+        f"Perl PadWalker build cache   : {cache_root()}\n"
+        f"Perl PadWalker status        : {padwalker_status()}\n"
+        "  (tdb builds PadWalker for each perl it launches, caches it, and\n"
+        "   prepends the cache directory to the debuggee's PERL5LIB)"
+    )
+
+
 def find_readme() -> str | None:
     """Locate README.md across install layouts.
 
