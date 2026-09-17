@@ -128,7 +128,10 @@ async def test_perl5db_chatter_not_forwarded_as_output(session, script):
             break
         await asyncio.sleep(0.1)
     assert stops, "breakpoint stop never surfaced"
-    console = [t for t, c in outputs if c == "console"]
+    # tdb's own launch notices (bundled-PadWalker build/unavailable, all
+    # prefixed "tdb: ") legitimately use the console category; only
+    # perl5db's own text counts as leaked chatter.
+    console = [t for t, c in outputs if c == "console" and not t.startswith("tdb: ")]
     assert console == [], f"perl5db chatter leaked as output: {console!r}"
 
 
