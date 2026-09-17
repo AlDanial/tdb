@@ -948,6 +948,7 @@ A cursor line (blue) tracks your position; the current execution line is highlig
 | Key | Menu |
 |-----|------|
 | `Alt+F` | File (open a different script to debug) |
+| `Alt+E` | Edit (Save, Revert to Disk, Discard and Exit Edit Mode, Open in $EDITOR) |
 | `Alt+C` | Configure (Color Theme, Keybindings, Step Mode) |
 | `Alt+T` | Threads |
 | `Alt+P` | Processes |
@@ -961,7 +962,7 @@ written in the same language as the one currently being debugged.
 
 **Navigation (vim-style by default):**
 
-By default the Code View is in Debug mode.  Hit `Escape` to switch to Navigate mode
+By default the Code View is in Debug mode.  `Escape` cycles Debug → Navigate → Edit → Debug.
 In Navigate mode, you can move around the file with the following keys:
 
 | Key | Action |
@@ -975,7 +976,38 @@ In Navigate mode, you can move around the file with the following keys:
 | `n` / `N` | Next / previous search result |
 | `PageUp` / `PageDown` | Scroll by page |
 
-Switch from Navigate back to Debug mode with `Escape`.
+Press `Escape` again to enter Edit mode (below), and once more to return to Debug mode.
+
+**Edit mode:**
+
+Press `Escape` twice from Debug mode to open the current file in an editor
+inside the Code View. The pane title shows `[Edit]`, with `*` while there
+are unsaved changes. Editing keys follow the keybinding scheme:
+
+| Scheme | Editing style | Save | Leave Edit mode |
+|--------|---------------|------|-----------------|
+| `vim` | vim-lite: normal / insert modes, counts, `h j k l w b e 0 ^ $ gg G`, `x dd dw D yy p P u Ctrl+R J`, `i a I A o O`, `/ ? n N` | `:w` or `Ctrl+S` | `Esc` (from normal mode), `:q`, `:wq`, `:q!` |
+| `emacs` | `Ctrl+N/P/F/B`, `Alt+F/B`, `Ctrl+A/E`, `Ctrl+K` / `Ctrl+Y`, `Ctrl+_` undo, `Ctrl+S` / `Ctrl+R` search | `Ctrl+X Ctrl+S` | `Esc` or `Ctrl+X Ctrl+C` |
+| `default` (Notepad-style) | arrows, Home/End, PgUp/PgDn, Delete/Backspace, Shift+arrows to select, `Ctrl+Z`/`Ctrl+Y`, `Ctrl+X`/`Ctrl+C`/`Ctrl+V` | `Ctrl+S` | `Esc` |
+
+Leaving Edit mode, quitting, restarting, or opening another file with
+unsaved changes prompts: `s` save, `d` discard, `Esc` keep editing.
+
+Saving does not change the running program. tdb shifts your breakpoints
+to their new lines, clears the current-line marker, and reminds you to
+press `R` to restart with the new code. Edit mode is unavailable for
+sources that are not on this machine (remote attach), during replay, and
+in post-mortem mode.
+
+The `Edit` menu (`Alt+E`) offers Save, Revert to Disk, Discard and Exit
+Edit Mode, and Open in $EDITOR, which suspends tdb, runs `$VISUAL` /
+`$EDITOR` (`notepad` on Windows, `vi` otherwise) on the file, and reloads
+it when the editor exits.
+
+Syntax highlighting inside the editor needs tree-sitter, an optional
+extra: `uv pip install "textual-debugger[edit]"` (highlights Python, Bash,
+Go, and Rust; other languages edit as plain text). Highlighting in the
+normal Code View is unaffected.
 
 > **Note:** Many terminals send the byte sequence `ESC+f` for `Alt+F`, which Textual's
 ANSI parser rewrites to `Ctrl+Right` (the readline "forward-word" convention).
@@ -1564,7 +1596,7 @@ evaluated in each child process that reaches it.
 ```bash
 tdb --keybindings vim my_program.py    # default
 tdb --keybindings emacs my_program.py
-tdb --keybindings default my_program.py
+tdb --keybindings default my_program.py   # Notepad-style editing
 ```
 
 The keybinding choice is saved to `~/.config/tdb/config.json` and remembered for subsequent
@@ -1842,7 +1874,7 @@ usage: tdb [-h] [-v] [-r [HOST:]PORT] [--cwd CWD] [--no-stop-on-entry]
 | `--no-subprocess` | Disable debugpy's subprocess tracking (use when debugging `tdb` itself) |
 | `--terminal TERM` | Run debuggee in the named external terminal: `xterm`, `konsole`,
   `gnome-terminal`, `ghostty`, `kitty`, `iterm2`, `warp`, `wezterm`, or `terminator` |
-| `--keybindings SCHEME` | `default`, `vim`, or `emacs` (saved to config) |
+| `--keybindings SCHEME` | `vim`, `emacs`, or `default` (Notepad-style editing); saved to config |
 | `--server` | Enable JSON-RPC server alongside TUI |
 | `--headless` | JSON-RPC server only, no TUI |
 | `--server-port PORT` | Server port (default: 8150) |
