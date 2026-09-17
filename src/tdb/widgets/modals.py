@@ -13,8 +13,8 @@ that imports them by name.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -28,7 +28,7 @@ from textual.widgets import (
     Static,
 )
 
-from tdb.keybindings import KeybindingConfig, Mode
+from tdb.keybindings import KeybindingConfig, Mode, scheme_label
 
 
 class _KeybindingsModal(ModalScreen[None]):
@@ -85,12 +85,15 @@ class _KeybindingsModal(ModalScreen[None]):
 
     def compose(self):
         with Vertical(id="dialog"):
-            yield Static("[bold]Keybindings[/bold]  (ESC toggles mode)", markup=True)
+            yield Static(
+                "[bold]Keybindings[/bold]  (ESC cycles Debug → Navigate → Edit)",
+                markup=True,
+            )
             yield Static("Scheme:", markup=True)
             with RadioSet(id="scheme-select"):
                 for scheme in self._SCHEMES:
                     yield RadioButton(
-                        scheme.capitalize(),
+                        scheme_label(scheme),
                         value=(self._config.scheme == scheme),
                         id=f"scheme-{scheme}",
                     )
@@ -115,6 +118,12 @@ class _KeybindingsModal(ModalScreen[None]):
         lines.append("")
         lines.append("[bold underline]Debug Mode[/bold underline]")
         for key_display, description in self._config.format_bindings(Mode.DEBUG):
+            lines.append(fmt(key_display, description))
+        lines.append("")
+        lines.append(
+            f"[bold underline]Edit Mode ({scheme_label(self._config.scheme)})[/bold underline]"
+        )
+        for key_display, description in self._config.format_bindings(Mode.EDIT):
             lines.append(fmt(key_display, description))
         lines.append("")
         lines.append("[dim]Press ESC or q to close[/dim]")

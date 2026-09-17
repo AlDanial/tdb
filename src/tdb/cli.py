@@ -153,7 +153,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--keybindings",
         choices=["default", "vim", "emacs"],
         default=None,
-        help="Keybinding scheme for code navigation (saved to config)",
+        help="Keybinding scheme for code navigation and editing: vim, emacs, "
+        "or default (Notepad-style editing). Saved to config.",
     )
     parser.add_argument(
         "--terminal",
