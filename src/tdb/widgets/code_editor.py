@@ -602,7 +602,14 @@ class VimLayer:
                 if row + 1 < ed.document.line_count:
                     ed.insert(text, (row + 1, 0))
                     ed.move_cursor((row + 1, 0))
+                elif ed.document.get_line(row) == "":
+                    # Phantom empty last row of a newline-terminated file
+                    # (or an empty document): the "line after the cursor"
+                    # is this row itself.
+                    ed.insert(text, (row, 0))
+                    ed.move_cursor((row, 0))
                 else:
+                    # Real last line with no trailing newline.
                     line = ed.document.get_line(row)
                     ed.insert("\n" + text.rstrip("\n"), (row, len(line)))
                     ed.move_cursor((row + 1, 0))
@@ -612,7 +619,9 @@ class VimLayer:
         else:
             line = ed.document.get_line(row)
             at = (row, min(len(line), col + 1)) if after else (row, col)
-            ed.insert(self.yank_buffer, at)
+            result = ed.insert(self.yank_buffer, at)
+            end = result.end_location
+            ed.move_cursor((end[0], max(0, end[1] - 1)))
 
     def _word_start_next(self) -> None:
         """`w`: move to the start of the next word.

@@ -266,3 +266,23 @@ async def test_charwise_put_after_dw():
         ed = app.query_one("#ed", CodeEditor)
         await pilot.press("d", "w", "$", "p")
         assert ed.text == "twoone \n"
+
+
+async def test_linewise_put_after_on_phantom_last_row():
+    app = _EdApp(text="a\nb\nc\n")
+    async with app.run_test() as pilot:
+        ed = app.query_one("#ed", CodeEditor)
+        await pilot.press("g", "g", "y", "y", "G", "p")
+        assert ed.text == "a\nb\nc\na\n"
+        assert ed.cursor_location == (3, 0)
+
+
+async def test_charwise_put_places_cursor_on_pasted_text():
+    app = _EdApp(text="ab\n")
+    async with app.run_test() as pilot:
+        ed = app.query_one("#ed", CodeEditor)
+        await pilot.press("x", "p")
+        assert ed.text == "ba\n"
+        assert ed.cursor_location == (0, 1)
+        await pilot.press("x")
+        assert ed.text == "b\n"
