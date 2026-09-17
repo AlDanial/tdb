@@ -663,9 +663,12 @@ class CodeView(ScrollableContainer, can_focus=True):
         return True
 
     def _install_key_layer(self, editor: CodeEditor) -> None:
-        """Attach the scheme's key layer. Filled in by Tasks 5 and 6;
+        """Attach the scheme's key layer. Vim is filled in by Task 6;
         the Notepad scheme has no layer."""
-        return
+        from tdb.widgets.code_editor import EmacsLayer
+
+        if self.keybindings.scheme == "emacs":
+            editor._set_layer(EmacsLayer(editor))
 
     def leave_edit_mode(self, discard: bool = False) -> None:
         """The one exit from Edit mode. Prompts when there are unsaved

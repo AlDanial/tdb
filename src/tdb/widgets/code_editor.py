@@ -147,6 +147,18 @@ class CodeEditor(TextArea):
 
     # ---- key routing ----
 
+    def check_consume_key(self, key: str, character: str | None = None) -> bool:
+        # Textual's App binds ctrl+p to the command palette as a
+        # *priority* binding, which is resolved before any focused
+        # widget's `_on_key` runs — our layer would never see it.
+        # Claiming it here (Screen._binding_chain's "filter out keys
+        # consumed by a focused widget" pass) strips that App-level
+        # binding out of the chain whenever a layer is installed to
+        # handle it, so ctrl+p (emacs cursor-up) reaches `_on_key`.
+        if key == "ctrl+p" and self._layer is not None:
+            return True
+        return super().check_consume_key(key, character)
+
     async def _on_key(self, event: Key) -> None:
         if self._layer is not None and self._layer.handle_key(event):
             event.stop()
@@ -196,6 +208,98 @@ class CodeEditor(TextArea):
                 self.move_cursor((idx, 0))
                 return True
         return False
+
+
+class EmacsLayer:
+    """Emacs-flavored overrides on top of TextArea.
+
+    Only two bits of state: a pending Ctrl+X chord and a one-slot kill
+    buffer (Ctrl+K fills it, Ctrl+Y inserts it). Keys not listed here
+    fall through to TextArea's defaults, which are already emacs-ish
+    (Ctrl+A/E, Ctrl+W, Ctrl+U ...).
+    """
+
+    def __init__(self, editor: CodeEditor) -> None:
+        self.ed = editor
+        self.pending_ctrl_x = False
+        self.kill_buffer = ""
+
+    @property
+    def submode(self) -> str | None:
+        return None
+
+    @property
+    def command_text(self) -> str:
+        return ""
+
+    def handle_key(self, event: Key) -> bool:
+        key = event.key
+        ed = self.ed
+
+        if self.pending_ctrl_x:
+            self.pending_ctrl_x = False
+            if key == "ctrl+s":
+                ed.post_message(CodeEditor.SaveRequested())
+            elif key == "ctrl+c":
+                ed.post_message(CodeEditor.LeaveRequested())
+            # ctrl+g and any unknown second key: chord cancelled, key eaten
+            return True
+
+        if key == "ctrl+x":
+            self.pending_ctrl_x = True
+            return True
+        if key == "ctrl+g":
+            return True
+        if key == "ctrl+n":
+            ed.action_cursor_down()
+        elif key == "ctrl+p":
+            ed.action_cursor_up()
+        elif key == "ctrl+f":
+            ed.action_cursor_right()
+        elif key == "ctrl+b":
+            ed.action_cursor_left()
+        elif key in ("alt+f", "ctrl+right"):
+            ed.action_cursor_word_right()
+        elif key in ("alt+b", "ctrl+left"):
+            ed.action_cursor_word_left()
+        elif key == "ctrl+a":
+            ed.action_cursor_line_start()
+        elif key == "ctrl+e":
+            ed.action_cursor_line_end()
+        elif key == "alt+less_than_sign":
+            ed.move_cursor((0, 0))
+        elif key == "alt+greater_than_sign":
+            ed.move_cursor(ed.document.end)
+        elif key == "ctrl+d":
+            ed.action_delete_right()
+        elif key == "ctrl+k":
+            self._kill_line()
+        elif key == "ctrl+y":
+            if self.kill_buffer:
+                ed.insert(self.kill_buffer)
+        elif key in ("ctrl+underscore", "ctrl+slash"):
+            ed.undo()
+        elif key == "ctrl+s":
+            ed.post_message(CodeEditor.SearchRequested(backward=False))
+        elif key == "ctrl+r":
+            ed.post_message(CodeEditor.SearchRequested(backward=True))
+        else:
+            return False
+        return True
+
+    def _kill_line(self) -> None:
+        ed = self.ed
+        row, col = ed.cursor_location
+        line = ed.document.get_line(row)
+        if col < len(line):
+            start, end = (row, col), (row, len(line))
+        elif row + 1 < ed.document.line_count:
+            start, end = (row, col), (row + 1, 0)
+        else:
+            return
+        self.kill_buffer = ed.get_text_range(start, end)
+        ed.delete(start, end)
+        ed.move_cursor(start)
 
 
 class _UnsavedChangesModal(ModalScreen[str]):
