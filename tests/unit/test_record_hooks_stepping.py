@@ -139,8 +139,11 @@ async def test_file_open_restart_not_recorded_but_notifies(
 
 
 async def test_quit_records_once(app_cap, monkeypatch):
-    app, cap, _ = app_cap
+    app, cap, pilot = app_cap
     monkeypatch.setattr(app.controller, "stop", _noop)
+    # action_quit_debugger now runs the unsaved-edits guard in a worker.
     await app.action_quit_debugger()
+    await pilot.pause()
     await app.action_quit_debugger()  # second press: _is_quitting guard
+    await pilot.pause()
     assert cap.records.count(("quit", [])) == 1

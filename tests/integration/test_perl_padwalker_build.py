@@ -13,7 +13,9 @@ import pytest
 
 from tdb.adapters.perl import padwalker as pw
 
-pytestmark = pytest.mark.skipif(shutil.which("perl") is None, reason="perl not installed")
+pytestmark = pytest.mark.skipif(
+    shutil.which("perl") is None, reason="perl not installed"
+)
 
 
 @pytest.fixture(autouse=True)
@@ -29,7 +31,12 @@ def _toolchain_ok() -> bool:
     if cfg is None:
         return False
     hdr = subprocess.run(
-        ["perl", "-MConfig", "-e", "print -f qq($Config{archlibexp}/CORE/perl.h) ? 1 : 0"],
+        [
+            "perl",
+            "-MConfig",
+            "-e",
+            "print -f qq($Config{archlibexp}/CORE/perl.h) ? 1 : 0",
+        ],
         capture_output=True,
         text=True,
     ).stdout

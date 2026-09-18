@@ -291,7 +291,9 @@ async def _capture_launch(tmp_path, monkeypatch, env):
         session_mod.asyncio, "create_subprocess_exec", fake_create_subprocess_exec
     )
     outputs: list[tuple[str, str]] = []
-    session = PerlSession(on_output=lambda t, c: outputs.append((t, c)), on_stop=lambda: None)
+    session = PerlSession(
+        on_output=lambda t, c: outputs.append((t, c)), on_stop=lambda: None
+    )
 
     async def _noop_await_prompt(timeout: float, terminal: bool = False) -> None:
         pass
@@ -301,7 +303,9 @@ async def _capture_launch(tmp_path, monkeypatch, env):
 
     session._await_prompt = _noop_await_prompt  # type: ignore[method-assign]
     session.command = _noop_command  # type: ignore[method-assign]
-    await session.launch(program=str(tmp_path / "prog.pl"), args=[], cwd=str(tmp_path), env=env)
+    await session.launch(
+        program=str(tmp_path / "prog.pl"), args=[], cwd=str(tmp_path), env=env
+    )
     return captured["env"], outputs
 
 
@@ -314,7 +318,9 @@ async def test_launch_prepends_padwalker_build_dir_to_perl5lib(tmp_path, monkeyp
     _stub_padwalker(
         monkeypatch, PadWalkerResult("/cache/pw", "built", "tdb: built PadWalker")
     )
-    env, outputs = await _capture_launch(tmp_path, monkeypatch, {"PERL5LIB": "/user/lib"})
+    env, outputs = await _capture_launch(
+        tmp_path, monkeypatch, {"PERL5LIB": "/user/lib"}
+    )
     assert env["PERL5LIB"].split(os.pathsep) == ["/cache/pw", "/user/lib"]
     assert outputs == [("tdb: built PadWalker\n", "console")]
 
@@ -323,16 +329,21 @@ async def test_launch_leaves_perl5lib_alone_for_native_padwalker(tmp_path, monke
     from tdb.adapters.perl.padwalker import PadWalkerResult
 
     _stub_padwalker(monkeypatch, PadWalkerResult(None, "native"))
-    env, outputs = await _capture_launch(tmp_path, monkeypatch, {"PERL5LIB": "/user/lib"})
+    env, outputs = await _capture_launch(
+        tmp_path, monkeypatch, {"PERL5LIB": "/user/lib"}
+    )
     assert env["PERL5LIB"] == "/user/lib"
     assert outputs == []
 
 
-async def test_launch_reports_unavailable_padwalker_and_continues(tmp_path, monkeypatch):
+async def test_launch_reports_unavailable_padwalker_and_continues(
+    tmp_path, monkeypatch
+):
     from tdb.adapters.perl.padwalker import PadWalkerResult
 
     _stub_padwalker(
-        monkeypatch, PadWalkerResult(None, "unavailable", "tdb: PadWalker unavailable: x")
+        monkeypatch,
+        PadWalkerResult(None, "unavailable", "tdb: PadWalker unavailable: x"),
     )
     env, outputs = await _capture_launch(tmp_path, monkeypatch, {})
     assert "PERL5LIB" not in env

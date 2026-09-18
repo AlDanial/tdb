@@ -62,7 +62,11 @@ def _fake_perl(monkeypatch, *, native: bool, cached_ok: bool, build_ok: bool = T
             if native:
                 return _Proc(0, "/usr/lib/perl5/PadWalker.pm")
             first = (env or {}).get("PERL5LIB", "").split(os.pathsep)[0]
-            if first and (Path(first) / "PadWalker.pm").is_file() and (cached_ok or "tmp-" not in first):
+            if (
+                first
+                and (Path(first) / "PadWalker.pm").is_file()
+                and (cached_ok or "tmp-" not in first)
+            ):
                 return _Proc(0, first)
             return _Proc(2, "", "Can't locate PadWalker.pm")
         raise AssertionError(f"unexpected perl call {argv}")

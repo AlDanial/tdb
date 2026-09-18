@@ -13,7 +13,7 @@ from rich.syntax import Syntax
 from rich.text import Text
 from textual.binding import Binding
 from textual.containers import ScrollableContainer, Vertical
-from textual.events import Click, Key  # Click used by _CodeContent
+from textual.events import Click, Focus, Key  # Click used by _CodeContent
 from textual.message import Message
 from textual.reactive import reactive
 from textual.screen import ModalScreen
@@ -22,6 +22,8 @@ from textual.widget import Widget
 from textual.widgets import Input, Label
 
 from tdb.keybindings import KeybindingConfig, Mode
+from tdb.source_edit import atomic_write_text
+from tdb.widgets.code_editor import CodeEditor, _UnsavedChangesModal
 
 if TYPE_CHECKING:
     from tdb.dap.types import SourceBreakpoint
@@ -385,6 +387,18 @@ class CodeView(ScrollableContainer, can_focus=True):
             self.mode = mode
             super().__init__()
 
+    class FileSaved(Message):
+        """Posted after a successful save. Carries old and new lines so
+        the App can remap breakpoints across the edit."""
+
+        def __init__(
+            self, path: str, old_lines: list[str], new_lines: list[str]
+        ) -> None:
+            self.path = path
+            self.old_lines = old_lines
+            self.new_lines = new_lines
+            super().__init__()
+
     class ShowLastTraceback(Message):
         pass
 
@@ -422,6 +436,24 @@ class CodeView(ScrollableContainer, can_focus=True):
         # When True, suppress the next click (it was a focus-gaining click)
         self._suppress_next_click: bool = False
 
+        # ---- Edit mode ----
+        # Cleared by the App for replay / post-mortem sessions.
+        self.edit_enabled: bool = True
+        self._editor: CodeEditor | None = None
+        # True when the displayed text came from a readable local file
+        # (load_file success). load_content (remote source) clears it.
+        self._source_is_local: bool = False
+        # True when load_file had to fall back to errors="replace"
+        # (the file is not valid UTF-8): editing would save the
+        # U+FFFD substitutions back permanently, so Edit mode refuses.
+        self._source_lossy: bool = False
+        self._had_trailing_newline: bool = True
+        # A load_file/load_content that arrived while editing another
+        # file. Applied when the editor closes.
+        self._deferred_source: tuple[str, str] | None = None
+        self._deferred_is_local: bool = True
+        self._deferred_is_lossy: bool = False
+
     def compose(self):
         self._content = _CodeContent(self)
         yield self._content
@@ -434,18 +466,26 @@ class CodeView(ScrollableContainer, can_focus=True):
         self._suppress_next_click = False
         key = event.key
 
-        # ESC toggles mode
+        if self.mode == Mode.EDIT:
+            # The editor owns every key while editing. If focus somehow
+            # landed on the container itself, Esc still leaves; nothing
+            # else is intercepted (arrows must reach TextArea's bindings).
+            if key == "escape":
+                event.stop()
+                event.prevent_default()
+                self.leave_edit_mode()
+            return
+
+        # ESC cycles mode: Debug -> Navigation -> Edit -> Debug
         if key == "escape":
             self._count_buf = ""
             if self.mode == Mode.DEBUG:
                 self.mode = Mode.NAVIGATION
-            else:
+            elif not await self.enter_edit_mode():
+                # Edit refused (no file, remote source, replay, ...):
+                # keep the cycle moving.
                 self.mode = Mode.DEBUG
-            self.post_message(self.ModeChanged(self.mode))
-            # Footer caches per-focused-widget bindings; without this nudge
-            # the c/n/s/p/t/b hints stay visible after switching to NAVIGATION
-            # (or stay hidden after switching back to DEBUG).
-            self.app.refresh_bindings()
+            self._announce_mode()
             event.stop()
             event.prevent_default()
             return
@@ -548,6 +588,258 @@ class CodeView(ScrollableContainer, can_focus=True):
             self.post_message(self.DebugAction("quit"))
         elif action == "show_traceback":
             self.post_message(self.ShowLastTraceback())
+
+    # ---- Edit mode ----
+
+    @property
+    def is_editing(self) -> bool:
+        return self._editor is not None
+
+    @property
+    def is_dirty(self) -> bool:
+        return self._editor is not None and self._editor.is_dirty
+
+    @property
+    def editor_submode(self) -> str | None:
+        return self._editor.submode if self._editor is not None else None
+
+    def lines(self) -> list[str]:
+        return list(self._lines)
+
+    def mode_label(self) -> str:
+        """Text for the pane title: 'Debug', 'Navigation', 'Edit',
+        'Edit*', 'Edit:INSERT*', 'Edit :wq' ..."""
+        if self.mode != Mode.EDIT or self._editor is None:
+            return self.mode.value
+        label = "Edit"
+        sub = self._editor.submode
+        if sub == "insert":
+            label += ":INSERT"
+        elif sub == "command":
+            label += f" :{self._editor.command_text}"
+        if self._editor.is_dirty:
+            label += "*"
+        return label
+
+    def edit_refusal_reason(self) -> str | None:
+        """None when Edit mode may be entered, else a user-facing reason."""
+        if not self.edit_enabled:
+            return "Editing is not available in this session."
+        if self.source_path is None:
+            return "No file is loaded."
+        if not self._source_is_local:
+            return "This source is not on this machine, so it cannot be edited."
+        if self._source_lossy:
+            return "This file is not valid UTF-8, so it cannot be edited in tdb."
+        return None
+
+    def _announce_mode(self) -> None:
+        self.post_message(self.ModeChanged(self.mode))
+        # Footer caches per-focused-widget bindings; without this nudge
+        # the c/n/s/p/t/b hints stay visible after leaving DEBUG.
+        self.app.refresh_bindings()
+
+    def _editor_text(self) -> str:
+        text = "\n".join(self._lines)
+        return text + "\n" if self._had_trailing_newline and self._lines else text
+
+    async def enter_edit_mode(self) -> bool:
+        """Mount the editor over the code pane. Returns False (with a
+        notification) when editing is not allowed here."""
+        if self._editor is not None:
+            return True
+        reason = self.edit_refusal_reason()
+        if reason is not None:
+            self.app.notify(reason, title="Edit", severity="warning")
+            return False
+        editor = CodeEditor(
+            self._editor_text(),
+            scheme=self.keybindings.scheme,
+            lexer=self.lexer_name,
+        )
+        self._install_key_layer(editor)
+        self._editor = editor
+        if self._content is not None:
+            self._content.display = False
+        self.mode = Mode.EDIT
+        await self.mount(editor)
+        editor.move_cursor((max(0, self.cursor_line - 1), 0))
+        editor.scroll_cursor_visible(center=True)
+        editor.focus()
+        self._announce_mode()
+        return True
+
+    def _install_key_layer(self, editor: CodeEditor) -> None:
+        """Attach the scheme's key layer. The Notepad scheme has none."""
+        from tdb.widgets.code_editor import EmacsLayer, VimLayer
+
+        if self.keybindings.scheme == "emacs":
+            editor._set_layer(EmacsLayer(editor))
+        elif self.keybindings.scheme == "vim":
+            editor._set_layer(VimLayer(editor))
+
+    def leave_edit_mode(self, discard: bool = False) -> None:
+        """The one exit from Edit mode. Prompts when there are unsaved
+        changes (unless `discard`), then tears the editor down."""
+        if self._editor is None:
+            return
+        if discard or not self._editor.is_dirty:
+            self._teardown_editor(reload_from_disk=discard)
+            return
+
+        def on_dismiss(result: str | None) -> None:
+            if result == "save":
+                if self.save_file():
+                    self._teardown_editor(reload_from_disk=False)
+            elif result == "discard":
+                self._teardown_editor(reload_from_disk=True)
+            # cancel: stay in Edit mode
+            if self._editor is not None:
+                self._editor.focus()
+
+        name = Path(self.source_path).name if self.source_path else "buffer"
+        self.app.push_screen(_UnsavedChangesModal(name), callback=on_dismiss)
+
+    def discard_edits(self) -> None:
+        """Drop unsaved edits and leave Edit mode (no prompt)."""
+        self.leave_edit_mode(discard=True)
+
+    def revert_to_disk(self) -> bool:
+        """Replace the editor buffer with the on-disk text, staying in
+        Edit mode. Undoable with the editor's undo. False if not editing
+        or the file cannot be read."""
+        if self._editor is None or self.source_path is None:
+            return False
+        try:
+            text = Path(self.source_path).read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            self.app.notify(
+                f"Cannot read {self.source_path}: {exc}", title="Edit", severity="error"
+            )
+            return False
+        self._editor.replace(text, (0, 0), self._editor.document.end)
+        self._editor.mark_clean()
+        self._editor.move_cursor((0, 0))
+        self._announce_mode()
+        return True
+
+    def save_file(self) -> bool:
+        """Atomically write the editor buffer to source_path. On OSError
+        notify and keep the buffer dirty. Posts FileSaved on success."""
+        if self._editor is None or self.source_path is None:
+            return False
+        text = self._editor.text
+        try:
+            atomic_write_text(self.source_path, text)
+        except OSError as exc:
+            self.app.notify(f"Save failed: {exc}", title="Edit", severity="error")
+            return False
+        old_lines = list(self._lines)
+        self._editor.mark_clean()
+        # Reinstall so the (hidden) code pane's highlighting, step units,
+        # valid breakpoint lines, and max width all catch up with the
+        # saved text — not just self._lines. This also keeps a later
+        # teardown's `text != self._editor_text()` check a correct no-op.
+        self._install_source(text, self.source_path)
+        self.post_message(
+            self.FileSaved(self.source_path, old_lines, list(self._lines))
+        )
+        self._announce_mode()
+        return True
+
+    def _teardown_editor(self, *, reload_from_disk: bool) -> None:
+        editor = self._editor
+        if editor is None:
+            return
+        text = editor.text
+        row = editor.cursor_location[0]
+        self._editor = None
+        editor.remove()
+        if self._content is not None:
+            self._content.display = True
+        self.mode = Mode.DEBUG
+        deferred = self._deferred_source
+        self._deferred_source = None
+        if deferred is not None:
+            self._install_source(
+                deferred[0],
+                deferred[1],
+                is_local=self._deferred_is_local,
+                is_lossy=self._deferred_is_lossy,
+            )
+            if self.current_line is not None:
+                # current_line may have been set (by a stop event) while
+                # this source was still queued, so its watcher never got
+                # a chance to scroll to it — the pane was hidden behind
+                # the editor. Catch up now that it's installed.
+                self.goto_line(self.current_line)
+        elif reload_from_disk and self.source_path is not None:
+            self.load_file(self.source_path)
+        elif self.source_path is not None and text != self._editor_text():
+            # Saved text (save_file already updated _lines) or an edit
+            # the user chose to keep: re-highlight and recompute step units.
+            self._install_source(text, self.source_path)
+        if deferred is None:
+            self.cursor_line = max(1, min(row + 1, len(self._lines) or 1))
+        self._announce_mode()
+        self.focus()
+
+    # Editor -> view messages
+
+    def on_code_editor_leave_requested(
+        self, message: CodeEditor.LeaveRequested
+    ) -> None:
+        message.stop()
+        self.leave_edit_mode(discard=message.discard)
+
+    def on_code_editor_save_requested(self, message: CodeEditor.SaveRequested) -> None:
+        message.stop()
+        self.save_file()
+
+    def on_code_editor_submode_changed(
+        self, message: CodeEditor.SubmodeChanged
+    ) -> None:
+        message.stop()
+        self._announce_mode()
+
+    def on_text_area_changed(self, message) -> None:
+        # Dirty flag may have flipped; refresh the title.
+        message.stop()
+        self._announce_mode()
+
+    def on_code_editor_search_requested(
+        self, message: CodeEditor.SearchRequested
+    ) -> None:
+        message.stop()
+        self._search_backward = message.backward
+
+        def on_dismiss(term: str | None) -> None:
+            if term is not None and self._editor is not None:
+                self._search_term = term
+                if not self._editor.find(term, message.backward):
+                    self.app.notify(f"Not found: {term}", title="Search")
+            if self._editor is not None:
+                self._editor.focus()
+
+        self.app.push_screen(_SearchModal(), callback=on_dismiss)
+
+    def on_code_editor_search_step_requested(
+        self, message: CodeEditor.SearchStepRequested
+    ) -> None:
+        message.stop()
+        if self._editor is None or not self._search_term:
+            return
+        backward = (
+            self._search_backward if message.forward else not self._search_backward
+        )
+        if not self._editor.find(self._search_term, backward):
+            self.app.notify(f"Not found: {self._search_term}", title="Search")
+
+    def on_focus(self, event: Focus) -> None:
+        # ESC from another pane focuses the CodeView; while editing the
+        # editor is the thing that should take keys.
+        if self._editor is not None:
+            self._editor.focus()
 
     # ---- Footer hint plumbing ----
     # The action_footer_hint_* methods are no-op targets for the c/n/s/p/t/b
@@ -678,10 +970,24 @@ class CodeView(ScrollableContainer, can_focus=True):
 
     def load_file(self, path: str) -> None:
         try:
-            text = Path(path).read_text(encoding="utf-8", errors="replace")
+            raw = Path(path).read_bytes()
+            is_local = True
         except OSError:
-            text = f"<Could not read {path}>"
-        self._install_source(text, path)
+            self._install_source(f"<Could not read {path}>", path, is_local=False)
+            return
+        try:
+            # Strict decode first: a clean UTF-8 file must never be
+            # flagged lossy even though errors="replace" would also
+            # "succeed" on it.
+            text = raw.decode("utf-8")
+            is_lossy = False
+        except UnicodeDecodeError:
+            # Not valid UTF-8: still show *something* (U+FFFD in place
+            # of the bad bytes), but refuse Edit mode for it — saving
+            # those substitutions back would corrupt the file (I4).
+            text = raw.decode("utf-8", errors="replace")
+            is_lossy = True
+        self._install_source(text, path, is_local=is_local, is_lossy=is_lossy)
 
     def load_content(self, content: str, path: str) -> None:
         """Install source code from an in-memory string.
@@ -693,13 +999,30 @@ class CodeView(ScrollableContainer, can_focus=True):
         lookups and "did the displayed file change?" checks keep
         working unchanged.
         """
-        self._install_source(content, path)
+        self._install_source(content, path, is_local=False, is_lossy=False)
 
-    def _install_source(self, text: str, path: str) -> None:
+    def _install_source(
+        self, text: str, path: str, *, is_local: bool = True, is_lossy: bool = False
+    ) -> None:
         """Shared body of load_file / load_content."""
+        if self._editor is not None and path != self.source_path:
+            # A stop in another file arrived mid-edit. Don't yank the
+            # editor away; show that file once the editor closes.
+            self._deferred_source = (text, path)
+            self._deferred_is_local = is_local
+            self._deferred_is_lossy = is_lossy
+            return
+        # A later stop back in the edited file (or any load that isn't
+        # deferred) makes any previously-queued deferred source stale —
+        # without this, leaving Edit mode would install that stale file
+        # even though the debuggee is stopped elsewhere (I2).
+        self._deferred_source = None
         from tdb.source_analysis import compute_step_units
 
         self.source_path = path
+        self._source_is_local = is_local
+        self._source_lossy = is_lossy
+        self._had_trailing_newline = text.endswith("\n")
         self._lines = text.splitlines()
         # Step units underpin the "breakpoints land on logical statement
         # starts" rule (see _snap_breakpoint_line). Empty list on parse

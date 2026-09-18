@@ -1,10 +1,12 @@
 """Keybinding configuration for tdb.
 
-Two modes:
+Three modes:
   - NAVIGATION: vim-style movement with optional count prefix (e.g. 5j, 12G)
   - DEBUG: single-key debug commands (n, s, o, c, b, p, t)
+  - EDIT: the file is open in an editor widget; keys are owned by the
+    editor (see tdb.widgets.code_editor), not by these tables.
 
-ESC toggles between modes (when CodeView has focus).
+ESC cycles Debug -> Navigation -> Edit -> Debug (when CodeView has focus).
 """
 
 from __future__ import annotations
@@ -16,6 +18,7 @@ from enum import Enum
 class Mode(Enum):
     NAVIGATION = "Navigation"
     DEBUG = "Debug"
+    EDIT = "Edit"
 
 
 _VIM_NAV = {
@@ -95,6 +98,77 @@ _SHARED = {
     "q": "quit",
 }
 
+# User-facing names for the three schemes. The config value stays the
+# key ("default" is what breakpoints.json / config.json persist); only
+# the label says what "default" means.
+SCHEME_LABELS = {"vim": "Vim", "emacs": "Emacs", "default": "Notepad-style"}
+
+
+def scheme_label(scheme: str) -> str:
+    return SCHEME_LABELS.get(scheme, scheme)
+
+
+# Edit-mode reference tables, (key display, description). These are
+# documentation for the Keybindings dialog; the live bindings are
+# implemented in tdb.widgets.code_editor and must be kept in step.
+_NOTEPAD_EDIT_HELP: list[tuple[str, str]] = [
+    ("Arrows", "Move cursor"),
+    ("Home / End", "Start / end of line"),
+    ("PgUp / PgDn", "Page up / down"),
+    ("Shift+Arrows", "Select text"),
+    ("Delete / Backspace", "Delete right / left"),
+    ("Ctrl+Z / Ctrl+Y", "Undo / redo"),
+    ("Ctrl+X / Ctrl+C / Ctrl+V", "Cut / copy / paste"),
+    ("Ctrl+S", "Save file"),
+    ("Esc", "Leave Edit mode"),
+]
+
+_EMACS_EDIT_HELP: list[tuple[str, str]] = [
+    ("Ctrl+N / Ctrl+P", "Down / up"),
+    ("Ctrl+F / Ctrl+B", "Right / left"),
+    ("Alt+F / Alt+B", "Word right / left"),
+    ("Ctrl+A / Ctrl+E", "Start / end of line"),
+    ("Alt+< / Alt+>", "Start / end of file"),
+    ("Ctrl+D", "Delete right"),
+    ("Ctrl+K", "Kill to end of line"),
+    ("Ctrl+Y", "Yank last kill"),
+    ("Ctrl+_", "Undo"),
+    ("Ctrl+S / Ctrl+R", "Search forward / backward"),
+    ("Ctrl+X Ctrl+S", "Save file"),
+    ("Ctrl+X Ctrl+C", "Leave Edit mode"),
+    ("Ctrl+G", "Cancel pending Ctrl+X"),
+    ("Esc", "Leave Edit mode"),
+]
+
+_VIM_EDIT_HELP: list[tuple[str, str]] = [
+    ("h j k l", "Move (count prefix allowed)"),
+    ("w b e", "Word motions"),
+    ("0 ^ $", "Line start / first non-blank / line end"),
+    ("gg / G / NG", "File start / end / line N"),
+    ("Ctrl+F / Ctrl+B", "Page down / up"),
+    ("x X", "Delete char under / before cursor"),
+    ("dd dw D", "Delete line / word / to end of line"),
+    ("yy", "Yank line"),
+    ("p P", "Put after / before"),
+    ("u / Ctrl+R", "Undo / redo"),
+    ("J", "Join lines"),
+    ("i a I A o O", "Enter insert mode"),
+    ("/ ? n N", "Search forward / backward, next / previous"),
+    (":w", "Save file"),
+    ("Ctrl+S", "Save file"),
+    (":q :wq :q!", "Leave Edit mode (save / discard)"),
+    (":N", "Go to line N"),
+    ("Esc", "Insert -> normal; normal -> leave Edit mode"),
+]
+
+
+def edit_help(scheme: str) -> list[tuple[str, str]]:
+    if scheme == "emacs":
+        return list(_EMACS_EDIT_HELP)
+    if scheme == "default":
+        return list(_NOTEPAD_EDIT_HELP)
+    return list(_VIM_EDIT_HELP)
+
 
 @dataclass
 class KeybindingConfig:
@@ -119,7 +193,14 @@ class KeybindingConfig:
             return cls(scheme="vim", navigation=dict(_VIM_NAV))
 
     def lookup(self, mode: Mode, key: str) -> str | None:
-        """Return the action name for a key in the given mode, or None."""
+        """Return the action name for a key in the given mode, or None.
+
+        EDIT always returns None: while the editor widget has focus it
+        owns every key, and the shared table (arrows, q, ...) must not
+        intercept them.
+        """
+        if mode == Mode.EDIT:
+            return None
         if mode == Mode.NAVIGATION:
             action = self.navigation.get(key)
             if action:
@@ -132,6 +213,8 @@ class KeybindingConfig:
 
     def format_bindings(self, mode: Mode) -> list[tuple[str, str]]:
         """Return (key_display, description) pairs for display."""
+        if mode == Mode.EDIT:
+            return edit_help(self.scheme)
         ACTION_LABELS = {
             "goto_line_prompt": "Go to line (prompt)",
             "goto_end": "Go to end of file (NG = line N)",

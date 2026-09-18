@@ -21,8 +21,10 @@ from tdb.languages.base import AdapterNotFoundError
 from tdb.session.controller import DebugController
 from tdb.session.messages import DapStopped
 from tdb.session.textual_handler import TextualEventHandler
-from tdb.keybindings import KeybindingConfig
+from tdb.keybindings import KeybindingConfig, Mode
+from tdb.source_edit import remap_breakpoints
 from tdb.widgets.breakpoint_view import BreakpointView
+from tdb.widgets.code_editor import _UnsavedChangesModal
 from tdb.widgets.code_view import CodeView, _BreakpointConditionModal
 from tdb.widgets.console_view import ConsoleView
 from tdb.widgets.evaluate_console import EvaluateConsole
@@ -145,6 +147,7 @@ class TdbApp(_AppMessageRoutes, App):
         # gets ctrl+right delivered to tdb, which still opens the menu.
         Binding("alt+f,ctrl+right", "menu_file", "File menu", show=False),
         Binding("alt+c", "menu_configure", "Configure menu", show=False),
+        Binding("alt+e", "menu_edit", "Edit menu", show=False),
         Binding("alt+t", "menu_threads", "Threads", show=False),
         Binding("alt+p", "menu_processes", "Processes", show=False),
         Binding("alt+a", "menu_async_tasks", "Async Tasks", show=False),
@@ -311,6 +314,12 @@ class TdbApp(_AppMessageRoutes, App):
         leading_action_labels = {"open-file-label": "File"}
         yield MenuBar(
             {
+                "Edit": [
+                    "Save",
+                    "Revert to Disk",
+                    "Discard and Exit Edit Mode",
+                    "Open in $EDITOR",
+                ],
                 "Configure": ["Color Theme", "Keybindings", "Step Mode"],
                 "Help": ["Documentation", "About"],
             },
@@ -340,6 +349,10 @@ class TdbApp(_AppMessageRoutes, App):
 
         code_view = self.query_one("#code-view", CodeView)
         code_view.keybindings = KeybindingConfig.from_scheme(self._config.keybindings)
+        # Replay drives the UI from a recording; post-mortem shows a
+        # frozen snapshot. Neither has a file the user should edit.
+        if self._replay_driver is not None or self._post_mortem_snapshot is not None:
+            code_view.edit_enabled = False
         code_view.lexer_name = self.controller.profile.presentation.lexer
         stack_view = self.query_one("#stack-view", StackView)
         stack_view.name_filter = self.controller.profile.presentation.frame_name
@@ -458,18 +471,74 @@ class TdbApp(_AppMessageRoutes, App):
 
         code_view.focus()
 
+    async def _confirm_discard_edits(self) -> bool:
+        """Worker-only. True when it is safe to abandon the Code View's
+        edit buffer: nothing unsaved, or the user chose Save (and it
+        succeeded) or Discard. False on Cancel or a failed save.
+        Awaits a modal, so callers must run inside a worker."""
+        if isinstance(self.screen, _UnsavedChangesModal):
+            # A prompt is already up (another quit/restart flow owns it).
+            return False
+        code_view = self.query_one("#code-view", CodeView)
+        if not code_view.is_dirty:
+            return True
+        name = Path(code_view.source_path).name if code_view.source_path else "buffer"
+        try:
+            result = await self.push_screen(
+                _UnsavedChangesModal(name), wait_for_dismiss=True
+            )
+        except asyncio.CancelledError:
+            # self.screen raises ScreenStackError once the stack is empty
+            # (e.g. app shutdown racing this cancellation), so check the
+            # stack directly rather than the `.screen` property.
+            stack = self.screen_stack
+            if stack and isinstance(stack[-1], _UnsavedChangesModal):
+                self.pop_screen()
+            raise
+        if result == "save":
+            return code_view.save_file()
+        if result == "discard":
+            code_view.discard_edits()
+            return True
+        return False
+
     def _update_code_title(self, code_view: CodeView) -> None:
-        mode_label = code_view.mode.value
-        styled = (
-            f"[red]{mode_label}[/]"
-            if mode_label.lower() == "navigation"
-            else mode_label
-        )
+        label = code_view.mode_label()
+        if code_view.mode == Mode.NAVIGATION:
+            styled = f"[red]{label}[/]"
+        elif code_view.mode == Mode.EDIT:
+            styled = f"[yellow]{label}[/]"
+        else:
+            styled = label
         code_view.border_title = f"[bold orange]C[/]ode \\[{styled}]"
 
     def on_code_view_mode_changed(self, message: CodeView.ModeChanged) -> None:
         code_view = self.query_one("#code-view", CodeView)
         self._update_code_title(code_view)
+
+    async def on_code_view_file_saved(self, message: CodeView.FileSaved) -> None:
+        """After a save: shift this file's breakpoints across the edit,
+        re-push them, drop the stale current-line marker, and tell the
+        user how to run the new code. No hot reload."""
+        state = self.controller.state
+        code_view = self.query_one("#code-view", CodeView)
+        old = state.breakpoints.get(message.path, [])
+        if old:
+            new = remap_breakpoints(message.old_lines, message.new_lines, old)
+            try:
+                await self.controller.replace_breakpoints(message.path, new)
+            except Exception:
+                log.exception("Error re-pushing breakpoints after save")
+                state.breakpoints[message.path] = new
+            self.post_message(self.BreakpointsChanged())
+        code_view.current_line = None
+        name = Path(message.path).name
+        if self.controller.supports_restart and not state.is_post_mortem:
+            self.notify(
+                f"Saved {name}. Press R to restart with the new code.", title="Edit"
+            )
+        else:
+            self.notify(f"Saved {name}.", title="Edit")
 
     @work(exclusive=True)
     async def _adopt_session(self) -> None:
@@ -652,6 +721,19 @@ class TdbApp(_AppMessageRoutes, App):
                 severity="warning",
             )
             return
+
+        # Restart is the moment the user wants the new code on disk.
+        if not await self._confirm_discard_edits():
+            return
+
+        # The guard above only handles UNSAVED edits; a clean buffer (or
+        # one just saved) still leaves the editor mounted on the old
+        # file, which would defer the new file's load instead of
+        # showing it. A restart — plain or File > Open — always means
+        # "back to Debug mode", so close it now.
+        code_view = self.query_one("#code-view", CodeView)
+        if code_view.is_editing:
+            code_view.leave_edit_mode(discard=True)
 
         if new_program is None:
             self.recorder.record("restart", [])
@@ -1394,7 +1476,9 @@ class TdbApp(_AppMessageRoutes, App):
         menu_bar = self.query_one("#menu-bar", MenuBar)
         menu_bar._close_all()
 
-        if menu == "Configure" and item == "Color Theme":
+        if menu == "Edit":
+            self._edit_menu_action(item)
+        elif menu == "Configure" and item == "Color Theme":
             self.action_color_theme()
         elif menu == "Configure" and item == "Keybindings":
             self.action_keybindings()
@@ -1525,6 +1609,85 @@ class TdbApp(_AppMessageRoutes, App):
     def action_menu_configure(self) -> None:
         self.query_one("#menu-bar", MenuBar).open_menu("Configure")
 
+    def action_menu_edit(self) -> None:
+        self.query_one("#menu-bar", MenuBar).open_menu("Edit")
+
+    def _edit_menu_action(self, item: str) -> None:
+        code_view = self.query_one("#code-view", CodeView)
+        if item == "Save":
+            if not code_view.is_editing:
+                self.notify("Nothing to save: not in Edit mode.", title="Edit")
+            elif not code_view.is_dirty:
+                self.notify("No unsaved changes.", title="Edit")
+            else:
+                code_view.save_file()
+        elif item == "Revert to Disk":
+            if not code_view.is_editing or not code_view.is_dirty:
+                self.notify("No unsaved changes.", title="Edit")
+            elif code_view.revert_to_disk():
+                self.notify("Reverted to the on-disk contents.", title="Edit")
+        elif item == "Discard and Exit Edit Mode":
+            if not code_view.is_editing:
+                self.notify("Not in Edit mode.", title="Edit")
+            else:
+                code_view.leave_edit_mode(discard=True)
+        elif item == "Open in $EDITOR":
+            self.run_worker(self._open_in_external_editor(), name="external-editor")
+
+    async def _open_in_external_editor(self) -> None:
+        """Suspend the TUI, run $VISUAL / $EDITOR on the current file,
+        then reload it and remap breakpoints if it changed on disk."""
+        import subprocess
+
+        from textual.app import SuspendNotSupported
+
+        from tdb.source_edit import resolve_external_editor
+
+        code_view = self.query_one("#code-view", CodeView)
+        reason = code_view.edit_refusal_reason()
+        if reason is not None:
+            self.notify(reason, title="Edit", severity="warning")
+            return
+        if not await self._confirm_discard_edits():
+            return
+        if code_view.is_editing:
+            # Buffer is clean or just saved; the file on disk is current.
+            code_view.leave_edit_mode(discard=True)
+        path = code_view.source_path
+        assert path is not None
+        old_lines = code_view.lines()
+        try:
+            before = os.stat(path).st_mtime_ns
+        except OSError:
+            before = None
+        argv = resolve_external_editor() + [path]
+        try:
+            with self.suspend():
+                # Deliberately blocking: suspend() stops the driver's writer
+                # thread without gating rendering, so the event loop must
+                # not run while the terminal belongs to the external editor.
+                subprocess.run(argv, check=False)  # noqa: ASYNC221
+        except SuspendNotSupported:
+            self.notify(
+                "This terminal cannot suspend tdb to run an external editor.",
+                title="Edit",
+                severity="error",
+            )
+            return
+        except OSError as exc:
+            self.notify(
+                f"Could not run {argv[0]}: {exc}", title="Edit", severity="error"
+            )
+            return
+        try:
+            after = os.stat(path).st_mtime_ns
+        except OSError:
+            after = None
+        if after == before:
+            return
+        code_view.load_file(path)
+        self.post_message(CodeView.FileSaved(path, old_lines, code_view.lines()))
+
     def action_menu_threads(self) -> None:
         self._close_open_menu()
         self._open_threads()
@@ -1581,6 +1744,14 @@ class TdbApp(_AppMessageRoutes, App):
             # through the detach/terminate choice.
             self.action_confirm_quit()
             return
+        if self._is_quitting:
+            return
+        # The unsaved-edits prompt awaits a modal, which needs a worker.
+        self.run_worker(self._quit_debugger_flow(), name="quit")
+
+    async def _quit_debugger_flow(self) -> None:
+        if not await self._confirm_discard_edits():
+            return
         # Idempotent: Ctrl+Q and the q-confirm path both land here, and
         # `controller.stop()` can take a moment when many child DAP
         # sessions need to be torn down — without this guard, a second
@@ -1601,6 +1772,8 @@ class TdbApp(_AppMessageRoutes, App):
 
     async def _detach_and_exit(self) -> None:
         """Leave the debuggee running; run_mode resumes it after exit."""
+        if not await self._confirm_discard_edits():
+            return
         if self._is_quitting:
             return
         self._is_quitting = True
@@ -1612,6 +1785,8 @@ class TdbApp(_AppMessageRoutes, App):
         self.exit()
 
     async def _terminate_and_exit(self) -> None:
+        if not await self._confirm_discard_edits():
+            return
         if self._is_quitting:
             return
         self._is_quitting = True
@@ -1698,7 +1873,9 @@ class TdbApp(_AppMessageRoutes, App):
 
     def action_confirm_quit(self) -> None:
         if self._adopted:
-            if self._is_quitting or isinstance(self.screen, _DetachQuitModal):
+            if self._is_quitting or isinstance(
+                self.screen, (_DetachQuitModal, _UnsavedChangesModal)
+            ):
                 return
 
             def on_dismiss_adopted(result: str | None) -> None:
@@ -1711,8 +1888,11 @@ class TdbApp(_AppMessageRoutes, App):
             return
 
         # Don't reopen the modal once a quit is already in flight; also
-        # don't double-push it if it's currently the active screen.
-        if self._is_quitting or isinstance(self.screen, _QuitConfirmModal):
+        # don't double-push it if it's currently the active screen, and
+        # don't stack it on top of an in-flight unsaved-edits prompt.
+        if self._is_quitting or isinstance(
+            self.screen, (_QuitConfirmModal, _UnsavedChangesModal)
+        ):
             return
 
         def on_dismiss(confirmed: bool | None) -> None:
