@@ -100,7 +100,9 @@ def cache_root() -> Path:
     return CONFIG_DIR / "padwalker"
 
 
-def _run(argv: list[str], env: dict, cwd: str | None = None, timeout: float = PROBE_TIMEOUT):
+def _run(
+    argv: list[str], env: dict, cwd: str | None = None, timeout: float = PROBE_TIMEOUT
+):
     return subprocess.run(
         argv,
         env=env,
@@ -141,7 +143,10 @@ def _cache_candidates() -> list[Path]:
     """Preferred cache root first, then a temp-dir fallback for read-only
     config dirs (see the read-only filesystem handling elsewhere in tdb)."""
     primary = cache_root()
-    fallback = Path(tempfile.gettempdir()) / f"tdb-padwalker-{os.getuid() if hasattr(os, 'getuid') else 'user'}"
+    fallback = (
+        Path(tempfile.gettempdir())
+        / f"tdb-padwalker-{os.getuid() if hasattr(os, 'getuid') else 'user'}"
+    )
     return [primary] if primary == fallback else [primary, fallback]
 
 
@@ -224,7 +229,9 @@ def _resolve(perl: str, env: dict) -> PadWalkerResult:
     cfg = _perl_config(perl, env)
     if cfg is None:
         return PadWalkerResult(
-            None, "unavailable", f"tdb: PadWalker unavailable: cannot run {perl}. {_INSTALL_HINT}"
+            None,
+            "unavailable",
+            f"tdb: PadWalker unavailable: cannot run {perl}. {_INSTALL_HINT}",
         )
     version, archname, make, dlext = cfg
     name = cache_key(version, archname)

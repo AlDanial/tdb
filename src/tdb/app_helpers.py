@@ -50,8 +50,7 @@ def info_text() -> str:
     from tdb.adapters.perl.padwalker import cache_root, padwalker_dir, padwalker_status
 
     return (
-        about_text(markup=False)
-        + "\n\n"
+        about_text(markup=False) + "\n\n"
         f"tdb installation directory   : {install_dir()}\n"
         f"Perl PadWalker sources       : {padwalker_dir()}\n"
         f"Perl PadWalker build cache   : {cache_root()}\n"
