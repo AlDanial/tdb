@@ -386,6 +386,7 @@ class PerlDapServer:
                 "helpers.pl on the remote host",
             )
             return
+        await self._arm_control_channel(host, port)
         # TdbRemote::wait_for_client() arms $DB::single right before its
         # own `return;` statement, so the very first trap DB::DB hits is
         # literally that `return;` line -- still inside
@@ -403,6 +404,44 @@ class PerlDapServer:
         self._stop_on_entry = True
         self._start_request = request
         self.send_event("initialized")
+
+    async def _arm_control_channel(self, host: str, port: int) -> None:
+        """Best-effort: open the pause control channel to an attached
+        debuggee (a second connection to the same listener, accepted and
+        armed by Devel::TdbRemote::arm_control -- see that sub). Failure
+        of any kind leaves pause gated, as it always was in attach mode,
+        with a console note saying why; it never fails the attach."""
+        assert self.session is not None
+        try:
+            _, writer = await asyncio.wait_for(asyncio.open_connection(host, port), 5.0)
+        except (OSError, asyncio.TimeoutError) as e:
+            self._forward_output(
+                f"tdb: pause unavailable: control connection to {host}:{port} "
+                f"failed ({e})\n",
+                "console",
+            )
+            return
+        try:
+            reply = await self.session.helper("Devel::TdbRemote::arm_control()")
+        except PerlProtocolError as e:
+            # An older Devel::TdbRemote has no arm_control(): perl5db prints
+            # "Undefined subroutine" and a prompt, no JSON.
+            writer.close()
+            self._forward_output(
+                "tdb: pause unavailable: the remote Devel::TdbRemote has no "
+                f"control channel -- update Devel/TdbRemote.pm on the remote "
+                f"host ({e})\n",
+                "console",
+            )
+            return
+        if reply.get("control") != 1:
+            writer.close()
+            self._forward_output(
+                f"tdb: pause unavailable: {reply.get('error', 'not armed')}\n",
+                "console",
+            )
+            return
+        self.session.attach_control(writer)
 
     async def _on_configurationDone(self, request: Request) -> None:
         self.send_response(request)

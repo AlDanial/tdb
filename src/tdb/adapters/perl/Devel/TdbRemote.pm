@@ -5,6 +5,11 @@
 #   Devel::TdbRemote::listen(5678);       # non-blocking
 #   Devel::TdbRemote::wait_for_client();  # blocks until tdb connects
 #
+# Pause support: after attaching, tdb opens a SECOND connection to the
+# same port (the control channel) and asks the debugger to
+# arm_control(). From then on any byte tdb writes there interrupts the
+# running program -- see arm_control() for the mechanism.
+#
 # Also works via `perl -d:TdbRemote prog.pl` or PERL5OPT=-d:TdbRemote.
 # Only code compiled AFTER the debugger is armed can be stepped or
 # breakpointed -- that is why the `use` line must come first.
@@ -17,8 +22,9 @@ use File::Basename   ();
 use File::Spec       ();
 use Cwd              ();
 
-our $VERSION = '1.0';
+our $VERSION = '1.1';
 my $LISTENER;
+my $CONTROL;
 
 BEGIN {
     # Arm the debugger unless perl already did (-d / -d:TdbRemote).
@@ -88,6 +94,87 @@ sub wait_for_client {
     # Stop at the statement after this call, debugpy-style.
     $DB::single = 1;
     return;
+}
+
+# Accept tdb's control connection and arm asynchronous pause.
+#
+# Invoked by the adapter as a debugger command right after the attach
+# handshake, so the process is stopped at a perl5db prompt and the
+# adapter has already connected a second time to the listener (that
+# connection sits in the kernel backlog until accepted here). Replies
+# with one TDB>>>{json}<<<TDB line: {"control":1} when armed, or
+# {"control":0,"error":...} when it could not be -- the adapter then
+# keeps pause gated exactly as before. Never dies: a failure here must
+# not take down the attach.
+#
+# Mechanism: the control socket is put in O_ASYNC mode with this
+# process as its owner, so the kernel delivers SIGIO the moment tdb
+# writes to it. The handler sets $DB::signal -- the very flag perl5db's
+# own SIGINT handler (DB::catch) sets -- so DB::DB takes control at the
+# next statement and clears it, giving attach-mode pause the same
+# semantics as launch mode's SIGINT. Nothing touches the debug socket,
+# so no stray bytes ever reach perl5db's command stream. Compared to a
+# $SIG{ALRM} poll this costs nothing while idle, reacts immediately,
+# and leaves alarm()/sleep() to the program. Platforms without
+# O_ASYNC (Windows) simply report control => 0.
+sub arm_control {
+    my $reply = eval {
+        die "listen() was never called\n" unless $LISTENER;
+        require Fcntl;
+        require IO::Select;
+        if ($CONTROL) {    # re-attach after a detach: drop the stale one
+            close $CONTROL;
+            undef $CONTROL;
+        }
+        # Never block the debuggee on a client that did not connect.
+        IO::Select->new($LISTENER)->can_read(5)
+          or die "no pending control connection\n";
+        my $c = $LISTENER->accept or die "accept failed: $!\n";
+        $c->blocking(0);
+        my $flags = fcntl( $c, Fcntl::F_GETFL(), 0 );
+        defined $flags or die "F_GETFL: $!\n";
+        fcntl( $c, Fcntl::F_SETOWN(), $$ ) or die "F_SETOWN: $!\n";
+        fcntl( $c, Fcntl::F_SETFL(), $flags | Fcntl::O_ASYNC() )
+          or die "F_SETFL O_ASYNC: $!\n";
+        $SIG{IO} = \&DB::_tdb_on_control_io;
+        $CONTROL = $c;
+        { control => 1 };
+    };
+    unless ($reply) {
+        my $err = $@;
+        $err =~ s/\s+\z//;
+        $reply = { control => 0, error => $err };
+    }
+    Devel::TdbHelper::_emit($reply);
+    return;
+}
+
+# Compiled in package DB on purpose: perl never emits a debugger
+# breakpoint op for statements in the debugger's own package, so the
+# handler runs invisibly and the stop it requests lands on the NEXT
+# statement of the interrupted program -- the user's code. Defined in
+# this file's usual package, the first statement after `$DB::signal = 1`
+# would itself trip DB::DB and the pause would surface inside this
+# handler, in TdbRemote.pm, with `package Devel::TdbRemote` as the
+# evaluate scope.
+{
+    package DB;
+
+    sub _tdb_on_control_io {
+        return unless $CONTROL;
+        my $buf = '';
+        my $n = sysread( $CONTROL, $buf, 4096 );
+        return unless defined $n;    # EAGAIN or the like: nothing to do
+        if ( $n == 0 ) {
+            # tdb detached: disarm without disturbing the program.
+            close $CONTROL;
+            undef $CONTROL;
+            $SIG{IO} = 'DEFAULT';
+            return;
+        }
+        $DB::signal = 1;
+        return;
+    }
 }
 
 1;

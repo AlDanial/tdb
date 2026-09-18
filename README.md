@@ -569,11 +569,18 @@ export PERL5LIB=/opt/tdb-perl:$PERL5LIB
 the two files in the same relative layout shown above; `helpers.pl` is a
 sibling of the `Devel/` directory, not inside it.)
 
-**Pause is unavailable in attach mode.** Launch-mode sessions (`tdb
-script.pl`) support pausing a running program at any time. Remote-attach
-sessions don't. Asynchronous pause (as Python gets via `debugpy`) needs a control channel
-`Devel::TdbRemote` doesn't implement yet; `pause` in attach mode returns a
-"not available" error instead of hanging.
+**Pause in attach mode** uses a control channel: after the debug connection
+is up, `tdb` opens a second connection to the same port and asks
+`Devel::TdbRemote` to accept it. From then on `pause` (or the `p` key) writes a
+byte on that connection, the kernel delivers `SIGIO` to the debuggee, and the
+program stops at its next statement -- the same mechanism `perl5db` uses for
+Ctrl-C, so a program blocked in `sleep` or `select` is interrupted too. The
+second connection reuses the debug port, so an SSH tunnel that forwards that
+one port carries both. Requirements: the `Devel/TdbRemote.pm` copied to the
+remote host must be at least the version shipped with this feature (an older
+copy still attaches fine, but `pause` returns a "not available" error and the
+Console view says why), and the remote perl must support `O_ASYNC` (Linux,
+macOS, BSD; not Windows).
 
 ### Bash
 

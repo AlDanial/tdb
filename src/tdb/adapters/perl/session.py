@@ -69,6 +69,11 @@ class PerlSession:
         self._process: asyncio.subprocess.Process | None = None
         self._reader: asyncio.StreamReader | None = None
         self._writer: asyncio.StreamWriter | None = None
+        # Attach-mode control channel (see Devel::TdbRemote::arm_control):
+        # a second connection to the debuggee on which any byte written
+        # while the program runs interrupts it, standing in for the SIGINT
+        # launch mode can send to its owned child.
+        self._control_writer: asyncio.StreamWriter | None = None
         self._reader_task: asyncio.Task | None = None
         self._pump_tasks: list[asyncio.Task] = []
         # Events collected for the in-flight command; None => no command
@@ -377,15 +382,24 @@ class PerlSession:
         self._collect = None
         self._writer.write(cmd.encode("utf-8") + b"\n")
 
+    def attach_control(self, writer) -> None:
+        """Adopt the armed control connection (attach mode)."""
+        self._control_writer = writer
+
     def interrupt(self) -> bool:
-        """SIGINT the owned child (launch-mode pause). False if not owned."""
-        if self._process is None:
-            return False
-        try:
-            os.kill(self._process.pid, signal.SIGINT)
+        """Ask the running debuggee to stop: SIGINT the owned child (launch
+        mode) or write a pause byte on the control channel (attach mode).
+        False if neither is available."""
+        if self._process is not None:
+            try:
+                os.kill(self._process.pid, signal.SIGINT)
+                return True
+            except (ProcessLookupError, PermissionError):
+                return False
+        if self._control_writer is not None:
+            self._control_writer.write(b"p")
             return True
-        except (ProcessLookupError, PermissionError):
-            return False
+        return False
 
     async def stop(self) -> None:
         tasks = [t for t in [self._reader_task, *self._pump_tasks] if t is not None]
@@ -395,6 +409,9 @@ class PerlSession:
             await asyncio.gather(*tasks, return_exceptions=True)
         if self._writer is not None:
             self._writer.close()
+        if self._control_writer is not None:
+            self._control_writer.close()
+            self._control_writer = None
         if self._process is not None:
             try:
                 self._process.kill()
