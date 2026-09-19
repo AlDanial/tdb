@@ -164,7 +164,7 @@ tdb -r remotehost:5678 --local-root /my/code/dir --remote-root /app -k my_progra
 # attach, which can leave it suspended after tdb quits
 tdb -r remotehost:5678 --no-pause-on-attach
 
-# separate tdb arguments from debuggee arguments with `--` 
+# separate tdb arguments from debuggee arguments with `--`
 tdb --python /path/to/venv/bin/python -- my_program.py -k 17 --max 23.3
 ```
 
@@ -693,7 +693,7 @@ ocamlc -g -o my_program.byte "$PWD/my_program.ml"
 ```
 
 Then, to ensure transition from bytecode to OCaml source in the
-Code view, provide an explicit temporary breakpoint (`-t`) 
+Code view, provide an explicit temporary breakpoint (`-t`)
 at the first line of execution:
 
 ```
@@ -1456,17 +1456,16 @@ This feature only works in graphical environments where external terminals are a
 
 ### Run Mode (`--run`)
 
-`tdb`'s run mode invokes an unmodified program nearly at full speed, without bringing up the TUI.
-At any point afterwards, hitting `Ctrl-C` in that terminal pauses the program
-and drops you into the full TUI.
-From there you can inspect the program's state, navigate the stack, set and continue
-to breakpoints, and so on.  After you finish inspecting, hitting `q` to quit brings up
-a modal that lets you either detach from the TUI and let the program resume running,
-or lets you terminate it.
+`tdb`'s run mode acts as a job shepherd.
+It runs your unmodified program at nearly full speed, without bringing up the TUI,
+and listens for two interrupt signals:
 
-The primary use cases for run mode are: (1) allowing inspection of a program that
-appears hung, and (2) finding where a program execution path lands after it
-receives a problematic input.
+- `Ctrl-C` pauses the program and brings up TUI, placing you at the currently
+active line of code.  From there you can debug interactively as usual.  When
+you quit the TUI, you can either detach and let the program continue running, or terminate it.
+
+- `Ctrl-\` temporarily pauses the program and prints a JSON-formatted stack trace to stdout
+or a log file, then resumes the program.
 
 ```bash
 tdb --run my_program.py args...
@@ -1478,16 +1477,6 @@ its own, `tdb` exits with the same code:
 ```bash
 tdb --run my_program.py; echo $?   # my_program.py's own exit code
 ```
-
-**Interrupting:** press Ctrl-C in the terminal (any platform), or, on Unix, send
-`SIGUSR1` to `tdb`'s pid from another terminal: `kill -USR1 <tdb pid>`. Either one pauses
-the debuggee at its currently executing line and opens the TUI with full debugging
-available (breakpoints, stepping, variable inspection, the evaluate console). The
-debuggee itself never receives the signal (`tdb`'s adapter runs in its own process
-group), so its own `SIGINT` handling is undisturbed.
-
-**Examining without opening the TUI:** press `Ctrl-\` in the terminal (`Ctrl-Break` on
-Windows), or, on Unix, send `SIGUSR2` to `tdb`'s pid: `kill -USR2 <tdb pid>`.
 
 **Windows caveat:** the Ctrl-Break trigger is untested. Unlike Ctrl-C, a console
 Ctrl-Break is delivered to every process attached to the console, including the debug
@@ -1563,9 +1552,14 @@ blocking external call or syscall, the pause can't land until that call returns 
 
 ### Eval Mode (`-e`/`--eval`)
 
-Eval mode automates a common debugging loop--set a breakpoint, run to it,
-evaluate an expression in the Evaluate console, continue--without
-opening the TUI. `-e` takes two arguments, a location and an expression:
+Eval mode is essentially a code injection mechanism.  Rather than injecting
+native code though, only expressions that are valid in the Evaluate View
+can be injected (in Python, native expressions are processed correctly
+in the Evaluate View).
+
+In this way, Eval mode automates the common debugging action of setting a
+breakpoint, running to it, evaluating (and printing the result of) an expression, then
+resuming execution, all without opening the TUI. `-e` takes two arguments, a location and an expression:
 
 ```bash
 tdb --eval examples/digits_of_pi.py:25 "print(f'{nr=}')" examples/digits_of_pi.py
@@ -1585,7 +1579,7 @@ evaluated in each child process that reaches it.
 - `-e` may be repeated to plant several eval points in one run.
 - The expression is evaluated through the debug adapter (DAP `evaluate`,
   context `repl`), just like the Evaluate console: side effects are real
-  and persist in the running program, for example 
+  and persist in the running program, for example
   `-e my_program.py:25 "limit = 10"` changes `limit` from line 25 onward.
 - A bare expression's result is printed to stdout; statement-style
   expressions (`print(...)`, assignments) print nothing beyond their own
@@ -1976,6 +1970,7 @@ as open source.
 
 - OpenAI, for providing access to Codex through the
 [Codex for Open Source](https://developers.openai.com/community/codex-for-oss) program.
+Codex was used to implement tcsh and Rust support.
 
 This project was inspired by Andreas Klöckner's excellent [pudb](https://pypi.org/project/pudb/)
 Python debugger.
