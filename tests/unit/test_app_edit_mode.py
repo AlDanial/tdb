@@ -4,16 +4,33 @@ quit and restart (Task 9 appends to this file)."""
 
 from __future__ import annotations
 
+import asyncio
 import subprocess
 from contextlib import contextmanager
 from pathlib import Path
 
+import pytest
+
 from tdb.app import TdbApp
 from tdb.dap.types import SourceBreakpoint
 from tdb.persist import TdbConfig
+from tdb.session.controller import DebugController
 from tdb.widgets.code_editor import CodeEditor, _UnsavedChangesModal
 from tdb.widgets.code_view import CodeView
 from tdb.widgets.modals import _QuitConfirmModal
+
+
+@pytest.fixture(autouse=True)
+def _isolate_debugger_lifecycle(monkeypatch):
+    """Exercise the UI without real debugger processes or late DAP events."""
+
+    async def no_op(self, *args, **kwargs):
+        pass
+
+    # Patch before run_test mounts the app. Restart creates a fresh
+    # controller, so instance patches would not isolate the relaunch.
+    monkeypatch.setattr(DebugController, "start", no_op)
+    monkeypatch.setattr(DebugController, "stop", no_op)
 
 
 def _write(tmp_path: Path, text: str = "x = 1\ny = 2\nz = 3\n") -> str:
@@ -126,10 +143,6 @@ async def test_ctrl_q_with_dirty_buffer_save_then_quits(tmp_path):
         exits: list[str] = []
         app.exit = lambda *a, **kw: exits.append("exit")
 
-        async def fake_stop():
-            return None
-
-        app.controller.stop = fake_stop
         await pilot.press("ctrl+q")
         await pilot.pause()
         await pilot.press("s")
@@ -154,17 +167,14 @@ async def test_restart_with_dirty_buffer_prompts_and_discard_proceeds(
         recorded: list[str] = []
         app.recorder.record = lambda name, args: recorded.append(name)
 
-        async def fake_restart_body(*a, **kw):
-            recorded.append("body")
-
-        # Stop the real relaunch: patch what runs after the guard.
-        monkeypatch.setattr(app, "_start_session", lambda *a, **kw: None)
-        app._restart_session()
+        worker = app._restart_session()
         await pilot.pause()
         assert isinstance(app.screen, _UnsavedChangesModal)
         await pilot.press("d")
-        await pilot.pause()
-        await pilot.pause()
+        # UI idle does not imply that the restart worker has finished.
+        # Join it before run_test tears down the widgets it accesses.
+        await asyncio.wait_for(worker.wait(), timeout=5)
+        await pilot.pause()  # Drain UI messages posted by the worker.
         assert not cv.is_editing
         assert "restart" in recorded
         assert Path(path).read_text(encoding="utf-8") == "x = 1\ny = 2\nz = 3\n"
@@ -187,9 +197,7 @@ async def test_ctrl_q_with_dirty_buffer_on_vim_normal_mode_prompts(tmp_path):
         assert cv.is_editing and cv.is_dirty
 
 
-async def test_file_open_while_editing_leaves_edit_mode_for_new_file(
-    tmp_path, monkeypatch
-):
+async def test_file_open_while_editing_leaves_edit_mode_for_new_file(tmp_path):
     app = TdbApp(program="", config=TdbConfig(keybindings="default"))
     async with app.run_test() as pilot:
         await pilot.pause()
@@ -200,15 +208,9 @@ async def test_file_open_while_editing_leaves_edit_mode_for_new_file(
         # Buffer stays clean here: this exercises File > Open's own
         # discard, not the unsaved-edits guard already covered above.
         assert not cv.is_dirty
-        monkeypatch.setattr(app, "_start_session", lambda *a, **kw: None)
-
-        async def fake_stop():
-            return None
-
-        app.controller.stop = fake_stop
-        app._restart_session(new_program=other, start_immediately=False)
-        await pilot.pause()
-        await pilot.pause()
+        worker = app._restart_session(new_program=other, start_immediately=False)
+        await asyncio.wait_for(worker.wait(), timeout=5)
+        await pilot.pause()  # Drain UI messages posted by the worker.
         assert not cv.is_editing
         assert cv.source_path == other
 
