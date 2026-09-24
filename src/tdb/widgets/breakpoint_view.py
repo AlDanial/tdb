@@ -59,6 +59,11 @@ class BreakpointView(DataTable):
     class ClearAllRequested(Message):
         pass
 
+    class SyncRequested(Message):
+        """The view gained focus: ask the app to pull in any breakpoints
+        set directly in the native debugger (e.g. `b 83` at gdb's
+        prompt) before the user reads the table."""
+
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
         self.border_title = "[bold orange]B[/]reakpoints"
@@ -67,6 +72,12 @@ class BreakpointView(DataTable):
 
     def on_mount(self) -> None:
         self.add_columns("", "File", "Line", "Condition", "Hits")
+
+    def on_focus(self) -> None:
+        # Focus is the one choke point behind every way of switching
+        # here — Ctrl+B, a mouse click, Tab cycling — so it's where the
+        # sync hangs.
+        self.post_message(self.SyncRequested())
 
     def update_breakpoints(
         self, breakpoints: dict[str, list[SourceBreakpoint]]

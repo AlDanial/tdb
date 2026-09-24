@@ -1265,6 +1265,20 @@ class TdbApp(_AppMessageRoutes, App):
         bp_view.update_breakpoints(state.breakpoints)
         bp_view.set_disabled_state(state.breakpoints_disabled)
 
+    async def on_breakpoint_view_sync_requested(
+        self, message: BreakpointView.SyncRequested
+    ) -> None:
+        """Focus on the Breakpoints View: reconcile with breakpoints the
+        user set at the native debugger's prompt (gdb `b 83`) and redraw
+        only if that changed anything."""
+        try:
+            changed = await self.controller.sync_breakpoints_from_debugger()
+        except Exception:
+            log.exception("breakpoint sync with debugger failed")
+            return
+        if changed:
+            self.post_message(self.BreakpointsChanged())
+
     async def on_breakpoint_view_disable_all_requested(
         self,
         message: BreakpointView.DisableAllRequested,

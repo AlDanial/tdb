@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 from tdb.dap.client import DAPClient
 from tdb.dap.messages import Event
 from tdb.dap.types import DEFERRED_VERIFICATION_MESSAGE, Breakpoint, SourceBreakpoint
+from .breakpoint_sync import parse_breakpoint_listing, reconcile
 from .event_bus import DebugEventHandler
 from .state import DebugState, SessionPhase
 
@@ -888,6 +889,55 @@ class DebugController:
                 await self._send_breakpoints(source_path, [])
         self.state.breakpoints.clear()
         self.state.breakpoints_disabled = False
+
+    async def sync_breakpoints_from_debugger(self) -> bool:
+        """Pull in breakpoints the user set at the native debugger's own
+        prompt (gdb `b 83` via the Evaluate console) and make tdb own
+        them. Returns True when `state.breakpoints` changed.
+
+        Only adapters that expose a listing side channel
+        (`breakpoint_query_command`) take part, and only while stopped:
+        a CLI prompt can't set breakpoints while the inferior runs in
+        all-stop mode anyway, and `evaluate` needs a paused debuggee.
+        Any failure (evaluate error, unparseable listing) is reported
+        on the console and leaves state untouched.
+        """
+        command = self.profile.adapter.breakpoint_query_command()
+        if command is None:
+            return False
+        if self.state.phase != SessionPhase.STOPPED:
+            return False
+        try:
+            frame_id = await self.resolve_evaluate_frame_id(self.client)
+            listing, _ = await self.client.evaluate(
+                command, frame_id=frame_id, context="repl"
+            )
+            debugger_bps = parse_breakpoint_listing(listing)
+        except Exception as e:
+            self.event_handler.on_output(
+                f"warning: breakpoint sync with the debugger failed: {e}\n",
+                "console",
+            )
+            return False
+        plan = reconcile(
+            self.state.breakpoints, self.state.breakpoints_disabled, debugger_bps
+        )
+        # Take ownership: drop the CLI-created originals, then re-push
+        # each touched file so gdb's DAP layer recreates them as its
+        # own. `_send_breakpoints` honours the same enabled/Disable All
+        # filtering every other breakpoint edit path uses.
+        for number in plan.delete_numbers:
+            try:
+                await self.client.evaluate(
+                    f"delete {number}", frame_id=frame_id, context="repl"
+                )
+            except Exception:
+                log.exception("failed to delete debugger breakpoint %d", number)
+        for source_path in sorted(plan.changed_paths):
+            bps = self.state.breakpoints.get(source_path, [])
+            enabled = [] if self.state.breakpoints_disabled else self._enabled_bps(bps)
+            await self._send_breakpoints(source_path, enabled)
+        return bool(plan.changed_paths)
 
     async def navigate_stack(self, up: bool) -> bool:
         """Move to the next/previous frame in the call stack.

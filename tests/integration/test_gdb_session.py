@@ -156,3 +156,40 @@ async def test_run_to_completion_captures_output(session, cpp_binary):
     await _launch(ctrl, handler, binary, stop_on_entry=True)
     await _continue_to_exit(ctrl, handler)
     assert "total=12" in handler.drain_output()
+
+
+# --- breakpoint sync with gdb's own CLI (issue #52) --------------------------
+
+
+async def test_sync_adopts_breakpoint_set_at_gdb_prompt(session, cpp_binary):
+    binary, src = cpp_binary
+    ctrl, handler = session
+    await _launch(ctrl, handler, binary, stop_on_entry=True)
+    # What the user types in the Evaluate console: a raw gdb command.
+    await ctrl.evaluate(f"b {BP_LINE + 1}")
+    assert src not in ctrl.state.breakpoints
+
+    assert await ctrl.sync_breakpoints_from_debugger() is True
+    assert [bp.line for bp in ctrl.state.breakpoints[src]] == [BP_LINE + 1]
+    # tdb now owns it: the adopted breakpoint actually fires...
+    await _resume_and_wait(ctrl, handler, "continue_")
+    assert ctrl.state.stack_frames[0].line == BP_LINE + 1
+    # ...and gdb holds exactly one breakpoint there (the CLI original
+    # was deleted before the DAP re-push), so a second sync is a no-op.
+    assert await ctrl.sync_breakpoints_from_debugger() is False
+
+
+async def test_sync_drops_breakpoint_deleted_at_gdb_prompt(session, cpp_binary):
+    binary, src = cpp_binary
+    ctrl, handler = session
+    await _launch(ctrl, handler, binary, breakpoints=[(src, BP_LINE + 1)])
+    # Find gdb's number for tdb's breakpoint and delete it by hand.
+    listing = await ctrl.evaluate("info breakpoints")
+    m = re.search(r"^(\d+)\s+breakpoint.*main\.cpp:%d" % (BP_LINE + 1), listing, re.M)
+    assert m, listing
+    await ctrl.evaluate(f"delete {m.group(1)}")
+
+    assert await ctrl.sync_breakpoints_from_debugger() is True
+    assert src not in ctrl.state.breakpoints
+    await _continue_to_exit(ctrl, handler)
+    assert "total=12" in handler.drain_output()
