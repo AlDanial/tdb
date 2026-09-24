@@ -103,6 +103,39 @@ class LldbDapAdapter(AdapterSpec):
         return body
 
 
+# One-line gdb `python` command printing every source breakpoint as the
+# JSON listing tdb.session.breakpoint_sync parses. Must stay one line:
+# it travels through DAP `evaluate` (context "repl"), which gdb hands
+# to gdb.execute() a single command at a time. Filters out
+# watchpoints/catchpoints (type), `tbreak` temporaries, pending
+# breakpoints, and any without a source location. `dap` marks those
+# gdb's own DAP layer created (its breakpoint_map), so the controller
+# can tell CLI-created breakpoints apart and take them over.
+#
+# Side effect, on purpose: the command first prunes that map of
+# breakpoints the user deleted at the CLI. gdb (17.1) leaves them in,
+# and the next setBreakpoints for that file then dies with "Breakpoint
+# N is invalid" when gdb tries to delete the dead entry — which would
+# break the re-push this listing feeds, and any later breakpoint edit
+# in tdb. Pruning here is the one place tdb can fix that up front.
+GDB_BREAKPOINT_QUERY = (
+    "python import json, gdb.dap.breakpoint as _tdb_dapbp; "
+    "[m.pop(k) for m in _tdb_dapbp.breakpoint_map.values() "
+    "for k, b in list(m.items()) if not b.is_valid()]; "
+    "_tdb_owned = {b.number for m in _tdb_dapbp.breakpoint_map.values() "
+    "for b in m.values()}; "
+    "print(json.dumps(["
+    '{"n": b.number, '
+    '"path": b.locations[0].fullname or b.locations[0].source[0], '
+    '"line": b.locations[0].source[1], '
+    '"enabled": b.enabled, "cond": b.condition, '
+    '"dap": b.number in _tdb_owned} '
+    "for b in gdb.breakpoints() "
+    "if b.type == gdb.BP_BREAKPOINT and not b.temporary and not b.pending "
+    "and b.locations and b.locations[0].source]))"
+)
+
+
 class GdbDapAdapter(AdapterSpec):
     """GDB's built-in DAP interpreter (`gdb -i dap`, GDB >= 14).
 
@@ -129,6 +162,9 @@ class GdbDapAdapter(AdapterSpec):
                 "tdb's config.json"
             )
         return [exe, "-i", "dap"]
+
+    def breakpoint_query_command(self) -> str | None:
+        return GDB_BREAKPOINT_QUERY
 
     def launch_body(
         self,

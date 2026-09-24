@@ -115,6 +115,30 @@ _REPL_NOTICE = "Ruby REPL:"
 _HANDSHAKE_TIMEOUT = 5.0
 _MAX_LAUNCH_ATTEMPTS = 2
 
+# Proxy-mode prevention for the same race (the retry above is the
+# fallback, not the fix). The window only opens when the client connects
+# BEFORE the debuggee's SESSION thread has reached its first `readline`:
+# then `@sock` gets set while the thread is still free to take the
+# unsynchronized fast path in REPL mode. If instead the SESSION thread
+# gets there first, it finds `@sock` nil, prints this marker on stderr
+# and parks on `@accept_cv` *inside* the mutex — and is only woken after
+# `greeting` has already flipped `@repl = false`. So the safe ordering is
+# "connect only after the marker". How likely the bad ordering is scales
+# with the debuggee's load time between rdbg binding its socket and the
+# script's first line (parse time, requires), which is why a cold,
+# CPU-starved CI runner hit it on 3 launches in one run while a warm
+# workstation sees ~1 in 50. Reproduced deterministically in the CI
+# image with a 150k-line script: connect-on-socket fails ~30% of
+# launches even with the retry; connect-after-marker never did.
+#
+# Only proxy-owned launches can do this (externalTerminal launches hand
+# rdbg's stderr to the user's terminal). Bounded by _RDBG_READY_TIMEOUT
+# (measured from spawn) so a debuggee that never prints the marker —
+# nothing known does, short of dying first — degrades to the old
+# connect-on-socket behavior instead of hanging.
+_RDBG_READY_MARKER = "wait for debugger connection..."
+_RDBG_READY_TIMEOUT = 10.0
+
 
 class SeqTranslator:
     """Renumber seq/request_seq between the two sides of the proxy.
@@ -661,6 +685,7 @@ class RubyDapServer:
         for attempt in range(1, max_attempts + 1):
             self._transport = pick_transport()
             cmd = self._build_rdbg_cmd(rdbg, program, args)
+            pre_connect_stderr: list[str] = []
             try:
                 if terminal:
                     await self._reverse.request(
@@ -698,11 +723,17 @@ class RubyDapServer:
                         stderr=asyncio.subprocess.PIPE,
                         **popen_kwargs,
                     )
+                    assert self._proc.stderr is not None
+                    pre_connect_stderr = await self._wait_for_rdbg_ready(
+                        self._proc.stderr
+                    )
                 reader, writer = await self._connect_with_retry()
             except asyncio.CancelledError:
                 raise  # disconnect/terminate cancelling us — they clean up
             except Exception as e:
-                detail = await self._collect_early_stderr()
+                detail = (
+                    "".join(pre_connect_stderr) + await self._collect_early_stderr()
+                )
                 await self._ensure_rdbg_dead()
                 if not isinstance(
                     e, (OSError, TimeoutError, RuntimeError, ReverseRequestError)
@@ -733,6 +764,11 @@ class RubyDapServer:
                 # duplicate/misreported exited+terminated pair. Spawn (above)
                 # and register it here BEFORE _watch_exit starts so the list
                 # it reads is already complete.
+                # Anything the ready gate read off stderr before the
+                # pumps existed goes out first, so nothing is lost and
+                # order is preserved.
+                for text in pre_connect_stderr:
+                    self.send_event("output", {"category": "stderr", "output": text})
                 self._pump_tasks = [
                     self._spawn_task(self._pump_output(self._proc.stdout, "stdout")),
                     self._spawn_task(self._pump_output(self._proc.stderr, "stderr")),
@@ -931,6 +967,46 @@ class RubyDapServer:
                 if loop.time() > deadline:
                     raise TimeoutError("timed out waiting for rdbg's DAP socket")
                 await asyncio.sleep(0.1)
+
+    async def _wait_for_rdbg_ready(
+        self, stderr: asyncio.StreamReader, timeout: float = _RDBG_READY_TIMEOUT
+    ) -> list[str]:
+        """Proxy mode: hold the connect until rdbg prints
+        _RDBG_READY_MARKER (its SESSION thread is parked waiting for us —
+        see the comment there for why that ordering is the safe one).
+
+        Returns the non-banner stderr lines consumed on the way, for the
+        caller to forward as output (launch succeeded) or fold into the
+        error detail (launch failed). Returns on the marker, on EOF (rdbg
+        died — `_connect_with_retry` reports that), or when `timeout`
+        elapses (fall back to connecting now). Only whole lines are
+        consumed: a partial line in flight when the timeout fires stays
+        in the reader for the stderr pump.
+        """
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout
+        lines: list[str] = []
+        while True:
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                log.warning(
+                    "rdbg did not print %r within %.0fs; connecting anyway",
+                    _RDBG_READY_MARKER,
+                    timeout,
+                )
+                return lines
+            try:
+                raw = await asyncio.wait_for(stderr.readline(), remaining)
+            except asyncio.TimeoutError:
+                continue  # loop once more to hit the `remaining <= 0` branch
+            if not raw:
+                return lines  # EOF
+            text = raw.decode("utf-8", errors="replace")
+            if text.startswith(_BANNER_PREFIX):
+                if _RDBG_READY_MARKER in text:
+                    return lines
+                continue
+            lines.append(text)
 
     async def _collect_early_stderr(self) -> str:
         """Salvage rdbg's stderr for a failed-launch message (pumps have

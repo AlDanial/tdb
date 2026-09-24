@@ -1,4 +1,4 @@
-// Build: rustc -O pi_digits.rs -o pi_digits_rs
+// Build: rustc -g pi_digits.rs -o pi_digits_rs
 // Run:   ./pi_digits_rs -r 2 -d 20 -t 2 -p
 use std::env;
 use std::thread;

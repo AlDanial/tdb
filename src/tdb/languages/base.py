@@ -137,6 +137,17 @@ class AdapterSpec:
         """
         return ()
 
+    def breakpoint_query_command(self) -> str | None:
+        """REPL command that prints the debugger's own breakpoint list in
+        tdb's JSON listing format (see tdb.session.breakpoint_sync).
+
+        Native debuggers with a CLI let the user set breakpoints outside
+        DAP (`b 83` at the gdb prompt); the controller evaluates this
+        command when the Breakpoints View gains focus to pull those in.
+        None -> the adapter has no such side channel; no sync.
+        """
+        return None
+
     def initial_source_breakpoints(
         self, *, program: str, cwd: str, stop_on_entry: bool
     ) -> tuple[tuple[str, int], ...]:

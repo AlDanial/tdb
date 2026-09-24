@@ -1,4 +1,4 @@
-// Build: c++ -O2 -std=c++17 -pthread pi_digits.cpp -o pi_digits_cpp
+// Build: c++ -g -O0 -std=c++11 -pthread pi_digits.cpp -o pi_digits_cpp
 // Run:   ./pi_digits_cpp -r 2 -d 20 -t 2 -p
 #include <chrono>
 #include <iostream>

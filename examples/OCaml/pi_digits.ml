@@ -1,4 +1,4 @@
-(* Build: ocamlopt -O2 -I +unix unix.cmxa pi_digits.ml -o pi_digits_ocaml
+(* Build: ocamlopt -g -I +unix unix.cmxa pi_digits.ml -o pi_digits_ocaml
    Run:   ./pi_digits_ocaml -r 2 -d 20 -t 2 -p
    Requires OCaml 5 for Domain.spawn. *)
 
