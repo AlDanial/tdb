@@ -23,6 +23,7 @@ from tdb.languages.base import (
     LanguageNotSupportedError,
     LanguageProfile,
     Presentation,
+    assignment_matcher,
     ProfileCapabilities,
 )
 from tdb.languages.errors import parse_perl_error
@@ -100,5 +101,13 @@ def build_perl_profile(
         presentation=Presentation(
             lexer="perl", parse_error=parse_perl_error, frame_placeholder="main"
         ),
-        capabilities=ProfileCapabilities(pause_while_running=True),
+        capabilities=ProfileCapabilities(
+            pause_while_running=True,
+            # Package variables only: a `my` lexical lives inside the
+            # eval block the adapter wraps around the expression and is
+            # gone as soon as it returns.
+            interactive_variable=assignment_matcher(
+                r"^\s*(?:our\s+)?(?P<name>[\$@%][A-Za-z_]\w*)\s*=(?![=~])"
+            ),
+        ),
     )

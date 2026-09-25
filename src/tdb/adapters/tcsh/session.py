@@ -653,6 +653,10 @@ class DebugSession:
                 raise EvaluationError(
                     f"evaluation failed: {detail or type(error).__name__}"
                 ) from error
+            # The expression ran in the live shell and may have created
+            # or changed variables: drop this stop's cached scope values
+            # so the next `variables` request re-inspects.
+            self._variable_store.drop_values()
             return EvaluationResult(output)
 
     async def _variables(self, reference: int) -> tuple[Variable, ...]:

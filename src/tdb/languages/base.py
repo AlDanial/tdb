@@ -199,6 +199,41 @@ class ThreadDecoration:
 
 
 @dataclass(frozen=True)
+class InteractiveVariable:
+    """A variable the user created from the Evaluate console.
+
+    ``name`` is the label shown under the Variables View's "Interactive"
+    scope; ``read_expr`` is the DAP evaluate expression (context
+    "watch") that yields its current value. They differ for shells,
+    where a bare name is a command, not a value.
+    """
+
+    name: str
+    read_expr: str
+
+
+def assignment_matcher(
+    pattern: str, *, read: Callable[[str], str] | None = None
+) -> Callable[[str], InteractiveVariable | None]:
+    """Build an ``interactive_variable`` capability from a regex.
+
+    ``pattern`` must bind the created variable's name in a ``name``
+    group; ``read`` turns that name into its read-back expression
+    (default: the name itself).
+    """
+    regex = re.compile(pattern)
+
+    def match(expression: str) -> InteractiveVariable | None:
+        m = regex.match(expression)
+        if m is None:
+            return None
+        name = m.group("name")
+        return InteractiveVariable(name, read(name) if read else name)
+
+    return match
+
+
+@dataclass(frozen=True)
 class ParsedError:
     """A language's fatal-error text, parsed into modal-ready pieces."""
 
@@ -293,6 +328,14 @@ class ProfileCapabilities:
         Callable[[list[Thread], dict[int, list[StackFrame]]], list[ThreadDecoration]]
         | None
     ) = None
+
+    # Map a console expression to the variable it creates (see
+    # InteractiveVariable), or None when it creates nothing. The
+    # controller tracks matched names and shows them under an
+    # "Interactive" scope in the Variables View. None (the field) ->
+    # the language's evaluate cannot create variables at all (dlv,
+    # ocamlearlybird), so the scope is never shown.
+    interactive_variable: Callable[[str], InteractiveVariable | None] | None = None
 
 
 @dataclass(frozen=True)

@@ -70,6 +70,7 @@ class _FakeDAP:
         self.scopes_result = [Scope(name="Locals", variables_reference=100)]
         self.variables_result = [Variable(name="x", value="7")]
         self.evaluate_effects: list = []  # exceptions or (result, ref) tuples
+        self.evaluate_raw_effects: list = []  # exceptions or response-body dicts
         self.source_result = "print('hi')\n"
         # When set, setBreakpoints returns these (as Breakpoint objects)
         # instead of the default `[]` — lets tests script verified/
@@ -114,6 +115,15 @@ class _FakeDAP:
                 raise effect
             return effect
         return ("42", 0)
+
+    async def evaluate_raw(self, expression, frame_id=None, context="watch"):
+        self._hit("evaluate_raw", expression, frame_id, context)
+        if self.evaluate_raw_effects:
+            effect = self.evaluate_raw_effects.pop(0)
+            if isinstance(effect, Exception):
+                raise effect
+            return effect
+        return {"result": "42", "variablesReference": 0}
 
     async def source(self, source_reference, source=None):
         self._hit("source", source_reference)

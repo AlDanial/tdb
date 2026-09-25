@@ -2770,3 +2770,34 @@ async def test_partial_inspection_control_write_terminates_desynchronized_sessio
     finally:
         if session.state is not SessionState.TERMINATED:
             await session.terminate()
+
+
+@pytest.mark.asyncio
+async def test_evaluate_drops_cached_variables_so_same_stop_reads_are_fresh(
+    tmp_path: Path,
+    tcsh_path: Path,
+) -> None:
+    """A `set` typed at the console must be visible to `variables` at the
+    same stop; the per-stop cache is dropped (handles stay valid)."""
+    program = tmp_path / "cache.csh"
+    program.write_text("echo stopped\n")
+    events: list[SessionEvent] = []
+    session = DebugSession(
+        launch_config(program, tcsh_path, stop_on_entry=True),
+        collecting_sink(events),
+    )
+    await session.prepare()
+    await session.start()
+    await wait_for_event(events, "stopped")
+    try:
+        frame_id = session.stack_trace()[0].id
+        shell = next(s for s in session.scopes(frame_id) if s.name == "Shell Variables")
+        before = {v.name for v in await session.variables(shell.variables_reference)}
+        assert "newvar" not in before
+        await session.evaluate("set newvar = 42", frame_id=None)
+        after = {
+            v.name: v.value for v in await session.variables(shell.variables_reference)
+        }
+        assert after["newvar"] == "42"
+    finally:
+        await session.terminate()

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum, auto
+from typing import TYPE_CHECKING
 
 from tdb.dap.types import (
     Scope,
@@ -12,6 +13,14 @@ from tdb.dap.types import (
     Thread,
     Variable,
 )
+
+if TYPE_CHECKING:
+    from tdb.languages.base import InteractiveVariable
+
+# variablesReference of the synthetic "Interactive" scope. Negative so it
+# can never collide with an adapter-issued reference and so the Variables
+# View's lazy-load path (which only follows references > 0) ignores it.
+INTERACTIVE_SCOPE_REF = -1
 
 
 class SessionPhase(Enum):
@@ -65,6 +74,12 @@ class DebugState:
     # Scopes and variables for the current frame
     scopes: list[Scope] = field(default_factory=list)
     variables: dict[int, list[Variable]] = field(default_factory=dict)
+
+    # Variables the user created from the Evaluate console, in creation
+    # order. Rendered as the "Interactive" scope (INTERACTIVE_SCOPE_REF)
+    # by DebugController.fetch_scopes_and_variables, which evaluates
+    # each read-back expression on every stop.
+    interactive: list[InteractiveVariable] = field(default_factory=list)
 
     # Lifecycle phase. The single source of truth for is_running /
     # is_terminated / etc. — those are derived. Mutate only through

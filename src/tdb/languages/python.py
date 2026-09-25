@@ -12,6 +12,7 @@ from tdb.languages.base import (
     LanguageNotSupportedError,
     LanguageProfile,
     Presentation,
+    assignment_matcher,
     ProfileCapabilities,
 )
 from tdb.languages.errors import parse_python_error
@@ -113,6 +114,9 @@ def build_python_profile(
             child_process_strategy="debugpy",
             task_inspection=True,
             pause_while_running=True,
+            interactive_variable=assignment_matcher(
+                r"^\s*(?P<name>[A-Za-z_]\w*)\s*(?::[^=]+)?=(?!=)"
+            ),
         ),
     )
 

@@ -11,10 +11,16 @@ from typing import TYPE_CHECKING, Any
 
 from tdb.dap.client import DAPClient
 from tdb.dap.messages import Event, Response
-from tdb.dap.types import DEFERRED_VERIFICATION_MESSAGE, Breakpoint, SourceBreakpoint
+from tdb.dap.types import (
+    DEFERRED_VERIFICATION_MESSAGE,
+    Breakpoint,
+    Scope,
+    SourceBreakpoint,
+    Variable,
+)
 from .breakpoint_sync import parse_breakpoint_listing, reconcile
 from .event_bus import DebugEventHandler
-from .state import DebugState, SessionPhase
+from .state import INTERACTIVE_SCOPE_REF, DebugState, SessionPhase
 
 if TYPE_CHECKING:
     from tdb.languages.base import LanguageProfile
@@ -1048,15 +1054,74 @@ class DebugController:
 
     async def evaluate(self, expression: str) -> str:
         try:
-            frame_id = await self.resolve_evaluate_frame_id(self._active_client)
-            result, _ = await self._active_client.evaluate(
-                expression,
-                frame_id=frame_id,
-                context="repl",
-            )
-            return result
+            return await self._evaluate_repl(expression)
         except Exception as e:
             return str(e)
+
+    async def _evaluate_repl(self, expression: str) -> str:
+        frame_id = await self.resolve_evaluate_frame_id(self._active_client)
+        result, _ = await self._active_client.evaluate(
+            expression,
+            frame_id=frame_id,
+            context="repl",
+        )
+        return result
+
+    async def evaluate_console(self, expression: str) -> str:
+        """Evaluate text the user typed into the Evaluate console.
+
+        Like `evaluate`, plus two side effects a REPL user expects: a
+        variable the expression creates (per the profile's
+        `interactive_variable` capability) joins the tracked list that
+        renders as the "Interactive" scope, and the current frame's
+        scopes are re-fetched so assignments show up without a step.
+        """
+        matcher = self.profile.capabilities.interactive_variable
+        created = matcher(expression) if matcher is not None else None
+        try:
+            result = await self._evaluate_repl(expression)
+        except Exception as e:
+            # lldb-dap answers `int $x = 42` with an error yet creates
+            # $x. Keep a matched assignment only if it reads back.
+            if created is None or not await self._interactive_exists(created):
+                return str(e)
+            result = str(e)
+        if created is not None and all(
+            created.name != v.name for v in self.state.interactive
+        ):
+            self.state.interactive.append(created)
+        await self.refresh_variables()
+        return result
+
+    async def _interactive_exists(self, iv) -> bool:
+        try:
+            frame_id = await self.resolve_evaluate_frame_id(self._active_client)
+            await self._active_client.evaluate_raw(
+                iv.read_expr, frame_id=frame_id, context="watch"
+            )
+        except Exception:
+            return False
+        return True
+
+    async def refresh_variables(self) -> None:
+        """Re-fetch the current frame's scopes after a console evaluate.
+
+        No-op unless stopped on a live DAP frame: synthetic frames
+        (async-task navigation, traceback parse) and post-mortem
+        snapshots have no scopes to re-fetch.
+        """
+        state = self.state
+        if (
+            state.phase is not SessionPhase.STOPPED
+            or state.is_post_mortem
+            or state.displayed_frames_are_synthetic
+            or state.current_frame_id is None
+        ):
+            return
+        try:
+            await self.fetch_scopes_and_variables(state.current_frame_id)
+        except Exception:
+            log.exception("Error refreshing scopes/variables after evaluate")
 
     def get_child_pids(self) -> list[int]:
         """Return PIDs of tracked child processes."""
@@ -1248,11 +1313,45 @@ class DebugController:
 
     async def fetch_scopes_and_variables(self, frame_id: int) -> None:
         ac = self._active_client
-        self.state.scopes = await ac.scopes(frame_id)
+        # Copy: the Interactive scope is appended below, and the
+        # adapter's list must not accumulate it across calls.
+        self.state.scopes = list(await ac.scopes(frame_id))
         self.state.variables.clear()
         for scope in self.state.scopes:
             variables = await ac.variables(scope.variables_reference)
             self.state.variables[scope.variables_reference] = variables
+        if self.state.interactive:
+            self.state.scopes.append(
+                Scope(name="Interactive", variables_reference=INTERACTIVE_SCOPE_REF)
+            )
+            self.state.variables[INTERACTIVE_SCOPE_REF] = [
+                await self._read_interactive(ac, iv, frame_id)
+                for iv in self.state.interactive
+            ]
+
+    @staticmethod
+    async def _read_interactive(client, iv, frame_id: int) -> Variable:
+        """Current value of one console-created variable, as a Variable.
+
+        Evaluated in "watch" context so native adapters return the bare
+        value (`$x` under gdb/lldb) instead of REPL-formatted output. A
+        name that no longer resolves (a Python local whose frame
+        returned, a Ruby local that never left its eval binding) is
+        kept in the list but shown as unavailable.
+        """
+        try:
+            body = await client.evaluate_raw(
+                iv.read_expr, frame_id=frame_id, context="watch"
+            )
+        except Exception:
+            return Variable(name=iv.name, value="<unavailable>")
+        return Variable(
+            name=iv.name,
+            value=str(body.get("result", "")).rstrip("\n"),
+            type=body.get("type") or "",
+            variables_reference=body.get("variablesReference", 0) or 0,
+            evaluate_name=iv.read_expr,
+        )
 
     async def fetch_source_content(self, source) -> str:
         """Ask the active adapter for a file's source via DAP `source`.
