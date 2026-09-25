@@ -906,3 +906,77 @@ def test_info_main_prints_dirs_and_about(capsys, monkeypatch):
     # About text first, install/Perl facts last.
     assert out.index(f"tdb v{__version__}") < out.index("tdb installation directory")
     assert out.index("tdb installation directory") < out.index("STUBBED-STATUS")
+
+
+# --- --adapter /path/to/{gdb,lldb-dap} ------------------------------------------
+
+
+def test_adapter_accepts_full_path_to_gdb(tmp_path, monkeypatch):
+    binary = tmp_path / "prog"
+    binary.write_bytes(b"\x7fELF" + b"\0" * 60)
+    exe = tmp_path / "gdb"
+    exe.write_text("#!/bin/sh\n")
+    exe.chmod(0o755)
+    args = parse_args(["--adapter", str(exe), str(binary)])
+    assert args.profile.adapter.id == "gdb"
+    assert args.profile.adapter.command() == [str(exe), "-i", "dap"]
+
+
+def test_adapter_accepts_full_path_to_lldb_dap(tmp_path, monkeypatch):
+    binary = tmp_path / "prog"
+    binary.write_bytes(b"\x7fELF" + b"\0" * 60)
+    exe = tmp_path / "lldb-dap"
+    exe.write_text("#!/bin/sh\n")
+    exe.chmod(0o755)
+    args = parse_args(["--lang", "rust", "--adapter", str(exe), str(binary)])
+    assert args.profile.adapter.id == "lldb-dap"
+    assert args.profile.adapter.command() == [str(exe)]
+
+
+def test_adapter_path_missing_is_a_usage_error(tmp_path, capsys):
+    binary = tmp_path / "prog"
+    binary.write_bytes(b"\x7fELF" + b"\0" * 60)
+    with pytest.raises(SystemExit):
+        parse_args(["--adapter", str(tmp_path / "gdb"), str(binary)])
+    assert "not found" in capsys.readouterr().err
+
+
+def test_info_reports_gdb_and_lldb_dap(capsys, monkeypatch):
+    from tdb.adapters.perl import padwalker as pw
+    from tdb.cli import main as cli_main
+    from tdb.languages import native_tools as nt
+
+    monkeypatch.setattr(pw, "padwalker_status", lambda perl="perl": "STUBBED-STATUS")
+    monkeypatch.setattr(nt, "find_native_debugger", lambda aid, paths: f"/stub/{aid}")
+    monkeypatch.setattr(nt, "debugger_version", lambda exe: f"STUB-VERSION {exe}")
+    cli_main(["--info"])
+    out = capsys.readouterr().out
+    assert "/stub/gdb" in out
+    assert "STUB-VERSION /stub/gdb" in out
+    assert "/stub/lldb-dap" in out
+    assert "STUB-VERSION /stub/lldb-dap" in out
+
+
+def test_adapter_accepts_full_path_to_dlv(tmp_path):
+    src = tmp_path / "main.go"
+    src.write_text("package main\nfunc main() {}\n")
+    exe = tmp_path / "dlv"
+    exe.write_text("#!/bin/sh\n")
+    exe.chmod(0o755)
+    args = parse_args(["--adapter", str(exe), str(src)])
+    assert args.profile.adapter.id == "dlv"
+    assert args.profile.adapter.command()[0] == str(exe)
+
+
+def test_adapter_path_to_dlv_reaches_go_test_mode(tmp_path):
+    """`--test` routes through build_go_profile directly (not the
+    registry), so the path form must be honored on that branch too."""
+    pkg = tmp_path / "pkg"
+    pkg.mkdir()
+    (pkg / "x_test.go").write_text("package pkg\n")
+    exe = tmp_path / "dlv"
+    exe.write_text("#!/bin/sh\n")
+    exe.chmod(0o755)
+    args = parse_args(["--test", "--adapter", str(exe), str(pkg)])
+    assert args.profile.adapter.id == "dlv"
+    assert args.profile.adapter.command()[0] == str(exe)

@@ -15,6 +15,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable
 
+from tdb.languages import native_tools
 from tdb.languages.base import LanguageNotSupportedError, LanguageProfile
 from tdb.languages.python import build_python_profile
 
@@ -49,7 +50,35 @@ def resolve(
             f"language '{lang_id}' is not supported yet "
             f"(supported: {', '.join(known_languages())})"
         )
+    adapter, adapter_paths = normalize_adapter(adapter, adapter_paths)
     return builder(adapter=adapter, adapter_paths=adapter_paths, program=program)
+
+
+def normalize_adapter(
+    adapter: str | None, adapter_paths: dict[str, str] | None
+) -> tuple[str | None, dict[str, str] | None]:
+    """Accept ``--adapter`` as either an adapter id or an executable path.
+
+    An id passes through untouched. A path (``/full/path/to/gdb``,
+    ``lldb-dap``, or ``dlv``) becomes the adapter id its basename names
+    plus an ``adapter_paths`` override pointing at that exact file, so
+    it beats both PATH lookup and config.json. ``resolve()`` calls this;
+    callers that invoke a language builder directly (cli.py's Go
+    test/attach branch) must call it themselves.
+    """
+    if adapter is None or not native_tools.is_executable_path(adapter):
+        return adapter, adapter_paths
+    adapter_id = native_tools.adapter_id_for_executable(adapter)
+    if adapter_id is None:
+        raise LanguageNotSupportedError(
+            f"--adapter {adapter!r}: an adapter given as a path must be named "
+            f"gdb, lldb-dap, or dlv (a versioned or variant name such as "
+            f"lldb-dap-21 or gdb-multiarch also works)"
+        )
+    exe = Path(adapter).expanduser()
+    if not exe.is_file():
+        raise LanguageNotSupportedError(f"--adapter {adapter!r}: file not found")
+    return adapter_id, {**(adapter_paths or {}), adapter_id: str(exe)}
 
 
 _EXTENSION_MAP = {

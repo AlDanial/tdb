@@ -101,7 +101,8 @@ uvx --from textual-debugger tdb  my_program.py
 tdb --doc
 
 # show where tdb is installed, where its bundled Perl PadWalker module
-# lives, and the Help > About text
+# lives, which gdb and lldb-dap it would use (path + version), and the
+# Help > About text
 tdb --info
 
 # debug a script (stops at first line by default)
@@ -228,6 +229,15 @@ The language is auto-detected from the debug target:
 `--lang` forces the language; `--adapter` picks a non-default adapter within
 it (`tdb --lang cpp --adapter lldb-dap ./myprog`). Rust always requires the
 explicit language selection (`tdb --lang rust target/debug/app`).
+
+`--adapter` also accepts a full path to a `gdb`, `lldb-dap`, or `dlv`
+executable (`tdb --adapter /opt/llvm/bin/lldb-dap ./myprog`,
+`tdb --adapter /usr/bin/gdb-multiarch ./myprog`,
+`tdb --adapter ~/go/bin/dlv ./main.go`). The adapter id is taken from the
+file's basename — versioned and variant names such as `lldb-dap-21` and
+`gdb-multiarch` work — and that exact executable is used for the session,
+ahead of anything on `$PATH` or in `config.json`'s `adapters` map.
+`tdb --info` shows which `gdb` and `lldb-dap` would be used otherwise.
 
 > **Migration note:** extensionless Python scripts without a `python` shebang
 > were previously assumed to be Python; they now require `--lang python`.
@@ -1882,7 +1892,7 @@ usage: tdb [-h] [-v] [-r [HOST:]PORT] [--cwd CWD] [--no-stop-on-entry]
 | `--python PATH` | Python interpreter for the debuggee (Python targets only) |
 | `--pv` | Shorthand for --python .venv/bin/python |
 | `--lang LANGUAGE` | Debuggee language (`python`, `cpp`, `perl`); default: auto-detect from the target |
-| `--adapter ADAPTER` | Debug adapter within the language (e.g. `--lang cpp --adapter lldb-dap`); default: the language's standard adapter |
+| `--adapter ADAPTER` | Debug adapter within the language (e.g. `--lang cpp --adapter lldb-dap`), or a full path to a `gdb`/`lldb-dap`/`dlv` executable to use instead of the one on `PATH`; default: the language's standard adapter |
 | `--no-just-my-code` | Step into stdlib/site-packages code instead of skipping it
   (default: skipped). On uncaught exceptions, the crash modal always shows the full traceback
   including library frames, regardless of this flag. |
@@ -1916,7 +1926,10 @@ On Windows, it uses `%APPDATA%\tdb\`.
 Adapter-related keys in `config.json`: `adapters` maps an adapter id to an
 executable path (`{"adapters": {"lldb-dap": "/opt/llvm/bin/lldb-dap"}}`), and
 `default_adapters` picks a language's default adapter
-(`{"default_adapters": {"cpp": "lldb-dap"}}`).
+(`{"default_adapters": {"cpp": "lldb-dap"}}`). For a one-off run,
+`--adapter /path/to/gdb` (or `lldb-dap`, `dlv`) overrides the `adapters` entry
+without editing the file; `tdb --info` reports the `gdb` and `lldb-dap`
+currently resolved (config override first, then `PATH`) with their versions.
 
 **Perl is a special case:** `perl-tdb` is tdb's own bundled adapter (always
 found; it's Python code, not an external executable), so

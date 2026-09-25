@@ -43,11 +43,15 @@ def about_text(*, markup: bool) -> str:
 
 
 def info_text() -> str:
-    """Body of `tdb --info`: where tdb lives, where the bundled PadWalker
-    sources and per-perl builds live (so Perl users can put a build on
-    PERL5LIB by hand, e.g. for a remote debuggee), then the About text.
-    Read-only: never triggers a build."""
+    """Body of `tdb --info`: the About text, where tdb lives, where the
+    bundled PadWalker sources and per-perl builds live (so Perl users can
+    put a build on PERL5LIB by hand, e.g. for a remote debuggee), and
+    which gdb / lldb-dap tdb would run (path + version).
+    Read-only: never triggers a PadWalker build; the only subprocesses are
+    `gdb --version` / `lldb-dap --version`."""
     from tdb.adapters.perl.padwalker import cache_root, padwalker_dir, padwalker_status
+    from tdb.languages.native_tools import native_debugger_report
+    from tdb.persist import load_config
 
     return (
         about_text(markup=False) + "\n\n"
@@ -56,7 +60,10 @@ def info_text() -> str:
         f"Perl PadWalker build cache   : {cache_root()}\n"
         f"Perl PadWalker status        : {padwalker_status()}\n"
         "  (tdb builds PadWalker for each perl it launches, caches it, and\n"
-        "   prepends the cache directory to the debuggee's PERL5LIB)"
+        "   prepends the cache directory to the debuggee's PERL5LIB)\n"
+        + native_debugger_report(load_config().adapters)
+        + "\n  (config.json's \"adapters\" overrides take precedence over PATH;\n"
+        "   --adapter /path/to/gdb or lldb-dap overrides both for one run)"
     )
 
 
