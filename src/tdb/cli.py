@@ -147,7 +147,10 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="ADAPTER",
         help="Debug adapter to use within the language (e.g. `--lang cpp "
-        "--adapter lldb-dap`). Default: the language's standard adapter.",
+        "--adapter lldb-dap`), or a full path to a gdb, lldb-dap, or dlv "
+        "executable (`--adapter /opt/llvm/bin/lldb-dap`) to use that "
+        "build instead of the one found on PATH. Default: the language's "
+        "standard adapter.",
     )
     parser.add_argument(
         "--keybindings",
@@ -328,7 +331,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--info",
         action="store_true",
         help="Print tdb's installation directory, the directory of the "
-        "bundled Perl PadWalker module, and the Help > About text, then exit",
+        "bundled Perl PadWalker module, the path and version of the gdb "
+        "and lldb-dap executables tdb would use, and the Help > About "
+        "text, then exit",
     )
     return parser
 
@@ -532,9 +537,14 @@ def _resolve_language(
         if lang_id == "go" and (args.test or args.attach_pid is not None):
             from tdb.languages.go import build_go_profile
 
+            # Direct builder call bypasses registry.resolve(), so apply
+            # the --adapter /path/to/dlv normalization here too.
+            adapter, adapter_paths = registry.normalize_adapter(
+                adapter, config.adapters
+            )
             profile = build_go_profile(
                 adapter=adapter,
-                adapter_paths=config.adapters,
+                adapter_paths=adapter_paths,
                 program=args.program,
                 test=args.test,
                 attach_pid=args.attach_pid,
@@ -988,7 +998,8 @@ def _run_doc() -> None:
 
 
 def _run_info() -> None:
-    """Print install location, bundled PadWalker dir, and About text."""
+    """Print install location, bundled PadWalker dir, native debugger
+    paths/versions, and About text."""
     from tdb.app_helpers import info_text
 
     print(info_text())

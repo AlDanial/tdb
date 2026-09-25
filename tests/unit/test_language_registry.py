@@ -83,3 +83,85 @@ def test_detect_perl_shebang(tmp_path):
     f = tmp_path / "tool"
     f.write_text("#!/usr/bin/perl\nprint 1;\n")
     assert registry.detect(str(f)) == "perl"
+
+
+# --- --adapter as a path to gdb / lldb-dap ---------------------------------------
+
+
+def _fake_exe(tmp_path, name):
+    exe = tmp_path / name
+    exe.write_text("#!/bin/sh\n")
+    exe.chmod(0o755)
+    return exe
+
+
+def test_resolve_adapter_path_to_gdb(tmp_path):
+    exe = _fake_exe(tmp_path, "gdb")
+    profile = registry.resolve("cpp", adapter=str(exe))
+    assert profile.adapter.id == "gdb"
+    assert profile.adapter.command()[0] == str(exe)
+
+
+def test_resolve_adapter_path_to_versioned_lldb_dap(tmp_path):
+    exe = _fake_exe(tmp_path, "lldb-dap-21")
+    profile = registry.resolve("rust", adapter=str(exe))
+    assert profile.adapter.id == "lldb-dap"
+    assert profile.adapter.command()[0] == str(exe)
+
+
+def test_resolve_adapter_path_beats_config_override(tmp_path):
+    exe = _fake_exe(tmp_path, "gdb")
+    profile = registry.resolve(
+        "cpp", adapter=str(exe), adapter_paths={"gdb": "/opt/other/gdb"}
+    )
+    assert profile.adapter.command()[0] == str(exe)
+
+
+def test_resolve_adapter_path_for_ocaml(tmp_path):
+    exe = _fake_exe(tmp_path, "lldb-dap")
+    profile = registry.resolve("ocaml", adapter=str(exe))
+    assert profile.adapter.id == "lldb-dap"
+    assert profile.adapter.command()[0] == str(exe)
+
+
+def test_resolve_adapter_path_missing_file(tmp_path):
+    with pytest.raises(LanguageNotSupportedError, match="not found"):
+        registry.resolve("cpp", adapter=str(tmp_path / "gdb"))
+
+
+def test_resolve_adapter_path_unrecognized_basename(tmp_path):
+    exe = _fake_exe(tmp_path, "lldb")
+    with pytest.raises(
+        LanguageNotSupportedError, match="must be named gdb, lldb-dap, or dlv"
+    ):
+        registry.resolve("cpp", adapter=str(exe))
+
+
+def test_resolve_adapter_path_wrong_language(tmp_path):
+    """A gdb path for Python is still an unknown adapter for that language."""
+    exe = _fake_exe(tmp_path, "gdb")
+    with pytest.raises(LanguageNotSupportedError, match="unknown adapter"):
+        registry.resolve("python", adapter=str(exe))
+
+
+def test_resolve_adapter_path_to_dlv(tmp_path):
+    exe = _fake_exe(tmp_path, "dlv")
+    profile = registry.resolve("go", adapter=str(exe))
+    assert profile.adapter.id == "dlv"
+    assert profile.adapter.command()[0] == str(exe)
+
+
+def test_normalize_adapter_passes_ids_through():
+    assert registry.normalize_adapter("gdb", {"gdb": "/opt/gdb"}) == (
+        "gdb",
+        {"gdb": "/opt/gdb"},
+    )
+    assert registry.normalize_adapter(None, None) == (None, None)
+
+
+def test_normalize_adapter_maps_path_to_id_and_override(tmp_path):
+    exe = _fake_exe(tmp_path, "dlv")
+    assert registry.normalize_adapter(str(exe), {"gdb": "/opt/gdb"}) == (
+        "dlv",
+        {"gdb": "/opt/gdb", "dlv": str(exe)},
+    )
