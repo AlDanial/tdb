@@ -1,5 +1,6 @@
-// Build: rustc -g pi_digits.rs -o pi_digits_rs
-// Run:   ./pi_digits_rs -r 2 -d 20 -t 2 -p
+// Build:  rustc -g pi_digits.rs -o pi_digits_rs
+// Run:    ./pi_digits_rs -r 2 -d 20 -t 2 -p
+// Debug:  tdb -- ./pi_digits_rs -r 2 -d 20 -t 2 -p
 use std::env;
 use std::thread;
 use std::time::Instant;

@@ -1,5 +1,6 @@
-// Build: c++ -g -O0 -std=c++11 -pthread pi_digits.cpp -o pi_digits_cpp
-// Run:   ./pi_digits_cpp -r 2 -d 20 -t 2 -p
+// Build:  c++ -g -O0 -std=c++11 -pthread pi_digits.cpp -o pi_digits_cpp
+// Run:    ./pi_digits_cpp -r 2 -d 20 -t 2 -p
+// Debug:  tdb -- ./pi_digits_cpp -r 2 -d 20 -t 2 -p
 #include <chrono>
 #include <iostream>
 #include <stdexcept>
