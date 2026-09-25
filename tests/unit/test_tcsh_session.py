@@ -2678,14 +2678,48 @@ async def test_partial_inspection_timeout_terminates_desynchronized_session(
         )
         return body
 
-    async def send_with_short_timeout(body_factory, timeout: float = 5.0) -> str:
-        del timeout
-        return await original_send_request(body_factory, timeout=0.05)
+    # The transport classifies an abandoned request as "incomplete"
+    # (channel desynchronized) only when its timeout fires after the
+    # probe's response header has been consumed but before the payload
+    # arrives. A fixed 50 ms timeout raced that header on loaded CI
+    # runners and got a plain "timed out" instead. So run the request
+    # under a long timeout and expire it by hand the moment the header
+    # is consumed: the payload sits behind `/bin/sleep 1` and cannot
+    # have arrived yet, whatever the machine's speed.
+    request_timeout = 30.0
+    transport = session.transport
+    real_timeout = asyncio.timeout
+    request_timeouts: list[asyncio.Timeout] = []
 
+    def capturing_timeout(delay: float | None) -> asyncio.Timeout:
+        timeout = real_timeout(delay)
+        if delay == request_timeout:
+            request_timeouts.append(timeout)
+        return timeout
+
+    async def send_until_header_consumed(body_factory, timeout: float = 5.0) -> str:
+        del timeout
+        assert transport._response_frame_state is None  # no stale reader state
+        task = asyncio.create_task(
+            original_send_request(body_factory, timeout=request_timeout)
+        )
+        try:
+            while not task.done():
+                state = transport._response_frame_state
+                if state is not None and state.consumed:
+                    request_timeouts[0].reschedule(asyncio.get_running_loop().time())
+                    break
+                await asyncio.sleep(0.001)
+            return await task
+        except asyncio.CancelledError:
+            task.cancel()
+            raise
+
+    monkeypatch.setattr(asyncio, "timeout", capturing_timeout)
     monkeypatch.setattr(
         "tdb.adapters.tcsh.session.render_inspection_request", render_partial_response
     )
-    session.transport.send_request = send_with_short_timeout  # type: ignore[method-assign]
+    session.transport.send_request = send_until_header_consumed  # type: ignore[method-assign]
     try:
         await session.start()
         await wait_for_event(events, "stopped")
