@@ -76,7 +76,7 @@ def test_launch_mode_debug_for_source(tmp_path):
         "program": str(src),
         "args": ["-n"],
         "cwd": "/w",
-        "stopOnEntry": True,
+        "stopOnEntry": False,
         "outputMode": "remote",
         "dlvCwd": str(tmp_path),
         "env": {"A": "1"},
@@ -179,3 +179,12 @@ def test_profile_wires_error_parser_and_classifier():
     p = build_go_profile()
     assert p.presentation.parse_error is not None
     assert p.capabilities.classify_threads is not None
+
+
+def test_entry_stop_is_a_main_main_function_breakpoint():
+    """dlv's native stopOnEntry halts before any goroutine exists (no
+    stack, no source), so tdb never asks for it and lands the entry
+    stop on main.main instead."""
+    adapter = DelveAdapter()
+    assert adapter.initial_function_breakpoints(stop_on_entry=True) == ("main.main",)
+    assert adapter.initial_function_breakpoints(stop_on_entry=False) == ()

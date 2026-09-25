@@ -312,6 +312,14 @@ class DAPClient:
         writer = self._get_write_stream()
         seq = self._next_seq()
         request = Request(seq=seq, command=command, arguments=arguments or {})
+        # Mirrors the "Event:" line in _read_loop so the log shows the
+        # full DAP conversation order; `env` is dropped (debuggee
+        # environments can carry secrets).
+        log.debug(
+            "Request: %s %s",
+            command,
+            {k: v for k, v in (arguments or {}).items() if k != "env"},
+        )
         future: asyncio.Future[Response] = asyncio.get_running_loop().create_future()
         self._pending[seq] = future
         data = encode_message(request.to_dict())
@@ -406,6 +414,13 @@ class DAPClient:
                 "source": {"path": source_path},
                 "breakpoints": [bp.to_dict() for bp in breakpoints],
             },
+        )
+        return [Breakpoint.from_dict(bp) for bp in resp.body.get("breakpoints", [])]
+
+    async def set_function_breakpoints(self, names: list[str]) -> list[Breakpoint]:
+        resp = await self._send(
+            "setFunctionBreakpoints",
+            {"breakpoints": [{"name": name} for name in names]},
         )
         return [Breakpoint.from_dict(bp) for bp in resp.body.get("breakpoints", [])]
 

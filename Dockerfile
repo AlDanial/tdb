@@ -1,12 +1,12 @@
 # Duplicate the github actions pipeline tests (the ptrace/seccomp flags
-# are REQUIRED — without them lldb-dap cannot launch a debuggee and the
+# are required — without them lldb-dap cannot launch a debuggee and the
 # native lldb-dap tests fail with "DAP configurationDone failed"; see
 # .github/workflows/test.yml):
-#
+
 # docker build --target base -t tdb-base .
 # docker run --rm --cap-add=SYS_PTRACE --security-opt seccomp=unconfined \
 #   tdb-base uv run pytest
-#
+
 # Narrow it to one file the same way, e.g.:
 # docker run --rm --cap-add=SYS_PTRACE --security-opt seccomp=unconfined \
 #   tdb-base uv run pytest tests/integration/test_tcsh_adapter.py -x -vv \
@@ -21,6 +21,7 @@
 
 
 FROM ghcr.io/astral-sh/uv:python3.14-alpine AS base
+
 # perl/bash/tcsh power their DAP adapters; ruby + the debug gem power
 # the rdbg proxy (the gem has a C extension, hence the build deps).
 # gdb (>= 14, DAP mode) and rust/rustc let CI run the C/C++ and Rust
@@ -31,6 +32,7 @@ FROM ghcr.io/astral-sh/uv:python3.14-alpine AS base
 # series — see rust_adapter_harness.require_supported_rust_concurrency).
 RUN apk add --no-cache perl bash tcsh ruby ruby-dev make gcc gdb rust musl-dev \
  && gem install debug --no-document
+
 # OCaml: native debugging goes through lldb-dap (this image's `lldb` package
 # also covers C/C++). `ocaml5` (5.4.0) is Alpine's >=5.0 package -- the
 # plain `ocaml` apk package is 4.14 and has no Domain/multicore support,
@@ -46,6 +48,7 @@ RUN apk add --no-cache perl bash tcsh ruby ruby-dev make gcc gdb rust musl-dev \
 # concurrency probe can never register.
 RUN apk add --no-cache ocaml5 ocaml5-compiler-libs opam lldb py3-lldb m4 \
  && rm -rf /var/cache/apk/*
+
 # Go + Delve (Go debugging integration tests). GOBIN puts `dlv` on PATH
 # without polluting /root/go; the go module cache/build cache are wiped
 # afterward the same way the OCaml/opam layer above is (keeps the image
@@ -53,6 +56,7 @@ RUN apk add --no-cache ocaml5 ocaml5-compiler-libs opam lldb py3-lldb m4 \
 RUN apk add --no-cache go \
  && GOBIN=/usr/local/bin go install github.com/go-delve/delve/cmd/dlv@v1.27.1 \
  && rm -rf /root/go /root/.cache/go-build
+
 # PowerShell 7 (musl build for Alpine) + PowerShell Editor Services (the
 # DAP server tdb's PowerShell proxy drives). Version pins match README's
 # "PowerShell" section; bump both together. `libstdc++`/`icu-libs`/

@@ -1,5 +1,6 @@
-// Build: go build -o pi_digits_go pi_digits.go
-// Run:   ./pi_digits_go -r 2 -d 20 -t 2 -p
+// Build:  go build -gcflags="-N -l" -o pi_digits_go pi_digits.go
+// Run:    ./pi_digits_go -r 2 -d 20 -t 2 -p
+// Debug:  tdb --adapter dlv -- ./pi_digits_go -r 2 -d 20 -t 2 -p
 package main
 
 import (
