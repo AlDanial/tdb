@@ -105,7 +105,7 @@ tdb --doc
 # Help > About text
 tdb --info
 
-# debug a script (stops at first line by default)
+# debug a Python program (stops at first line by default)
 tdb my_program.py
 
 # debug with arguments
@@ -140,7 +140,7 @@ tdb --python /path/to/venv/bin/python my_program.py
 # step into, or stop at tracebacks in library code
 tdb --no-just-my-code --python /path/to/venv/bin/python my_program.py
 
-# run until first breakpoint or exit
+# run until first breakpoint (persisted during a prior run) or exit
 tdb --no-stop-on-entry my_program.py
 
 # run the debuggee in an external terminal
@@ -382,6 +382,10 @@ See [Go](#go) below for launch details.
 - Stack frames pointing into system libraries often have no source on disk;
   the Code View shows a `<Could not read …>` placeholder while the stack,
   variables, and evaluate console remain fully usable.
+- For compiled executables, the Code View shows shows a brief note while
+  it attempts to load the associated source file.  The note will identify
+  the failure reason if the source cannot be loaded (executable was built
+  without `-g`, or the adapter is not working, e.g. a GDB too old for DAP).
 - GDB (the default adapter) has the most complete libstdc++
   pretty-printing. `lldb-dap` (via `--adapter lldb-dap`) also debugs
   GCC-built binaries fine.  DWARF is compiler-neutral.
@@ -812,6 +816,11 @@ pass test-binary flags after `--`, e.g. `tdb --test ./pkg -- -run TestFoo`.
 `tdb` can identify the target as Go from `/proc/PID/exe`'s buildinfo
 without `--lang` (elsewhere pass `--lang go` alongside `-a`). Attaching
 stops the process immediately so you get control right away.
+
+**Entry stop:** Delve's own `stopOnEntry` halts at the process entry point
+before any goroutine exists (no stack, no source). `tdb` instead runs to
+`main.main`, so the default entry stop lands on your program's first line
+with its source on screen; `--no-stop-on-entry` skips it as usual.
 
 **Remote attach:** start Delve's own DAP server against your program
 first —

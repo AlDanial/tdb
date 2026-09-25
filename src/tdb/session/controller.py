@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from tdb.dap.client import DAPClient
-from tdb.dap.messages import Event
+from tdb.dap.messages import Event, Response
 from tdb.dap.types import DEFERRED_VERIFICATION_MESSAGE, Breakpoint, SourceBreakpoint
 from .breakpoint_sync import parse_breakpoint_listing, reconcile
 from .event_bus import DebugEventHandler
@@ -44,7 +44,16 @@ class DebugController:
         self.state = DebugState()
         self._terminal: str | None = None
         self._launch_params: dict[str, Any] = {}
+        # Future for the launch/attach response (set by start() /
+        # remote_attach()) and an event marking that the request itself
+        # has been written — do_configure must not send configurationDone
+        # before it (see there).
+        self._launch_future: asyncio.Future[Response] | None = None
+        self._launch_sent = asyncio.Event()
         self._suppress_next_stop: bool = False
+        # True between installing an adapter's initial_function_breakpoints
+        # and the stop they produce; that stop is relabelled "entry".
+        self._entry_function_stop_pending: bool = False
         self._lock = asyncio.Lock()
         # Child process debug sessions (pid → DAPClient) — owned by
         # ChildProcessManager in session/child_processes.py.
@@ -294,6 +303,7 @@ class DebugController:
             console="externalTerminal" if terminal is not None else "internalConsole",
             sub_process=p["sub_process"],
         )
+        self._launch_sent.set()
 
     async def remote_attach(
         self,
@@ -345,12 +355,24 @@ class DebugController:
             path_mappings=path_mappings,
             program=program,
         )
+        self._launch_sent.set()
 
     async def do_configure(self) -> None:
         """Called after 'initialized' event. Sends breakpoints + configurationDone.
 
         This unblocks the launch response from debugpy.
         """
+        # The `initialized` event that triggers this method can be
+        # dispatched before start()/remote_attach() has written the
+        # launch/attach request: gdb emits `initialized` straight after
+        # the initialize response, and nothing else ordered the two
+        # tasks. If configurationDone overtakes launch, gdb answers
+        # "launch or attach not specified" and the session never starts
+        # (the TUI sat on "Waiting for gdb..." forever). Tests that
+        # install _launch_future by hand skip the wait.
+        if self._launch_future is None:
+            await asyncio.wait_for(self._launch_sent.wait(), timeout=30)
+
         # Exception-breakpoint filters are adapter-specific; the spec
         # picks them from what the adapter advertised at initialize.
         filters = self.profile.adapter.pick_exception_filters(self.client.capabilities)
@@ -387,6 +409,15 @@ class DebugController:
                     await self._send_breakpoints(
                         source_path, [SourceBreakpoint(line=line)]
                     )
+            # Adapters whose native entry stop has no source-level frame
+            # (dlv) implement it with a hidden function breakpoint.
+            entry_functions = self.profile.adapter.initial_function_breakpoints(
+                stop_on_entry=p["stop_on_entry"]
+            )
+            self._entry_function_stop_pending = False
+            if entry_functions:
+                await self.client.set_function_breakpoints(list(entry_functions))
+                self._entry_function_stop_pending = True
         else:
             bootstrap_entry = False
 
@@ -1250,6 +1281,12 @@ class DebugController:
         reason = event.body.get("reason", "unknown")
         description = event.body.get("description")
         text = event.body.get("text")
+        if self._entry_function_stop_pending and reason == "function breakpoint":
+            # The adapter's entry stop is a hidden function breakpoint
+            # (initial_function_breakpoints): to the user, and to every
+            # consumer keyed on the reason, this is the entry stop.
+            reason = "entry"
+            self._entry_function_stop_pending = False
 
         # Single state authority: every downstream consumer sees consistent
         # values synchronously from the DAP read loop. Previously the TUI

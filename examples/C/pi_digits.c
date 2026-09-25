@@ -1,5 +1,6 @@
-/* Build: cc -g -O0 -pthread pi_digits.c -o pi_digits_c
- * Run:   ./pi_digits_c -r 2 -d 20 -t 2 -p
+/* Build:  cc -g -O0 -pthread pi_digits.c -o pi_digits_c
+ * Run:    ./pi_digits_c -r 2 -d 20 -t 2 -p
+ * Debug:  tdb -- ./pi_digits_c -r 2 -d 20 -t 2 -p
  */
 #define _POSIX_C_SOURCE 200809L
 #include <pthread.h>

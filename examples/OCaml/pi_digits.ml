@@ -1,5 +1,9 @@
-(* Build: ocamlopt -g -I +unix unix.cmxa pi_digits.ml -o pi_digits_ocaml
-   Run:   ./pi_digits_ocaml -r 2 -d 20 -t 2 -p
+(* Build:  ocamlopt -g -I +unix unix.cmxa pi_digits.ml -o pi_digits_ocaml
+   Run:    ./pi_digits_ocaml -r 2 -d 20 -t 2 -p
+   Debug:  tdb --adapter gdb -- ./pi_digits_ocaml -r 2 -d 20 -t 2 -p
+             - or -
+           tdb --adapter lldb-dap -t pi_digits.ml:37 -- ./pi_digits_ocaml -r 2 -d 20 -t 2 -p
+
    Requires OCaml 5 for Domain.spawn. *)
 
 let pi_digits count =

@@ -124,7 +124,13 @@ class DelveAdapter(AdapterSpec):
             "program": program,
             "args": args,
             "cwd": cwd,
-            "stopOnEntry": stop_on_entry,
+            # Never dlv's own stopOnEntry: it halts at the process entry
+            # point before any goroutine exists — stackTrace fails
+            # ("Unable to produce stack trace"), next/step only yield
+            # error stops, and the user never sees a source line. The
+            # entry stop is implemented with a function breakpoint on
+            # main.main instead (initial_function_breakpoints).
+            "stopOnEntry": False,
             # Without this, dlv dap lets the debuggee inherit its own
             # stdout/stderr fds ("outputMode" default "local") and never
             # emits DAP `output` events for them — the Console View would
@@ -147,6 +153,11 @@ class DelveAdapter(AdapterSpec):
         if env:
             body["env"] = env
         return body
+
+    def initial_function_breakpoints(self, *, stop_on_entry: bool) -> tuple[str, ...]:
+        # Every Go executable enters user code through main.main —
+        # `go test -c` binaries included (their generated main package).
+        return ("main.main",) if stop_on_entry else ()
 
     def attach_body(
         self, *, host: str, port: int, opts: dict[str, Any]

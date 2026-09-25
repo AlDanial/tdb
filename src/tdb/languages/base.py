@@ -159,6 +159,18 @@ class AdapterSpec:
         """
         return ()
 
+    def initial_function_breakpoints(self, *, stop_on_entry: bool) -> tuple[str, ...]:
+        """Function names that should implement entry-stop.
+
+        Sibling of initial_source_breakpoints for adapters whose native
+        entry stop lands before any source-level frame exists (dlv halts
+        at the process entry point with no goroutine yet, so even
+        stackTrace fails). The controller installs these as DAP function
+        breakpoints before configurationDone and relabels the stop they
+        produce "entry".
+        """
+        return ()
+
     def pick_exception_filters(self, caps: Capabilities) -> list[str]:
         """Choose exception-breakpoint filters from what the adapter
         advertised in its initialize response. Default: the adapter's
