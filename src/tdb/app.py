@@ -25,7 +25,7 @@ from tdb.keybindings import KeybindingConfig, Mode
 from tdb.source_edit import remap_breakpoints
 from tdb.widgets.breakpoint_view import BreakpointView
 from tdb.widgets.code_editor import _UnsavedChangesModal
-from tdb.widgets.code_view import CodeView, _BreakpointConditionModal
+from tdb.widgets.code_view import CodeView, _BreakpointConditionModal, looks_binary
 from tdb.widgets.console_view import ConsoleView
 from tdb.widgets.evaluate_console import EvaluateConsole
 from tdb.widgets.menu_bar import MenuBar, _MenuDropdown
@@ -378,7 +378,7 @@ class TdbApp(_AppMessageRoutes, App):
             return
 
         if self._program:
-            code_view.load_file(self._program)
+            self._show_program(code_view)
         code_view.focus()
         # Restore breakpoints saved for this specific program
         program_key = str(Path(self._program).resolve()) if self._program else ""
@@ -511,6 +511,82 @@ class TdbApp(_AppMessageRoutes, App):
         else:
             styled = label
         code_view.border_title = f"[bold orange]C[/]ode \\[{styled}]"
+
+    # --- Code View: program vs. placeholder ---
+
+    @property
+    def _adapter_name(self) -> str:
+        return (
+            getattr(self.controller.profile.adapter, "id", None) or "the debug adapter"
+        )
+
+    def _show_program(self, code_view: CodeView) -> None:
+        """Put the program being debugged into the Code View.
+
+        A script is shown as-is. A compiled executable is never
+        rendered (issue #54): its bytes are meaningless on screen and a
+        large binary takes tens of seconds to highlight. Show a note
+        instead and let the adapter's first stop name the real source
+        file, which _update_ui_state then loads.
+        """
+        if looks_binary(self._program):
+            code_view.load_placeholder(
+                f"<{Path(self._program).name} is a compiled executable; "
+                "its bytes are not shown.\n"
+                f" Waiting for {self._adapter_name} to report the source "
+                "location...>",
+                self._program,
+            )
+        else:
+            code_view.load_file(self._program)
+
+    def _no_source_message(self, *, location: str | None, exited: bool) -> str:
+        """Why the Code View has nothing to show, for the user to act on."""
+        adapter = self._adapter_name
+        program = Path(self._program).name if self._program else "the program"
+        if exited:
+            # Running to completion with no breakpoint set is normal, so
+            # the hints are conditional here.
+            first = f"<{program} exited without {adapter} reporting a source location."
+            hint = "If a stop was expected, either"
+        else:
+            first = (
+                f"<{adapter} reported no source file for the current "
+                f"location ({location or 'unknown'})."
+            )
+            hint = "Either"
+        if looks_binary(self._program):
+            cause = f"or {program} was built without debug info (compile with -g).>"
+        else:
+            cause = "or the source file cannot be found.>"
+        return "\n".join(
+            [
+                first,
+                f" {hint} the debugger is not working (is {adapter} too old?),",
+                f" {cause}",
+            ]
+        )
+
+    def _note_launch_failed(self, exc: BaseException) -> None:
+        """Configuration/launch raised: say so in the Code View when it
+        is still showing a placeholder, so a failed start is not mistaken
+        for a hang behind "Waiting for <adapter>..."."""
+        code_view = self.query_one("#code-view", CodeView)
+        if not code_view.is_placeholder:
+            return
+        code_view.load_placeholder(
+            f"<{self._adapter_name} could not start the session:\n {exc}\n"
+            " See tdb.log in the config directory for the full exchange.>",
+            code_view.source_path or self._program,
+        )
+
+    def _note_exit_without_source(self, code_view: CodeView) -> None:
+        """The session ended while the pane still showed the program
+        placeholder, i.e. no stop ever named a source file. Say so."""
+        if code_view.is_placeholder and code_view.source_path == self._program:
+            code_view.load_placeholder(
+                self._no_source_message(location=None, exited=True), self._program
+            )
 
     def on_code_view_mode_changed(self, message: CodeView.ModeChanged) -> None:
         code_view = self.query_one("#code-view", CodeView)
@@ -814,7 +890,7 @@ class TdbApp(_AppMessageRoutes, App):
 
         # Reload the source file in Code View
         code_view = self.query_one("#code-view", CodeView)
-        code_view.load_file(self._program)
+        self._show_program(code_view)
         code_view.current_line = None
 
         if not start_immediately:
@@ -882,6 +958,7 @@ class TdbApp(_AppMessageRoutes, App):
                         )
                         break
                 else:
+                    self._note_exit_without_source(code_view)
                     status_bar.set_terminated()
                 if state.is_post_mortem:
                     # Post-mortem has per-frame scopes — refresh the var tree
@@ -891,6 +968,7 @@ class TdbApp(_AppMessageRoutes, App):
                     var_view.update_variables(state.scopes, state.variables)
             else:
                 code_view.current_line = None
+                self._note_exit_without_source(code_view)
                 status_bar.set_terminated()
             return
 
@@ -915,6 +993,19 @@ class TdbApp(_AppMessageRoutes, App):
                 source_path = stop_location
                 current_line = stop_line
                 status_bar.set_paused(source_path, current_line, reason=reason)
+            elif code_view.is_placeholder and state.stack_frames:
+                # The adapter named a location but no source file for
+                # it, and nothing real is on screen: explain instead of
+                # leaving the placeholder (or, before issue #54, the
+                # program's raw bytes) unexplained. Two cases are left
+                # alone: a real source file already on screen (a stop
+                # in libc is no reason to hide the user's code), and a
+                # stop with no frames at all (the adapter could not even
+                # produce a stack — the "waiting" note stays accurate).
+                code_view.load_placeholder(
+                    self._no_source_message(location=stop_location, exited=False),
+                    code_view.source_path or self._program,
+                )
 
         if source_path and source_path != code_view.source_path:
             # If we already fetched this remote file in this session,

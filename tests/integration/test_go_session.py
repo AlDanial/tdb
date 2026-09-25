@@ -402,3 +402,23 @@ async def test_run_mode_examine_includes_goroutines(capfd):
     assert len(rec["goroutines"]["goroutines"]) >= 5
     assert rec["processes"][0]["threads"], rec
     assert rec["errors"] == [], rec
+
+
+async def test_stop_on_entry_lands_in_main_main(session, go_simple_binary):
+    """dlv's native stopOnEntry halts at the process entry point with no
+    goroutine (stackTrace fails, next/step error out). tdb's entry stop
+    must instead land in main.main with source, and step normally from
+    there."""
+    ctrl, handler = session
+    await ctrl.start(program=go_simple_binary, stop_on_entry=True)
+    await asyncio.wait_for(handler.initialized_event.wait(), WAIT)
+    await ctrl.do_configure()
+    assert await handler.wait_for_stop(timeout=WAIT)
+    await ctrl.fetch_stop_info()
+    assert ctrl.state.stop_reason == "entry"
+    top = ctrl.state.stack_frames[0]
+    assert top.name == "main.main"
+    assert top.source is not None and top.source.path.endswith("main.go")
+    await _resume_and_wait(ctrl, handler, "step_over")
+    assert ctrl.state.stop_reason != "entry"
+    assert ctrl.state.stack_frames[0].name == "main.main"

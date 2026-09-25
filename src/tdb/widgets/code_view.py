@@ -28,6 +28,28 @@ from tdb.widgets.code_editor import CodeEditor, _UnsavedChangesModal
 if TYPE_CHECKING:
     from tdb.dap.types import SourceBreakpoint
 
+
+# How much of a file load_file inspects before deciding it is binary.
+# git uses the same heuristic (a NUL byte in the first 8 KiB): a
+# compiled executable has NULs in its very first bytes (ELF/PE/Mach-O
+# headers), while no text encoding tdb displays contains U+0000.
+_BINARY_PROBE_BYTES = 8192
+
+
+def looks_binary(path: str) -> bool:
+    """True when `path` is readable and its head contains a NUL byte.
+
+    Only the first 8 KiB is read, so this is cheap even for a
+    multi-megabyte executable. Unreadable / missing paths are not
+    "binary" — load_file reports those separately.
+    """
+    try:
+        with open(path, "rb") as f:
+            return b"\x00" in f.read(_BINARY_PROBE_BYTES)
+    except OSError:
+        return False
+
+
 log = logging.getLogger(__name__)
 
 
@@ -447,12 +469,18 @@ class CodeView(ScrollableContainer, can_focus=True):
         # (the file is not valid UTF-8): editing would save the
         # U+FFFD substitutions back permanently, so Edit mode refuses.
         self._source_lossy: bool = False
+        # True when the pane shows a message *about* source_path rather
+        # than its contents (binary file, unreadable file, adapter
+        # reported no source). Placeholders take no breakpoints and
+        # cannot be edited; the App replaces them freely.
+        self._source_is_placeholder: bool = False
         self._had_trailing_newline: bool = True
         # A load_file/load_content that arrived while editing another
         # file. Applied when the editor closes.
         self._deferred_source: tuple[str, str] | None = None
         self._deferred_is_local: bool = True
         self._deferred_is_lossy: bool = False
+        self._deferred_is_placeholder: bool = False
 
     def compose(self):
         self._content = _CodeContent(self)
@@ -606,6 +634,11 @@ class CodeView(ScrollableContainer, can_focus=True):
     def lines(self) -> list[str]:
         return list(self._lines)
 
+    @property
+    def is_placeholder(self) -> bool:
+        """True when the pane shows a message instead of source text."""
+        return self._source_is_placeholder
+
     def mode_label(self) -> str:
         """Text for the pane title: 'Debug', 'Navigation', 'Edit',
         'Edit*', 'Edit:INSERT*', 'Edit :wq' ..."""
@@ -625,8 +658,8 @@ class CodeView(ScrollableContainer, can_focus=True):
         """None when Edit mode may be entered, else a user-facing reason."""
         if not self.edit_enabled:
             return "Editing is not available in this session."
-        if self.source_path is None:
-            return "No file is loaded."
+        if self.source_path is None or self._source_is_placeholder:
+            return "No source file is loaded."
         if not self._source_is_local:
             return "This source is not on this machine, so it cannot be edited."
         if self._source_lossy:
@@ -766,6 +799,7 @@ class CodeView(ScrollableContainer, can_focus=True):
                 deferred[1],
                 is_local=self._deferred_is_local,
                 is_lossy=self._deferred_is_lossy,
+                is_placeholder=self._deferred_is_placeholder,
             )
             if self.current_line is not None:
                 # current_line may have been set (by a stop event) while
@@ -969,11 +1003,27 @@ class CodeView(ScrollableContainer, can_focus=True):
     # ---- File loading & rendering ----
 
     def load_file(self, path: str) -> None:
+        """Show the text of `path`, or a placeholder explaining why not.
+
+        Binary content is never rendered (issue #54): a compiled
+        executable is meaningless on screen and a large one takes tens
+        of seconds to highlight. Only the head of the file is read
+        before that decision, so the check itself is cheap.
+        """
         try:
-            raw = Path(path).read_bytes()
+            with open(path, "rb") as f:
+                head = f.read(_BINARY_PROBE_BYTES)
+                if b"\x00" in head:
+                    self.load_placeholder(
+                        f"<{Path(path).name} is a binary file; "
+                        "its contents are not shown>",
+                        path,
+                    )
+                    return
+                raw = head + f.read()
             is_local = True
         except OSError:
-            self._install_source(f"<Could not read {path}>", path, is_local=False)
+            self.load_placeholder(f"<Could not read {path}>", path)
             return
         try:
             # Strict decode first: a clean UTF-8 file must never be
@@ -989,6 +1039,16 @@ class CodeView(ScrollableContainer, can_focus=True):
             is_lossy = True
         self._install_source(text, path, is_local=is_local, is_lossy=is_lossy)
 
+    def load_placeholder(self, message: str, path: str) -> None:
+        """Show `message` in place of source for `path`.
+
+        `path` stays as `source_path` so "did the displayed file
+        change?" checks in the App keep working, but the pane is marked
+        as a placeholder: no breakpoints, no Edit mode, and any later
+        load — including another placeholder — replaces it.
+        """
+        self._install_source(message, path, is_local=False, is_placeholder=True)
+
     def load_content(self, content: str, path: str) -> None:
         """Install source code from an in-memory string.
 
@@ -1002,15 +1062,22 @@ class CodeView(ScrollableContainer, can_focus=True):
         self._install_source(content, path, is_local=False, is_lossy=False)
 
     def _install_source(
-        self, text: str, path: str, *, is_local: bool = True, is_lossy: bool = False
+        self,
+        text: str,
+        path: str,
+        *,
+        is_local: bool = True,
+        is_lossy: bool = False,
+        is_placeholder: bool = False,
     ) -> None:
-        """Shared body of load_file / load_content."""
+        """Shared body of load_file / load_content / load_placeholder."""
         if self._editor is not None and path != self.source_path:
             # A stop in another file arrived mid-edit. Don't yank the
             # editor away; show that file once the editor closes.
             self._deferred_source = (text, path)
             self._deferred_is_local = is_local
             self._deferred_is_lossy = is_lossy
+            self._deferred_is_placeholder = is_placeholder
             return
         # A later stop back in the edited file (or any load that isn't
         # deferred) makes any previously-queued deferred source stale —
@@ -1022,14 +1089,24 @@ class CodeView(ScrollableContainer, can_focus=True):
         self.source_path = path
         self._source_is_local = is_local
         self._source_lossy = is_lossy
+        self._source_is_placeholder = is_placeholder
         self._had_trailing_newline = text.endswith("\n")
         self._lines = text.splitlines()
-        # Step units underpin the "breakpoints land on logical statement
-        # starts" rule (see _snap_breakpoint_line). Empty list on parse
-        # failure → all click sites pass lines through unchanged.
-        self._step_units = compute_step_units(text, filename=path)
-        self._valid_bp_lines = {u[0] for u in self._step_units}
-        self._highlighted = self._highlight_source(text)
+        if is_placeholder:
+            # A message, not code: no statement analysis, no syntax
+            # highlighting (the language lexer would colour it oddly).
+            self._step_units = []
+            self._valid_bp_lines = set()
+            self._highlighted = [
+                Text(line, style=Style(italic=True, dim=True)) for line in self._lines
+            ]
+        else:
+            # Step units underpin the "breakpoints land on logical statement
+            # starts" rule (see _snap_breakpoint_line). Empty list on parse
+            # failure → all click sites pass lines through unchanged.
+            self._step_units = compute_step_units(text, filename=path)
+            self._valid_bp_lines = {u[0] for u in self._step_units}
+            self._highlighted = self._highlight_source(text)
         self._max_line_width = max((cell_len(line) for line in self._lines), default=0)
         self._render_code(layout=True)
 
@@ -1061,6 +1138,8 @@ class CodeView(ScrollableContainer, can_focus=True):
         range. When parsing failed (no step units), returns `line`
         unchanged so the user isn't blocked.
         """
+        if self._source_is_placeholder:
+            return None  # a message about a file, not a place in one
         if line < 1 or line > len(self._lines):
             return None
         if not self._step_units:

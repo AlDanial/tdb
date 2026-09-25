@@ -48,9 +48,10 @@ class DapEventCoordinator:
             await self.app.controller.do_configure()
             log.info("do_configure completed")
             self.app._update_ui_state()
-        except Exception:
+        except Exception as exc:
             log.exception("Failed to launch")
             self.app.sub_title = "Launch failed"
+            self.app._note_launch_failed(exc)
 
     # --- stopped --------------------------------------------------------
 

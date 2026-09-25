@@ -11,6 +11,7 @@ each test drives the controller by hand.
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 
 import pytest
 
@@ -137,6 +138,10 @@ class _FakeDAP:
         self._hit("setBreakpoints", source_path, tuple(bp.line for bp in breakpoints))
         if self.breakpoint_results is not None:
             return [Breakpoint.from_dict(d) for d in self.breakpoint_results]
+        return []
+
+    async def set_function_breakpoints(self, names):
+        self._hit("setFunctionBreakpoints", tuple(names))
         return []
 
     async def set_exception_breakpoints(self, filters):
@@ -840,6 +845,65 @@ async def test_do_configure_seeds_adapter_entry_source_breakpoints(monkeypatch):
     await ctrl.do_configure()
 
     assert fake.calls_to("setBreakpoints") == [("setBreakpoints", "/p/main.ml", (7,))]
+
+
+async def test_do_configure_seeds_adapter_entry_function_breakpoints(monkeypatch):
+    """dlv-style entry: a hidden function breakpoint installed before
+    configurationDone, and the one stop it produces relabelled "entry"."""
+    handler = _RecordingHandler()
+    ctrl = DebugController(handler)
+    fake = _FakeDAP()
+    ctrl.client = fake
+    monkeypatch.setattr(
+        ctrl.profile.adapter,
+        "initial_function_breakpoints",
+        lambda **kwargs: ("main.main",),
+    )
+    ctrl._launch_params = {"program": "/p/prog", "cwd": "/p", "stop_on_entry": True}
+    ctrl._launch_future = _resolved_launch_future()
+
+    await ctrl.do_configure()
+
+    assert fake.calls_to("setFunctionBreakpoints") == [
+        ("setFunctionBreakpoints", ("main.main",))
+    ]
+    order = [c[0] for c in fake.calls]
+    assert order.index("setFunctionBreakpoints") < order.index("configurationDone")
+
+    stop = SimpleNamespace(body={"threadId": 1, "reason": "function breakpoint"})
+    ctrl._on_stopped(stop)
+    assert ctrl.state.stop_reason == "entry"
+    ctrl._on_stopped(stop)  # only the first such stop is the entry stop
+    assert ctrl.state.stop_reason == "function breakpoint"
+
+
+async def test_do_configure_waits_for_launch_request():
+    """gdb emits `initialized` right after the initialize response, so
+    do_configure can be triggered before start() has written the launch
+    request. configurationDone must not overtake it: gdb rejects that
+    with "launch or attach not specified" and the session never starts."""
+    handler = _RecordingHandler()
+    ctrl = DebugController(handler)
+    fake = _FakeDAP()
+    ctrl.client = fake
+    task = asyncio.ensure_future(ctrl.do_configure())
+    await asyncio.sleep(0.05)
+    assert fake.calls_to("configurationDone") == []  # still waiting
+    ctrl._launch_future = _resolved_launch_future()
+    ctrl._launch_sent.set()  # what start()/remote_attach() do after the request
+    await asyncio.wait_for(task, 5)
+    assert fake.calls_to("configurationDone") == [("configurationDone",)]
+
+
+async def test_do_configure_no_function_breakpoints_by_default():
+    handler = _RecordingHandler()
+    ctrl = DebugController(handler)
+    fake = _FakeDAP()
+    ctrl.client = fake
+    ctrl._launch_params = {"program": "/p/a.py", "cwd": "/p", "stop_on_entry": True}
+    ctrl._launch_future = _resolved_launch_future()
+    await ctrl.do_configure()
+    assert fake.calls_to("setFunctionBreakpoints") == []
 
 
 async def test_do_configure_bootstraps_symbols_then_resumes_to_entry_function(
