@@ -1,6 +1,5 @@
 """PerlSession.interrupt() over the attach-mode control channel."""
 
-
 import pytest
 
 from tdb.adapters.perl.session import PerlSession
