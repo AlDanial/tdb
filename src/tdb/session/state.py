@@ -22,6 +22,10 @@ if TYPE_CHECKING:
 # View's lazy-load path (which only follows references > 0) ignores it.
 INTERACTIVE_SCOPE_REF = -1
 
+# variablesReference of the synthetic "Display" scope (gdb-style `display`
+# list). Negative for the same reasons as INTERACTIVE_SCOPE_REF.
+DISPLAY_SCOPE_REF = -2
+
 
 class SessionPhase(Enum):
     """Lifecycle phase of the debug session.
@@ -80,6 +84,14 @@ class DebugState:
     # by DebugController.fetch_scopes_and_variables, which evaluates
     # each read-back expression on every stop.
     interactive: list[InteractiveVariable] = field(default_factory=list)
+
+    # Expressions the user asked to watch at every stop (`display X` in
+    # the Evaluate console, or a right-click in the Variables View).
+    # Rendered as the "Display" scope (DISPLAY_SCOPE_REF), placed first,
+    # by DebugController.fetch_scopes_and_variables; an expression that
+    # does not resolve in the current frame is left off the rendered
+    # list but stays here.
+    display: list[str] = field(default_factory=list)
 
     # Lifecycle phase. The single source of truth for is_running /
     # is_terminated / etc. — those are derived. Mutate only through

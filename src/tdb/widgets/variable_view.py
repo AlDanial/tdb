@@ -11,6 +11,8 @@ from textual.message import Message
 from textual.widgets import Tree
 from textual.widgets._tree import TreeNode
 
+from tdb.session.state import DISPLAY_SCOPE_REF
+
 if TYPE_CHECKING:
     from tdb.dap.types import Scope, Variable
 
@@ -55,6 +57,22 @@ class VariableView(Tree[int]):
             self.label = label
             super().__init__()
 
+    class DisplayRequested(Message):
+        """Posted on right-click of a variable row: add its expression
+        to the gdb-style display list."""
+
+        def __init__(self, expression: str) -> None:
+            self.expression = expression
+            super().__init__()
+
+    class UndisplayRequested(Message):
+        """Posted on left-click of a row under the "Display" scope:
+        drop its expression from the display list."""
+
+        def __init__(self, expression: str) -> None:
+            self.expression = expression
+            super().__init__()
+
     def __init__(self, **kwargs) -> None:
         super().__init__("Variables", **kwargs)
         self.border_title = "[bold orange]V[/]ariables"
@@ -64,6 +82,11 @@ class VariableView(Tree[int]):
         # Double-click tracking — see DOUBLE_CLICK_THRESHOLD.
         self._last_click_time: float = 0.0
         self._last_click_y: int = -1
+        # node.id -> expression to `display` for that row (the DAP
+        # evaluateName when the adapter gives one, else the bare name,
+        # so a nested attribute displays as e.g. `obj.count`). Scope
+        # headers and placeholders have no entry.
+        self._node_expr: dict[int, str] = {}
 
     def update_variables(
         self,
@@ -72,6 +95,7 @@ class VariableView(Tree[int]):
     ) -> None:
         """Rebuild the tree with current scope/variable data."""
         self._pending_expand.clear()
+        self._node_expr.clear()
         self.clear()
         for scope in scopes:
             scope_node = self.root.add(scope.name, data=scope.variables_reference)
@@ -88,7 +112,8 @@ class VariableView(Tree[int]):
                 # Add a placeholder so the node shows as expandable
                 node.add_leaf("...")
             else:
-                parent.add_leaf(label, data=0)
+                node = parent.add_leaf(label, data=0)
+            self._node_expr[node.id] = var.evaluate_name or var.name
 
     @staticmethod
     def _format_variable(var: Variable) -> str:
@@ -126,14 +151,39 @@ class VariableView(Tree[int]):
 
     # --- Full-Contents trigger ----------------------------------------
 
+    def _in_display_scope(self, node: TreeNode[int]) -> bool:
+        """True when `node` sits under the synthetic "Display" scope."""
+        while node.parent is not None and node.parent is not self.root:
+            node = node.parent
+        return node.data == DISPLAY_SCOPE_REF
+
     def on_click(self, event: Click) -> None:
-        """Detect double-clicks; let single clicks fall through to Tree.
+        """Route clicks: right-click displays a variable, left-click on a
+        Display row undisplays it, a left double-click opens Full
+        Contents; anything else falls through to Tree.
 
         Tree's own `_on_click` will run on every click and handle cursor
         positioning + posting `NodeSelected`. We MUST NOT `event.stop()`
         on the single-click branch or that machinery breaks. Only the
         double-click branch consumes the event.
         """
+        line = event.style.meta.get("line")
+        node = self.get_node_at_line(line) if line is not None else None
+        expr = self._node_expr.get(node.id) if node is not None else None
+        if event.button != 1:
+            # A right-click must not prime the double-click detector:
+            # right-then-left on the same row is two separate clicks.
+            self._last_click_time = 0.0
+            self._last_click_y = -1
+            if event.button == 3 and expr is not None and node is not None:
+                if not self._in_display_scope(node):
+                    self.post_message(self.DisplayRequested(expr))
+            return
+        if expr is not None and node is not None and self._in_display_scope(node):
+            self._last_click_time = 0.0
+            self._last_click_y = -1
+            self.post_message(self.UndisplayRequested(expr))
+            return
         now = time.monotonic()
         is_double = (
             event.y == self._last_click_y
