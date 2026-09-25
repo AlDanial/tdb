@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import re
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -20,12 +21,17 @@ from tdb.dap.types import (
 )
 from .breakpoint_sync import parse_breakpoint_listing, reconcile
 from .event_bus import DebugEventHandler
-from .state import INTERACTIVE_SCOPE_REF, DebugState, SessionPhase
+from .state import DISPLAY_SCOPE_REF, INTERACTIVE_SCOPE_REF, DebugState, SessionPhase
 
 if TYPE_CHECKING:
     from tdb.languages.base import LanguageProfile
 
 log = logging.getLogger(__name__)
+
+# `display X` / `undisplay X` / bare `display` typed at the Evaluate
+# console. The verb must be a whole word: `displayed` and
+# `display_fn(x)` are ordinary expressions.
+_DISPLAY_COMMAND = re.compile(r"^\s*(?P<verb>(?:un)?display)(?:\s+(?P<expr>.+?))?\s*$")
 
 
 # Terminal emulator launching lives in tdb.session.terminal — see
@@ -1075,7 +1081,15 @@ class DebugController:
         `interactive_variable` capability) joins the tracked list that
         renders as the "Interactive" scope, and the current frame's
         scopes are re-fetched so assignments show up without a step.
+
+        `display [EXPR]` and `undisplay EXPR` are gdb-style console
+        commands handled here rather than sent to the adapter.
         """
+        command = _DISPLAY_COMMAND.match(expression)
+        if command is not None:
+            return await self._display_command(
+                command.group("verb"), (command.group("expr") or "").strip()
+            )
         matcher = self.profile.capabilities.interactive_variable
         created = matcher(expression) if matcher is not None else None
         try:
@@ -1092,6 +1106,25 @@ class DebugController:
             self.state.interactive.append(created)
         await self.refresh_variables()
         return result
+
+    async def _display_command(self, verb: str, expr: str) -> str:
+        """`display` / `undisplay` typed at the Evaluate console."""
+        if verb == "display" and not expr:
+            return "\n".join(self.state.display)
+        if verb == "undisplay" and expr not in self.state.display:
+            return f"{expr} is not on the display list"
+        await self.set_display(expr, verb == "display")
+        return f"{verb} {expr}"
+
+    async def set_display(self, expr: str, on: bool) -> None:
+        """Add (`on`) or remove `expr` from the display list, then
+        re-fetch scopes so the Display scope redraws immediately."""
+        if on:
+            if expr not in self.state.display:
+                self.state.display.append(expr)
+        elif expr in self.state.display:
+            self.state.display.remove(expr)
+        await self.refresh_variables()
 
     async def _interactive_exists(self, iv) -> bool:
         try:
@@ -1328,6 +1361,33 @@ class DebugController:
                 await self._read_interactive(ac, iv, frame_id)
                 for iv in self.state.interactive
             ]
+        if self.state.display:
+            shown = [
+                var
+                for expr in self.state.display
+                if (var := await self._read_display(ac, expr, frame_id)) is not None
+            ]
+            if shown:
+                self.state.scopes.insert(
+                    0, Scope(name="Display", variables_reference=DISPLAY_SCOPE_REF)
+                )
+                self.state.variables[DISPLAY_SCOPE_REF] = shown
+
+    @staticmethod
+    async def _read_display(client, expr: str, frame_id: int) -> Variable | None:
+        """Current value of one display-list expression, or None when it
+        does not resolve in this frame (it is then left off the scope)."""
+        try:
+            body = await client.evaluate_raw(expr, frame_id=frame_id, context="watch")
+        except Exception:
+            return None
+        return Variable(
+            name=expr,
+            value=str(body.get("result", "")).rstrip("\n"),
+            type=body.get("type") or "",
+            variables_reference=body.get("variablesReference", 0) or 0,
+            evaluate_name=expr,
+        )
 
     @staticmethod
     async def _read_interactive(client, iv, frame_id: int) -> Variable:

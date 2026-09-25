@@ -1520,6 +1520,27 @@ class TdbApp(_AppMessageRoutes, App):
         var_view = self.query_one("#variable-view", VariableView)
         var_view.update_variables(state.scopes, state.variables)
 
+    async def on_variable_view_display_requested(
+        self, message: VariableView.DisplayRequested
+    ) -> None:
+        await self._run_display_command(f"display {message.expression}")
+
+    async def on_variable_view_undisplay_requested(
+        self, message: VariableView.UndisplayRequested
+    ) -> None:
+        await self._run_display_command(f"undisplay {message.expression}")
+
+    async def _run_display_command(self, command: str) -> None:
+        """A Variables View click, replayed as the equivalent typed
+        console command: echoed in the Evaluate console, recorded as an
+        `evaluate` gesture, and routed through `controller.evaluate_console`
+        so the two entry points cannot drift apart."""
+        eval_console = self.query_one("#eval-console", EvaluateConsole)
+        eval_console.echo_expression(command)
+        await self.on_evaluate_console_evaluate_requested(
+            EvaluateConsole.EvaluateRequested(command)
+        )
+
     async def on_evaluate_console_help_requested(
         self, message: EvaluateConsole.HelpRequested
     ) -> None:

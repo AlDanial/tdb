@@ -1132,6 +1132,39 @@ the Variables View and press `Enter`
 to display that variable in a modal.  This simplifies inspection of
 large or deeply nested data structures.
 
+#### Display list
+
+Like `gdb`'s `display` command, a variable (or any expression) can be
+pinned so its value is re-read at every stop. Pinned entries appear
+under a **Display** scope at the top of the Variables View, but only
+while they are defined in the current frame: step out of the function
+that owns `b` and the entry vanishes, step back into it and the entry
+returns. Two ways to pin, two ways to unpin:
+
+| | Evaluate Console | Variables View |
+|---|---|---|
+| pin | `display b` | right-click the variable's row |
+| unpin | `undisplay b` | left-click its row under **Display** |
+
+```
+>>> display b
+```
+
+```
+▼ Display
+    b = 6
+▼ Locals
+    a = 3
+    b = 6
+```
+
+Right-clicking a child of an expanded object pins the full path
+(`obj.count`, `items[2]`), and a bare `display` lists everything pinned.
+A click in the Variables View is recorded exactly as the typed command,
+so `--record`/`--replay` sessions reproduce it. Some terminals keep
+right-click for their own paste or context menu (Windows Terminal and
+the VS Code terminal do by default); use the `display` command there.
+
 ### Call Stack
 
 The Stack View shows the full call stack. Click a frame to navigate to its source
