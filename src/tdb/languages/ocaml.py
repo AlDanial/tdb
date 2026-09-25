@@ -25,7 +25,12 @@ from tdb.languages.base import (
     ProfileCapabilities,
     ThreadDecoration,
 )
-from tdb.languages.cpp import GdbDapAdapter, LldbDapAdapter, quote_debugger_arg
+from tdb.languages.cpp import (
+    NATIVE_INTERACTIVE_VARIABLE,
+    GdbDapAdapter,
+    LldbDapAdapter,
+    quote_debugger_arg,
+)
 from tdb.languages.errors import parse_ocaml_error
 
 _BYTECODE_TRAILER_MARK = b"Caml1999"  # e.g. b"Caml1999X033" at file end
@@ -395,5 +400,7 @@ def build_ocaml_profile(
             # earlybird per probe Q4 (default False until verified True).
             pause_while_running=native,
             classify_threads=classify_ocaml_threads if native else None,
+            # earlybird's evaluate is read-only; native runs on lldb/gdb.
+            interactive_variable=NATIVE_INTERACTIVE_VARIABLE.get(adapter),
         ),
     )

@@ -29,6 +29,7 @@ from tdb.languages.base import (
     LanguageNotSupportedError,
     LanguageProfile,
     Presentation,
+    assignment_matcher,
     ProfileCapabilities,
 )
 from tdb.languages.errors import parse_powershell_error
@@ -120,5 +121,10 @@ def build_powershell_profile(
             parse_error=parse_powershell_error,
             frame_placeholder="<ScriptBlock>",
         ),
-        capabilities=ProfileCapabilities(pause_while_running=True),
+        capabilities=ProfileCapabilities(
+            pause_while_running=True,
+            interactive_variable=assignment_matcher(
+                r"^\s*(?P<name>\$(?:\w+:)?[A-Za-z_]\w*)\s*=(?!=)"
+            ),
+        ),
     )

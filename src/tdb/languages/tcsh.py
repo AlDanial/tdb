@@ -25,6 +25,7 @@ from tdb.languages.base import (
     LanguageNotSupportedError,
     LanguageProfile,
     Presentation,
+    assignment_matcher,
     ProfileCapabilities,
 )
 
@@ -100,5 +101,11 @@ def build_tcsh_profile(
         display_name="Tcsh",
         adapter=TcshAdapter(tcsh_executable=(adapter_paths or {}).get("tcsh")),
         presentation=Presentation(lexer="tcsh", frame_placeholder="main"),
-        capabilities=ProfileCapabilities(pause_while_running=True),
+        capabilities=ProfileCapabilities(
+            pause_while_running=True,
+            interactive_variable=assignment_matcher(
+                r"^\s*(?:set|setenv)\s+(?P<name>[A-Za-z_]\w*)",
+                read=lambda name: f"echo ${name}",
+            ),
+        ),
     )

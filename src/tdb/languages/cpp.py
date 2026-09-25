@@ -21,6 +21,7 @@ from tdb.languages.base import (
     LanguageNotSupportedError,
     LanguageProfile,
     Presentation,
+    assignment_matcher,
     ProfileCapabilities,
 )
 
@@ -211,6 +212,24 @@ class GdbDapAdapter(AdapterSpec):
         )
 
 
+# gdb: `set $name = expr` creates a convenience variable; lldb: a `$name`
+# declared in an expression (`int $name = 42`, or the same after a
+# backtick CLI escape) is a persistent expression variable. Neither
+# appears in any DAP scope; both read back as `$name` in "watch"
+# context. Shared by every profile that runs on these adapters (cpp,
+# rust, native OCaml).
+GDB_INTERACTIVE_VARIABLE = assignment_matcher(
+    r"^\s*set\s+(?:var\s+)?(?P<name>\$[A-Za-z_]\w*)\s*="
+)
+LLDB_INTERACTIVE_VARIABLE = assignment_matcher(
+    r"^[^=]*?(?<![\w$])(?P<name>\$[A-Za-z_]\w*)\s*=(?!=)"
+)
+NATIVE_INTERACTIVE_VARIABLE = {
+    "gdb": GDB_INTERACTIVE_VARIABLE,
+    "lldb-dap": LLDB_INTERACTIVE_VARIABLE,
+}
+
+
 def build_cpp_profile(
     adapter: str | None = None,
     adapter_paths: dict[str, str] | None = None,
@@ -236,5 +255,8 @@ def build_cpp_profile(
         # Verified (Task 9, tests/integration/test_cpp_pause.py): DAP
         # `pause` reliably stops a never-stopped, actively-looping
         # debuggee on both gdb -i dap and lldb-dap.
-        capabilities=ProfileCapabilities(pause_while_running=True),
+        capabilities=ProfileCapabilities(
+            pause_while_running=True,
+            interactive_variable=NATIVE_INTERACTIVE_VARIABLE[adapter_id],
+        ),
     )

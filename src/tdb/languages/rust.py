@@ -18,7 +18,12 @@ from tdb.languages.base import (
     Presentation,
     ProfileCapabilities,
 )
-from tdb.languages.cpp import GdbDapAdapter, LldbDapAdapter, quote_debugger_arg
+from tdb.languages.cpp import (
+    NATIVE_INTERACTIVE_VARIABLE,
+    GdbDapAdapter,
+    LldbDapAdapter,
+    quote_debugger_arg,
+)
 from tdb.languages.errors import parse_rust_error
 
 
@@ -154,5 +159,6 @@ def build_rust_profile(
         capabilities=ProfileCapabilities(
             pause_while_running=True,
             concurrency_inspection="rust",
+            interactive_variable=NATIVE_INTERACTIVE_VARIABLE[adapter_id],
         ),
     )

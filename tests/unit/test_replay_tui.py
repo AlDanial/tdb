@@ -101,7 +101,7 @@ async def test_driver_waits_for_entry_stop_before_first_command(app_pilot, monke
         order.append(("eval", app.controller.state.phase))
         return "1"
 
-    monkeypatch.setattr(app.controller, "evaluate", fake_eval)
+    monkeypatch.setattr(app.controller, "evaluate_console", fake_eval)
     driver = make_driver(recording(("evaluate", ["x"])))
     task = asyncio.ensure_future(driver.run(app))
     await asyncio.sleep(0.05)
@@ -121,7 +121,7 @@ async def test_evaluate_echoes_expression_and_result_in_console(app_pilot, monke
     async def fake_eval(expr):
         return "42"
 
-    monkeypatch.setattr(app.controller, "evaluate", fake_eval)
+    monkeypatch.setattr(app.controller, "evaluate_console", fake_eval)
     driver = make_driver(recording(("evaluate", ["x + 1"])))
     errors = await driver.run(app)
     await pilot.pause()
@@ -145,7 +145,7 @@ async def test_pacing_sleeps_recorded_deltas(app_pilot, monkeypatch):
     async def fake_eval(expr):
         return ""
 
-    monkeypatch.setattr(app.controller, "evaluate", fake_eval)
+    monkeypatch.setattr(app.controller, "evaluate_console", fake_eval)
     rec = Recording(
         header=dict(HEADER),
         records=[
@@ -171,7 +171,7 @@ async def test_progress_and_summary_are_surfaced(app_pilot, monkeypatch):
     async def fake_eval(expr):
         return ""
 
-    monkeypatch.setattr(app.controller, "evaluate", fake_eval)
+    monkeypatch.setattr(app.controller, "evaluate_console", fake_eval)
     monkeypatch.setattr(
         app, "notify", lambda msg, **kw: notes.append((msg, kw.get("severity")))
     )
@@ -361,7 +361,7 @@ async def test_restart_relaunches_and_waits_for_new_entry_stop(app_pilot, monkey
         app, "_restart_session", lambda *a, **k: app.run_worker(fake_restart(*a, **k))
     )
     # Class-level: the restart swaps in a fresh controller instance.
-    monkeypatch.setattr(DebugController, "evaluate", fake_eval)
+    monkeypatch.setattr(DebugController, "evaluate_console", fake_eval)
     driver = make_driver(recording(("restart", []), ("evaluate", ["x"])))
     monkeypatch.setattr(
         app.controller.__class__, "supports_restart", property(lambda s: True)
@@ -379,7 +379,7 @@ async def test_quiet_driver_skips_per_action_toasts_but_keeps_errors_and_summary
     async def fake_eval(expr):
         return ""
 
-    monkeypatch.setattr(app.controller, "evaluate", fake_eval)
+    monkeypatch.setattr(app.controller, "evaluate_console", fake_eval)
     monkeypatch.setattr(
         app, "notify", lambda msg, **kw: notes.append((msg, kw.get("severity")))
     )
@@ -402,7 +402,7 @@ async def test_fixed_interval_replaces_recorded_pacing(app_pilot, monkeypatch):
     async def fake_eval(expr):
         return ""
 
-    monkeypatch.setattr(app.controller, "evaluate", fake_eval)
+    monkeypatch.setattr(app.controller, "evaluate_console", fake_eval)
     rec = Recording(
         header=dict(HEADER),
         records=[

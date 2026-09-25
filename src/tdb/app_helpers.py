@@ -62,7 +62,7 @@ def info_text() -> str:
         "  (tdb builds PadWalker for each perl it launches, caches it, and\n"
         "   prepends the cache directory to the debuggee's PERL5LIB)\n"
         + native_debugger_report(load_config().adapters)
-        + "\n  (config.json's \"adapters\" overrides take precedence over PATH;\n"
+        + '\n  (config.json\'s "adapters" overrides take precedence over PATH;\n'
         "   --adapter /path/to/gdb or lldb-dap overrides both for one run)"
     )
 

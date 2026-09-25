@@ -25,6 +25,7 @@ from tdb.languages.base import (
     LanguageNotSupportedError,
     LanguageProfile,
     Presentation,
+    assignment_matcher,
     ProfileCapabilities,
 )
 from tdb.languages.errors import parse_ruby_error
@@ -113,5 +114,11 @@ def build_ruby_profile(
         capabilities=ProfileCapabilities(
             pause_while_running=True,
             opaque_frame=_is_c_frame,
+            # Plain locals are created in a throwaway binding and do
+            # not survive the stop; globals/ivars do. Track all three
+            # so the user sees the local vanish rather than wondering.
+            interactive_variable=assignment_matcher(
+                r"^\s*(?P<name>[\$@]?[A-Za-z_]\w*)\s*=(?![=~])"
+            ),
         ),
     )

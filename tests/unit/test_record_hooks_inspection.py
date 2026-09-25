@@ -40,7 +40,7 @@ async def test_evaluate_entry_records(app_cap, monkeypatch):
     async def fake_eval(expr):
         return "42"
 
-    monkeypatch.setattr(app.controller, "evaluate", fake_eval)
+    monkeypatch.setattr(app.controller, "evaluate_console", fake_eval)
     await app.on_evaluate_console_evaluate_requested(
         EvaluateConsole.EvaluateRequested("len(data)")
     )

@@ -1510,9 +1510,15 @@ class TdbApp(_AppMessageRoutes, App):
         self, message: EvaluateConsole.EvaluateRequested
     ) -> None:
         self.recorder.record("evaluate", [message.expression])
-        result = await self.controller.evaluate(message.expression)
+        result = await self.controller.evaluate_console(message.expression)
         eval_console = self.query_one("#eval-console", EvaluateConsole)
         eval_console.show_result(result)
+        # evaluate_console re-fetched the frame's scopes (assignments,
+        # plus the Interactive scope for console-created variables);
+        # redraw so they show without waiting for the next stop.
+        state = self.controller.state
+        var_view = self.query_one("#variable-view", VariableView)
+        var_view.update_variables(state.scopes, state.variables)
 
     async def on_evaluate_console_help_requested(
         self, message: EvaluateConsole.HelpRequested

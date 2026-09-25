@@ -48,6 +48,7 @@ def test_capability_types(profile):
     assert caps.compute_step_units is None or callable(caps.compute_step_units)
     assert caps.child_process_strategy in (None, "debugpy")
     assert isinstance(caps.task_inspection, bool)
+    assert caps.interactive_variable is None or callable(caps.interactive_variable)
 
 
 def test_profile_modules_never_import_ui(profile):

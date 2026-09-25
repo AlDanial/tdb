@@ -20,6 +20,7 @@ from tdb.languages.base import (
     LanguageNotSupportedError,
     LanguageProfile,
     Presentation,
+    assignment_matcher,
     ProfileCapabilities,
 )
 
@@ -82,5 +83,12 @@ def build_bash_profile(
         display_name="Bash",
         adapter=BashAdapter(bash_executable=(adapter_paths or {}).get("bash")),
         presentation=Presentation(lexer="bash", frame_placeholder="main"),
-        capabilities=ProfileCapabilities(pause_while_running=True),
+        capabilities=ProfileCapabilities(
+            pause_while_running=True,
+            interactive_variable=assignment_matcher(
+                r"^\s*(?:(?:local|declare|typeset|export|readonly)\s+"
+                r"(?:-\w+\s+)*)?(?P<name>[A-Za-z_]\w*)=",
+                read=lambda name: f'printf %s "${name}"',
+            ),
+        ),
     )

@@ -180,6 +180,17 @@ class VariableStore:
         self._require_active()
         self._values[ScopeKind.ALIASES] = variables
 
+    def drop_values(self) -> None:
+        """Forget cached values but keep this stop's handles valid.
+
+        Called after an evaluate: the expression may have changed the
+        shell's variables, environment, or aliases, so the next
+        `variables` request must re-inspect the live shell — while the
+        client's scope references from this stop stay usable.
+        """
+
+        self._values.clear()
+
     def invalidate(self) -> None:
         """Expire all active handles and cached state."""
 
