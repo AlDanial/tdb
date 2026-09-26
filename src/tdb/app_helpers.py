@@ -28,43 +28,25 @@ def about_text(*, markup: bool) -> str:
 
     from tdb import __version__
 
-    title = f"tdb v{__version__}"
+    title = f"textual-debugger v{__version__}"
     if markup:
         title = f"[bold]{title}[/bold]"
     return dedent(f"""\
         {title}
-        by Al Danial (with Claude Code)
+        by Al Danial (with Claude Code and Codex)
         Copyright (c) 2026
 
-        GitHub: https://github.com/AlDanial/tdb
-        PyPI  : https://pypi.org/project/textual-debugger/
+        A TUI debugger for many languages based on textual and the Debug Adapter Protocol.
 
-        A TUI Python debugger based on debugpy and textual""")
+        GitHub: https://github.com/AlDanial/tdb
+        PyPI  : https://pypi.org/project/textual-debugger/""")
 
 
 def info_text() -> str:
-    """Body of `tdb --info`: the About text, where tdb lives, where the
-    bundled PadWalker sources and per-perl builds live (so Perl users can
-    put a build on PERL5LIB by hand, e.g. for a remote debuggee), and
-    which gdb / lldb-dap tdb would run (path + version).
-    Read-only: never triggers a PadWalker build; the only subprocesses are
-    `gdb --version` / `lldb-dap --version`."""
-    from tdb.adapters.perl.padwalker import cache_root, padwalker_dir, padwalker_status
-    from tdb.languages.native_tools import native_debugger_report
-    from tdb.persist import load_config
+    """Body of `tdb --info`; see tdb.info."""
+    from tdb.info import info_text as _info_text
 
-    return (
-        about_text(markup=False) + "\n\n"
-        f"tdb installation directory   : {install_dir()}\n"
-        f"Perl PadWalker sources       : {padwalker_dir()}\n"
-        f"Perl PadWalker build cache   : {cache_root()}\n"
-        f"Perl PadWalker status        : {padwalker_status()}\n"
-        "  (tdb builds PadWalker for each perl it launches, caches it, and\n"
-        "   prepends the cache directory to the debuggee's PERL5LIB)\n"
-        + native_debugger_report(load_config().adapters)
-        + '\n  (config.json\'s "adapters" overrides take precedence over PATH;\n'
-        "   --adapter /path/to/gdb or lldb-dap overrides both for one run)"
-    )
+    return _info_text()
 
 
 def find_readme() -> str | None:

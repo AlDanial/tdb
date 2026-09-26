@@ -330,10 +330,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--info",
         action="store_true",
-        help="Print tdb's installation directory, the directory of the "
-        "bundled Perl PadWalker module, the path and version of the gdb "
-        "and lldb-dap executables tdb would use, and the Help > About "
-        "text, then exit",
+        help="Print the Help > About text, then where tdb, its config, "
+        "breakpoints and log files live, and the path and version of "
+        "each interpreter and native debugger tdb would use (python, gdb, "
+        "lldb-dap, perl, ruby, dlv, ocamlearlybird, bash, tcsh, pwsh), then exit",
     )
     return parser
 
@@ -910,17 +910,16 @@ def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
 
     import logging
-    import os
-    from tdb.persist import CONFIG_DIR
+    from tdb.persist import log_file
 
     # Tests set TDB_LOG_DIR to keep their log noise out of the user's
-    # config dir; production reads from CONFIG_DIR (XDG on Unix,
+    # config dir; production writes under CONFIG_DIR (XDG on Unix,
     # %APPDATA%/tdb on Windows).
-    log_dir = Path(os.environ.get("TDB_LOG_DIR") or CONFIG_DIR)
+    log_path = log_file()
     try:
-        log_dir.mkdir(parents=True, exist_ok=True)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
         logging.basicConfig(
-            filename=str(log_dir / "tdb.log"),
+            filename=str(log_path),
             level=logging.DEBUG,
             format="%(asctime)s %(name)s %(levelname)s %(message)s",
         )
@@ -998,8 +997,7 @@ def _run_doc() -> None:
 
 
 def _run_info() -> None:
-    """Print install location, bundled PadWalker dir, native debugger
-    paths/versions, and About text."""
+    """Print the About text and the per-tool report (see tdb.info)."""
     from tdb.app_helpers import info_text
 
     print(info_text())

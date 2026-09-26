@@ -883,29 +883,33 @@ def test_info_flag_default_false(tmp_path):
     assert args.info is False
 
 
-def test_info_main_prints_dirs_and_about(capsys, monkeypatch):
-    """End-to-end: `tdb --info` writes the install dir, the PadWalker
-    source dir, cache dir and status, and the About-modal text to stdout.
-    The status probe is stubbed so this stays fast and perl-free."""
+def test_info_main_prints_sections_and_about(capsys, monkeypatch):
+    """End-to-end: `tdb --info` writes the About text followed by one
+    section per tool. Tool discovery and version probes are stubbed so
+    this stays fast and independent of what's installed."""
     from tdb import __version__
     from tdb.adapters.perl import padwalker as pw
     from tdb.app_helpers import install_dir
     from tdb.cli import main as cli_main
+    from tdb.languages import native_tools as nt
 
-    monkeypatch.setattr(pw, "padwalker_status", lambda perl="perl": "STUBBED-STATUS")
+    monkeypatch.setattr(nt, "find_native_debugger", lambda name, paths: f"/stub/{name}")
+    monkeypatch.setattr(nt, "version_output", lambda exe, args: f"Tool 9.8.7 ({exe})\n")
     cli_main(["--info"])
     out = capsys.readouterr().out
-    assert install_dir() in out
-    assert pw.padwalker_dir() in out
-    assert str(pw.cache_root()) in out
-    assert "STUBBED-STATUS" in out
-    assert f"tdb v{__version__}" in out
+    assert f"textual-debugger v{__version__}" in out
     assert "https://github.com/AlDanial/tdb" in out
-    # Plain text: no Rich markup leaks into the terminal output.
     assert "[bold]" not in out
-    # About text first, install/Perl facts last.
-    assert out.index(f"tdb v{__version__}") < out.index("tdb installation directory")
-    assert out.index("tdb installation directory") < out.index("STUBBED-STATUS")
+    assert f"    tdb executable           : {install_dir()}" in out
+    assert f"    version                  : {__version__}" in out
+    assert f"    PadWalker sources        : {pw.padwalker_dir()}" in out
+    assert f"    PadWalker build cache    : {pw.cache_root()}" in out
+    for title in ("textual-debugger", "Python", "GDB", "lldb-dap", "Perl",
+                  "Ruby", "Go", "OCaml", "bash", "tcsh", "PowerShell"):
+        assert f"\n{title}\n" in out, title
+    # About text first, then the sections in order.
+    assert out.index(f"textual-debugger v{__version__}") < out.index("\ntextual-debugger\n")
+    assert out.index("\nGDB\n") < out.index("\nlldb-dap\n") < out.index("\nPerl\n")
 
 
 # --- --adapter /path/to/{gdb,lldb-dap} ------------------------------------------
@@ -942,19 +946,16 @@ def test_adapter_path_missing_is_a_usage_error(tmp_path, capsys):
 
 
 def test_info_reports_gdb_and_lldb_dap(capsys, monkeypatch):
-    from tdb.adapters.perl import padwalker as pw
     from tdb.cli import main as cli_main
     from tdb.languages import native_tools as nt
 
-    monkeypatch.setattr(pw, "padwalker_status", lambda perl="perl": "STUBBED-STATUS")
-    monkeypatch.setattr(nt, "find_native_debugger", lambda aid, paths: f"/stub/{aid}")
-    monkeypatch.setattr(nt, "debugger_version", lambda exe: f"STUB-VERSION {exe}")
+    monkeypatch.setattr(nt, "find_native_debugger", lambda name, paths: f"/stub/{name}")
+    monkeypatch.setattr(nt, "version_output", lambda exe, args: f"Tool 9.8.7 ({exe})\n")
     cli_main(["--info"])
     out = capsys.readouterr().out
-    assert "/stub/gdb" in out
-    assert "STUB-VERSION /stub/gdb" in out
-    assert "/stub/lldb-dap" in out
-    assert "STUB-VERSION /stub/lldb-dap" in out
+    assert "    gdb executable           : /stub/gdb" in out
+    assert "    lldb-dap                 : /stub/lldb-dap" in out
+    assert "    version                  : 9.8.7" in out
 
 
 def test_adapter_accepts_full_path_to_dlv(tmp_path):

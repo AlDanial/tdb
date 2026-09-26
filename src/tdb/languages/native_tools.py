@@ -3,8 +3,9 @@
 
 Two consumers:
 
-* ``tdb --info`` reports where each one lives and what version it is
-  (``native_debugger_report``).
+* ``tdb --info`` (``tdb.info``) reports where each one lives and what
+  version it is; the same find + ``--version`` probe serves the
+  interpreters tdb spawns (perl, ruby, bash, ...).
 * ``--adapter /full/path/to/{gdb,lldb-dap,dlv}`` — the registry maps
   the path's basename back to an adapter id
   (``adapter_id_for_executable``) so the explicit executable wins over
@@ -14,6 +15,7 @@ Two consumers:
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 from pathlib import PureWindowsPath
@@ -66,23 +68,25 @@ def adapter_id_for_executable(path: str) -> str | None:
 
 
 def find_native_debugger(
-    adapter_id: str, adapter_paths: dict[str, str] | None
+    adapter_id: str, adapter_paths: dict[str, str | None] | None
 ) -> str | None:
     """The executable tdb would run for ``adapter_id``: the config.json
-    ``adapters`` override when set, else the first hit on PATH."""
+    ``adapters`` override when set (a null entry counts as unset), else
+    the first hit on PATH. Works for any executable name, not just the
+    native debuggers."""
     override = (adapter_paths or {}).get(adapter_id)
     if override:
         return override
     return shutil.which(adapter_id)
 
 
-def debugger_version(executable: str) -> str | None:
-    """First non-blank line of ``<executable> --version`` (stdout, then
-    stderr), or None if it can't be run. Bounded by a timeout so a wedged
-    debugger never stalls ``tdb --info``."""
+def version_output(executable: str, args: tuple[str, ...] = ("--version",)) -> str | None:
+    """Combined stdout + stderr of ``<executable> *args``, or None if it
+    can't be run. Bounded by a timeout so a wedged tool never stalls
+    ``tdb --info``."""
     try:
         proc = subprocess.run(
-            [executable, "--version"],
+            [executable, *args],
             capture_output=True,
             text=True,
             errors="replace",
@@ -90,27 +94,46 @@ def debugger_version(executable: str) -> str | None:
         )
     except (OSError, subprocess.SubprocessError):
         return None
-    for stream in (proc.stdout, proc.stderr):
-        for line in (stream or "").splitlines():
-            if line.strip():
-                return line.strip()
+    return (proc.stdout or "") + (proc.stderr or "")
+
+
+def debugger_version(executable: str) -> str | None:
+    """First non-blank line of ``<executable> --version`` (stdout, then
+    stderr), or None if it can't be run."""
+    output = version_output(executable)
+    if output is None:
+        return None
+    for line in output.splitlines():
+        if line.strip():
+            return line.strip()
     return None
 
 
-def native_debugger_report(adapter_paths: dict[str, str] | None) -> str:
-    """Lines for ``tdb --info``, one per native debugger:
+# "17.1", "5.40.1", or bash's "5.3.9(1)-release": the first dotted number
+# in a --version line, plus bash's "(patch)-status" suffix when present.
+_VERSION_RE = re.compile(r"(\d+(?:\.\d+)+)(\(\d+\)-[A-Za-z]+)?")
 
-    gdb                          : /usr/bin/gdb
-                                   GNU gdb (Ubuntu 17.1-2ubuntu1) 17.1
-    """
-    lines: list[str] = []
-    for adapter_id in NATIVE_ADAPTER_IDS:
-        label = f"{adapter_id:<29}: "
-        exe = find_native_debugger(adapter_id, adapter_paths)
-        if exe is None:
-            lines.append(f"{label}not found on PATH")
-            continue
-        version = debugger_version(exe) or "version unknown"
-        lines.append(f"{label}{exe}")
-        lines.append(f"{' ' * len(label)}{version}")
-    return "\n".join(lines)
+
+def version_number(line: str | None) -> str | None:
+    """The version number inside a ``--version`` line, or None.
+
+    ``"GNU gdb (Ubuntu 17.1-2ubuntu1) 17.1"`` -> ``"17.1"``;
+    ``"This is perl 5, version 40, subversion 1 (v5.40.1) ..."`` ->
+    ``"5.40.1"``; ``"GNU bash, version 5.3.9(1)-release (...)"`` ->
+    ``"5.3.9(1)-release"``."""
+    if not line:
+        return None
+    m = _VERSION_RE.search(line)
+    return m.group(0) if m else None
+
+
+def tool_version_number(
+    executable: str, args: tuple[str, ...] = ("--version",)
+) -> str | None:
+    """The first version number in the output of ``<executable> *args``
+    (``dlv version`` puts it on the second line), or None."""
+    for line in (version_output(executable, args) or "").splitlines():
+        found = version_number(line)
+        if found:
+            return found
+    return None

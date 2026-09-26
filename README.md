@@ -100,9 +100,10 @@ uvx --from textual-debugger tdb  my_program.py
 # show comprehensive documentation in a terminal-based Markdown viewer
 tdb --doc
 
-# show where tdb is installed, where its bundled Perl PadWalker module
-# lives, which gdb and lldb-dap it would use (path + version), and the
-# Help > About text
+# show the Help > About text, where tdb and its config, breakpoints and
+# log files live, and the path + version of each interpreter and native
+# debugger it would use (python, gdb, lldb-dap, perl, ruby, dlv,
+# ocamlearlybird, bash, tcsh, pwsh)
 tdb --info
 
 # debug a Python program (stops at first line by default)
@@ -2011,6 +2012,11 @@ executable path (`{"adapters": {"lldb-dap": "/opt/llvm/bin/lldb-dap"}}`), and
 `--adapter /path/to/gdb` (or `lldb-dap`, `dlv`) overrides the `adapters` entry
 without editing the file; `tdb --info` reports the `gdb` and `lldb-dap`
 currently resolved (config override first, then `PATH`) with their versions.
+
+When `tdb` creates `config.json` for the first time it seeds `adapters` with
+`gdb` and `lldb-dap` entries pointing at the executables found on `PATH`
+(`null` when one isn't installed) so the keys are there to edit. A `null`
+entry behaves like a missing one: `tdb` falls back to `PATH`.
 
 **Perl is a special case:** `perl-tdb` is tdb's own bundled adapter (always
 found; it's Python code, not an external executable), so
