@@ -319,6 +319,12 @@ class ProfileCapabilities:
     # None -> every frame is selectable (current behavior).
     opaque_frame: Callable[[str], bool] | None = None
 
+    # Live breakpoint hook (`tdb.breakpoint()`, Go's `tdb.Breakpoint()`):
+    # True when this top frame is the hook's own helper, so the stop is
+    # stepped out of and the user lands in their caller. Takes the
+    # StackFrame. None = the language has no such hook.
+    breakpoint_hook_frame: Callable[[Any], bool] | None = None
+
     # Classify the debuggee's threads for display: label domains, hide
     # runtime service threads (OCaml backup threads). Receives all
     # threads plus per-thread stacks (dict may be missing entries —

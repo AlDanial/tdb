@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from typing import Any
 
@@ -90,6 +91,12 @@ class DebugpyAdapter(AdapterSpec):
         return ["userUnhandled"]
 
 
+def _is_breakpoint_hook_frame(frame) -> bool:
+    """`tdb.breakpoint()` pauses inside tdb/breakpoint_hook.py."""
+    src = frame.source.path if frame.source else None
+    return bool(src) and os.path.basename(src) == "breakpoint_hook.py"
+
+
 def build_python_profile(
     adapter: str | None = None,
     adapter_paths: dict[str, str] | None = None,
@@ -111,6 +118,7 @@ def build_python_profile(
         presentation=Presentation(lexer="python", parse_error=parse_python_error),
         capabilities=ProfileCapabilities(
             compute_step_units=compute_step_units,
+            breakpoint_hook_frame=_is_breakpoint_hook_frame,
             child_process_strategy="debugpy",
             task_inspection=True,
             pause_while_running=True,

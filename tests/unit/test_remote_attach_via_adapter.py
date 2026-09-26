@@ -79,5 +79,9 @@ async def test_adapter_mediated_attach_forwards_local_program():
     await ctrl.remote_attach(host="devbox", port=5678, program="/local/app")
 
     ctrl.client.attach.assert_awaited_once_with(
-        host="devbox", port=5678, path_mappings=None, program="/local/app"
+        host="devbox",
+        port=5678,
+        path_mappings=None,
+        program="/local/app",
+        pause_on_attach=True,
     )

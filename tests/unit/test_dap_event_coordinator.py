@@ -213,3 +213,41 @@ def test_check_stderr_traceback_chained_uses_final_block_for_frames():
     top = app.controller.state.stack_frames[0]
     assert top.source.path == "/outer.py"
     assert top.line == 22
+
+
+def test_breakpoint_hook_check_true_for_go_hook_frame():
+    """The Go hook stops inside `tdb.Breakpoint()` (dlv hides the
+    runtime.Breakpoint frame beneath it); the frame is identified by its
+    fully qualified function name, since the module lives wherever `go get`
+    put it."""
+    from tdb.languages.go import build_go_profile
+
+    co, app = _coord()
+    app.controller.profile = build_go_profile(attach_pid=1)
+    app.controller._is_remote_attach = True
+    app.controller.state.stack_frames = [
+        StackFrame(
+            id=1,
+            name="github.com/AlDanial/tdb/go/tdb.Breakpoint",
+            source=Source(path="/go/pkg/mod/github.com/aldanial/tdb/go/tdb/tdb.go"),
+            line=40,
+        ),
+    ]
+    assert co._stopped_inside_breakpoint_hook() is True
+
+
+def test_breakpoint_hook_check_false_for_go_user_frame():
+    from tdb.languages.go import build_go_profile
+
+    co, app = _coord()
+    app.controller.profile = build_go_profile(attach_pid=1)
+    app.controller._is_remote_attach = True
+    app.controller.state.stack_frames = [
+        StackFrame(
+            id=1,
+            name="main.compute",
+            source=Source(path="/home/me/prog/main.go"),
+            line=12,
+        ),
+    ]
+    assert co._stopped_inside_breakpoint_hook() is False

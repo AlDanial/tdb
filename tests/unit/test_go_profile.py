@@ -131,6 +131,15 @@ def test_attach_bodies():
         "stopOnEntry": True,
     }
     assert local.quirks.attach_via_adapter is True
+    # --no-pause-on-attach (the tdb.Breakpoint() hook): the program stops
+    # itself, so attach must not halt it.
+    assert local.attach_body(
+        host="127.0.0.1", port=0, opts={"pause_on_attach": False}
+    ) == {
+        "mode": "local",
+        "processId": 1234,
+        "stopOnEntry": False,
+    }
     remote = build_go_profile().adapter
     assert remote.attach_body(host="h", port=9, opts={}) == {"mode": "remote"}
     assert remote.quirks.attach_via_adapter is False

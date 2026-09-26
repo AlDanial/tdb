@@ -386,6 +386,39 @@ class PerlSession:
         """Adopt the armed control connection (attach mode)."""
         self._control_writer = writer
 
+    async def wait_for_prompt(self, timeout: float) -> bool:
+        """Poll until perl5db sits at a prompt (an unsolicited stop has
+        landed). False on timeout or if the socket closed meanwhile."""
+        deadline = asyncio.get_running_loop().time() + timeout
+        while not self.stopped:
+            if self._eof or asyncio.get_running_loop().time() >= deadline:
+                return False
+            await asyncio.sleep(0.02)
+        return not self._eof
+
+    async def release(self) -> None:
+        """Attach-mode detach: drop every perl5db breakpoint and resume.
+
+        perl5db keeps its `b` breakpoints after we close the socket; the
+        next hit would make it write to a dead peer (SIGPIPE) or read EOF
+        at its prompt, which it treats as `q` -- either way the debuggee
+        dies. Clearing them and continuing first leaves the program
+        running free, exactly as debugpy's disconnect does for Python."""
+        # Tell Devel::TdbRemote we are leaving: it closes its end of the
+        # control socket first (so our close raises no SIGIO in the
+        # debuggee) and marks itself detached (so a breakpoint() reached
+        # before our socket close lands does not arm a stop for us). An
+        # older Devel::TdbRemote lacks the sub; perl5db just prints an
+        # error, which is fine to ignore.
+        try:
+            await self.helper("Devel::TdbRemote::detach()")
+        except PerlProtocolError as e:
+            log.warning("detach: Devel::TdbRemote::detach unavailable: %s", e)
+        await self.command("B *")
+        self.resume("c")
+        assert self._writer is not None
+        await self._writer.drain()
+
     def interrupt(self) -> bool:
         """Ask the running debuggee to stop: SIGINT the owned child (launch
         mode) or write a pause byte on the control channel (attach mode).

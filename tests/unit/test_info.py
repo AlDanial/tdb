@@ -47,9 +47,16 @@ def test_tool_sections_show_path_and_version(stub_tools):
         "    version                  : 99.2.3",
         "    rdbg executable          : /stub/rdbg",
         "    version                  : 99.2.3",
+        f"    tdb.rb dir               : {_ruby_dir()}",
     ]
-    assert _section(text, "bash").splitlines()[0] == "    bash executable          : /stub/bash"
-    assert _section(text, "tcsh").splitlines()[0] == "    tcsh executable          : /stub/tcsh"
+    assert (
+        _section(text, "bash").splitlines()[0]
+        == "    bash executable          : /stub/bash"
+    )
+    assert (
+        _section(text, "tcsh").splitlines()[0]
+        == "    tcsh executable          : /stub/tcsh"
+    )
     assert _section(text, "PowerShell").splitlines()[0] == (
         "    pwsh executable          : /stub/pwsh"
     )
@@ -92,7 +99,12 @@ def test_go_and_ocaml_sections(monkeypatch):
         "    ocamlearlybird executable: /stub/ocamlearlybird",
         "    version                  : 1.3.6",
     ]
-    assert text.index("\nRuby\n") < text.index("\nGo\n") < text.index("\nOCaml\n") < text.index("\nbash\n")
+    assert (
+        text.index("\nRuby\n")
+        < text.index("\nGo\n")
+        < text.index("\nOCaml\n")
+        < text.index("\nbash\n")
+    )
 
 
 def test_config_override_wins_over_path(monkeypatch, stub_tools):
@@ -101,7 +113,8 @@ def test_config_override_wins_over_path(monkeypatch, stub_tools):
     from tdb import persist
 
     monkeypatch.setattr(
-        persist, "load_config",
+        persist,
+        "load_config",
         lambda: persist.TdbConfig(adapters={"gdb": "/opt/gdb", "lldb-dap": None}),
     )
     seen = {}
@@ -151,8 +164,14 @@ def test_missing_log_file_is_marked(stub_tools, tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize(
-    "size, label", [(0, "0 B"), (512, "512 B"), (1024, "1 KB"), (15084, "15 KB"),
-                    (2 * 1024 * 1024, "2048 KB")]
+    "size, label",
+    [
+        (0, "0 B"),
+        (512, "512 B"),
+        (1024, "1 KB"),
+        (15084, "15 KB"),
+        (2 * 1024 * 1024, "2048 KB"),
+    ],
 )
 def test_size_label(size, label):
     assert info.size_label(size) == label
@@ -168,6 +187,12 @@ def test_perl_section_has_padwalker_rows_and_note(stub_tools):
     ]
     assert f"    PadWalker sources        : {pw.padwalker_dir()}" in lines
     assert f"    PadWalker build cache    : {pw.cache_root()}" in lines
+    # Where Devel::TdbRemote lives, for PERL5LIB when a program calls
+    # Devel::TdbRemote::breakpoint() / listen() outside of tdb.
+    import importlib.resources
+
+    perl_dir = str(importlib.resources.files("tdb.adapters.perl"))
+    assert f"    Devel::TdbRemote dir     : {perl_dir}" in lines
     assert lines[-2].startswith("    (tdb builds PadWalker")
     assert lines[-1].startswith("     prepends the cache directory")
 
@@ -237,9 +262,13 @@ def test_version_row_without_minimum_or_version():
 def test_report_flags_old_tool(monkeypatch):
     monkeypatch.setattr(nt, "find_native_debugger", lambda name, paths: f"/stub/{name}")
     monkeypatch.setattr(
-        nt, "version_output",
-        lambda exe, args: "GNU bash, version 4.3.48(1)-release\n"
-        if exe.endswith("bash") else "99.9.9\n",
+        nt,
+        "version_output",
+        lambda exe, args: (
+            "GNU bash, version 4.3.48(1)-release\n"
+            if exe.endswith("bash")
+            else "99.9.9\n"
+        ),
     )
     text = info.info_text()
     assert _section(text, "bash").splitlines() == [
@@ -258,27 +287,43 @@ def test_python_section_flags_old_interpreter(monkeypatch, stub_tools):
     )
 
 
+def _ruby_dir() -> str:
+    import importlib.resources
+
+    return str(importlib.resources.files("tdb.adapters.ruby"))
+
+
 def test_ruby_section_flags_old_rdbg(monkeypatch):
     monkeypatch.setattr(nt, "find_native_debugger", lambda name, paths: f"/stub/{name}")
     monkeypatch.setattr(
-        nt, "version_output",
-        lambda exe, args: "rdbg 1.8.0\n" if exe.endswith("rdbg") else "ruby 3.3.8 (x86_64)\n",
+        nt,
+        "version_output",
+        lambda exe, args: (
+            "rdbg 1.8.0\n" if exe.endswith("rdbg") else "ruby 3.3.8 (x86_64)\n"
+        ),
     )
+    import importlib.resources
+
+    ruby_dir = str(importlib.resources.files("tdb.adapters.ruby"))
     assert _section(info.info_text(), "Ruby").splitlines() == [
         "    ruby executable          : /stub/ruby",
         "    version                  : 3.3.8",
         "    rdbg executable          : /stub/rdbg",
         "    version                  : 1.8.0 DOES NOT MEET MINIMUM REQUIRED VERSION OF 1.9",
+        # For RUBYLIB when a program uses `require 'tdb'; Tdb.breakpoint`.
+        f"    tdb.rb dir               : {ruby_dir}",
     ]
 
 
 def test_ruby_section_when_only_rdbg_is_missing(monkeypatch, stub_tools):
     monkeypatch.setattr(
-        nt, "find_native_debugger",
+        nt,
+        "find_native_debugger",
         lambda name, paths: None if name == "rdbg" else f"/stub/{name}",
     )
     assert _section(info.info_text(), "Ruby").splitlines() == [
         "    ruby executable          : /stub/ruby",
         "    version                  : 99.2.3",
         "    rdbg executable          : not found on PATH",
+        f"    tdb.rb dir               : {_ruby_dir()}",
     ]

@@ -366,6 +366,7 @@ class DebugController:
             port=port,
             path_mappings=path_mappings,
             program=program,
+            pause_on_attach=pre_arm_pause,
         )
         self._launch_sent.set()
 
