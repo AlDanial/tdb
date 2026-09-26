@@ -1,7 +1,6 @@
 """gdb / lldb-dap discovery and version probing (`tdb --info`), and the
 basename mapping behind the path form of `--adapter` (gdb, lldb-dap, dlv)."""
 
-import os
 import shutil
 import subprocess
 
@@ -117,34 +116,58 @@ def test_version_probe_never_hangs(monkeypatch):
     assert seen.get("timeout")
 
 
-# --- native_debugger_report -----------------------------------------------------------
+# --- version_number -------------------------------------------------------------
 
 
-def test_report_lists_path_and_version_for_each_debugger(monkeypatch):
-    monkeypatch.setattr(
-        nt, "find_native_debugger", lambda aid, paths: f"/usr/bin/{aid}"
-    )
-    monkeypatch.setattr(
-        nt, "debugger_version", lambda exe: f"VERSION-OF-{os.path.basename(exe)}"
-    )
-    report = nt.native_debugger_report({})
-    assert "/usr/bin/gdb" in report
-    assert "VERSION-OF-gdb" in report
-    assert "/usr/bin/lldb-dap" in report
-    assert "VERSION-OF-lldb-dap" in report
+@pytest.mark.parametrize(
+    "line, expected",
+    [
+        ("Python 3.14.4", "3.14.4"),
+        ("GNU gdb (Ubuntu 17.1-2ubuntu1) 17.1", "17.1"),
+        ("lldb-dap: Ubuntu LLVM version 21.1.8", "21.1.8"),
+        (
+            "This is perl 5, version 40, subversion 1 (v5.40.1) built for x86_64",
+            "5.40.1",
+        ),
+        ("ruby 3.3.8 (2025-04-09 revision b200bad6cd) [x86_64-linux-gnu]", "3.3.8"),
+        ("GNU bash, version 5.3.9(1)-release (x86_64-pc-linux-gnu)", "5.3.9(1)-release"),
+        ("tcsh 6.24.13 (Astron) 2024-06-12 (x86_64-unknown-linux) options", "6.24.13"),
+        ("PowerShell 7.6.5", "7.6.5"),
+        ("no digits here", None),
+        (None, None),
+    ],
+)
+def test_version_number(line, expected):
+    assert nt.version_number(line) == expected
 
 
-def test_report_says_not_found(monkeypatch):
-    monkeypatch.setattr(nt, "find_native_debugger", lambda aid, paths: None)
-    report = nt.native_debugger_report({})
-    assert report.count("not found on PATH") == 2
+def test_tool_version_number_probes_and_extracts(monkeypatch):
+    def fake_run(argv, **kw):
+        assert argv == ["/usr/bin/bash", "--version"]
+        return subprocess.CompletedProcess(
+            argv, 0, stdout="GNU bash, version 5.3.9(1)-release (x86_64)\n", stderr=""
+        )
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    assert nt.tool_version_number("/usr/bin/bash") == "5.3.9(1)-release"
 
 
-def test_report_tolerates_missing_version(monkeypatch):
-    monkeypatch.setattr(
-        nt, "find_native_debugger", lambda aid, paths: f"/usr/bin/{aid}"
-    )
-    monkeypatch.setattr(nt, "debugger_version", lambda exe: None)
-    report = nt.native_debugger_report({})
-    assert "/usr/bin/gdb" in report
-    assert "version unknown" in report
+def test_tool_version_number_custom_args_scan_all_lines(monkeypatch):
+    """`dlv version` prints the number on its second line."""
+
+    def fake_run(argv, **kw):
+        assert argv == ["/home/me/go/bin/dlv", "version"]
+        return subprocess.CompletedProcess(
+            argv, 0, stdout="Delve Debugger\nVersion: 1.27.1\nBuild: $Id: 38e5 $\n", stderr=""
+        )
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    assert nt.tool_version_number("/home/me/go/bin/dlv", ("version",)) == "1.27.1"
+
+
+def test_tool_version_number_none_when_probe_fails(monkeypatch):
+    def fake_run(argv, **kw):
+        raise OSError("boom")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    assert nt.tool_version_number("/usr/bin/bash") is None

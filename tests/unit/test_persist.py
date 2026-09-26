@@ -198,6 +198,71 @@ def test_config_adapter_fields_round_trip(isolated_persist):
     assert TdbConfig.from_dict(cfg.to_dict()).adapters == {"gdb": "/usr/bin/gdb"}
 
 
+def test_config_adapters_accept_null_values(isolated_persist):
+    """A seeded `"gdb": null` (debugger absent at first write) must not
+    make from_dict discard the whole adapters map."""
+    TdbConfig = isolated_persist.TdbConfig
+    cfg = TdbConfig.from_dict({"adapters": {"gdb": None, "perl": "/opt/perl"}})
+    assert cfg.adapters == {"gdb": None, "perl": "/opt/perl"}
+    # Non-string, non-null values still reject the map.
+    assert TdbConfig.from_dict({"adapters": {"gdb": 3}}).adapters == {}
+
+
+# --- first-write seeding of gdb / lldb-dap ---------------------------------------
+
+
+def _fake_which(found: dict[str, str | None]):
+    return lambda name, *a, **kw: found.get(name)
+
+
+def test_first_save_seeds_native_adapters(isolated_persist, monkeypatch):
+    import shutil
+
+    monkeypatch.setattr(
+        shutil, "which", _fake_which({"gdb": "/usr/bin/gdb", "lldb-dap": None})
+    )
+    assert not isolated_persist.CONFIG_FILE.exists()
+    cfg = isolated_persist.TdbConfig()
+    isolated_persist.save_config(cfg)
+    on_disk = json.loads(isolated_persist.CONFIG_FILE.read_text())
+    assert on_disk["adapters"] == {"gdb": "/usr/bin/gdb", "lldb-dap": None}
+    # The in-memory config matches what was written.
+    assert cfg.adapters == {"gdb": "/usr/bin/gdb", "lldb-dap": None}
+    assert isolated_persist.load_config().adapters == {
+        "gdb": "/usr/bin/gdb",
+        "lldb-dap": None,
+    }
+
+
+def test_first_save_keeps_explicit_adapter_entries(isolated_persist, monkeypatch):
+    import shutil
+
+    monkeypatch.setattr(
+        shutil, "which", _fake_which({"gdb": "/usr/bin/gdb", "lldb-dap": "/usr/bin/lldb-dap"})
+    )
+    cfg = isolated_persist.TdbConfig(adapters={"gdb": "/opt/gdb", "perl": "/opt/perl"})
+    isolated_persist.save_config(cfg)
+    on_disk = json.loads(isolated_persist.CONFIG_FILE.read_text())
+    assert on_disk["adapters"] == {
+        "gdb": "/opt/gdb",
+        "perl": "/opt/perl",
+        "lldb-dap": "/usr/bin/lldb-dap",
+    }
+
+
+def test_later_saves_do_not_reseed(isolated_persist, monkeypatch):
+    """Seeding happens only when config.json is created; a user who
+    deleted the gdb key afterwards keeps it deleted."""
+    import shutil
+
+    monkeypatch.setattr(shutil, "which", _fake_which({"gdb": "/usr/bin/gdb"}))
+    isolated_persist.CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    isolated_persist.CONFIG_FILE.write_text("{}\n")
+    isolated_persist.save_config(isolated_persist.TdbConfig())
+    on_disk = json.loads(isolated_persist.CONFIG_FILE.read_text())
+    assert on_disk["adapters"] == {}
+
+
 def test_transient_breakpoints_not_saved(isolated_persist):
     """-t breakpoints (persist=False) must never reach breakpoints.json."""
     bps = {

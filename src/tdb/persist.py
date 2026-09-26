@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import shutil
 import sys
 from dataclasses import dataclass, field, fields
 from pathlib import Path
@@ -149,8 +150,11 @@ class TdbConfig:
     step_mode: str = "statement"
 
     # Debug-adapter executable overrides: adapter id -> path
-    # (e.g. {"lldb-dap": "/opt/llvm/bin/lldb-dap"}).
-    adapters: dict[str, str] = field(default_factory=dict)
+    # (e.g. {"lldb-dap": "/opt/llvm/bin/lldb-dap"}). A None value (JSON
+    # null) means "not set": tdb seeds gdb / lldb-dap here the first time
+    # config.json is written, using null when they aren't on PATH, and a
+    # null entry falls through to a PATH lookup exactly like a missing one.
+    adapters: dict[str, str | None] = field(default_factory=dict)
 
     # Preferred adapter per language: language id -> adapter id
     # (e.g. {"cpp": "gdb"}).
@@ -173,12 +177,18 @@ class TdbConfig:
                 kwargs["theme"] = theme
         if data.get("step_mode") in ("statement", "line"):
             kwargs["step_mode"] = data["step_mode"]
-        for key in ("adapters", "default_adapters"):
-            value = data.get(key)
-            if isinstance(value, dict) and all(
-                isinstance(k, str) and isinstance(v, str) for k, v in value.items()
-            ):
-                kwargs[key] = value
+        adapters = data.get("adapters")
+        if isinstance(adapters, dict) and all(
+            isinstance(k, str) and (v is None or isinstance(v, str))
+            for k, v in adapters.items()
+        ):
+            kwargs["adapters"] = adapters
+        default_adapters = data.get("default_adapters")
+        if isinstance(default_adapters, dict) and all(
+            isinstance(k, str) and isinstance(v, str)
+            for k, v in default_adapters.items()
+        ):
+            kwargs["default_adapters"] = default_adapters
         return cls(**kwargs)
 
     def to_dict(self) -> dict:
@@ -201,10 +211,35 @@ def load_config() -> TdbConfig:
     return TdbConfig.from_dict(raw)
 
 
+def seed_native_adapters(config: TdbConfig) -> None:
+    """Fill in ``adapters`` entries for the native debuggers (gdb,
+    lldb-dap) that the user hasn't set, with the executable found on
+    PATH or None when absent. Called once, when config.json is first
+    written, so the file documents the keys a user can override."""
+    from tdb.languages.native_tools import NATIVE_ADAPTER_IDS
+
+    for adapter_id in NATIVE_ADAPTER_IDS:
+        if adapter_id not in config.adapters:
+            config.adapters[adapter_id] = shutil.which(adapter_id)
+
+
+def log_file() -> Path:
+    """Where tdb writes its log: ``$TDB_LOG_DIR/tdb.log`` when the
+    variable is set (tests use it to keep noise out of the user's config
+    dir), else ``CONFIG_DIR/tdb.log``."""
+    return Path(os.environ.get("TDB_LOG_DIR") or CONFIG_DIR) / "tdb.log"
+
+
 def save_config(config: TdbConfig) -> None:
     """Write a TdbConfig to config.json. Best-effort: I/O errors are
-    logged and swallowed (we never want a failed save to crash tdb)."""
+    logged and swallowed (we never want a failed save to crash tdb).
+
+    The first write seeds ``adapters`` with gdb / lldb-dap (see
+    ``seed_native_adapters``); later writes leave the map alone so a
+    deliberately removed key stays removed."""
     try:
+        if not CONFIG_FILE.exists():
+            seed_native_adapters(config)
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
         CONFIG_FILE.write_text(json.dumps(config.to_dict(), indent=2) + "\n")
         log.debug("Saved config to %s", CONFIG_FILE)
