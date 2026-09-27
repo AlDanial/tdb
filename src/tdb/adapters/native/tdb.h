@@ -141,7 +141,6 @@ static int tdb__spawn(const char *lang) {
     const char *name = getenv("TDB");
     char pidstr[32];
     char *argv[7];
-    posix_spawn_file_actions_t facts;
     int rc;
     if (name == NULL || *name == '\0') name = "tdb";
     snprintf(pidstr, sizeof pidstr, "%d", (int)getpid());
@@ -152,19 +151,11 @@ static int tdb__spawn(const char *lang) {
     argv[4] = pidstr;
     argv[5] = (char *)"--no-pause-on-attach";
     argv[6] = NULL;
-    /* tdb's own diagnostics belong on the terminal its TUI draws on
-     * (our stdout, just confirmed to be a tty), not wherever our own
-     * stderr happens to be redirected (a log file, a captured pipe): a
-     * spawned tdb that inherited such an fd would keep it open for as
-     * long as the debug session lasts, which can wedge anything reading
-     * that fd for EOF. */
-    posix_spawn_file_actions_init(&facts);
-    posix_spawn_file_actions_adddup2(&facts, STDOUT_FILENO, STDERR_FILENO);
-    /* posix_spawnp is async-signal-safe and thread-safe, unlike fork() in
-     * a program with many threads; stdin/stdout are inherited (tdb draws
-     * on the program's terminal). */
-    rc = posix_spawnp(&tdb__child, name, &facts, NULL, argv, environ);
-    posix_spawn_file_actions_destroy(&facts);
+    /* posix_spawnp is safe to call in a multithreaded program, unlike
+     * fork(); stdin, stdout, and stderr are all inherited so tdb can draw
+     * its TUI on the program's terminal and its own diagnostics land
+     * wherever the program's stderr already goes. */
+    rc = posix_spawnp(&tdb__child, name, NULL, NULL, argv, environ);
     if (rc != 0) {
         char msg[256];
         snprintf(msg, sizeof msg, "cannot start %s (%s); install tdb or point $TDB at it",

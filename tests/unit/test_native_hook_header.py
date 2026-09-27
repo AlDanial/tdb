@@ -70,6 +70,25 @@ def test_header_compiles_as_cxx(tmp_path):
     )
 
 
+def _stderr_text(proc: subprocess.Popen) -> str:
+    """Whatever the debuggee has written to stderr so far. Non-blocking:
+    the real tdb (and our fake stand-in) inherits the debuggee's stderr,
+    so the pipe never reaches EOF while a spawned tdb is still alive --
+    a blocking read/communicate() would hang until it exits."""
+    fd = proc.stderr.fileno()
+    os.set_blocking(fd, False)
+    chunks = []
+    while True:
+        try:
+            chunk = os.read(fd, 4096)
+        except BlockingIOError:
+            break
+        if not chunk:
+            break
+        chunks.append(chunk)
+    return b"".join(chunks).decode(errors="replace")
+
+
 def test_hook_is_noop_without_tty(tmp_path):
     exe = _build(tmp_path, {"a.c": TWO_TU_A, "b.c": TWO_TU_B}, CC)
     # stdin/stdout are pipes here, so the hook must return at once.
@@ -109,11 +128,14 @@ def test_header_hook_times_out_when_no_attach(tmp_path):
         env={**os.environ, "TDB": str(fake)},
     )
     os.close(slave)
-    _, err = proc.communicate(timeout=20)
-    os.close(master)
+    try:
+        proc.wait(timeout=20)
+        err = _stderr_text(proc)
+    finally:
+        os.close(master)
+        subprocess.run(["pkill", "-f", str(fake)], check=False)
     assert proc.returncode == 0
-    assert "did not attach" in err.decode()
-    subprocess.run(["pkill", "-f", str(fake)], check=False)
+    assert "did not attach" in err
 
 
 def test_header_warns_when_tdb_missing(tmp_path):
@@ -129,10 +151,13 @@ def test_header_warns_when_tdb_missing(tmp_path):
         env={**os.environ, "TDB": str(tmp_path / "no-such-tdb")},
     )
     os.close(slave)
-    _, err = proc.communicate(timeout=20)
-    os.close(master)
+    try:
+        proc.wait(timeout=20)
+        err = _stderr_text(proc)
+    finally:
+        os.close(master)
     assert proc.returncode == 0
-    assert "cannot" in err.decode() and "tdb" in err.decode()
+    assert "cannot" in err and "tdb" in err
 
 
 def test_header_is_in_package_data():
