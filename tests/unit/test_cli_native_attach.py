@@ -48,6 +48,33 @@ def test_attach_pid_explicit_program_wins(fake_proc, tmp_path):
     assert args.program == str(other)
 
 
+def test_attach_pid_explicit_program_without_lang(tmp_path):
+    """No --lang: the explicit program is still accepted, and the
+    language comes from ordinary program-file detection (registry.detect),
+    not the pid — a plain ELF resolves to cpp."""
+    elf_file = tmp_path / "prog"
+    elf_file.write_bytes(ELF)
+    args = parse_args(["-a", "4242", str(elf_file)])
+    assert args.profile.id == "cpp"
+    assert args.program == str(elf_file.resolve())
+
+
+def test_attach_pid_rejected_with_program_for_go(tmp_path, monkeypatch):
+    monkeypatch.setattr("tdb.languages.go.is_go_binary", lambda p: True)
+    program = tmp_path / "somebinary"
+    program.write_bytes(b"\x00")
+    with pytest.raises(SystemExit):
+        parse_args(["--lang", "go", "-a", "4242", str(program)])
+
+
+def test_attach_pid_rejects_unreadable_pid_executable(monkeypatch, tmp_path):
+    monkeypatch.setattr("tdb.cli.sys.platform", "linux")
+    missing = tmp_path / "gone"
+    monkeypatch.setattr("tdb.cli._pid_exe", lambda pid: str(missing))
+    with pytest.raises(SystemExit):
+        parse_args(["--lang", "cpp", "-a", "4242"])
+
+
 def test_attach_pid_rejected_for_python(tmp_path):
     py = tmp_path / "x.py"
     py.write_text("print(1)\n")

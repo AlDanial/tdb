@@ -589,6 +589,14 @@ def _resolve_language(
                 f"--test applies only to Go debuggees (detected language: {profile.id})"
             )
 
+    if profile.id == "go" and args.attach_pid is not None and args.program:
+        # Delve pid attach reads the running binary directly — a local
+        # program path is meaningless (unlike native pid attach below,
+        # which needs one for symbols).
+        parser.error(
+            "-a/--attach cannot be combined with a positional PROGRAM argument"
+        )
+
     if args.attach_pid is not None and profile.id not in PID_ATTACH_LANGUAGES:
         parser.error(
             f"-a/--attach applies to Go, C/C++, Rust, and OCaml debuggees "
@@ -607,6 +615,10 @@ def _resolve_language(
                     f"{profile.id} -a {args.attach_pid} ./program"
                 )
             args.program = _pid_exe(args.attach_pid)
+            if not Path(args.program).is_file():
+                parser.error(
+                    f"cannot read the executable of pid {args.attach_pid} (is it running?)"
+                )
         else:
             program_path = Path(args.program).resolve()
             if not program_path.is_file():
@@ -857,14 +869,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ):
             if value:
                 parser.error(f"-a/--attach cannot be combined with {flag}")
-        # Delve pid attach never wants a local program (it reads the
-        # running binary directly); a native (gdb/lldb-dap) pid attach
-        # can take one explicitly, overriding the /proc/PID/exe default
-        # set later in _resolve_language.
-        if args.program and args.lang not in ("cpp", "rust", "ocaml"):
-            parser.error(
-                "-a/--attach cannot be combined with a positional PROGRAM argument"
-            )
+        # A program combined with -a is rejected for Go specifically
+        # (Delve pid attach never wants a local program — it reads the
+        # running binary directly) once the language is known, in
+        # _resolve_language below. Native (gdb/lldb-dap) pid attach can
+        # take an explicit program with or without --lang.
 
     # --test only means anything for a launch (dlv builds a test binary);
     # -r/--remote-attach never launches, so combined with --test the flag
