@@ -6,6 +6,7 @@ frame-name demangling for Presentation.frame_name.
 
 from __future__ import annotations
 
+import dataclasses
 import re
 import shutil
 import subprocess
@@ -199,15 +200,18 @@ class OCamlLldbAdapter(LldbDapAdapter):
     ) -> None:
         super().__init__(executable=executable, attach_pid=attach_pid)
         if attach_pid is not None:
-            self.quirks = AdapterQuirks(
-                attach_via_adapter=True, attach_requires_local_program=True
+            self.quirks = dataclasses.replace(
+                type(self).quirks,
+                attach_via_adapter=True,
+                attach_requires_local_program=True,
             )
 
     def attach_body(self, *, host, port, opts) -> dict[str, Any]:
         body = super().attach_body(host=host, port=port, opts=opts)
-        body["initCommands"] = [
-            f"command script import {quote_debugger_arg(formatter_script_path())}",
-        ]
+        if self._attach_pid is not None:
+            body["initCommands"] = [
+                f"command script import {quote_debugger_arg(formatter_script_path())}",
+            ]
         return body
 
     def launch_body(

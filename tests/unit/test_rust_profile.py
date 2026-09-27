@@ -3,6 +3,7 @@ from importlib import resources
 import pytest
 
 from tdb.languages.base import LanguageNotSupportedError
+from tdb.languages.cpp import HOOK_STOP_FUNCTION
 from tdb.languages.rust import RustGdbAdapter, RustLldbAdapter, build_rust_profile
 
 
@@ -109,10 +110,6 @@ def test_rust_lldb_launch_injects_rust_backtrace_env():
         opts={},
     )
     assert "RUST_BACKTRACE=1" in body["env"]
-
-
-from tdb.languages.cpp import HOOK_STOP_FUNCTION
-from tdb.languages.rust import build_rust_profile
 
 
 def test_rust_pid_attach_keeps_init_commands():

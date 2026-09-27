@@ -4,7 +4,7 @@ import sys
 import pytest
 
 from tdb.languages.base import LanguageNotSupportedError
-from tdb.languages.cpp import quote_debugger_arg
+from tdb.languages.cpp import HOOK_STOP_FUNCTION, LldbDapAdapter, quote_debugger_arg
 from tdb.languages.ocaml import (
     EarlybirdAdapter,
     OCamlGdbAdapter,
@@ -183,9 +183,6 @@ def test_registered():
     assert "ocaml" in registry.known_languages()
 
 
-from tdb.languages.cpp import HOOK_STOP_FUNCTION
-
-
 def test_ocaml_lldb_pid_attach_opts_into_attach_via_adapter():
     p = build_ocaml_profile(adapter="lldb-dap", attach_pid=5)
     assert p.adapter.quirks.attach_via_adapter is True
@@ -203,12 +200,32 @@ def test_ocaml_lldb_without_pid_keeps_no_attach():
     assert p.adapter.hook_function_breakpoints() == ()
 
 
+def test_ocaml_lldb_attach_body_without_pid_is_unchanged_base_body():
+    # Global constraint: no-pid attach_body behavior must be unchanged
+    # from before pid attach existed -- no formatter initCommands.
+    opts = {"program": "/bin/prog"}
+    body = OCamlLldbAdapter().attach_body(host="127.0.0.1", port=0, opts=opts)
+    assert body == LldbDapAdapter().attach_body(host="127.0.0.1", port=0, opts=opts)
+    assert "initCommands" not in body
+
+
 def test_ocaml_gdb_pid_attach():
     p = build_ocaml_profile(adapter="gdb", attach_pid=5)
     assert p.adapter.attach_body(host="", port=0, opts={"program": "/bin/prog"}) == {
         "program": "/bin/prog",
         "pid": 5,
     }
+
+
+def test_ocaml_gdb_pid_attach_keeps_bootstrap_stop_quirk():
+    # dataclasses.replace() must derive from OCamlGdbAdapter's own
+    # class-level quirks, not discard bootstrap_stop_for_entry_breakpoints
+    # (needed because GDB can't stop at OCaml's generated, line-less
+    # C main) with a fresh AdapterQuirks().
+    assert (
+        OCamlGdbAdapter(attach_pid=5).quirks.bootstrap_stop_for_entry_breakpoints
+        is True
+    )
 
 
 def test_ocaml_pid_attach_rejects_earlybird():

@@ -11,6 +11,7 @@ model), no task inspection, no child-process tracking.
 
 from __future__ import annotations
 
+import dataclasses
 import shutil
 from typing import Any
 
@@ -180,11 +181,16 @@ class GdbDapAdapter(AdapterSpec):
         if attach_pid is not None:
             # gdb `attach PID` stops the inferior; unlike `target remote`
             # that stop is meaningful, so the controller (not this quirk)
-            # decides whether to resume.
-            self.quirks = AdapterQuirks(
+            # decides whether to resume. dataclasses.replace() derives
+            # from the subclass's own class-level quirks (e.g. OCaml's
+            # bootstrap_stop_for_entry_breakpoints) instead of discarding
+            # them with a fresh AdapterQuirks().
+            self.quirks = dataclasses.replace(
+                type(self).quirks,
                 attach_via_adapter=True,
                 attach_requires_local_program=True,
                 attach_stop_is_pausable=True,
+                resume_after_remote_attach=False,
             )
 
     def hook_function_breakpoints(self) -> tuple[str, ...]:

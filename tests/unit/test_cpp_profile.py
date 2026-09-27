@@ -4,7 +4,12 @@ import pytest
 
 from tdb.dap.types import Capabilities
 from tdb.languages.base import AdapterNotFoundError, LanguageNotSupportedError
-from tdb.languages.cpp import GdbDapAdapter, LldbDapAdapter, build_cpp_profile
+from tdb.languages.cpp import (
+    HOOK_STOP_FUNCTION,
+    GdbDapAdapter,
+    LldbDapAdapter,
+    build_cpp_profile,
+)
 from tdb.languages import registry
 
 
@@ -204,9 +209,6 @@ def test_gdb_launch_body_rejects_external_terminal() -> None:
             console="externalTerminal",
             opts={},
         )
-
-
-from tdb.languages.cpp import HOOK_STOP_FUNCTION
 
 
 def test_gdb_pid_attach_body_and_quirks():
