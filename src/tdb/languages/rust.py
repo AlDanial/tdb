@@ -19,6 +19,7 @@ from tdb.languages.base import (
     ProfileCapabilities,
 )
 from tdb.languages.cpp import (
+    NATIVE_HOOK_FRAMES,
     NATIVE_INTERACTIVE_VARIABLE,
     GdbDapAdapter,
     LldbDapAdapter,
@@ -134,6 +135,18 @@ class RustLldbAdapter(LldbDapAdapter):
         return body
 
 
+def is_breakpoint_hook_frame(frame) -> bool:
+    """`tdb::breakpoint()` (rust/tdb) calls the shared C stop symbol; gdb
+    and lldb name the Rust frame `tdb::breakpoint`, lldb sometimes with a
+    hash suffix (`tdb::breakpoint::h...`)."""
+    name = frame.name or ""
+    return (
+        name in NATIVE_HOOK_FRAMES
+        or name == "tdb::breakpoint"
+        or name.startswith("tdb::breakpoint::")
+    )
+
+
 def build_rust_profile(
     adapter: str | None = None,
     adapter_paths: dict[str, str] | None = None,
@@ -162,5 +175,6 @@ def build_rust_profile(
             pause_while_running=True,
             concurrency_inspection="rust",
             interactive_variable=NATIVE_INTERACTIVE_VARIABLE[adapter_id],
+            breakpoint_hook_frame=is_breakpoint_hook_frame,
         ),
     )

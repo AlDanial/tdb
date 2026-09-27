@@ -53,6 +53,18 @@ def quote_debugger_arg(value: str) -> str:
 # breakpoint lands there. Keep in sync with the hook libraries.
 HOOK_STOP_FUNCTION = "tdb_breakpoint_stop"
 
+# Frames belonging to the C/C++ hook in tdb.h. The stop lands in
+# tdb_breakpoint_stop; stepping out of each of these in turn reaches the
+# user's caller (see app_handlers.dap_events._stopped_inside_breakpoint_hook).
+NATIVE_HOOK_FRAMES = frozenset(
+    {HOOK_STOP_FUNCTION, "tdb_breakpoint", "tdb_breakpoint_lang"}
+)
+
+
+def is_breakpoint_hook_frame(frame) -> bool:
+    """True when `frame` (a StackFrame) is inside the tdb.h hook."""
+    return (frame.name or "") in NATIVE_HOOK_FRAMES
+
 
 class LldbDapAdapter(AdapterSpec):
     id = "lldb-dap"
@@ -305,5 +317,6 @@ def build_cpp_profile(
         capabilities=ProfileCapabilities(
             pause_while_running=True,
             interactive_variable=NATIVE_INTERACTIVE_VARIABLE[adapter_id],
+            breakpoint_hook_frame=is_breakpoint_hook_frame,
         ),
     )

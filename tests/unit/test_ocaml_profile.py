@@ -3,6 +3,7 @@ import sys
 
 import pytest
 
+from tdb.dap.types import StackFrame
 from tdb.languages.base import LanguageNotSupportedError
 from tdb.languages.cpp import HOOK_STOP_FUNCTION, LldbDapAdapter, quote_debugger_arg
 from tdb.languages.ocaml import (
@@ -12,6 +13,7 @@ from tdb.languages.ocaml import (
     _with_runparam,
     build_ocaml_profile,
     formatter_script_path,
+    is_breakpoint_hook_frame as ocaml_hook_frame,
 )
 
 
@@ -236,3 +238,50 @@ def test_ocaml_pid_attach_rejects_earlybird():
 def test_ocaml_pid_attach_defaults_to_native_adapter_without_program():
     # No program to sniff a flavor from: pid attach must never pick earlybird.
     assert build_ocaml_profile(attach_pid=5).adapter.id == "lldb-dap"
+
+
+def _frame(name: str) -> StackFrame:
+    return StackFrame(id=1, name=name, line=1, column=0)
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "tdb_breakpoint_stop",
+        "tdb_breakpoint_lang",
+        "tdb_ocaml_breakpoint",
+        "caml_c_call",
+        "camlTdb.breakpoint_123",  # OCaml 5 mangling
+        "camlTdb__breakpoint_123",  # OCaml 4 mangling
+    ],
+)
+def test_ocaml_hook_frames(name):
+    assert ocaml_hook_frame(_frame(name)) is True
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "camlMain.entry",
+        "camlTdbx.breakpoint_1",
+        "caml_main",
+        "camlStdlib__List.iter_123",
+    ],
+)
+def test_ocaml_non_hook_frames(name):
+    assert ocaml_hook_frame(_frame(name)) is False
+
+
+def test_ocaml_hook_predicate_only_for_native_adapters():
+    assert (
+        build_ocaml_profile(adapter="lldb-dap").capabilities.breakpoint_hook_frame
+        is ocaml_hook_frame
+    )
+    assert (
+        build_ocaml_profile(adapter="gdb").capabilities.breakpoint_hook_frame
+        is ocaml_hook_frame
+    )
+    assert (
+        build_ocaml_profile(adapter="ocamlearlybird").capabilities.breakpoint_hook_frame
+        is None
+    )

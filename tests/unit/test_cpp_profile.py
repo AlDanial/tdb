@@ -2,13 +2,14 @@ import shutil
 
 import pytest
 
-from tdb.dap.types import Capabilities
+from tdb.dap.types import Capabilities, StackFrame
 from tdb.languages.base import AdapterNotFoundError, LanguageNotSupportedError
 from tdb.languages.cpp import (
     HOOK_STOP_FUNCTION,
     GdbDapAdapter,
     LldbDapAdapter,
     build_cpp_profile,
+    is_breakpoint_hook_frame,
 )
 from tdb.languages import registry
 
@@ -272,3 +273,28 @@ def test_build_cpp_profile_forwards_attach_pid():
     assert registry.resolve(
         "cpp", attach_pid=77
     ).adapter.hook_function_breakpoints() == (HOOK_STOP_FUNCTION,)
+
+
+def _frame(name: str) -> StackFrame:
+    return StackFrame(id=1, name=name, line=1, column=0)
+
+
+@pytest.mark.parametrize(
+    "name", ["tdb_breakpoint_stop", "tdb_breakpoint", "tdb_breakpoint_lang"]
+)
+def test_cpp_hook_frames(name):
+    assert is_breakpoint_hook_frame(_frame(name)) is True
+
+
+@pytest.mark.parametrize(
+    "name", ["main", "compute", "nanosleep", "", "tdb::breakpoint"]
+)
+def test_cpp_non_hook_frames(name):
+    assert is_breakpoint_hook_frame(_frame(name)) is False
+
+
+def test_cpp_profile_declares_hook_predicate():
+    assert (
+        build_cpp_profile().capabilities.breakpoint_hook_frame
+        is is_breakpoint_hook_frame
+    )

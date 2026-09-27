@@ -2,9 +2,15 @@ from importlib import resources
 
 import pytest
 
+from tdb.dap.types import StackFrame
 from tdb.languages.base import LanguageNotSupportedError
 from tdb.languages.cpp import HOOK_STOP_FUNCTION
-from tdb.languages.rust import RustGdbAdapter, RustLldbAdapter, build_rust_profile
+from tdb.languages.rust import (
+    RustGdbAdapter,
+    RustLldbAdapter,
+    build_rust_profile,
+    is_breakpoint_hook_frame as rust_hook_frame,
+)
 
 
 def test_probe_scripts_are_package_resources():
@@ -127,3 +133,23 @@ def test_rust_pid_attach_keeps_init_commands():
         "pid": 99,
     }
     assert g.adapter.quirks.attach_stop_is_pausable is True
+
+
+def _frame(name: str) -> StackFrame:
+    return StackFrame(id=1, name=name, line=1, column=0)
+
+
+@pytest.mark.parametrize(
+    "name", ["tdb_breakpoint_stop", "tdb::breakpoint", "tdb::breakpoint::h1a2b3c"]
+)
+def test_rust_hook_frames(name):
+    assert rust_hook_frame(_frame(name)) is True
+
+
+@pytest.mark.parametrize("name", ["hooked::main", "compute", "std::thread::sleep"])
+def test_rust_non_hook_frames(name):
+    assert rust_hook_frame(_frame(name)) is False
+
+
+def test_rust_profile_declares_hook_predicate():
+    assert build_rust_profile().capabilities.breakpoint_hook_frame is rust_hook_frame

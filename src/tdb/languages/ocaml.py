@@ -27,6 +27,7 @@ from tdb.languages.base import (
     ThreadDecoration,
 )
 from tdb.languages.cpp import (
+    NATIVE_HOOK_FRAMES,
     NATIVE_INTERACTIVE_VARIABLE,
     GdbDapAdapter,
     LldbDapAdapter,
@@ -382,6 +383,22 @@ class EarlybirdAdapter(AdapterSpec):
         raise LanguageNotSupportedError("remote attach is not supported for ocaml yet")
 
 
+# Tdb.breakpoint (ocaml/tdb): OCaml frame (mangled, both OCaml 4 and 5
+# forms) -> caml_c_call trampoline -> C stub -> tdb.h recipe -> stop.
+_OCAML_HOOK_FRAMES = NATIVE_HOOK_FRAMES | {
+    "tdb_ocaml_breakpoint",
+    "caml_c_call",
+    "caml_c_call_stack_args",
+}
+_OCAML_HOOK_PREFIXES = ("camlTdb.breakpoint_", "camlTdb__breakpoint_")
+
+
+def is_breakpoint_hook_frame(frame) -> bool:
+    """True when `frame` (raw, un-demangled name) is inside Tdb.breakpoint."""
+    name = frame.name or ""
+    return name in _OCAML_HOOK_FRAMES or name.startswith(_OCAML_HOOK_PREFIXES)
+
+
 def build_ocaml_profile(
     adapter: str | None = None,
     adapter_paths: dict[str, str] | None = None,
@@ -436,5 +453,6 @@ def build_ocaml_profile(
             classify_threads=classify_ocaml_threads if native else None,
             # earlybird's evaluate is read-only; native runs on lldb/gdb.
             interactive_variable=NATIVE_INTERACTIVE_VARIABLE.get(adapter),
+            breakpoint_hook_frame=is_breakpoint_hook_frame if native else None,
         ),
     )
