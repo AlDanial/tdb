@@ -47,12 +47,21 @@ def quote_debugger_arg(value: str) -> str:
     return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
+# The C symbol every native live breakpoint hook (tdb.h, Rust `tdb`,
+# OCaml `Tdb`) calls once tdb is attached; tdb's hidden function
+# breakpoint lands there. Keep in sync with the hook libraries.
+HOOK_STOP_FUNCTION = "tdb_breakpoint_stop"
+
+
 class LldbDapAdapter(AdapterSpec):
     id = "lldb-dap"
     quirks = AdapterQuirks(attach_via_adapter=True, attach_requires_local_program=True)
 
-    def __init__(self, executable: str | None = None) -> None:
+    def __init__(
+        self, executable: str | None = None, attach_pid: int | None = None
+    ) -> None:
         self._executable = executable
+        self._attach_pid = attach_pid
 
     def command(self) -> list[str]:
         exe = self._executable or shutil.which("lldb-dap")
@@ -63,6 +72,9 @@ class LldbDapAdapter(AdapterSpec):
                 '"/path/to/lldb-dap"}} in tdb\'s config.json'
             )
         return [exe]
+
+    def hook_function_breakpoints(self) -> tuple[str, ...]:
+        return (HOOK_STOP_FUNCTION,) if self._attach_pid is not None else ()
 
     def launch_body(
         self,
@@ -93,6 +105,15 @@ class LldbDapAdapter(AdapterSpec):
     def attach_body(
         self, *, host: str, port: int, opts: dict[str, Any]
     ) -> dict[str, Any]:
+        if self._attach_pid is not None:
+            # Local pid attach. lldb-dap honors stopOnEntry for attach:
+            # True stops the process for the user; the hooks pass
+            # --no-pause-on-attach because the program stops itself.
+            return {
+                "program": _required_program(opts),
+                "pid": self._attach_pid,
+                "stopOnEntry": opts.get("pause_on_attach", True),
+            }
         body: dict[str, Any] = {
             "program": _required_program(opts),
             "gdb-remote-host": host,
@@ -151,8 +172,23 @@ class GdbDapAdapter(AdapterSpec):
         resume_after_remote_attach=True,
     )
 
-    def __init__(self, executable: str | None = None) -> None:
+    def __init__(
+        self, executable: str | None = None, attach_pid: int | None = None
+    ) -> None:
         self._executable = executable
+        self._attach_pid = attach_pid
+        if attach_pid is not None:
+            # gdb `attach PID` stops the inferior; unlike `target remote`
+            # that stop is meaningful, so the controller (not this quirk)
+            # decides whether to resume.
+            self.quirks = AdapterQuirks(
+                attach_via_adapter=True,
+                attach_requires_local_program=True,
+                attach_stop_is_pausable=True,
+            )
+
+    def hook_function_breakpoints(self) -> tuple[str, ...]:
+        return (HOOK_STOP_FUNCTION,) if self._attach_pid is not None else ()
 
     def command(self) -> list[str]:
         exe = self._executable or shutil.which("gdb")
@@ -200,8 +236,11 @@ class GdbDapAdapter(AdapterSpec):
     def attach_body(
         self, *, host: str, port: int, opts: dict[str, Any]
     ) -> dict[str, Any]:
+        program = _required_program(opts)
+        if self._attach_pid is not None:
+            return {"program": program, "pid": self._attach_pid}
         # gdb-dap passes "target" to `target remote`.
-        return {"program": _required_program(opts), "target": f"{host}:{port}"}
+        return {"program": program, "target": f"{host}:{port}"}
 
     def pre_configuration_commands(
         self, path_mappings: list[tuple[str, str]]
@@ -234,6 +273,8 @@ def build_cpp_profile(
     adapter: str | None = None,
     adapter_paths: dict[str, str] | None = None,
     program: str | None = None,
+    *,
+    attach_pid: int | None = None,
 ) -> LanguageProfile:
     adapters: dict[str, type[AdapterSpec]] = {
         "lldb-dap": LldbDapAdapter,
@@ -250,7 +291,7 @@ def build_cpp_profile(
     return LanguageProfile(
         id="cpp",
         display_name="C/C++",
-        adapter=adapters[adapter_id](executable=executable),
+        adapter=adapters[adapter_id](executable=executable, attach_pid=attach_pid),
         presentation=Presentation(lexer="cpp"),
         # Verified (Task 9, tests/integration/test_cpp_pause.py): DAP
         # `pause` reliably stops a never-stopped, actively-looping

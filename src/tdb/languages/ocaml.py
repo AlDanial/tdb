@@ -189,9 +189,26 @@ class OCamlLldbAdapter(LldbDapAdapter):
     and a stop-before-abort breakpoint on the uncaught-exception hook."""
 
     # The C/C++ base adapters support native remote attach; OCaml does
-    # not offer it yet (attach_body below raises), so opt back out of
-    # the attach-via-adapter quirk the base class declares.
+    # not offer it yet, so opt back out of the attach-via-adapter quirk
+    # the base class declares -- except for local pid attach, which the
+    # live breakpoint hook (Tdb.breakpoint) relies on.
     quirks = AdapterQuirks()
+
+    def __init__(
+        self, executable: str | None = None, attach_pid: int | None = None
+    ) -> None:
+        super().__init__(executable=executable, attach_pid=attach_pid)
+        if attach_pid is not None:
+            self.quirks = AdapterQuirks(
+                attach_via_adapter=True, attach_requires_local_program=True
+            )
+
+    def attach_body(self, *, host, port, opts) -> dict[str, Any]:
+        body = super().attach_body(host=host, port=port, opts=opts)
+        body["initCommands"] = [
+            f"command script import {quote_debugger_arg(formatter_script_path())}",
+        ]
+        return body
 
     def launch_body(
         self, *, program, args, cwd, env, stop_on_entry, console, opts: dict[str, Any]
@@ -365,6 +382,8 @@ def build_ocaml_profile(
     adapter: str | None = None,
     adapter_paths: dict[str, str] | None = None,
     program: str | None = None,
+    *,
+    attach_pid: int | None = None,
 ) -> LanguageProfile:
     if sys.platform == "win32":
         raise LanguageNotSupportedError(
@@ -383,12 +402,23 @@ def build_ocaml_profile(
             f"unknown adapter {adapter!r} for ocaml "
             f"(known: {', '.join(sorted(adapters))})"
         )
+    if attach_pid is not None and adapter == "ocamlearlybird":
+        raise LanguageNotSupportedError(
+            "pid attach needs a native OCaml adapter (--adapter lldb-dap or gdb); "
+            "ocamlearlybird debugs bytecode and cannot attach to a process"
+        )
     executable = (adapter_paths or {}).get(adapter)
     native = adapter in ("lldb-dap", "gdb")
+    spec_cls = adapters[adapter]
+    adapter_spec = (
+        spec_cls(executable=executable, attach_pid=attach_pid)
+        if native
+        else spec_cls(executable=executable)
+    )
     return LanguageProfile(
         id="ocaml",
         display_name="OCaml",
-        adapter=adapters[adapter](executable=executable),
+        adapter=adapter_spec,
         presentation=Presentation(
             lexer="ocaml",
             parse_error=parse_ocaml_error,

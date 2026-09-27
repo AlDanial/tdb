@@ -181,3 +181,41 @@ def test_registered():
     from tdb.languages import registry
 
     assert "ocaml" in registry.known_languages()
+
+
+from tdb.languages.cpp import HOOK_STOP_FUNCTION
+
+
+def test_ocaml_lldb_pid_attach_opts_into_attach_via_adapter():
+    p = build_ocaml_profile(adapter="lldb-dap", attach_pid=5)
+    assert p.adapter.quirks.attach_via_adapter is True
+    body = p.adapter.attach_body(
+        host="127.0.0.1", port=0, opts={"program": "/bin/prog"}
+    )
+    assert body["pid"] == 5
+    assert any("lldb_formatters.py" in c for c in body["initCommands"])
+    assert p.adapter.hook_function_breakpoints() == (HOOK_STOP_FUNCTION,)
+
+
+def test_ocaml_lldb_without_pid_keeps_no_attach():
+    p = build_ocaml_profile(adapter="lldb-dap")
+    assert p.adapter.quirks.attach_via_adapter is False
+    assert p.adapter.hook_function_breakpoints() == ()
+
+
+def test_ocaml_gdb_pid_attach():
+    p = build_ocaml_profile(adapter="gdb", attach_pid=5)
+    assert p.adapter.attach_body(host="", port=0, opts={"program": "/bin/prog"}) == {
+        "program": "/bin/prog",
+        "pid": 5,
+    }
+
+
+def test_ocaml_pid_attach_rejects_earlybird():
+    with pytest.raises(LanguageNotSupportedError, match="native OCaml adapter"):
+        build_ocaml_profile(adapter="ocamlearlybird", attach_pid=5)
+
+
+def test_ocaml_pid_attach_defaults_to_native_adapter_without_program():
+    # No program to sniff a flavor from: pid attach must never pick earlybird.
+    assert build_ocaml_profile(attach_pid=5).adapter.id == "lldb-dap"

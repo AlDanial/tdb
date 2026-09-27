@@ -109,3 +109,24 @@ def test_rust_lldb_launch_injects_rust_backtrace_env():
         opts={},
     )
     assert "RUST_BACKTRACE=1" in body["env"]
+
+
+from tdb.languages.cpp import HOOK_STOP_FUNCTION
+from tdb.languages.rust import build_rust_profile
+
+
+def test_rust_pid_attach_keeps_init_commands():
+    p = build_rust_profile(adapter="lldb-dap", attach_pid=99)
+    body = p.adapter.attach_body(
+        host="127.0.0.1", port=0, opts={"program": "/bin/prog"}
+    )
+    assert body["pid"] == 99
+    assert body["program"] == "/bin/prog"
+    assert any("command script import" in c for c in body["initCommands"])
+    assert p.adapter.hook_function_breakpoints() == (HOOK_STOP_FUNCTION,)
+    g = build_rust_profile(adapter="gdb", attach_pid=99)
+    assert g.adapter.attach_body(host="", port=0, opts={"program": "/bin/prog"}) == {
+        "program": "/bin/prog",
+        "pid": 99,
+    }
+    assert g.adapter.quirks.attach_stop_is_pausable is True

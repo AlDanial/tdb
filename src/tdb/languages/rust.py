@@ -138,6 +138,8 @@ def build_rust_profile(
     adapter: str | None = None,
     adapter_paths: dict[str, str] | None = None,
     program: str | None = None,
+    *,
+    attach_pid: int | None = None,
 ) -> LanguageProfile:
     default = "lldb-dap" if sys.platform == "darwin" else "gdb"
     adapter_id = adapter or default
@@ -154,7 +156,7 @@ def build_rust_profile(
     return LanguageProfile(
         id="rust",
         display_name="Rust",
-        adapter=adapters[adapter_id](executable=executable),
+        adapter=adapters[adapter_id](executable=executable, attach_pid=attach_pid),
         presentation=Presentation(lexer="rust", parse_error=parse_rust_error),
         capabilities=ProfileCapabilities(
             pause_while_running=True,

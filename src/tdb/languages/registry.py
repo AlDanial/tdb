@@ -35,6 +35,7 @@ def resolve(
     adapter: str | None = None,
     adapter_paths: dict[str, str] | None = None,
     program: str | None = None,
+    attach_pid: int | None = None,
 ) -> LanguageProfile:
     """Build the profile for a detected/requested language id.
 
@@ -42,7 +43,8 @@ def resolve(
     path) is forwarded to the builder, which resolves the override for
     whichever adapter it actually selects. ``program`` is forwarded
     too, for builders that need the debug target (e.g. OCaml's
-    native/bytecode flavor); other builders ignore it.
+    native/bytecode flavor); other builders ignore it. ``attach_pid``
+    is forwarded only to builders that accept it.
     """
     builder = _BUILDERS.get(lang_id)
     if builder is None:
@@ -51,7 +53,14 @@ def resolve(
             f"(supported: {', '.join(known_languages())})"
         )
     adapter, adapter_paths = normalize_adapter(adapter, adapter_paths)
-    return builder(adapter=adapter, adapter_paths=adapter_paths, program=program)
+    kwargs: dict = {}
+    if attach_pid is not None:
+        # Only the builders that support pid attach accept the keyword;
+        # the CLI has already limited -a to those languages.
+        kwargs["attach_pid"] = attach_pid
+    return builder(
+        adapter=adapter, adapter_paths=adapter_paths, program=program, **kwargs
+    )
 
 
 def normalize_adapter(
