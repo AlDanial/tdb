@@ -27,6 +27,29 @@ from tdb.languages.cpp import (
 )
 from tdb.languages.errors import parse_rust_error
 
+_RUST_MARKERS = (b"rust_eh_personality", b"__rust_alloc")
+_RUST_SCAN_CHUNK = 4 * 1024 * 1024
+
+
+def is_rust_binary(path: str) -> bool:
+    """Best-effort: a non-stripped Rust executable carries its runtime's
+    symbol names. Bounded chunked scan (markers may straddle chunks, so
+    keep a small overlap). Stripped binaries return False -> treated as
+    cpp, which gdb/lldb debug the same way."""
+    tail = b""
+    try:
+        with open(path, "rb") as f:
+            while True:
+                chunk = f.read(_RUST_SCAN_CHUNK)
+                if not chunk:
+                    return False
+                data = tail + chunk
+                if any(m in data for m in _RUST_MARKERS):
+                    return True
+                tail = data[-32:]
+    except OSError:
+        return False
+
 
 def _gdb_source_filename(value: str) -> str:
     """Validate one filename for GDB's ``source`` command parser.

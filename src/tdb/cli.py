@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -62,7 +63,10 @@ def build_parser() -> argparse.ArgumentParser:
         dest="attach_pid",
         type=int,
         metavar="PID",
-        help="Attach to a running local process by pid (Go only)",
+        help="Attach to a running local process by pid: Go (Delve) or a "
+        "native C/C++, Rust, or OCaml program (gdb or lldb-dap). Linux "
+        "identifies the language from /proc/PID/exe; elsewhere pass "
+        "--lang and, for native programs, the executable path.",
     )
     parser.add_argument(
         "--run",
@@ -497,23 +501,29 @@ def _resolve_program_path(
         args.program = str(program_path)
 
 
+PID_ATTACH_LANGUAGES = ("go", "cpp", "rust", "ocaml")
+
+
+def _pid_exe(pid: int) -> str:
+    """Path of a live process's executable (Linux /proc)."""
+    return os.path.realpath(f"/proc/{pid}/exe")
+
+
 def _detect_lang(args: argparse.Namespace) -> str:
-    """registry.detect, plus pid-attach language sniffing: with -a and
-    no program/--lang, read the pid's executable (Linux /proc) and
-    check for Go buildinfo; elsewhere --lang is required."""
+    """registry.detect, plus pid-attach sniffing: with -a and no
+    program/--lang, read the pid's executable (Linux /proc) and classify
+    it (Go buildinfo, OCaml runtime, Rust runtime, other ELF -> cpp)."""
     from tdb.languages import registry
     from tdb.languages.base import LanguageNotSupportedError
 
     if args.program is None and args.attach_pid is not None:
-        from tdb.languages.go import is_go_binary
-
-        exe = f"/proc/{args.attach_pid}/exe"
-        if is_go_binary(exe):
-            return "go"
-        raise LanguageNotSupportedError(
-            f"cannot determine the language of pid {args.attach_pid} — "
-            "pass --lang (pid attach currently supports Go only)"
-        )
+        if sys.platform != "linux":
+            raise LanguageNotSupportedError(
+                f"cannot determine the language of pid {args.attach_pid} "
+                "without /proc -- pass --lang (and the program path for "
+                "C/C++, Rust, or OCaml)"
+            )
+        return registry.detect_executable(_pid_exe(args.attach_pid))
     return registry.detect(args.program)
 
 
@@ -556,6 +566,7 @@ def _resolve_language(
                 adapter=adapter,
                 adapter_paths=config.adapters,
                 program=args.program,
+                attach_pid=args.attach_pid if lang_id in PID_ATTACH_LANGUAGES else None,
             )
     except LanguageNotSupportedError as e:
         parser.error(str(e))
@@ -577,11 +588,30 @@ def _resolve_language(
             parser.error(
                 f"--test applies only to Go debuggees (detected language: {profile.id})"
             )
-        if args.attach_pid is not None:
-            parser.error(
-                f"-a/--attach applies only to Go debuggees "
-                f"(detected language: {profile.id})"
-            )
+
+    if args.attach_pid is not None and profile.id not in PID_ATTACH_LANGUAGES:
+        parser.error(
+            f"-a/--attach applies to Go, C/C++, Rust, and OCaml debuggees "
+            f"(detected language: {profile.id})"
+        )
+    if (
+        args.attach_pid is not None
+        and profile.adapter.quirks.attach_requires_local_program
+    ):
+        # gdb/lldb-dap load symbols from a local copy of the executable.
+        if args.program is None:
+            if sys.platform != "linux":
+                parser.error(
+                    f"{profile.display_name} pid attach needs the program path "
+                    "on this platform (no /proc): tdb --lang "
+                    f"{profile.id} -a {args.attach_pid} ./program"
+                )
+            args.program = _pid_exe(args.attach_pid)
+        else:
+            program_path = Path(args.program).resolve()
+            if not program_path.is_file():
+                parser.error(f"File not found: {args.program}")
+            args.program = str(program_path)
 
     if args.remote_attach:
         if profile.id not in ("python", "perl", "ruby", "rust", "cpp", "go"):
@@ -824,10 +854,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             ("--test", args.test),
             ("--terminal", args.terminal),
             ("--run", args.run),
-            ("a positional PROGRAM argument", args.program),
         ):
             if value:
                 parser.error(f"-a/--attach cannot be combined with {flag}")
+        # Delve pid attach never wants a local program (it reads the
+        # running binary directly); a native (gdb/lldb-dap) pid attach
+        # can take one explicitly, overriding the /proc/PID/exe default
+        # set later in _resolve_language.
+        if args.program and args.lang not in ("cpp", "rust", "ocaml"):
+            parser.error(
+                "-a/--attach cannot be combined with a positional PROGRAM argument"
+            )
 
     # --test only means anything for a launch (dlv builds a test binary);
     # -r/--remote-attach never launches, so combined with --test the flag

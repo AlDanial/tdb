@@ -203,6 +203,34 @@ def detect(program: str | None) -> str:
     )
 
 
+def detect_executable(path: str) -> str:
+    """Language of a running process's executable (`tdb -a PID` without
+    --lang; `path` is /proc/PID/exe on Linux). Order matters: Go and
+    OCaml binaries are ELF too, and a Rust binary is only distinguishable
+    by its runtime symbols; anything else ELF is debugged as C/C++."""
+    from tdb.languages.go import is_go_binary  # lazy: import cycles
+    from tdb.languages.ocaml import ocaml_flavor
+    from tdb.languages.rust import is_rust_binary
+
+    try:
+        with open(path, "rb") as f:
+            magic = f.read(4)
+    except OSError as exc:
+        raise LanguageNotSupportedError(f"cannot read {path}: {exc}") from exc
+    if is_go_binary(path):
+        return "go"
+    if ocaml_flavor(path) == "native":
+        return "ocaml"
+    if is_rust_binary(path):
+        return "rust"
+    if magic == b"\x7fELF":
+        return "cpp"
+    raise LanguageNotSupportedError(
+        f"{path} is not a native executable tdb can attach to -- "
+        "pass --lang to name the language"
+    )
+
+
 def extensions_for(lang_id: str) -> tuple[str, ...]:
     """Extensions mapped to `lang_id`, for UI file filters (File > Open).
 
