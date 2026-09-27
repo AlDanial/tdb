@@ -327,3 +327,10 @@ def test_ruby_section_when_only_rdbg_is_missing(monkeypatch, stub_tools):
         "    rdbg executable          : not found on PATH",
         f"    tdb.rb dir               : {_ruby_dir()}",
     ]
+
+
+def test_cpp_section_points_at_the_hook_header(stub_tools):
+    text = info.info_text()
+    body = _section(text, "C/C++")
+    assert "tdb.h dir" in body
+    assert body.split(":", 1)[1].strip().endswith(os.path.join("adapters", "native"))
