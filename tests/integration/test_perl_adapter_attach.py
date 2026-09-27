@@ -47,6 +47,10 @@ until ($done) {
 print "loops=$n done=$done\\n";
 """
 
+# Short-lived variant (~2s unattended) for detach tests: the program must
+# finish on its own after the adapter disconnects.
+SHORT_LOOP_PROG = LOOP_PROG.replace("last if $n > 400;", "last if $n > 40;")
+
 # Same, but simulating a remote host still running the pre-control-channel
 # Devel::TdbRemote: arm_control() does not exist there.
 OLD_MODULE_LOOP_PROG = LOOP_PROG.replace(
@@ -95,6 +99,14 @@ def remote_debuggee(tmp_path):
 @pytest.fixture
 def loop_debuggee(tmp_path):
     proc, prog, port = _start_debuggee(tmp_path, LOOP_PROG)
+    yield proc, prog, port
+    if proc.poll() is None:
+        proc.kill()
+
+
+@pytest.fixture
+def short_loop_debuggee(tmp_path):
+    proc, prog, port = _start_debuggee(tmp_path, SHORT_LOOP_PROG)
     yield proc, prog, port
     if proc.poll() is None:
         proc.kill()
@@ -200,5 +212,54 @@ async def test_attach_connection_refused_errors_helpfully(tmp_path):
         resp = await asyncio.wait_for(fut, 30)
         assert resp["success"] is False
         assert "wait_for_client" in resp["message"]
+    finally:
+        await c.stop()
+
+
+async def test_disconnect_while_stopped_detaches_without_killing(remote_debuggee):
+    """Attach mode owns no process: `disconnect` must resume the debuggee
+    and leave it running, not let perl5db hit EOF at its prompt and exit."""
+    proc, _prog, port = remote_debuggee
+    c = AdapterClient()
+    await c.start()
+    try:
+        await _attach(c, port)
+        resp = await c.request("disconnect")
+        assert resp["success"] is True, resp
+        out, err = proc.communicate(timeout=15)
+        assert proc.returncode == 0, (proc.returncode, out, err)
+        assert "counter=31" in out, out
+    finally:
+        await c.stop()
+
+
+async def test_disconnect_while_running_clears_breakpoints_and_detaches(
+    short_loop_debuggee,
+):
+    """Detach with the program free-running and a breakpoint armed: the
+    adapter must pause it (control channel), clear perl5db's breakpoints
+    so a later hit can't write to the closed socket, and resume."""
+    proc, prog, port = short_loop_debuggee
+    c = AdapterClient()
+    await c.start()
+    try:
+        await _attach(c, port)
+        # `$n++` is line 11 of LOOP_PROG; the condition never holds this
+        # early, so the loop keeps running while we disconnect.
+        resp = await c.request(
+            "setBreakpoints",
+            {
+                "source": {"path": prog},
+                "breakpoints": [{"line": 11, "condition": "$n == 20"}],
+            },
+        )
+        assert resp["success"] is True, resp
+        await c.request("continue")
+        await asyncio.sleep(0.3)
+        resp = await c.request("disconnect")
+        assert resp["success"] is True, resp
+        out, err = proc.communicate(timeout=30)
+        assert proc.returncode == 0, (proc.returncode, out, err)
+        assert "loops=41 done=0" in out, out
     finally:
         await c.stop()

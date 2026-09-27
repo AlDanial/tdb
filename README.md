@@ -55,7 +55,10 @@ automated, headless debugging workflows and AI-assisted debugging
 built with `textual`, `prompt-toolkit`, `urwid`, `curses`, `rich`, and so on
 
 - comes with a post-mortem exception hook that can be installed in Python programs
-to have `tdb` pop open automatically at the first uncaught exception
+to have `tdb` pop open automatically at the first uncaught exception, and a live
+breakpoint hook (`tdb.breakpoint()` in Python, `Devel::TdbRemote::breakpoint()`
+in Perl, `Tdb.breakpoint` in Ruby, `tdb.Breakpoint()` in Go) that opens `tdb`
+paused at a line of your choosing
 
 - can be entirely keyboard-driven
 making it suitable for operation in non-graphical environments (mouse support is
@@ -597,6 +600,36 @@ copy still attaches fine, but `pause` returns a "not available" error and the
 Console view says why), and the remote perl must support `O_ASYNC` (Linux,
 macOS, BSD; not Windows).
 
+**Live breakpoint hook:** the Perl counterpart of Python's
+[`tdb.breakpoint()`](#live-breakpoint-hook). Run your program normally (not
+under `tdb`) and have it open `tdb` on itself when it reaches a line of
+interest:
+
+```perl
+use Devel::TdbRemote;                 # first line of your program
+...
+Devel::TdbRemote::breakpoint();       # tdb opens here, paused on the next line
+```
+
+On the first call the program listens on an ephemeral loopback port, spawns
+`tdb --lang perl -r 127.0.0.1:PORT` on the same terminal, waits for it to
+attach, and stops on the statement after the call, in your own frame. Later
+calls reuse the running `tdb`, which simply receives another stop. Quitting
+`tdb` (`Ctrl+q`) detaches and lets the program run on; a `breakpoint()` reached
+after that spawns a fresh `tdb`. The call is a no-op when stdin/stdout are not
+a tty, so it is safe in code that sometimes runs headless, and if `tdb` cannot
+be started (not on `PATH`, or it exits before attaching) it warns and the
+program continues. `tdb` is found on `PATH`, or via the `TDB` environment
+variable. The same arming caveat as above applies: `use Devel::TdbRemote;`
+must be the first line (or use `PERL5OPT=-d:TdbRemote`), and `Devel::TdbRemote`
+has to be on `@INC`, e.g.
+
+```bash
+PERL5LIB=$(tdb --info | sed -n 's/.*Devel::TdbRemote dir *: *//p') perl prog.pl
+```
+
+See [`examples/Perl/breakpoint_hook_demo.pl`](https://github.com/AlDanial/tdb/blob/main/examples/Perl/breakpoint_hook_demo.pl).
+
 ### Bash
 
 `tdb` bundles its own bash adapter (`bash-tdb`) so no separate adapter install
@@ -684,6 +717,33 @@ exec` integration yet.
 > **Startup note:** the debug gem's `rdbg` has an occasional handshake
 > race on launch; tdb detects a stalled/corrupted handshake and retries
 > once automatically with a fresh `rdbg`, so this is usually invisible.
+
+**Live breakpoint hook:** the Ruby counterpart of Python's
+[`tdb.breakpoint()`](#live-breakpoint-hook). Run your program normally (not
+under `tdb`) and have it open `tdb` on itself when it reaches a line of
+interest:
+
+```ruby
+require 'tdb'
+...
+Tdb.breakpoint          # tdb opens here, paused on the next line
+```
+
+The first call starts the debug gem's own debug server on an ephemeral
+loopback port and plants the gem's usual one-shot breakpoint on the next
+line. When that fires, the program parks and `tdb --lang ruby -r 127.0.0.1:PORT`
+is spawned on the same terminal, attaches, and shows the stop in your own
+frame. Later calls reuse the running `tdb`. Quitting `tdb` (`Ctrl+q`) detaches
+and lets the program run on; a `Tdb.breakpoint` reached after that spawns a
+fresh `tdb`. The call is a no-op when stdin/stdout are not a tty, and if `tdb`
+is not on `PATH` (or in the `TDB` environment variable) it warns and the
+program continues. Put `tdb.rb` on the load path, e.g.
+
+```bash
+RUBYLIB=$(tdb --info | sed -n 's/.*tdb.rb dir *: *//p') ruby prog.rb
+```
+
+See [`examples/Ruby/breakpoint_hook_demo.rb`](https://github.com/AlDanial/tdb/blob/main/examples/Ruby/breakpoint_hook_demo.rb).
 
 ### OCaml
 
@@ -816,12 +876,50 @@ pass test-binary flags after `--`, e.g. `tdb --test ./pkg -- -run TestFoo`.
 `-a`/`--attach` currently supports Go only; on Linux, and only on Linux,
 `tdb` can identify the target as Go from `/proc/PID/exe`'s buildinfo
 without `--lang` (elsewhere pass `--lang go` alongside `-a`). Attaching
-stops the process immediately so you get control right away.
+stops the process immediately so you get control right away;
+`--no-pause-on-attach` leaves it running instead, for a program that is
+about to stop itself (see the live breakpoint hook below).
 
 **Entry stop:** Delve's own `stopOnEntry` halts at the process entry point
 before any goroutine exists (no stack, no source). `tdb` instead runs to
 `main.main`, so the default entry stop lands on your program's first line
 with its source on screen; `--no-stop-on-entry` skips it as usual.
+
+**Live breakpoint hook:** the Go counterpart of Python's
+`tdb.breakpoint()`. Import the `tdb` module from this repository and call
+`tdb.Breakpoint()` where you want the debugger to open:
+
+```go
+import "github.com/AlDanial/tdb/go/tdb"
+
+func compute(n int) int {
+    total := 0
+    for i := 0; i < n; i++ {
+        total += i
+    }
+    tdb.Breakpoint() // tdb opens here, paused on the next line
+    return total
+}
+```
+
+```bash
+go get github.com/AlDanial/tdb/go/tdb
+go build -gcflags=all=-N -l -o prog . && ./prog   # run it directly, not under tdb
+```
+
+When the call is reached, the program starts `tdb --lang go -a <its pid>
+--no-pause-on-attach` on its own terminal (the `tdb` on `PATH`, or the one
+named by `$TDB`), waits for tdb's Delve to attach, and traps with
+`runtime.Breakpoint()`; tdb steps out of the trap so the stop lands on the
+line after the call, in your own frame. Later `tdb.Breakpoint()` calls
+reuse the running tdb. Quitting tdb (`Ctrl+q`) detaches and the program
+runs on; the next call opens a fresh tdb. The call is a no-op when stdin
+and stdout are not a terminal, and it warns and continues when `tdb`
+cannot be found or exits before attaching. Build with
+`-gcflags=all=-N -l` so locals stay inspectable. Linux only: the hook
+grants ptrace access to tdb's Delve with `PR_SET_PTRACER` (Yama
+`ptrace_scope=1`); elsewhere it warns once and returns. See
+`examples/Go/breakpoint_hook_demo/`.
 
 **Remote attach:** start Delve's own DAP server against your program
 first —
@@ -1358,6 +1456,10 @@ lets the program continue running normally.
 This behavior matches hitting `c` while in a conventional (that is, the Python
 standard library's) `breakpoint()` session.
 If you want to kill the program instead, use `Ctrl+c` in the terminal running the debuggee.
+
+Perl, Ruby, and Go programs get the same hook as `Devel::TdbRemote::breakpoint()`,
+`Tdb.breakpoint`, and `tdb.Breakpoint()`; see [Perl](#perl), [Ruby](#ruby),
+and [Go](#go).
 
 ### Async Task Inspector
 

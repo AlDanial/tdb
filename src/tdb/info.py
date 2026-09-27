@@ -99,7 +99,12 @@ def tool_rows(
 
 def info_text() -> str:
     from tdb import __version__
+    import importlib.resources
+
     from tdb.adapters.perl.padwalker import cache_root, padwalker_dir
+
+    perl_module_dir = str(importlib.resources.files("tdb.adapters.perl"))
+    ruby_module_dir = str(importlib.resources.files("tdb.adapters.ruby"))
     from tdb.app_helpers import about_text, install_dir
     from tdb.persist import CONFIG_FILE, STATE_FILE, load_config, log_file
 
@@ -131,6 +136,9 @@ def info_text() -> str:
             + [
                 row("PadWalker sources", padwalker_dir()),
                 row("PadWalker build cache", cache_root()),
+                # For PERL5LIB when a program uses Devel::TdbRemote
+                # (breakpoint() / listen()) outside of a tdb launch.
+                row("Devel::TdbRemote dir", perl_module_dir),
                 "    (tdb builds PadWalker for each perl it launches, caches it, and",
                 "     prepends the cache directory to the debuggee's PERL5LIB)",
             ],
@@ -138,7 +146,9 @@ def info_text() -> str:
         (
             "Ruby",
             tool_rows("ruby executable", "ruby", adapters)
-            + tool_rows("rdbg executable", "rdbg", adapters),
+            + tool_rows("rdbg executable", "rdbg", adapters)
+            # For RUBYLIB when a program uses `require 'tdb'; Tdb.breakpoint`.
+            + [row("tdb.rb dir", ruby_module_dir)],
         ),
         # `dlv --version` is an error; `dlv version` prints the number on
         # its second line.

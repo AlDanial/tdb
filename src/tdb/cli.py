@@ -50,10 +50,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--no-pause-on-attach",
         action="store_true",
-        help="With -r: do not pause the program on attach. Use when the "
-        "program stops itself (debugpy.breakpoint() right after "
-        "debugpy.wait_for_client(), as tdb.breakpoint() does); the pause "
-        "can otherwise leave it suspended after tdb quits.",
+        help="With -r or -a: do not pause the program on attach. Use when "
+        "the program stops itself (debugpy.breakpoint() right after "
+        "debugpy.wait_for_client(), as tdb.breakpoint() does, or Go's "
+        "tdb.Breakpoint()); the pause can otherwise leave it suspended "
+        "after tdb quits.",
     )
     parser.add_argument(
         "-a",
@@ -401,8 +402,8 @@ def _parse_attach_spec(
     """
     args.attach_host = None
     args.attach_port = None
-    if args.no_pause_on_attach and not args.remote_attach:
-        parser.error("--no-pause-on-attach requires --remote-attach")
+    if args.no_pause_on_attach and not (args.remote_attach or args.attach_pid is not None):
+        parser.error("--no-pause-on-attach requires --remote-attach or --attach")
     if args.attach_pid is not None:
         args.attach_host, args.attach_port = "127.0.0.1", 0
         return

@@ -130,3 +130,30 @@ def test_control_channel_pauses_free_running_program(tmp_path):
     finally:
         if proc.poll() is None:
             proc.kill()
+
+
+BREAKPOINT_NO_TTY_SCRIPT = """\
+use Devel::TdbRemote;
+my $x = 1;
+Devel::TdbRemote::breakpoint();
+$x += 41;
+print "x=$x\\n";
+"""
+
+
+def test_breakpoint_is_noop_without_tty(tmp_path):
+    """Like tdb.breakpoint() in Python, the Perl hook must do nothing
+    (no listener, no tdb spawn, no stop) when stdin/stdout are not ttys."""
+    prog = tmp_path / "bp_no_tty.pl"
+    prog.write_text(BREAKPOINT_NO_TTY_SCRIPT)
+    proc = subprocess.run(
+        ["perl", f"-I{PKG_DIR}", str(prog)],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        timeout=20,
+        env={**__import__("os").environ, "TDB": "/nonexistent/tdb"},
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout == "x=42\n"
+    assert proc.stderr == ""

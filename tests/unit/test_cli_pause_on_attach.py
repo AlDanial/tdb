@@ -28,3 +28,12 @@ def test_flag_requires_remote_attach(tmp_path):
     py.write_text("print(1)\n")
     with pytest.raises(SystemExit):
         parse_args(["--no-pause-on-attach", str(py)])
+
+
+def test_flag_parses_with_pid_attach():
+    """The Go hook (`tdb.Breakpoint()`) spawns `tdb --lang go -a PID
+    --no-pause-on-attach`: the program traps itself, so dlv's stopOnEntry
+    would only add a second, confusing stop."""
+    args = parse_args(["--lang", "go", "-a", "4242", "--no-pause-on-attach"])
+    assert args.no_pause_on_attach is True
+    assert args.attach_pid == 4242

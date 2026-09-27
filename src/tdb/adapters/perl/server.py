@@ -202,10 +202,44 @@ class PerlDapServer:
     async def _on_disconnect(self, request: Request) -> None:
         await self._cancel_launch_task()
         if self.session is not None:
+            if self.session.pid is None and self.session.debuggee_pid is None:
+                await self._detach_attached_debuggee()
             await self.session.stop()
             self.session = None
         self.send_response(request)
         self._done.set()
+
+    async def _detach_attached_debuggee(self) -> None:
+        """Attach mode (no owned process): leave the debuggee running.
+
+        perl5db has no detach command. Closing the socket while it waits
+        at a prompt reads as EOF, which it treats as `q`, and any later
+        stop writes to the dead socket -- both kill the program. So, best
+        effort: pause a free-running debuggee over the control channel,
+        wait for its prompt, let an in-flight stop classification finish
+        (it shares the command socket), then clear breakpoints and
+        resume. Any failure just falls through to the plain close."""
+        session = self.session
+        assert session is not None
+        if not session.stopped:
+            if not session.interrupt():
+                log.warning("detach: no pause channel; closing without resuming")
+                return
+            if not await session.wait_for_prompt(5.0):
+                log.warning("detach: debuggee did not stop; closing without resuming")
+                return
+        task = self._classify_task
+        if task is not None and not task.done():
+            try:
+                await asyncio.wait_for(asyncio.shield(task), 10.0)
+            except Exception:  # noqa: BLE001 -- best effort only
+                pass
+        if session.eof:
+            return
+        try:
+            await session.release()
+        except PerlProtocolError as e:
+            log.warning("detach: could not resume debuggee: %s", e)
 
     async def _on_terminate(self, request: Request) -> None:
         await self._cancel_launch_task()
@@ -387,17 +421,23 @@ class PerlDapServer:
             )
             return
         await self._arm_control_channel(host, port)
-        # TdbRemote::wait_for_client() arms $DB::single right before its
-        # own `return;` statement, so the very first trap DB::DB hits is
-        # literally that `return;` line -- still inside
-        # Devel::TdbRemote, not yet back in the caller. Step once more
-        # (blocking, via the command queue so it can't race an
-        # unsolicited-stop classification) so the entry stop we report
-        # below lands on genuine user code, one statement past
-        # wait_for_client() -- the same auto-step-out-to-caller pattern
-        # used by the live breakpoint hook.
+        # Older Devel::TdbRemote copies (still common on remote hosts) arm
+        # $DB::single right before a trailing `return;` in
+        # wait_for_client(), so the first trap DB::DB hits is that
+        # `return;` line -- inside Devel::TdbRemote, not yet back in the
+        # caller. Current copies arm as their last statement and stop in
+        # the caller directly, so stepping unconditionally would overshoot
+        # by one line. Step (blocking, via the command queue so it can't
+        # race an unsolicited-stop classification) only while the stop is
+        # still inside TdbRemote.pm, bounded so a stray loop can't hang
+        # the attach -- the same auto-step-out-to-caller pattern used by
+        # the Python live breakpoint hook.
         try:
-            await self.session.command("n")
+            for _ in range(5):
+                if os.path.basename(loc.get("file") or "") != "TdbRemote.pm":
+                    break
+                await self.session.command("n")
+                loc = await self.session.helper("Devel::TdbHelper::location()")
         except PerlProtocolError as e:
             self.send_error(request, f"attach step-out failed: {e} [{e.tail}]")
             return

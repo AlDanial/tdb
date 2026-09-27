@@ -93,20 +93,19 @@ class DapEventCoordinator:
             self._show_exception_modal(message)
 
     def _stopped_inside_breakpoint_hook(self) -> bool:
-        """True if the active stop is inside `tdb.breakpoint()`'s helper."""
+        """True if the active stop is inside a live breakpoint hook's own
+        helper (`tdb.breakpoint()`, Go's `tdb.Breakpoint()`), per the
+        profile's `breakpoint_hook_frame` capability."""
         ctrl = self.app.controller
-        if ctrl.profile.id != "python":
+        is_hook_frame = ctrl.profile.capabilities.breakpoint_hook_frame
+        if is_hook_frame is None:
             return False
         if not ctrl.is_remote_attach:
             return False
         frames = ctrl.state.stack_frames
         if not frames:
             return False
-        top = frames[0]
-        src = top.source.path if top.source else None
-        if not src:
-            return False
-        return os.path.basename(src) == "breakpoint_hook.py"
+        return bool(is_hook_frame(frames[0]))
 
     def _show_exception_modal(self, message: DapStopped) -> None:
         """Show a modal with the full exception traceback."""

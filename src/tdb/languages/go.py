@@ -165,14 +165,25 @@ class DelveAdapter(AdapterSpec):
         if self._attach_pid is not None:
             # Stop on attach so the user gets control immediately —
             # the same UX debugpy's pre-armed pause gives Python attach.
+            # `--no-pause-on-attach` (the tdb.Breakpoint() hook) turns it
+            # off: the program is about to trap itself, and a second stop
+            # at the attach point would only confuse.
             return {
                 "mode": "local",
                 "processId": self._attach_pid,
-                "stopOnEntry": True,
+                "stopOnEntry": opts.get("pause_on_attach", True),
             }
         # -r host:port — tdb connected straight to a user-run
         # `dlv dap --listen`; the attach request selects remote mode.
         return {"mode": "remote"}
+
+
+def is_breakpoint_hook_frame(frame) -> bool:
+    """`tdb.Breakpoint()` (go/tdb) traps via runtime.Breakpoint, which dlv
+    hides, so the top frame is the hook function itself. Match by
+    qualified name: the module's source lives wherever `go get` put it."""
+    name = frame.name or ""
+    return name == "tdb.Breakpoint" or name.endswith("/tdb.Breakpoint")
 
 
 def classify_go_threads(
@@ -221,6 +232,7 @@ def build_go_profile(
             frame_placeholder="<main>",
         ),
         capabilities=ProfileCapabilities(
+            breakpoint_hook_frame=is_breakpoint_hook_frame,
             pause_while_running=True,  # dlv dap honors DAP `pause` -> --run works
             concurrency_inspection="go",
             classify_threads=classify_go_threads,

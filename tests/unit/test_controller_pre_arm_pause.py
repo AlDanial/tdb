@@ -49,6 +49,7 @@ class _StubDAPClient:
         return None
 
     async def attach(self, **kwargs):
+        self.attach_opts = kwargs
         fut: asyncio.Future = asyncio.get_event_loop().create_future()
         fut.set_result(
             Response(seq=1, request_seq=1, command="attach", success=True, body={})
@@ -96,3 +97,14 @@ async def test_remote_attach_can_opt_out_of_pre_armed_pause():
         "pre-armed pause sent despite pre_arm_pause=False; a "
         "tdb.breakpoint() debuggee can re-suspend after disconnect"
     )
+
+
+async def test_remote_attach_forwards_pause_choice_to_adapter():
+    """Adapters that stop on attach themselves (dlv's `stopOnEntry` for
+    pid attach) need the same opt-out; it travels as an attach option."""
+    ctrl, client = _make_controller()
+    await ctrl.remote_attach("127.0.0.1", 5678, pre_arm_pause=False)
+    assert client.attach_opts["pause_on_attach"] is False
+    ctrl, client = _make_controller()
+    await ctrl.remote_attach("127.0.0.1", 5678)
+    assert client.attach_opts["pause_on_attach"] is True
