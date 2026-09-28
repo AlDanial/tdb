@@ -74,6 +74,13 @@ class AdapterQuirks:
     # the controller then installs initial_source_breakpoints and resumes.
     bootstrap_stop_for_entry_breakpoints: bool = False
 
+    # Local pid attach (gdb `attach PID`) leaves the inferior stopped, and
+    # that stop is the user's to keep: the controller waits for it (gdb
+    # reports it after the attach response) and resumes only when
+    # pause-on-attach was not requested. Distinct from
+    # resume_after_remote_attach, whose stub-entry stop is never useful.
+    attach_stop_is_pausable: bool = False
+
 
 class AdapterSpec:
     """How to spawn and speak to one debug adapter. Subclass per adapter.
@@ -168,6 +175,18 @@ class AdapterSpec:
         stackTrace fails). The controller installs these as DAP function
         breakpoints before configurationDone and relabels the stop they
         produce "entry".
+        """
+        return ()
+
+    def hook_function_breakpoints(self) -> tuple[str, ...]:
+        """Function names the live breakpoint hooks stop in.
+
+        The native hooks (tdb.h, the Rust `tdb` crate, OCaml `Tdb`) call
+        the C symbol `tdb_breakpoint_stop` once a debugger is attached.
+        The controller installs these as hidden DAP function breakpoints
+        during attach configuration (before configurationDone; gdb keeps
+        them pending until it loads the program). Never shown in the
+        Breakpoints view. Empty for adapters/modes without a hook.
         """
         return ()
 

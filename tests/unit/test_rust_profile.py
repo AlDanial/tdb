@@ -2,8 +2,15 @@ from importlib import resources
 
 import pytest
 
+from tdb.dap.types import StackFrame
 from tdb.languages.base import LanguageNotSupportedError
-from tdb.languages.rust import RustGdbAdapter, RustLldbAdapter, build_rust_profile
+from tdb.languages.cpp import HOOK_STOP_FUNCTION
+from tdb.languages.rust import (
+    RustGdbAdapter,
+    RustLldbAdapter,
+    build_rust_profile,
+    is_breakpoint_hook_frame as rust_hook_frame,
+)
 
 
 def test_probe_scripts_are_package_resources():
@@ -109,3 +116,58 @@ def test_rust_lldb_launch_injects_rust_backtrace_env():
         opts={},
     )
     assert "RUST_BACKTRACE=1" in body["env"]
+
+
+def test_rust_pid_attach_keeps_init_commands():
+    p = build_rust_profile(adapter="lldb-dap", attach_pid=99)
+    body = p.adapter.attach_body(
+        host="127.0.0.1", port=0, opts={"program": "/bin/prog"}
+    )
+    assert body["pid"] == 99
+    assert body["program"] == "/bin/prog"
+    assert any("command script import" in c for c in body["initCommands"])
+    assert p.adapter.hook_function_breakpoints() == (HOOK_STOP_FUNCTION,)
+    g = build_rust_profile(adapter="gdb", attach_pid=99)
+    assert g.adapter.attach_body(host="", port=0, opts={"program": "/bin/prog"}) == {
+        "program": "/bin/prog",
+        "pid": 99,
+    }
+    assert g.adapter.quirks.attach_stop_is_pausable is True
+
+
+def _frame(name: str) -> StackFrame:
+    return StackFrame(id=1, name=name, line=1, column=0)
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "tdb_breakpoint_stop",
+        "tdb::breakpoint",
+        "tdb::breakpoint::h1a2b3c",
+        "tdb::tdb_breakpoint_stop",  # gdb's name for the #[no_mangle] stop fn
+        "::tdb_breakpoint_stop()",
+    ],
+)
+def test_rust_hook_frames(name):
+    assert rust_hook_frame(_frame(name)) is True
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "hooked::main",
+        "compute",
+        "std::thread::sleep",
+        "main()",
+        "::main",
+        "foo::bar",
+        "<signal handler called>",
+    ],
+)
+def test_rust_non_hook_frames(name):
+    assert rust_hook_frame(_frame(name)) is False
+
+
+def test_rust_profile_declares_hook_predicate():
+    assert build_rust_profile().capabilities.breakpoint_hook_frame is rust_hook_frame

@@ -105,6 +105,7 @@ def info_text() -> str:
 
     perl_module_dir = str(importlib.resources.files("tdb.adapters.perl"))
     ruby_module_dir = str(importlib.resources.files("tdb.adapters.ruby"))
+    native_header_dir = str(importlib.resources.files("tdb.adapters.native"))
     from tdb.app_helpers import about_text, install_dir
     from tdb.persist import CONFIG_FILE, STATE_FILE, load_config, log_file
 
@@ -130,6 +131,11 @@ def info_text() -> str:
         ),
         ("GDB", tool_rows("gdb executable", "gdb", adapters)),
         ("lldb-dap", tool_rows("lldb-dap", "lldb-dap", adapters)),
+        (
+            "C/C++",
+            # For `-I` when a program uses tdb.h (tdb_breakpoint()).
+            [row("tdb.h dir", native_header_dir)],
+        ),
         (
             "Perl",
             tool_rows("perl executable", "perl", adapters)

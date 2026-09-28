@@ -3,8 +3,9 @@ import sys
 
 import pytest
 
+from tdb.dap.types import StackFrame
 from tdb.languages.base import LanguageNotSupportedError
-from tdb.languages.cpp import quote_debugger_arg
+from tdb.languages.cpp import HOOK_STOP_FUNCTION, LldbDapAdapter, quote_debugger_arg
 from tdb.languages.ocaml import (
     EarlybirdAdapter,
     OCamlGdbAdapter,
@@ -12,6 +13,7 @@ from tdb.languages.ocaml import (
     _with_runparam,
     build_ocaml_profile,
     formatter_script_path,
+    is_breakpoint_hook_frame as ocaml_hook_frame,
 )
 
 
@@ -181,3 +183,107 @@ def test_registered():
     from tdb.languages import registry
 
     assert "ocaml" in registry.known_languages()
+
+
+def test_ocaml_lldb_pid_attach_opts_into_attach_via_adapter():
+    p = build_ocaml_profile(adapter="lldb-dap", attach_pid=5)
+    assert p.adapter.quirks.attach_via_adapter is True
+    body = p.adapter.attach_body(
+        host="127.0.0.1", port=0, opts={"program": "/bin/prog"}
+    )
+    assert body["pid"] == 5
+    assert any("lldb_formatters.py" in c for c in body["initCommands"])
+    assert p.adapter.hook_function_breakpoints() == (HOOK_STOP_FUNCTION,)
+
+
+def test_ocaml_lldb_without_pid_keeps_no_attach():
+    p = build_ocaml_profile(adapter="lldb-dap")
+    assert p.adapter.quirks.attach_via_adapter is False
+    assert p.adapter.hook_function_breakpoints() == ()
+
+
+def test_ocaml_lldb_attach_body_without_pid_is_unchanged_base_body():
+    # Global constraint: no-pid attach_body behavior must be unchanged
+    # from before pid attach existed -- no formatter initCommands.
+    opts = {"program": "/bin/prog"}
+    body = OCamlLldbAdapter().attach_body(host="127.0.0.1", port=0, opts=opts)
+    assert body == LldbDapAdapter().attach_body(host="127.0.0.1", port=0, opts=opts)
+    assert "initCommands" not in body
+
+
+def test_ocaml_gdb_pid_attach():
+    p = build_ocaml_profile(adapter="gdb", attach_pid=5)
+    assert p.adapter.attach_body(host="", port=0, opts={"program": "/bin/prog"}) == {
+        "program": "/bin/prog",
+        "pid": 5,
+    }
+
+
+def test_ocaml_gdb_pid_attach_keeps_bootstrap_stop_quirk():
+    # dataclasses.replace() must derive from OCamlGdbAdapter's own
+    # class-level quirks, not discard bootstrap_stop_for_entry_breakpoints
+    # (needed because GDB can't stop at OCaml's generated, line-less
+    # C main) with a fresh AdapterQuirks().
+    assert (
+        OCamlGdbAdapter(attach_pid=5).quirks.bootstrap_stop_for_entry_breakpoints
+        is True
+    )
+
+
+def test_ocaml_pid_attach_rejects_earlybird():
+    with pytest.raises(LanguageNotSupportedError, match="native OCaml adapter"):
+        build_ocaml_profile(adapter="ocamlearlybird", attach_pid=5)
+
+
+def test_ocaml_pid_attach_defaults_to_native_adapter_without_program():
+    # No program to sniff a flavor from: pid attach must never pick earlybird.
+    assert build_ocaml_profile(attach_pid=5).adapter.id == "lldb-dap"
+
+
+def _frame(name: str) -> StackFrame:
+    return StackFrame(id=1, name=name, line=1, column=0)
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "tdb_breakpoint_stop",
+        "tdb_breakpoint_lang",
+        "tdb_ocaml_breakpoint",
+        "caml_c_call",
+        "camlTdb.breakpoint_123",  # OCaml 5 mangling
+        "camlTdb__breakpoint_123",  # OCaml 4 mangling
+        "<signal handler called>",  # gdb's name for OCaml 5's caml_c_call
+        "::tdb_breakpoint_stop()",
+    ],
+)
+def test_ocaml_hook_frames(name):
+    assert ocaml_hook_frame(_frame(name)) is True
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "camlMain.entry",
+        "camlTdbx.breakpoint_1",
+        "caml_main",
+        "camlStdlib__List.iter_123",
+    ],
+)
+def test_ocaml_non_hook_frames(name):
+    assert ocaml_hook_frame(_frame(name)) is False
+
+
+def test_ocaml_hook_predicate_only_for_native_adapters():
+    assert (
+        build_ocaml_profile(adapter="lldb-dap").capabilities.breakpoint_hook_frame
+        is ocaml_hook_frame
+    )
+    assert (
+        build_ocaml_profile(adapter="gdb").capabilities.breakpoint_hook_frame
+        is ocaml_hook_frame
+    )
+    assert (
+        build_ocaml_profile(adapter="ocamlearlybird").capabilities.breakpoint_hook_frame
+        is None
+    )

@@ -1,0 +1,7 @@
+(library
+ (name tdb)
+ (public_name tdb)
+ (wrapped false)
+ (foreign_stubs
+  (language c)
+  (names tdb_stubs)))

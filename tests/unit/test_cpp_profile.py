@@ -2,9 +2,16 @@ import shutil
 
 import pytest
 
-from tdb.dap.types import Capabilities
+from tdb.dap.types import Capabilities, StackFrame
 from tdb.languages.base import AdapterNotFoundError, LanguageNotSupportedError
-from tdb.languages.cpp import GdbDapAdapter, LldbDapAdapter, build_cpp_profile
+from tdb.languages.cpp import (
+    HOOK_STOP_FUNCTION,
+    GdbDapAdapter,
+    LldbDapAdapter,
+    build_cpp_profile,
+    hook_frame_base,
+    is_breakpoint_hook_frame,
+)
 from tdb.languages import registry
 
 
@@ -204,3 +211,125 @@ def test_gdb_launch_body_rejects_external_terminal() -> None:
             console="externalTerminal",
             opts={},
         )
+
+
+def test_gdb_pid_attach_body_and_quirks():
+    gdb = GdbDapAdapter(attach_pid=4242)
+    assert gdb.attach_body(host="127.0.0.1", port=0, opts={"program": "/bin/prog"}) == {
+        "program": "/bin/prog",
+        "pid": 4242,
+    }
+    assert gdb.quirks.attach_via_adapter is True
+    assert gdb.quirks.attach_requires_local_program is True
+    # The controller decides pause vs resume for pid attach; the
+    # remote-stub "always resume" quirk must be off.
+    assert gdb.quirks.attach_stop_is_pausable is True
+    assert gdb.quirks.resume_after_remote_attach is False
+    assert gdb.hook_function_breakpoints() == (HOOK_STOP_FUNCTION,)
+
+
+def test_gdb_remote_attach_unchanged_without_pid():
+    gdb = GdbDapAdapter()
+    assert gdb.attach_body(host="h", port=9, opts={"program": "/bin/prog"}) == {
+        "program": "/bin/prog",
+        "target": "h:9",
+    }
+    assert gdb.quirks.resume_after_remote_attach is True
+    assert gdb.quirks.attach_stop_is_pausable is False
+    assert gdb.hook_function_breakpoints() == ()
+
+
+def test_lldb_pid_attach_body_honors_pause_option():
+    lldb = LldbDapAdapter(attach_pid=4242)
+    assert lldb.attach_body(
+        host="127.0.0.1", port=0, opts={"program": "/bin/prog"}
+    ) == {
+        "program": "/bin/prog",
+        "pid": 4242,
+        "stopOnEntry": True,
+    }
+    assert (
+        lldb.attach_body(
+            host="127.0.0.1",
+            port=0,
+            opts={"program": "/bin/prog", "pause_on_attach": False},
+        )["stopOnEntry"]
+        is False
+    )
+    assert lldb.quirks.attach_stop_is_pausable is False
+    assert lldb.hook_function_breakpoints() == (HOOK_STOP_FUNCTION,)
+    assert LldbDapAdapter().hook_function_breakpoints() == ()
+
+
+def test_pid_attach_requires_program():
+    with pytest.raises(LanguageNotSupportedError):
+        GdbDapAdapter(attach_pid=1).attach_body(host="127.0.0.1", port=0, opts={})
+
+
+def test_build_cpp_profile_forwards_attach_pid():
+    p = build_cpp_profile(attach_pid=77)
+    assert p.adapter.hook_function_breakpoints() == (HOOK_STOP_FUNCTION,)
+    p = build_cpp_profile(adapter="lldb-dap", attach_pid=77)
+    assert p.adapter.attach_body(host="", port=0, opts={"program": "x"})["pid"] == 77
+    assert registry.resolve(
+        "cpp", attach_pid=77
+    ).adapter.hook_function_breakpoints() == (HOOK_STOP_FUNCTION,)
+
+
+def _frame(name: str) -> StackFrame:
+    return StackFrame(id=1, name=name, line=1, column=0)
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "tdb_breakpoint_stop",
+        "tdb_breakpoint",
+        "tdb_breakpoint_lang",
+        # lldb-dap on g++ builds
+        "::tdb_breakpoint_stop()",
+        "::tdb_breakpoint_lang(const char *)",
+        "::tdb_breakpoint()",
+    ],
+)
+def test_cpp_hook_frames(name):
+    assert is_breakpoint_hook_frame(_frame(name)) is True
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "main",
+        "compute",
+        "nanosleep",
+        "",
+        "tdb::breakpoint",
+        "main()",
+        "::main",
+        "foo::bar",
+        "<signal handler called>",
+    ],
+)
+def test_cpp_non_hook_frames(name):
+    assert is_breakpoint_hook_frame(_frame(name)) is False
+
+
+@pytest.mark.parametrize(
+    ("raw", "base"),
+    [
+        ("::tdb_breakpoint_stop()", "tdb_breakpoint_stop"),
+        ("::tdb_breakpoint_lang(const char *)", "tdb_breakpoint_lang"),
+        ("tdb::tdb_breakpoint_stop", "tdb::tdb_breakpoint_stop"),
+        ("main", "main"),
+        ("", ""),
+    ],
+)
+def test_hook_frame_base(raw, base):
+    assert hook_frame_base(raw) == base
+
+
+def test_cpp_profile_declares_hook_predicate():
+    assert (
+        build_cpp_profile().capabilities.breakpoint_hook_frame
+        is is_breakpoint_hook_frame
+    )

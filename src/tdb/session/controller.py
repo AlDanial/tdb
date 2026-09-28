@@ -28,6 +28,10 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
+# How long a pid attach may take to report its stop after the attach
+# response (gdb `attach PID` order). Module-level so tests can shrink it.
+ATTACH_STOP_TIMEOUT = 10.0
+
 # `display X` / `undisplay X` / bare `display` typed at the Evaluate
 # console. The verb must be a whole word: `displayed` and
 # `display_fn(x)` are ordinary expressions.
@@ -433,6 +437,15 @@ class DebugController:
                 self._entry_function_stop_pending = True
         else:
             bootstrap_entry = False
+            # Live breakpoint hooks (tdb.h, Rust `tdb`, OCaml `Tdb`) stop in
+            # a known C function once tdb is attached. Install the hidden
+            # function breakpoint now: lldb-dap has the target loaded
+            # already; gdb keeps it pending until `attach` loads the
+            # program. An unverified result (stripped binary) is not an
+            # error -- the program then simply runs on after attach.
+            hook_functions = self.profile.adapter.hook_function_breakpoints()
+            if hook_functions:
+                await self.client.set_function_breakpoints(list(hook_functions))
 
         if bootstrap_entry:
             self._suppress_next_stop = True
@@ -478,6 +491,17 @@ class DebugController:
             except Exception:
                 log.debug("Pre-arm pause on remote-attach failed", exc_info=True)
 
+        quirks = self.profile.adapter.quirks
+        pid_attach_resumes = (
+            self._is_remote_attach
+            and quirks.attach_stop_is_pausable
+            and not self._pre_arm_pause
+        )
+        if pid_attach_resumes:
+            # The attach stop is about to be resumed; keep it off the UI
+            # (the program will stop itself at the hook).
+            self._suppress_next_stop = True
+
         # Signal configuration complete — this unblocks the launch response
         await self.client.configuration_done()
 
@@ -509,14 +533,33 @@ class DebugController:
             self._stopped_event.clear()
             await self._resume_client(self.client)
 
+        if self._is_remote_attach and quirks.attach_stop_is_pausable:
+            # gdb `attach PID` reports its stop after the attach response
+            # (the reverse of `target remote`); wait for it so the pause /
+            # resume decision below sees it. A refused attach never stops:
+            # give up and let the session proceed as running.
+            if self.state.phase != SessionPhase.STOPPED:
+                try:
+                    await asyncio.wait_for(
+                        self._stopped_event.wait(), timeout=ATTACH_STOP_TIMEOUT
+                    )
+                except asyncio.TimeoutError:
+                    log.warning("pid attach: no stop event after attach")
+                    self._suppress_next_stop = False
+
         # gdb's `target remote` attach leaves the inferior stopped at the
-        # stub's entry point; its stopped event has already landed by the
-        # time the deferred attach response resolves, so phase is STOPPED
-        # here. Resume so attach means "join a running program" like every
-        # other adapter (lldb-dap resumes on its own after attach).
+        # stub's entry point (resume_after_remote_attach): resume so attach
+        # means "join a running program" like every other adapter. A pid
+        # attach stop is the user's to keep (attach_stop_is_pausable) unless
+        # --no-pause-on-attach said the program stops itself.
+        if pid_attach_resumes:
+            # The attach stop (if any) has been consumed by now; clear the
+            # flag BEFORE resuming so the hook's own stop, which can land
+            # while the resume is in flight, reaches the UI.
+            self._suppress_next_stop = False
         if (
             self._is_remote_attach
-            and self.profile.adapter.quirks.resume_after_remote_attach
+            and (quirks.resume_after_remote_attach or pid_attach_resumes)
             and self.state.phase == SessionPhase.STOPPED
         ):
             # Mirror continue_(): flip state eagerly so a caller acting

@@ -20,7 +20,7 @@
 // running tdb. Quitting tdb (Ctrl+q) detaches and the program runs on; the
 // next Breakpoint spawns a fresh tdb.
 //
-// Breakpoint is a no-op when stdin and stdout are not a terminal, so a
+// Breakpoint is a no-op when stdin or stdout is not a terminal, so a
 // program can keep its Breakpoint calls when run from a pipe or a
 // service. It also gives up, with a warning on stderr, when tdb cannot be
 // found or exits before attaching. Build with `-gcflags=all=-N -l` to keep

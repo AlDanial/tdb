@@ -35,6 +35,7 @@ def resolve(
     adapter: str | None = None,
     adapter_paths: dict[str, str] | None = None,
     program: str | None = None,
+    attach_pid: int | None = None,
 ) -> LanguageProfile:
     """Build the profile for a detected/requested language id.
 
@@ -42,7 +43,8 @@ def resolve(
     path) is forwarded to the builder, which resolves the override for
     whichever adapter it actually selects. ``program`` is forwarded
     too, for builders that need the debug target (e.g. OCaml's
-    native/bytecode flavor); other builders ignore it.
+    native/bytecode flavor); other builders ignore it. ``attach_pid``
+    is forwarded only to builders that accept it.
     """
     builder = _BUILDERS.get(lang_id)
     if builder is None:
@@ -51,7 +53,14 @@ def resolve(
             f"(supported: {', '.join(known_languages())})"
         )
     adapter, adapter_paths = normalize_adapter(adapter, adapter_paths)
-    return builder(adapter=adapter, adapter_paths=adapter_paths, program=program)
+    kwargs: dict = {}
+    if attach_pid is not None:
+        # Only the builders that support pid attach accept the keyword;
+        # the CLI has already limited -a to those languages.
+        kwargs["attach_pid"] = attach_pid
+    return builder(
+        adapter=adapter, adapter_paths=adapter_paths, program=program, **kwargs
+    )
 
 
 def normalize_adapter(
@@ -191,6 +200,34 @@ def detect(program: str | None) -> str:
     raise LanguageNotSupportedError(
         f"cannot determine the language of {program!r} — pass --lang "
         f"(supported: {', '.join(known_languages())})"
+    )
+
+
+def detect_executable(path: str) -> str:
+    """Language of a running process's executable (`tdb -a PID` without
+    --lang; `path` is /proc/PID/exe on Linux). Order matters: Go and
+    OCaml binaries are ELF too, and a Rust binary is only distinguishable
+    by its runtime symbols; anything else ELF is debugged as C/C++."""
+    from tdb.languages.go import is_go_binary  # lazy: import cycles
+    from tdb.languages.ocaml import ocaml_flavor
+    from tdb.languages.rust import is_rust_binary
+
+    try:
+        with open(path, "rb") as f:
+            magic = f.read(4)
+    except OSError as exc:
+        raise LanguageNotSupportedError(f"cannot read {path}: {exc}") from exc
+    if is_go_binary(path):
+        return "go"
+    if ocaml_flavor(path) == "native":
+        return "ocaml"
+    if is_rust_binary(path):
+        return "rust"
+    if magic == b"\x7fELF":
+        return "cpp"
+    raise LanguageNotSupportedError(
+        f"{path} is not a native executable tdb can attach to -- "
+        "pass --lang to name the language"
     )
 
 

@@ -22,9 +22,40 @@ from tdb.languages.cpp import (
     NATIVE_INTERACTIVE_VARIABLE,
     GdbDapAdapter,
     LldbDapAdapter,
+    hook_frame_base,
+    is_native_hook_name,
     quote_debugger_arg,
 )
 from tdb.languages.errors import parse_rust_error
+
+_RUST_MARKERS = (b"rust_eh_personality", b"__rust_alloc")
+_RUST_SCAN_CHUNK = 4 * 1024 * 1024
+
+
+def is_rust_binary(path: str) -> bool:
+    """Best-effort: a non-stripped Rust executable carries its runtime's
+    symbol names. Bounded chunked scan (markers may straddle chunks, so
+    keep a small overlap). Stripped binaries return False -> treated as
+    cpp, which gdb/lldb debug the same way.
+
+    Memory is bounded (one chunk plus overlap) but the scan length
+    deliberately is not: the markers live in `.strtab`, which the linker
+    places near the END of the file, so any byte cap would miss them in
+    exactly the large binaries worth detecting. Reading a big executable
+    once per `tdb -a` / launch is cheap next to starting gdb on it."""
+    tail = b""
+    try:
+        with open(path, "rb") as f:
+            while True:
+                chunk = f.read(_RUST_SCAN_CHUNK)
+                if not chunk:
+                    return False
+                data = tail + chunk
+                if any(m in data for m in _RUST_MARKERS):
+                    return True
+                tail = data[-32:]
+    except OSError:
+        return False
 
 
 def _gdb_source_filename(value: str) -> str:
@@ -134,10 +165,24 @@ class RustLldbAdapter(LldbDapAdapter):
         return body
 
 
+def is_breakpoint_hook_frame(frame) -> bool:
+    """`tdb::breakpoint()` (rust/tdb) calls the shared C stop symbol; gdb
+    and lldb name the Rust frame `tdb::breakpoint`, lldb sometimes with a
+    hash suffix (`tdb::breakpoint::h...`)."""
+    name = hook_frame_base(frame.name or "")
+    return (
+        is_native_hook_name(name)
+        or name == "tdb::breakpoint"
+        or name.startswith("tdb::breakpoint::")
+    )
+
+
 def build_rust_profile(
     adapter: str | None = None,
     adapter_paths: dict[str, str] | None = None,
     program: str | None = None,
+    *,
+    attach_pid: int | None = None,
 ) -> LanguageProfile:
     default = "lldb-dap" if sys.platform == "darwin" else "gdb"
     adapter_id = adapter or default
@@ -154,11 +199,12 @@ def build_rust_profile(
     return LanguageProfile(
         id="rust",
         display_name="Rust",
-        adapter=adapters[adapter_id](executable=executable),
+        adapter=adapters[adapter_id](executable=executable, attach_pid=attach_pid),
         presentation=Presentation(lexer="rust", parse_error=parse_rust_error),
         capabilities=ProfileCapabilities(
             pause_while_running=True,
             concurrency_inspection="rust",
             interactive_variable=NATIVE_INTERACTIVE_VARIABLE[adapter_id],
+            breakpoint_hook_frame=is_breakpoint_hook_frame,
         ),
     )

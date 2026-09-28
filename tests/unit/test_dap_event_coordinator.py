@@ -251,3 +251,78 @@ def test_breakpoint_hook_check_false_for_go_user_frame():
         ),
     ]
     assert co._stopped_inside_breakpoint_hook() is False
+
+
+# --- hook-frame step-out cap --------------------------------------------
+
+
+def _hook_stop_coord(hook_frames: list[bool]):
+    """A coordinator whose controller reports a stop per entry of
+    `hook_frames` (True = top frame is a hook frame) and records step-outs
+    and UI renders instead of talking to an adapter."""
+    import asyncio
+
+    from tdb.languages.cpp import build_cpp_profile
+
+    co, app = _coord()
+    ctrl = app.controller
+    ctrl.profile = build_cpp_profile(attach_pid=1)
+    ctrl._is_remote_attach = True
+    calls = {"step_out": 0, "rendered": 0}
+    frames = iter(hook_frames)
+
+    async def fetch_stop_info():
+        name = "tdb_breakpoint_stop" if next(frames) else "main"
+        ctrl.state.stack_frames = [
+            StackFrame(id=1, name=name, source=Source(path="/p/a.c"), line=3)
+        ]
+
+    async def step_out():
+        calls["step_out"] += 1
+
+    async def no():
+        return False
+
+    async def nothing():
+        return None
+
+    ctrl.fetch_stop_info = fetch_stop_info  # type: ignore[method-assign]
+    ctrl.step_out = step_out  # type: ignore[method-assign]
+    ctrl.maybe_continue_statement_step = no  # type: ignore[method-assign]
+    ctrl.cleanup_run_to_cursor = nothing  # type: ignore[method-assign]
+
+    def rendered():
+        calls["rendered"] += 1
+
+    app._update_ui_state = rendered
+    app._update_thread_count = lambda: None
+    app._fetch_process_count = lambda: None
+    app._fetch_async_task_count = lambda: None
+    app.stop_settled = asyncio.Event()
+    return co, calls
+
+
+async def test_hook_step_out_is_capped_per_stop_episode():
+    from tdb.app_handlers.dap_events import MAX_HOOK_STEP_OUTS
+    from tdb.session.messages import DapStopped
+
+    co, calls = _hook_stop_coord([True] * (MAX_HOOK_STEP_OUTS + 1))
+    for _ in range(MAX_HOOK_STEP_OUTS + 1):
+        await co.on_stopped(DapStopped(1, "step"))
+    # Eight step-outs, then the ninth hook stop is rendered where it is.
+    assert calls["step_out"] == MAX_HOOK_STEP_OUTS
+    assert calls["rendered"] == 1
+    assert co._hook_step_outs == 0
+
+
+async def test_hook_step_out_count_resets_after_a_normal_stop():
+    from tdb.app_handlers.dap_events import MAX_HOOK_STEP_OUTS
+    from tdb.session.messages import DapStopped
+
+    # A few hook frames, a normal stop, then a full budget again.
+    pattern = [True] * 3 + [False] + [True] * MAX_HOOK_STEP_OUTS + [False]
+    co, calls = _hook_stop_coord(pattern)
+    for _ in pattern:
+        await co.on_stopped(DapStopped(1, "breakpoint"))
+    assert calls["step_out"] == 3 + MAX_HOOK_STEP_OUTS
+    assert calls["rendered"] == 2
