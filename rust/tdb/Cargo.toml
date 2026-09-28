@@ -1,0 +1,10 @@
+[package]
+name = "tdb"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.70"
+description = "Live breakpoint hook for the tdb debugger: tdb::breakpoint() opens tdb attached to the running program"
+license = "MIT"
+repository = "https://github.com/AlDanial/tdb"
+
+[dependencies]
