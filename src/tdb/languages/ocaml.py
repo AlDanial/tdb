@@ -31,6 +31,7 @@ from tdb.languages.cpp import (
     NATIVE_INTERACTIVE_VARIABLE,
     GdbDapAdapter,
     LldbDapAdapter,
+    hook_frame_base,
     quote_debugger_arg,
 )
 from tdb.languages.errors import parse_ocaml_error
@@ -389,13 +390,20 @@ _OCAML_HOOK_FRAMES = NATIVE_HOOK_FRAMES | {
     "tdb_ocaml_breakpoint",
     "caml_c_call",
     "caml_c_call_stack_args",
+    # OCaml 5's caml_c_call trampoline switches to the C stack and its CFI
+    # marks it as a signal frame, so gdb reports it as this pseudo-frame
+    # (lldb-dap names it caml_c_call). The predicate is consulted only in
+    # remote-attach mode after a stop, so if a real signal handler were
+    # ever the top frame of an attached OCaml program the cost is one
+    # extra step-out.
+    "<signal handler called>",
 }
 _OCAML_HOOK_PREFIXES = ("camlTdb.breakpoint_", "camlTdb__breakpoint_")
 
 
 def is_breakpoint_hook_frame(frame) -> bool:
     """True when `frame` (raw, un-demangled name) is inside Tdb.breakpoint."""
-    name = frame.name or ""
+    name = hook_frame_base(frame.name or "")
     return name in _OCAML_HOOK_FRAMES or name.startswith(_OCAML_HOOK_PREFIXES)
 
 

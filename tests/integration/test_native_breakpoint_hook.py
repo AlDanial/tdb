@@ -125,26 +125,6 @@ CASES = {
     "ocaml": ("ocaml", OCAML_SRC, (3, 6), None, None, shutil.which("ocamlopt")),
 }
 
-# Pairs that fail today because the profile's hook-frame predicate does not
-# recognize the frame name the adapter reports, so the step-out loop (the
-# same one the TUI runs) stops inside the hook. Strict: once the predicate
-# is fixed the XPASS fails and the mark must go.
-KNOWN_PREDICATE_GAPS = {
-    ("cpp", "lldb-dap"): "lldb-dap names g++ frames '::tdb_breakpoint_stop()', "
-    "'::tdb_breakpoint_lang(const char *)', '::tdb_breakpoint()'",
-    ("rust", "gdb"): "gdb names the Rust stop frame 'tdb::tdb_breakpoint_stop'",
-    ("ocaml", "gdb"): "gdb shows OCaml 5's caml_c_call stack switch as "
-    "'<signal handler called>' between the C stub and camlTdb.breakpoint_*",
-}
-
-
-def _pairs():
-    for lang in CASES:
-        for adapter in ADAPTERS:
-            gap = KNOWN_PREDICATE_GAPS.get((lang, adapter))
-            marks = [pytest.mark.xfail(reason=gap, strict=True)] if gap else []
-            yield pytest.param(lang, adapter, marks=marks, id=f"{lang}-{adapter}")
-
 
 def _build(lang: str, tmp_path: Path) -> Path:
     lang_id, src, _, _, _, tool = CASES[lang]
@@ -262,7 +242,8 @@ async def _attach_and_land(
         )
         await asyncio.wait_for(handler.initialized_event.wait(), WAIT)
         await ctrl.do_configure()
-        os.kill(fake_tdb, signal.SIGKILL)  # we are tdb now
+        # Only now, with the tracer in place (see docstring): we are tdb.
+        os.kill(fake_tdb, signal.SIGKILL)
         await asyncio.wait_for(handler.stopped_event.wait(), WAIT)
         assert handler.last_stop_reason not in ("attach", "pause", "entry"), (
             handler.last_stop_reason
@@ -301,7 +282,8 @@ async def _attach_and_land(
         pytest.fail("debuggee still traced after detach")
 
 
-@pytest.mark.parametrize(("lang", "adapter"), list(_pairs()))
+@pytest.mark.parametrize("adapter", ADAPTERS)
+@pytest.mark.parametrize("lang", list(CASES))
 async def test_hook_opens_tdb_twice_and_program_finishes(lang, adapter, tmp_path):
     lang_id, _, lines, local, values, _ = CASES[lang]
     exe = _build(lang, tmp_path)

@@ -9,6 +9,7 @@ from tdb.languages.cpp import (
     GdbDapAdapter,
     LldbDapAdapter,
     build_cpp_profile,
+    hook_frame_base,
     is_breakpoint_hook_frame,
 )
 from tdb.languages import registry
@@ -280,17 +281,51 @@ def _frame(name: str) -> StackFrame:
 
 
 @pytest.mark.parametrize(
-    "name", ["tdb_breakpoint_stop", "tdb_breakpoint", "tdb_breakpoint_lang"]
+    "name",
+    [
+        "tdb_breakpoint_stop",
+        "tdb_breakpoint",
+        "tdb_breakpoint_lang",
+        # lldb-dap on g++ builds
+        "::tdb_breakpoint_stop()",
+        "::tdb_breakpoint_lang(const char *)",
+        "::tdb_breakpoint()",
+    ],
 )
 def test_cpp_hook_frames(name):
     assert is_breakpoint_hook_frame(_frame(name)) is True
 
 
 @pytest.mark.parametrize(
-    "name", ["main", "compute", "nanosleep", "", "tdb::breakpoint"]
+    "name",
+    [
+        "main",
+        "compute",
+        "nanosleep",
+        "",
+        "tdb::breakpoint",
+        "main()",
+        "::main",
+        "foo::bar",
+        "<signal handler called>",
+    ],
 )
 def test_cpp_non_hook_frames(name):
     assert is_breakpoint_hook_frame(_frame(name)) is False
+
+
+@pytest.mark.parametrize(
+    ("raw", "base"),
+    [
+        ("::tdb_breakpoint_stop()", "tdb_breakpoint_stop"),
+        ("::tdb_breakpoint_lang(const char *)", "tdb_breakpoint_lang"),
+        ("tdb::tdb_breakpoint_stop", "tdb::tdb_breakpoint_stop"),
+        ("main", "main"),
+        ("", ""),
+    ],
+)
+def test_hook_frame_base(raw, base):
+    assert hook_frame_base(raw) == base
 
 
 def test_cpp_profile_declares_hook_predicate():

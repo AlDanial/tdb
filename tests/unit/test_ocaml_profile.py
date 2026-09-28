@@ -253,6 +253,8 @@ def _frame(name: str) -> StackFrame:
         "caml_c_call",
         "camlTdb.breakpoint_123",  # OCaml 5 mangling
         "camlTdb__breakpoint_123",  # OCaml 4 mangling
+        "<signal handler called>",  # gdb's name for OCaml 5's caml_c_call
+        "::tdb_breakpoint_stop()",
     ],
 )
 def test_ocaml_hook_frames(name):

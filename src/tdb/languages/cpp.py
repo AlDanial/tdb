@@ -61,9 +61,27 @@ NATIVE_HOOK_FRAMES = frozenset(
 )
 
 
+def hook_frame_base(name: str) -> str:
+    """Normalize a frame name the way adapters decorate native symbols:
+    lldb-dap reports g++ frames as `::tdb_breakpoint_stop()` and
+    `::tdb_breakpoint_lang(const char *)`; strip the leading `::` and the
+    parameter list (everything from the first `(`)."""
+    name = name.removeprefix("::")
+    paren = name.find("(")
+    return name if paren < 0 else name[:paren]
+
+
+def is_native_hook_name(base: str) -> bool:
+    """True when a normalized frame name is one of tdb.h's C symbols, bare
+    or namespace-qualified (gdb names the Rust crate's `#[no_mangle]` stop
+    function `tdb::tdb_breakpoint_stop`). The C symbol names are
+    distinctive enough that the last-segment rule cannot match user code."""
+    return base in NATIVE_HOOK_FRAMES or base.rsplit("::", 1)[-1] in NATIVE_HOOK_FRAMES
+
+
 def is_breakpoint_hook_frame(frame) -> bool:
     """True when `frame` (a StackFrame) is inside the tdb.h hook."""
-    return (frame.name or "") in NATIVE_HOOK_FRAMES
+    return is_native_hook_name(hook_frame_base(frame.name or ""))
 
 
 class LldbDapAdapter(AdapterSpec):

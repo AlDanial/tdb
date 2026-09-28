@@ -19,10 +19,11 @@ from tdb.languages.base import (
     ProfileCapabilities,
 )
 from tdb.languages.cpp import (
-    NATIVE_HOOK_FRAMES,
     NATIVE_INTERACTIVE_VARIABLE,
     GdbDapAdapter,
     LldbDapAdapter,
+    hook_frame_base,
+    is_native_hook_name,
     quote_debugger_arg,
 )
 from tdb.languages.errors import parse_rust_error
@@ -162,9 +163,9 @@ def is_breakpoint_hook_frame(frame) -> bool:
     """`tdb::breakpoint()` (rust/tdb) calls the shared C stop symbol; gdb
     and lldb name the Rust frame `tdb::breakpoint`, lldb sometimes with a
     hash suffix (`tdb::breakpoint::h...`)."""
-    name = frame.name or ""
+    name = hook_frame_base(frame.name or "")
     return (
-        name in NATIVE_HOOK_FRAMES
+        is_native_hook_name(name)
         or name == "tdb::breakpoint"
         or name.startswith("tdb::breakpoint::")
     )

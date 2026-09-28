@@ -140,13 +140,31 @@ def _frame(name: str) -> StackFrame:
 
 
 @pytest.mark.parametrize(
-    "name", ["tdb_breakpoint_stop", "tdb::breakpoint", "tdb::breakpoint::h1a2b3c"]
+    "name",
+    [
+        "tdb_breakpoint_stop",
+        "tdb::breakpoint",
+        "tdb::breakpoint::h1a2b3c",
+        "tdb::tdb_breakpoint_stop",  # gdb's name for the #[no_mangle] stop fn
+        "::tdb_breakpoint_stop()",
+    ],
 )
 def test_rust_hook_frames(name):
     assert rust_hook_frame(_frame(name)) is True
 
 
-@pytest.mark.parametrize("name", ["hooked::main", "compute", "std::thread::sleep"])
+@pytest.mark.parametrize(
+    "name",
+    [
+        "hooked::main",
+        "compute",
+        "std::thread::sleep",
+        "main()",
+        "::main",
+        "foo::bar",
+        "<signal handler called>",
+    ],
+)
 def test_rust_non_hook_frames(name):
     assert rust_hook_frame(_frame(name)) is False
 
