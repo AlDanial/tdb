@@ -36,7 +36,13 @@ def is_rust_binary(path: str) -> bool:
     """Best-effort: a non-stripped Rust executable carries its runtime's
     symbol names. Bounded chunked scan (markers may straddle chunks, so
     keep a small overlap). Stripped binaries return False -> treated as
-    cpp, which gdb/lldb debug the same way."""
+    cpp, which gdb/lldb debug the same way.
+
+    Memory is bounded (one chunk plus overlap) but the scan length
+    deliberately is not: the markers live in `.strtab`, which the linker
+    places near the END of the file, so any byte cap would miss them in
+    exactly the large binaries worth detecting. Reading a big executable
+    once per `tdb -a` / launch is cheap next to starting gdb on it."""
     tail = b""
     try:
         with open(path, "rb") as f:

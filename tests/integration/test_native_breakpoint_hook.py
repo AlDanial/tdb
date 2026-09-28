@@ -61,8 +61,8 @@ pytestmark = pytest.mark.skipif(
 # Each program: counter starts 10, hook, += 1, += 20, hook, += 300, print.
 # (lang_id, expected local name, values after 1st/2nd stop, line after each hook)
 C_SRC = """\
-#include <stdio.h>
 #include "tdb.h"
+#include <stdio.h>
 int main(void) {
     int counter = 10;
     tdb_breakpoint();

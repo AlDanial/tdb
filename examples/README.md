@@ -43,7 +43,7 @@ do).
 **C:**
 
 ```bash
-gcc -g -O0 -I "$(tdb --info | awk -F': ' '/tdb.h dir/ {print $2}')" \
+gcc -std=c99 -g -O0 -I "$(tdb --info | awk -F': ' '/tdb.h dir/ {print $2}')" \
     -o demo breakpoint_hook_demo.c && ./demo
 ```
 

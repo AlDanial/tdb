@@ -3,11 +3,11 @@
  * Run it directly (not under tdb). Build unoptimized so locals stay
  * inspectable, then run the binary from a terminal:
  *
- *   gcc -g -O0 -I "$(tdb --info | awk -F': ' '/tdb.h dir/ {print $2}')" \
+ *   gcc -std=c99 -g -O0 -I "$(tdb --info | awk -F': ' '/tdb.h dir/ {print $2}')" \
  *       -o demo breakpoint_hook_demo.c && ./demo
  */
+#include "tdb.h" /* first: it sets _GNU_SOURCE for the system headers */
 #include <stdio.h>
-#include "tdb.h"
 
 static int compute(int n) {
     int total = 0;

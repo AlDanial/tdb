@@ -5,9 +5,9 @@
 //
 //   g++ -g -O0 -I "$(tdb --info | awk -F': ' '/tdb.h dir/ {print $2}')" \
 //       -o demo breakpoint_hook_demo.cpp && ./demo
+#include "tdb.h"  // first: it sets _GNU_SOURCE for the system headers
 #include <iostream>
 #include <vector>
-#include "tdb.h"
 
 static int compute(int n) {
     int total = 0;

@@ -407,7 +407,9 @@ lldb-dap`) to a live native process and stops it. On Linux tdb reads
 `/proc/PID/exe` to identify the language (Go, OCaml, Rust, otherwise
 C/C++) and to load symbols; pass the executable path as well to use a
 different symbol file, and pass `--lang` off Linux. `--no-pause-on-attach`
-leaves the process running, for a program about to stop itself.
+leaves the process running, for a program about to stop itself. An
+interpreter process (python3, perl, ruby, bash) is attached as C/C++; for
+Python, Perl, and Ruby programs use `--remote-attach` instead.
 
 **Live breakpoint hook:** the C/C++ counterpart of Python's
 [`tdb.breakpoint()`](#live-breakpoint-hook). Include `tdb.h` (its directory
@@ -435,10 +437,12 @@ named by `$TDB`), waits for tdb's gdb or lldb to attach, and stops in the
 hook; tdb steps out so the stop lands on the line after the call, in your
 own frame. Later calls reuse the running tdb. Quitting tdb (`Ctrl+q`)
 detaches and the program runs on; the next call opens a fresh tdb. The
-call is a no-op when stdin and stdout are not a terminal, and it warns and
+call is a no-op when stdin or stdout is not a terminal, and it warns and
 continues when `tdb` cannot be found, exits before attaching, or cannot
 attach within 60 s (Yama `ptrace_scope` 2 or 3, or a container without
-`SYS_PTRACE`, blocks attaching). Build with `-g -O0` so locals stay
+`SYS_PTRACE`, blocks attaching). If a tdb whose attach failed is still
+running, later calls warn once and return rather than open another tdb
+over it. Build with `-g -O0` so locals stay
 inspectable; a stripped binary attaches but never stops, because the hook's
 stop symbol cannot be resolved. The header is C99 and C++ compatible and
 header-only. Linux only: the hook grants ptrace access to tdb's debugger
@@ -514,7 +518,7 @@ tdb = { git = "https://github.com/AlDanial/tdb" }   # or path = ".../rust/tdb"
 ```rust
 fn compute(n: u64) -> u64 {
     let total: u64 = (0..n).sum();
-    tdb::breakpoint(); // tdb opens here, paused on the next line
+    tdb::breakpoint(); // tdb opens here
     total
 }
 ```
@@ -526,13 +530,16 @@ cargo build && ./target/debug/prog    # dev profile; run it directly, not under 
 When the call is reached, the program starts `tdb --lang rust -a <its pid>
 --no-pause-on-attach` on its own terminal (the `tdb` on `PATH`, or the one
 named by `$TDB`), waits for tdb's gdb or lldb to attach, and stops in the
-hook; tdb steps out so the stop lands on the line after the call, in your
-own frame. Later calls reuse the running tdb. Quitting tdb (`Ctrl+q`)
+hook; tdb steps out so the stop lands in your own frame on, or just after,
+the call line, as the compiler's line table attributes the return address.
+Later calls reuse the running tdb. Quitting tdb (`Ctrl+q`)
 detaches and the program runs on; the next call opens a fresh tdb. The
-call is a no-op when stdin and stdout are not a terminal, and it warns and
+call is a no-op when stdin or stdout is not a terminal, and it warns and
 continues when `tdb` cannot be found, exits before attaching, or cannot
 attach within 60 s (Yama `ptrace_scope` 2 or 3, or a container without
-`SYS_PTRACE`, blocks attaching). Use the dev profile so locals stay
+`SYS_PTRACE`, blocks attaching). If a tdb whose attach failed is still
+running, later calls warn once and return rather than open another tdb
+over it. Use the dev profile so locals stay
 inspectable. Linux only: the hook grants ptrace access to tdb's debugger
 with `PR_SET_PTRACER`; elsewhere it warns once and returns. See
 `examples/Rust/breakpoint_hook_demo/`.
@@ -964,14 +971,14 @@ Without dune: copy `tdb.ml`, `tdb.mli`, `tdb_stubs.c`, and `tdb.h` from
 When the call is reached, the program starts `tdb --lang ocaml -a <its pid>
 --no-pause-on-attach` on its own terminal (the `tdb` on `PATH`, or the one
 named by `$TDB`), waits for tdb's lldb or gdb to attach, and stops in the
-hook. Unlike the other languages' hooks, tdb does not step out of it:
-both lldb and gdb map the hook's return address back to the
-`Tdb.breakpoint ()` call itself, so tdb opens paused at that line, in your
-own frame, rather than the line after. ocamlopt also emits no debug info
+hook, and tdb steps out of the hook's frames into your own. Unlike the
+other languages' hooks, the stop lands on the `Tdb.breakpoint ()` call
+line itself rather than the line after: both lldb and gdb map the hook's
+return address back to the call. ocamlopt also emits no debug info
 for locals, so the Variables view shows none for OCaml frames (globals
 and the stack are still available). Later calls reuse the running tdb.
 Quitting tdb (`Ctrl+q`) detaches and the program runs on; the next call
-opens a fresh tdb. The call is a no-op when stdin and stdout are not a
+opens a fresh tdb. The call is a no-op when stdin or stdout is not a
 terminal, and it warns and continues when `tdb` cannot be found, exits
 before attaching, or cannot attach within 60 s (Yama `ptrace_scope` 2 or
 3, or a container without `SYS_PTRACE`, blocks attaching). Keep debug
@@ -1045,7 +1052,7 @@ named by `$TDB`), waits for tdb's Delve to attach, and traps with
 line after the call, in your own frame. Later `tdb.Breakpoint()` calls
 reuse the running tdb. Quitting tdb (`Ctrl+q`) detaches and the program
 runs on; the next call opens a fresh tdb. The call is a no-op when stdin
-and stdout are not a terminal, and it warns and continues when `tdb`
+or stdout is not a terminal, and it warns and continues when `tdb`
 cannot be found or exits before attaching. Build with
 `-gcflags=all=-N -l` so locals stay inspectable. Linux only: the hook
 grants ptrace access to tdb's Delve with `PR_SET_PTRACER` (Yama
