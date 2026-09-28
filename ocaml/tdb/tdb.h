@@ -59,9 +59,14 @@
 extern "C" {
 #endif
 
+#if defined(__GNUC__) || defined(__clang__)
+/* Prototypes only for the weak, externally visible definitions; elsewhere
+ * the functions are static (one private copy per translation unit) and a
+ * non-static prototype would conflict with them. */
 void tdb_breakpoint(void);
 void tdb_breakpoint_lang(const char *lang);
 void tdb_breakpoint_stop(void);
+#endif
 
 /* The function tdb's hidden breakpoint lands in. Must stay a real,
  * externally visible, never-inlined symbol named tdb_breakpoint_stop. */
@@ -87,6 +92,7 @@ extern char **environ;
 
 static pid_t tdb__child = 0;         /* last tdb we spawned, 0 if none/reaped */
 static int tdb__tracer_allowed = 0;
+static int tdb__warned_stale = 0;    /* "previous tdb still running" said */
 
 static void tdb__warn(const char *msg) {
     fprintf(stderr, "tdb_breakpoint: %s; continuing without a debugger\n", msg);
@@ -167,10 +173,10 @@ static int tdb__spawn(const char *lang) {
     return 1;
 }
 
-/* 1 when a debugger is attached to this thread and stopping is safe. */
-static int tdb__ensure_debugger(const char *lang) {
+/* 1 when a debugger is attached to this thread and stopping is safe.
+ * Caller holds the hook lock (GNU path). */
+static int tdb__ensure_debugger_locked(const char *lang) {
     long waited = 0;
-    if (!isatty(STDIN_FILENO) || !isatty(STDOUT_FILENO)) return 0;
     if (!tdb__tracer_allowed) {
         /* Let a non-ancestor (tdb's gdb/lldb-dap) attach under Yama. */
         prctl(PR_SET_PTRACER, PR_SET_PTRACER_ANY, 0, 0, 0);
@@ -179,6 +185,17 @@ static int tdb__ensure_debugger(const char *lang) {
     if (tdb__tracer_pid() != 0) return 1;
     /* A tdb spawned earlier may still be leaving the terminal. */
     tdb__wait_child_exit(TDB_LINGER_TIMEOUT_MS);
+    if (!tdb__child_exited()) {
+        /* Still alive: most likely a tdb whose attach was refused. Do not
+         * stack a second TUI on the same terminal over it. */
+        if (!tdb__warned_stale) {
+            tdb__warn("previous tdb still running (attach may be blocked; "
+                      "see /proc/sys/kernel/yama/ptrace_scope); quit it with "
+                      "Ctrl+q before the next tdb_breakpoint()");
+            tdb__warned_stale = 1;
+        }
+        return 0;
+    }
     if (!tdb__spawn(lang)) return 0;
     while (tdb__tracer_pid() == 0) {
         if (tdb__child_exited()) {
@@ -194,6 +211,30 @@ static int tdb__ensure_debugger(const char *lang) {
         waited += TDB_POLL_MS;
     }
     return 1;
+}
+
+#if defined(__GNUC__) || defined(__clang__)
+/* Serializes tdb__ensure_debugger across threads so two threads reaching
+ * the hook before the debugger attaches spawn one tdb, not two: the second
+ * waits here, then finds the first one's tracer attached and stops too. A
+ * spin-sleep on an atomic flag keeps the header free of a pthread
+ * dependency. Without GCC/Clang builtins there is no lock. */
+static int tdb__lock = 0;
+#define TDB__LOCK() \
+    while (__atomic_exchange_n(&tdb__lock, 1, __ATOMIC_ACQUIRE)) tdb__sleep_ms(TDB_POLL_MS)
+#define TDB__UNLOCK() __atomic_store_n(&tdb__lock, 0, __ATOMIC_RELEASE)
+#else
+#define TDB__LOCK() ((void)0)
+#define TDB__UNLOCK() ((void)0)
+#endif
+
+static int tdb__ensure_debugger(const char *lang) {
+    int ok;
+    if (!isatty(STDIN_FILENO) || !isatty(STDOUT_FILENO)) return 0;
+    TDB__LOCK();
+    ok = tdb__ensure_debugger_locked(lang);
+    TDB__UNLOCK();
+    return ok;
 }
 
 TDB_HOOK_FN void tdb_breakpoint_lang(const char *lang) {

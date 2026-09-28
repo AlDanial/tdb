@@ -4,7 +4,7 @@
 //! ```no_run
 //! fn compute(n: u64) -> u64 {
 //!     let total: u64 = (0..n).sum();
-//!     tdb::breakpoint(); // tdb opens here, paused on the next line
+//!     tdb::breakpoint(); // tdb opens here
 //!     total
 //! }
 //! ```
@@ -13,9 +13,13 @@
 //! it starts `tdb --lang rust -a <pid> --no-pause-on-attach` on the
 //! program's terminal (the `tdb` on `PATH`, or the one named by `$TDB`),
 //! waits for tdb's gdb or lldb to attach, and stops in
-//! `tdb_breakpoint_stop`; tdb steps out to the line after the call. Later
-//! calls reuse the running tdb. Quitting tdb (Ctrl+q) detaches and the
-//! program runs on; the next call opens a fresh tdb.
+//! `tdb_breakpoint_stop`; tdb steps out to your code, stopping on, or
+//! just after, the call line, as the compiler's line table attributes the
+//! return address. Later calls reuse the running tdb. Quitting tdb
+//! (Ctrl+q) detaches and the program runs on; the next call opens a fresh
+//! tdb. If a tdb started earlier is still running without having attached
+//! (a refused attach), later calls warn once and return rather than start
+//! another tdb over it.
 //!
 //! `breakpoint` is a no-op when stdin or stdout is not a terminal, and it
 //! warns on stderr and continues when tdb cannot be found, exits before
@@ -34,11 +38,21 @@ pub extern "C" fn tdb_breakpoint_stop() {
     std::hint::black_box(());
 }
 
-/// Stop the program in tdb on the line following the call. See the crate
-/// documentation for what happens when no tdb is attached yet.
+/// Stop the program in tdb at the call site. See the crate documentation for
+/// what happens when no tdb is attached yet.
 #[inline(never)]
 pub fn breakpoint() {
-    if platform::ensure_debugger() {
+    if platform::ensure_debugger(platform::ATTACH_TIMEOUT, platform::LINGER_TIMEOUT) {
+        tdb_breakpoint_stop();
+    }
+}
+
+/// `breakpoint()` with explicit attach and linger timeouts, for tests.
+/// Not part of the supported API.
+#[doc(hidden)]
+#[inline(never)]
+pub fn breakpoint_with_timeouts(attach: std::time::Duration, linger: std::time::Duration) {
+    if platform::ensure_debugger(attach, linger) {
         tdb_breakpoint_stop();
     }
 }
@@ -56,8 +70,8 @@ mod platform {
     use std::sync::Mutex;
     use std::time::{Duration, Instant};
 
-    const ATTACH_TIMEOUT: Duration = Duration::from_secs(60);
-    const LINGER_TIMEOUT: Duration = Duration::from_secs(3);
+    pub(super) const ATTACH_TIMEOUT: Duration = Duration::from_secs(60);
+    pub(super) const LINGER_TIMEOUT: Duration = Duration::from_secs(3);
     const POLL: Duration = Duration::from_millis(50);
     const PR_SET_PTRACER: c_int = 0x5961_6d61; // "Yama"
     const PR_SET_PTRACER_ANY: c_ulong = c_ulong::MAX;
@@ -72,9 +86,13 @@ mod platform {
     struct State {
         child: Option<Child>,
         tracer_allowed: bool,
+        warned_stale: bool,
     }
 
-    static STATE: Mutex<State> = Mutex::new(State { child: None, tracer_allowed: false });
+    // Held for the whole of ensure_debugger, so threads reaching the hook
+    // together start one tdb; later ones then see its tracer attached.
+    static STATE: Mutex<State> =
+        Mutex::new(State { child: None, tracer_allowed: false, warned_stale: false });
 
     /// Pid of the tracer attached to this thread (gdb/lldb attach thread by
     /// thread), 0 if none.
@@ -133,7 +151,7 @@ mod platform {
         }
     }
 
-    pub(super) fn ensure_debugger() -> bool {
+    pub(super) fn ensure_debugger(attach_timeout: Duration, linger_timeout: Duration) -> bool {
         if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
             return false;
         }
@@ -149,11 +167,25 @@ mod platform {
         if tracer_pid() != 0 {
             return true;
         }
-        wait_child_exit(&mut state, LINGER_TIMEOUT);
+        // A tdb spawned earlier may still be leaving the terminal.
+        wait_child_exit(&mut state, linger_timeout);
+        if !child_exited(&mut state) {
+            // Still alive: most likely a tdb whose attach was refused. Do
+            // not stack a second TUI on the same terminal over it.
+            if !state.warned_stale {
+                warn(
+                    "previous tdb still running (attach may be blocked; see \
+                     /proc/sys/kernel/yama/ptrace_scope); quit it with Ctrl+q \
+                     before the next tdb::breakpoint()",
+                );
+                state.warned_stale = true;
+            }
+            return false;
+        }
         if !spawn(&mut state) {
             return false;
         }
-        let deadline = Instant::now() + ATTACH_TIMEOUT;
+        let deadline = Instant::now() + attach_timeout;
         while tracer_pid() == 0 {
             if child_exited(&mut state) {
                 warn("tdb exited before attaching");
@@ -173,10 +205,14 @@ mod platform {
 mod platform {
     use super::warn;
     use std::sync::atomic::{AtomicBool, Ordering};
+    use std::time::Duration;
+
+    pub(super) const ATTACH_TIMEOUT: Duration = Duration::from_secs(60);
+    pub(super) const LINGER_TIMEOUT: Duration = Duration::from_secs(3);
 
     static WARNED: AtomicBool = AtomicBool::new(false);
 
-    pub(super) fn ensure_debugger() -> bool {
+    pub(super) fn ensure_debugger(_attach: Duration, _linger: Duration) -> bool {
         if !WARNED.swap(true, Ordering::Relaxed) {
             warn("live attach is supported on Linux only");
         }

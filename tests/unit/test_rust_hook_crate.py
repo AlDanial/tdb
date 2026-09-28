@@ -137,3 +137,52 @@ def test_rust_hook_warns_when_tdb_missing(tmp_path):
         os.close(master)
     assert proc.returncode == 0
     assert "tdb::breakpoint" in err and "cannot" in err
+
+
+CALL_TWICE = """\
+use std::time::Duration;
+fn main() {
+    let (attach, linger) = (Duration::from_millis(300), Duration::from_millis(100));
+    tdb::breakpoint_with_timeouts(attach, linger);
+    tdb::breakpoint_with_timeouts(attach, linger);
+}
+"""
+
+
+def test_rust_hook_does_not_stack_tdb_over_a_stale_one(tmp_path):
+    """The first tdb never attaches and stays alive (a refused attach): the
+    second call must not start another tdb over it; it warns once and
+    returns."""
+    import signal
+
+    log = tmp_path / "fake_tdb.log"
+    fake = tmp_path / "fake_tdb"
+    fake.write_text(f'#!/bin/sh\necho "$$ $*" >> "{log}"\nexec sleep 600\n')
+    fake.chmod(0o755)
+    exe = build_with_crate(tmp_path, CALL_TWICE)
+    master, slave = pty.openpty()
+    proc = subprocess.Popen(
+        [exe],
+        stdin=slave,
+        stdout=slave,
+        stderr=subprocess.PIPE,
+        env={**os.environ, "TDB": str(fake)},
+    )
+    os.close(slave)
+    try:
+        proc.wait(timeout=20)
+        err = _stderr_text(proc)
+    finally:
+        os.close(master)
+        if proc.poll() is None:
+            proc.kill()
+        spawns = log.read_text().splitlines() if log.exists() else []
+        for line in spawns:
+            try:
+                os.kill(int(line.split()[0]), signal.SIGKILL)
+            except (ProcessLookupError, ValueError):
+                pass
+    assert proc.returncode == 0
+    assert len(spawns) == 1, spawns
+    assert err.count("did not attach") == 1
+    assert err.count("previous tdb still running") == 1
