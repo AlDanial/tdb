@@ -7,7 +7,13 @@
 
 #include "tdb.h"
 
-__attribute__((noinline)) value tdb_ocaml_breakpoint(value unit)
+#if defined(__GNUC__) || defined(__clang__)
+#define TDB_STUB_NOINLINE __attribute__((noinline))
+#else
+#define TDB_STUB_NOINLINE
+#endif
+
+TDB_STUB_NOINLINE value tdb_ocaml_breakpoint(value unit)
 {
     (void)unit;
     /* Waiting for tdb to attach can take a while; do not hold the

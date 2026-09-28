@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import importlib.resources
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -68,6 +69,12 @@ def test_library_builds_with_plain_ocamlopt_and_is_noop_without_tty(tmp_path):
         ["nm", str(exe)], capture_output=True, text=True, check=True
     ).stdout
     assert "tdb_breakpoint_stop" in nm and "tdb_ocaml_breakpoint" in nm
+    # The OCaml frame must survive under its tdb-recognized name
+    # (camlTdb.breakpoint_* on OCaml 5, camlTdb__breakpoint_* on OCaml 4);
+    # tdb's step-out predicate matches those prefixes. A future dune change
+    # re-enabling wrapping, or an inlining change, must not silently drop
+    # this frame.
+    assert re.search(r"camlTdb(\.|__)breakpoint_\d+", nm), nm
 
 
 def _stderr_text(proc: subprocess.Popen) -> str:
