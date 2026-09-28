@@ -29,6 +29,8 @@ class _StubDAPClient:
         self.resumed = 0
         self._stop_after_attach = stop_after_attach
         self._verified = verified
+        self.controller: DebugController | None = None
+        self.suppress_at_resume: list[bool] = []
 
     def on_event(self, name, fn):
         self.events[name] = fn
@@ -50,6 +52,8 @@ class _StubDAPClient:
     async def continue_nowait(self, thread_id):
         self.calls.append("continue")
         self.resumed += 1
+        if self.controller is not None:
+            self.suppress_at_resume.append(self.controller._suppress_next_stop)
         return None
 
     async def threads(self):
@@ -61,6 +65,7 @@ def _make_controller(pause: bool, client: _StubDAPClient) -> DebugController:
         ServerEventHandler(), profile=build_cpp_profile(attach_pid=4242)
     )
     ctrl.client = client  # type: ignore[assignment]
+    client.controller = ctrl
     ctrl._setup_event_handlers()
     ctrl._is_remote_attach = True
     ctrl._pre_arm_pause = pause
@@ -125,6 +130,8 @@ async def test_pid_attach_without_pause_resumes_and_hides_the_attach_stop():
         handler.last_stop_reason is None
     )  # suppressed: the program is about to stop itself
     assert ctrl._suppress_next_stop is False  # reset for the hook's real stop
+    # Cleared before the resume, so a hook stop racing the resume is shown.
+    assert client.suppress_at_resume == [False]
 
 
 async def test_hook_function_breakpoint_unverified_is_not_an_error():
@@ -150,6 +157,21 @@ async def test_pid_attach_stop_wait_times_out_without_hanging(monkeypatch):
     await asyncio.wait_for(ctrl.do_configure(), timeout=2)
     assert ctrl.state.phase == SessionPhase.RUNNING
     assert client.resumed == 0
+
+
+async def test_pid_attach_without_pause_timeout_clears_suppress_flag(monkeypatch):
+    """--no-pause-on-attach and the attach stop never arrives: nothing is
+    resumed, and the suppress flag must not linger to swallow the hook's
+    first real stop."""
+    import tdb.session.controller as controller_mod
+
+    monkeypatch.setattr(controller_mod, "ATTACH_STOP_TIMEOUT", 0.05)
+    client = _StubDAPClient(stop_after_attach=False)
+    ctrl = _make_controller(pause=False, client=client)
+    await asyncio.wait_for(ctrl.do_configure(), timeout=2)
+    assert ctrl.state.phase == SessionPhase.RUNNING
+    assert client.resumed == 0
+    assert ctrl._suppress_next_stop is False
 
 
 async def test_remote_stub_attach_path_unchanged():

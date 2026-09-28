@@ -23,6 +23,12 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
+# Consecutive step-outs of breakpoint-hook frames allowed in one stop
+# episode. A native hook sits a few frames deep (tdb_breakpoint_stop,
+# tdb_breakpoint_lang, tdb_breakpoint / tdb::breakpoint / OCaml wrappers);
+# a predicate that keeps matching must not step out forever.
+MAX_HOOK_STEP_OUTS = 8
+
 
 class DapEventCoordinator:
     """Owns every `on_dap_*` body plus the helpers they call.
@@ -40,6 +46,9 @@ class DapEventCoordinator:
 
     def __init__(self, app: TdbApp) -> None:
         self.app = app
+        # Hook-frame step-outs since the last normally rendered stop. Not
+        # reset on `continued`: each step-out itself produces one.
+        self._hook_step_outs = 0
 
     # --- initialized / configure ---------------------------------------
 
@@ -68,10 +77,18 @@ class DapEventCoordinator:
             # handler ran — the controller is now the single state authority.
             await ctrl.fetch_stop_info()
             if self._stopped_inside_breakpoint_hook():
-                # tdb.breakpoint() pauses inside breakpoint_hook.breakpoint;
-                # step out so the user lands in their own caller frame.
-                await ctrl.step_out()
-                return
+                if self._hook_step_outs < MAX_HOOK_STEP_OUTS:
+                    # tdb.breakpoint() pauses inside breakpoint_hook.breakpoint;
+                    # step out so the user lands in their own caller frame.
+                    self._hook_step_outs += 1
+                    await ctrl.step_out()
+                    return
+                log.warning(
+                    "still inside a breakpoint-hook frame after %d step-outs; "
+                    "showing the stop where it is",
+                    self._hook_step_outs,
+                )
+            self._hook_step_outs = 0
             # Statement-granularity step: if the cursor is still inside the
             # multi-line statement that began this step, fire another DAP
             # step and skip the UI refresh — a follow-up `stopped` event
@@ -162,6 +179,7 @@ class DapEventCoordinator:
 
     async def on_terminated(self) -> None:
         log.info("on_dap_terminated called")
+        self._hook_step_outs = 0
         try:
             # state.is_terminated and state.is_running are set by
             # controller._on_terminated (single state authority). This

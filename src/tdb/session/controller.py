@@ -552,6 +552,11 @@ class DebugController:
         # means "join a running program" like every other adapter. A pid
         # attach stop is the user's to keep (attach_stop_is_pausable) unless
         # --no-pause-on-attach said the program stops itself.
+        if pid_attach_resumes:
+            # The attach stop (if any) has been consumed by now; clear the
+            # flag BEFORE resuming so the hook's own stop, which can land
+            # while the resume is in flight, reaches the UI.
+            self._suppress_next_stop = False
         if (
             self._is_remote_attach
             and (quirks.resume_after_remote_attach or pid_attach_resumes)
@@ -565,9 +570,6 @@ class DebugController:
             self.state.clear_frame_data()
             self._stopped_event.clear()
             await self._resume_client(self.client)
-        self._suppress_next_stop = (
-            False if pid_attach_resumes else self._suppress_next_stop
-        )
 
         # Don't clobber STOPPED: in remote-attach (tdb.breakpoint()) the
         # debuggee may already be paused at the hook by the time configuration
