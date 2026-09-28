@@ -57,8 +57,9 @@ built with `textual`, `prompt-toolkit`, `urwid`, `curses`, `rich`, and so on
 - comes with a post-mortem exception hook that can be installed in Python programs
 to have `tdb` pop open automatically at the first uncaught exception, and a live
 breakpoint hook (`tdb.breakpoint()` in Python, `Devel::TdbRemote::breakpoint()`
-in Perl, `Tdb.breakpoint` in Ruby, `tdb.Breakpoint()` in Go) that opens `tdb`
-paused at a line of your choosing
+in Perl, `Tdb.breakpoint` in Ruby, `tdb.Breakpoint()` in Go, `tdb_breakpoint()`
+in C/C++, `tdb::breakpoint()` in Rust, `Tdb.breakpoint ()` in OCaml) that opens
+`tdb` paused at a line of your choosing
 
 - can be entirely keyboard-driven
 making it suitable for operation in non-graphical environments (mouse support is
@@ -401,6 +402,49 @@ See [Go](#go) below for launch details.
   requires `--adapter lldb-dap`; GDB's DAP mode has no terminal integration
   and `tdb` refuses `--terminal` with the default `gdb` adapter.
 
+**Attach to a running process:** `tdb -a PID` attaches gdb (or `--adapter
+lldb-dap`) to a live native process and stops it. On Linux tdb reads
+`/proc/PID/exe` to identify the language (Go, OCaml, Rust, otherwise
+C/C++) and to load symbols; pass the executable path as well to use a
+different symbol file, and pass `--lang` off Linux. `--no-pause-on-attach`
+leaves the process running, for a program about to stop itself.
+
+**Live breakpoint hook:** the C/C++ counterpart of Python's
+[`tdb.breakpoint()`](#live-breakpoint-hook). Include `tdb.h` (its directory
+is the `tdb.h dir` row of `tdb --info`) and call `tdb_breakpoint()`:
+
+```c
+#include "tdb.h"
+
+int compute(int n) {
+    int total = 0;
+    for (int i = 0; i < n; i++) total += i;
+    tdb_breakpoint();   /* tdb opens here, paused on the next line */
+    return total;
+}
+```
+
+```bash
+gcc -g -O0 -I "$(tdb --info | awk -F': ' '/tdb.h dir/ {print $2}')" -o prog prog.c
+./prog    # run it directly, not under tdb
+```
+
+When the call is reached, the program starts `tdb --lang cpp -a <its pid>
+--no-pause-on-attach` on its own terminal (the `tdb` on `PATH`, or the one
+named by `$TDB`), waits for tdb's gdb or lldb to attach, and stops in the
+hook; tdb steps out so the stop lands on the line after the call, in your
+own frame. Later calls reuse the running tdb. Quitting tdb (`Ctrl+q`)
+detaches and the program runs on; the next call opens a fresh tdb. The
+call is a no-op when stdin and stdout are not a terminal, and it warns and
+continues when `tdb` cannot be found, exits before attaching, or cannot
+attach within 60 s (Yama `ptrace_scope` 2 or 3, or a container without
+`SYS_PTRACE`, blocks attaching). Build with `-g -O0` so locals stay
+inspectable; a stripped binary attaches but never stops, because the hook's
+stop symbol cannot be resolved. The header is C99 and C++ compatible and
+header-only. Linux only: the hook grants ptrace access to tdb's debugger
+with `PR_SET_PTRACER`; elsewhere it warns once and returns. See
+`examples/C/breakpoint_hook_demo.c` and `examples/C++/breakpoint_hook_demo.cpp`.
+
 ### Rust
 
 Rust debugging is intentionally explicit: build a normal debug executable,
@@ -451,6 +495,47 @@ program argument; `tdb` requires it for symbols and Rust concurrency evidence.
 When source paths differ, pair `--local-root` with `--remote-root`. Do not
 expose the remote debug port to an untrusted network: prefer an SSH tunnel,
 for example `ssh -L 2345:127.0.0.1:2345 host`, then attach to `127.0.0.1:2345`.
+
+**Attach to a running process:** `tdb --lang rust -a PID` attaches gdb (or
+`--adapter lldb-dap`) to a live Rust process and stops it; tdb loads
+symbols from `/proc/PID/exe`, or from an executable path you pass as well.
+Without `--lang`, tdb recognizes a non-stripped Rust binary by its runtime
+symbols; a stripped one is debugged as C/C++.
+
+**Live breakpoint hook:** the Rust counterpart of Python's
+[`tdb.breakpoint()`](#live-breakpoint-hook). Depend on the `tdb` crate from
+this repository (it has no dependencies) and call `tdb::breakpoint()`:
+
+```toml
+[dependencies]
+tdb = { git = "https://github.com/AlDanial/tdb" }   # or path = ".../rust/tdb"
+```
+
+```rust
+fn compute(n: u64) -> u64 {
+    let total: u64 = (0..n).sum();
+    tdb::breakpoint(); // tdb opens here, paused on the next line
+    total
+}
+```
+
+```bash
+cargo build && ./target/debug/prog    # dev profile; run it directly, not under tdb
+```
+
+When the call is reached, the program starts `tdb --lang rust -a <its pid>
+--no-pause-on-attach` on its own terminal (the `tdb` on `PATH`, or the one
+named by `$TDB`), waits for tdb's gdb or lldb to attach, and stops in the
+hook; tdb steps out so the stop lands on the line after the call, in your
+own frame. Later calls reuse the running tdb. Quitting tdb (`Ctrl+q`)
+detaches and the program runs on; the next call opens a fresh tdb. The
+call is a no-op when stdin and stdout are not a terminal, and it warns and
+continues when `tdb` cannot be found, exits before attaching, or cannot
+attach within 60 s (Yama `ptrace_scope` 2 or 3, or a container without
+`SYS_PTRACE`, blocks attaching). Use the dev profile so locals stay
+inspectable. Linux only: the hook grants ptrace access to tdb's debugger
+with `PR_SET_PTRACER`; elsewhere it warns once and returns. See
+`examples/Rust/breakpoint_hook_demo/`.
 
 In a Rust session the Threads action (`Alt+T`, or the Threads menu entry)
 opens the Rust Concurrency workspace while the debuggee is stopped — a
@@ -848,6 +933,52 @@ sessions can't `pause` a running program (so `--run` is unavailable for
 bytecode. Native sessions support `--run` normally); `Unix.fork` and Eio
 fibers are out of scope (only OCaml 5 domains are presented as threads).
 
+**Attach to a running process:** `tdb -a PID` attaches lldb-dap (or
+`--adapter gdb`) to a live native OCaml process and stops it; tdb
+recognizes the OCaml runtime in `/proc/PID/exe` and always picks a native
+adapter (bytecode programs cannot be attached to). `--no-pause-on-attach`
+leaves the process running, for a program about to stop itself.
+
+**Live breakpoint hook:** the OCaml counterpart of Python's
+[`tdb.breakpoint()`](#live-breakpoint-hook), for native code. Vendor the
+`ocaml/tdb` directory from this repository (or `opam pin` it), add
+`(libraries tdb)` to your executable's dune stanza, and call
+`Tdb.breakpoint ()`:
+
+```ocaml
+let compute n =
+  let total = ref 0 in
+  for i = 0 to n - 1 do total := !total + i done;
+  Tdb.breakpoint ();   (* tdb opens paused on this line *)
+  !total
+```
+
+```bash
+dune build && ./_build/default/prog.exe   # dev profile; run it directly, not under tdb
+```
+
+Without dune: copy `tdb.ml`, `tdb.mli`, `tdb_stubs.c`, and `tdb.h` from
+`ocaml/tdb` next to your source and build with
+`ocamlopt -g -o prog tdb_stubs.c tdb.mli tdb.ml prog.ml`.
+
+When the call is reached, the program starts `tdb --lang ocaml -a <its pid>
+--no-pause-on-attach` on its own terminal (the `tdb` on `PATH`, or the one
+named by `$TDB`), waits for tdb's lldb or gdb to attach, and stops in the
+hook. Unlike the other languages' hooks, tdb does not step out of it:
+both lldb and gdb map the hook's return address back to the
+`Tdb.breakpoint ()` call itself, so tdb opens paused at that line, in your
+own frame, rather than the line after. ocamlopt also emits no debug info
+for locals, so the Variables view shows none for OCaml frames (globals
+and the stack are still available). Later calls reuse the running tdb.
+Quitting tdb (`Ctrl+q`) detaches and the program runs on; the next call
+opens a fresh tdb. The call is a no-op when stdin and stdout are not a
+terminal, and it warns and continues when `tdb` cannot be found, exits
+before attaching, or cannot attach within 60 s (Yama `ptrace_scope` 2 or
+3, or a container without `SYS_PTRACE`, blocks attaching). Keep debug
+info (`-g`, dune's dev profile). Linux only: the hook grants ptrace
+access to tdb's debugger with `PR_SET_PTRACER`; elsewhere it warns once
+and returns. See `examples/OCaml/breakpoint_hook_demo.ml`.
+
 ### Go
 
 `tdb` debugs Go through [Delve](https://github.com/go-delve/delve)'s own
@@ -873,8 +1004,8 @@ tdb -r host:port --lang go # attach to a `dlv dap --listen` already running remo
 
 `tdb --test ./pkg` debugs the package's tests under Delve's `test` mode;
 pass test-binary flags after `--`, e.g. `tdb --test ./pkg -- -run TestFoo`.
-`-a`/`--attach` currently supports Go only; on Linux, and only on Linux,
-`tdb` can identify the target as Go from `/proc/PID/exe`'s buildinfo
+`-a`/`--attach` works for Go and, through gdb/lldb-dap, for C/C++, Rust,
+and OCaml; on Linux `tdb` identifies the language from `/proc/PID/exe`
 without `--lang` (elsewhere pass `--lang go` alongside `-a`). Attaching
 stops the process immediately so you get control right away;
 `--no-pause-on-attach` leaves it running instead, for a program that is
@@ -1457,9 +1588,11 @@ This behavior matches hitting `c` while in a conventional (that is, the Python
 standard library's) `breakpoint()` session.
 If you want to kill the program instead, use `Ctrl+c` in the terminal running the debuggee.
 
-Perl, Ruby, and Go programs get the same hook as `Devel::TdbRemote::breakpoint()`,
-`Tdb.breakpoint`, and `tdb.Breakpoint()`; see [Perl](#perl), [Ruby](#ruby),
-and [Go](#go).
+Perl, Ruby, Go, C/C++, Rust, and OCaml programs get the same hook as
+`Devel::TdbRemote::breakpoint()`, `Tdb.breakpoint`, `tdb.Breakpoint()`,
+`tdb_breakpoint()`, `tdb::breakpoint()`, and `Tdb.breakpoint ()`; see
+[Perl](#perl), [Ruby](#ruby), [Go](#go), [C/C++ tips](#cc-tips),
+[Rust](#rust), and [OCaml](#ocaml).
 
 ### Async Task Inspector
 
@@ -2067,6 +2200,7 @@ usage: tdb [-h] [-v] [-r [HOST:]PORT] [--cwd CWD] [--no-stop-on-entry]
 | Flag | Description |
 |------|-------------|
 | `-r HOST:PORT` | Attach to a remote debugpy server |
+| `-a`, `--attach PID` | Attach to a running local process by pid: Go (Delve) or a native C/C++, Rust, or OCaml program (gdb or lldb-dap). Linux identifies the language from `/proc/PID/exe`; elsewhere pass `--lang` and, for native programs, the executable path. |
 | `--local-root PATH` | Local directory containing a copy of remote code (repeat to mirror multiple trees). Pair with `--remote-root`; counts must match. Required when `-k` sets a breakpoint against a remote debuggee whose code lives at a different path. |
 | `--remote-root PATH` | Remote directory matched to `--local-root` (same CLI position via `zip()`). |
 | `-k`, `--breakpoint FILE:LINE|LINE` | Set a breakpoint (may be repeated). Passing `-k` implies `--no-stop-on-entry` so the program runs straight to the first breakpoint. |

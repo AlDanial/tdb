@@ -28,3 +28,42 @@ tunnel rather than exposing the debug-server port. The Rust Concurrency view
 is a best-effort stopped-state snapshot: confirmed evidence is directly
 observed, probable evidence is inferred, and unknown evidence is incomplete.
 Suspected cycles and whole-program stalls are leads to investigate, not proofs.
+
+## Live breakpoint hook demos (C, C++, Rust, OCaml)
+
+Each demo sums `0..9` into a local `total` alongside a five-element
+`local_list`, then calls the language's live breakpoint hook. Run each
+directly, not under `tdb`. C, C++, and Rust stop in `tdb` on the line
+after the hook call, with `total` and `local_list` visible in the
+Variables view. OCaml stops in `tdb` on the `Tdb.breakpoint ()` line
+itself, and ocamlopt's native code emits no debug info for locals, so
+`total` and `local_list` don't appear there (globals and the stack still
+do).
+
+**C:**
+
+```bash
+gcc -g -O0 -I "$(tdb --info | awk -F': ' '/tdb.h dir/ {print $2}')" \
+    -o demo breakpoint_hook_demo.c && ./demo
+```
+
+**C++:**
+
+```bash
+g++ -g -O0 -I "$(tdb --info | awk -F': ' '/tdb.h dir/ {print $2}')" \
+    -o demo breakpoint_hook_demo.cpp && ./demo
+```
+
+**Rust:**
+
+```bash
+cd examples/Rust/breakpoint_hook_demo
+cargo run
+```
+
+**OCaml:**
+
+```bash
+cp ../../ocaml/tdb/{tdb.ml,tdb.mli,tdb_stubs.c,tdb.h} .
+ocamlopt -g -o demo tdb_stubs.c tdb.mli tdb.ml breakpoint_hook_demo.ml && ./demo
+```

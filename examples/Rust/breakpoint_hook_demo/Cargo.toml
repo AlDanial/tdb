@@ -1,0 +1,9 @@
+[package]
+name = "breakpoint_hook_demo"
+version = "0.1.0"
+edition = "2021"
+
+# Your own program would use a git dependency:
+#   tdb = { git = "https://github.com/AlDanial/tdb" }
+[dependencies]
+tdb = { path = "../../../rust/tdb" }
