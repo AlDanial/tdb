@@ -659,3 +659,70 @@ async def test_launch_normalizes_missing_args_and_cwd(dap):
     assert spec.launch_calls[-1]["args"] == []
     assert spec.launch_calls[-1]["cwd"] == "."
     fut.cancel()
+
+
+# --- Source-lookup priming before stackTrace ---------------------------
+#
+# Some gdb builds (RHEL 8) report no source location for a frame until a
+# `list` has selected the default source symtab. The adapter spec opts in
+# via `pre_stack_trace_commands()`; the client runs those commands once,
+# ahead of its first stackTrace, and never lets their failure surface.
+
+
+class _PrimingAdapterSpec:
+    id = "primed"
+    quirks = AdapterQuirks()
+    connect_mode = "stdio"
+
+    def pre_stack_trace_commands(self) -> tuple[str, ...]:
+        return ("list",)
+
+
+@pytest.fixture
+async def primed_dap():
+    adapter = FakeAdapter()
+    port = await adapter.start()
+    client = DAPClient(_PrimingAdapterSpec())
+    await client.connect("127.0.0.1", port)
+    yield client, adapter
+    await client.stop()
+    await adapter.close()
+
+
+async def test_pre_stack_trace_commands_run_once_before_first_stack_trace(primed_dap):
+    client, adapter = primed_dap
+    adapter.responders["stackTrace"] = lambda req: {
+        "stackFrames": [{"id": 11, "name": "main", "line": 4}]
+    }
+    frames = await client.stack_trace(thread_id=1)
+    assert frames[0].id == 11
+    await client.stack_trace(thread_id=1)
+
+    commands = [r.command for r in adapter.requests]
+    assert commands == ["evaluate", "stackTrace", "stackTrace"]
+    (evaluate,) = adapter.requests_for("evaluate")
+    assert evaluate.arguments == {"expression": "list", "context": "repl"}
+
+
+async def test_pre_stack_trace_command_failure_is_ignored_and_not_retried(primed_dap):
+    client, adapter = primed_dap
+    adapter.errors["evaluate"] = "No symbol table is loaded."
+    adapter.responders["stackTrace"] = lambda req: {
+        "stackFrames": [{"id": 11, "name": "main", "line": 4}]
+    }
+    frames = await client.stack_trace(thread_id=1)
+    assert frames[0].id == 11
+    await client.stack_trace(thread_id=1)
+
+    assert [r.command for r in adapter.requests] == [
+        "evaluate",
+        "stackTrace",
+        "stackTrace",
+    ]
+
+
+async def test_default_adapter_sends_no_priming_before_stack_trace(dap):
+    client, adapter = dap
+    adapter.responders["stackTrace"] = lambda req: {"stackFrames": []}
+    await client.stack_trace(thread_id=1)
+    assert [r.command for r in adapter.requests] == ["stackTrace"]

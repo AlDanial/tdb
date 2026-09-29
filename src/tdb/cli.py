@@ -406,7 +406,9 @@ def _parse_attach_spec(
     """
     args.attach_host = None
     args.attach_port = None
-    if args.no_pause_on_attach and not (args.remote_attach or args.attach_pid is not None):
+    if args.no_pause_on_attach and not (
+        args.remote_attach or args.attach_pid is not None
+    ):
         parser.error("--no-pause-on-attach requires --remote-attach or --attach")
     if args.attach_pid is not None:
         args.attach_host, args.attach_port = "127.0.0.1", 0

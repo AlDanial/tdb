@@ -333,3 +333,13 @@ def test_cpp_profile_declares_hook_predicate():
         build_cpp_profile().capabilities.breakpoint_hook_frame
         is is_breakpoint_hook_frame
     )
+
+
+def test_gdb_primes_source_lookup_with_list_before_stack_trace():
+    # RHEL 8 gdb: `info source` (and frame source locations) stay empty
+    # until a `list` selects the default source symtab.
+    assert GdbDapAdapter().pre_stack_trace_commands() == ("list",)
+
+
+def test_lldb_needs_no_pre_stack_trace_commands():
+    assert LldbDapAdapter().pre_stack_trace_commands() == ()

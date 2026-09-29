@@ -238,7 +238,9 @@ def test_first_save_keeps_explicit_adapter_entries(isolated_persist, monkeypatch
     import shutil
 
     monkeypatch.setattr(
-        shutil, "which", _fake_which({"gdb": "/usr/bin/gdb", "lldb-dap": "/usr/bin/lldb-dap"})
+        shutil,
+        "which",
+        _fake_which({"gdb": "/usr/bin/gdb", "lldb-dap": "/usr/bin/lldb-dap"}),
     )
     cfg = isolated_persist.TdbConfig(adapters={"gdb": "/opt/gdb", "perl": "/opt/perl"})
     isolated_persist.save_config(cfg)
