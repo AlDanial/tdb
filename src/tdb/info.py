@@ -64,7 +64,9 @@ def version_row(name: str, version: str | None) -> str:
     found = version_tuple(version)
     if minimum and found and found < minimum:
         floor = ".".join(str(n) for n in minimum)
-        return row("version", f"{version} DOES NOT MEET MINIMUM REQUIRED VERSION OF {floor}")
+        return row(
+            "version", f"{version} DOES NOT MEET MINIMUM REQUIRED VERSION OF {floor}"
+        )
     return row("version", version)
 
 
@@ -94,7 +96,10 @@ def tool_rows(
     exe = nt.find_native_debugger(name, adapter_paths)
     if exe is None:
         return [row(label, NOT_FOUND)]
-    return [row(label, exe), version_row(name, nt.tool_version_number(exe, version_args))]
+    return [
+        row(label, exe),
+        version_row(name, nt.tool_version_number(exe, version_args)),
+    ]
 
 
 def info_text() -> str:

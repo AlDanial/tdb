@@ -154,6 +154,19 @@ class AdapterSpec:
         """
         return ()
 
+    def pre_stack_trace_commands(self) -> tuple[str, ...]:
+        """Debugger commands the DAP client runs once, before its first
+        stackTrace request on a connection.
+
+        Some gdb builds (RHEL 8) report no source location for a frame
+        -- `info source` says "No current source file" and stackTrace
+        frames carry no `source` -- until a `list` has selected the
+        default source symtab. Without it tdb never learns where the
+        debuggee stopped and the Code View waits forever. Best-effort:
+        the client logs a failure and moves on, and never retries.
+        """
+        return ()
+
     def breakpoint_query_command(self) -> str | None:
         """REPL command that prints the debugger's own breakpoint list in
         tdb's JSON listing format (see tdb.session.breakpoint_sync).

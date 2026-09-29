@@ -26,7 +26,15 @@ _MAX_EVIDENCE_PER_PRIMITIVE = 256
 
 
 def _rust_version() -> str | None:
-    """Read DW_AT_producer text exposed by GDB's read-only ``info source``."""
+    """Read DW_AT_producer text exposed by GDB's read-only ``info source``.
+
+    RHEL 8 gdb answers ``info source`` with "No current source file" until
+    a ``list`` has selected the default source symtab, so issue one first.
+    """
+    try:
+        gdb.execute("list", to_string=True)
+    except gdb.error:
+        pass
     try:
         source_info = gdb.execute("info source", to_string=True)
     except gdb.error:

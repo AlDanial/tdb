@@ -58,6 +58,9 @@ class DAPClient:
         # leaving a silent hang on premature adapter exit.
         self._watch_task: asyncio.Task[None] | None = None
         self._stdout_drain_task: asyncio.Task[None] | None = None
+        # True once the adapter's pre_stack_trace_commands() have been
+        # attempted on this connection (see _prime_stack_trace).
+        self._stack_trace_primed = False
         self.capabilities = Capabilities()
 
     def _next_seq(self) -> int:
@@ -81,6 +84,7 @@ class DAPClient:
         without debugpy would make this subprocess die immediately with
         ``ModuleNotFoundError`` and tdb would hang waiting on stdout.
         """
+        self._stack_trace_primed = False
         argv = self._adapter.command()
         spawn_kwargs: dict = {}
         if os.name == "nt":
@@ -145,6 +149,7 @@ class DAPClient:
 
     async def connect(self, host: str, port: int) -> None:
         """Connect to an already-running debugpy adapter over TCP."""
+        self._stack_trace_primed = False
         self._reader, self._writer = await asyncio.open_connection(host, port)
         self._reader_task = asyncio.create_task(self._read_loop())
 
@@ -462,6 +467,7 @@ class DAPClient:
         start_frame: int = 0,
         levels: int = 20,
     ) -> list[StackFrame]:
+        await self._prime_stack_trace()
         resp = await self._send(
             "stackTrace",
             {
@@ -471,6 +477,34 @@ class DAPClient:
             },
         )
         return [StackFrame.from_dict(f) for f in resp.body.get("stackFrames", [])]
+
+    async def _prime_stack_trace(self) -> None:
+        """Run the adapter's pre_stack_trace_commands() once per connection.
+
+        Every tdb consumer of frame locations (TUI, run/eval modes,
+        examine, the concurrency collectors) goes through stack_trace(),
+        so this is the one place that reliably precedes the first source
+        lookup. gdb on RHEL 8 needs a `list` here before it will report
+        any frame's source file. Attempted once, whatever the outcome: a
+        failing command (no symbol table, adapter without a CLI) would
+        fail the same way every time.
+        """
+        if self._stack_trace_primed:
+            return
+        self._stack_trace_primed = True
+        commands = getattr(self._adapter, "pre_stack_trace_commands", None)
+        if commands is None:
+            return
+        for command in commands():
+            try:
+                await self._send("evaluate", {"expression": command, "context": "repl"})
+            except Exception as e:
+                log.debug(
+                    "%s adapter: pre-stackTrace command %r failed: %s",
+                    self._adapter.id,
+                    command,
+                    e,
+                )
 
     async def scopes(self, frame_id: int) -> list[Scope]:
         resp = await self._send("scopes", {"frameId": frame_id})

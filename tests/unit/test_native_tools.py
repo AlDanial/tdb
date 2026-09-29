@@ -130,7 +130,10 @@ def test_version_probe_never_hangs(monkeypatch):
             "5.40.1",
         ),
         ("ruby 3.3.8 (2025-04-09 revision b200bad6cd) [x86_64-linux-gnu]", "3.3.8"),
-        ("GNU bash, version 5.3.9(1)-release (x86_64-pc-linux-gnu)", "5.3.9(1)-release"),
+        (
+            "GNU bash, version 5.3.9(1)-release (x86_64-pc-linux-gnu)",
+            "5.3.9(1)-release",
+        ),
         ("tcsh 6.24.13 (Astron) 2024-06-12 (x86_64-unknown-linux) options", "6.24.13"),
         ("PowerShell 7.6.5", "7.6.5"),
         ("no digits here", None),
@@ -158,7 +161,10 @@ def test_tool_version_number_custom_args_scan_all_lines(monkeypatch):
     def fake_run(argv, **kw):
         assert argv == ["/home/me/go/bin/dlv", "version"]
         return subprocess.CompletedProcess(
-            argv, 0, stdout="Delve Debugger\nVersion: 1.27.1\nBuild: $Id: 38e5 $\n", stderr=""
+            argv,
+            0,
+            stdout="Delve Debugger\nVersion: 1.27.1\nBuild: $Id: 38e5 $\n",
+            stderr="",
         )
 
     monkeypatch.setattr(subprocess, "run", fake_run)

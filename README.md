@@ -414,6 +414,13 @@ See [Go](#go) below for launch details.
 - `--terminal` (see [External Terminal Support](#external-terminal-support))
   requires `--adapter lldb-dap`; GDB's DAP mode has no terminal integration
   and `tdb` refuses `--terminal` with the default `gdb` adapter.
+- **GDB source-location quirk:** some GDB builds (RHEL 8 among them)
+  report no source file for a stopped frame -- `info source` answers
+  "No current source file" -- until a `list` command has selected the
+  default source file. `tdb` therefore sends `list` once, before its
+  first stack query, so the Code View can find the source. This is why a
+  fresh gdb session shows `Current source file is …` in `info source`
+  from the evaluate console without you having typed `list`.
 
 **Attach to a running process:** `tdb -a PID` attaches gdb (or `--adapter
 lldb-dap`) to a live native process and stops it. On Linux tdb reads
