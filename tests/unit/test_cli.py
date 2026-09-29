@@ -904,11 +904,24 @@ def test_info_main_prints_sections_and_about(capsys, monkeypatch):
     assert f"    version                  : {__version__}" in out
     assert f"    PadWalker sources        : {pw.padwalker_dir()}" in out
     assert f"    PadWalker build cache    : {pw.cache_root()}" in out
-    for title in ("textual-debugger", "Python", "GDB", "lldb-dap", "Perl",
-                  "Ruby", "Go", "OCaml", "bash", "tcsh", "PowerShell"):
+    for title in (
+        "textual-debugger",
+        "Python",
+        "GDB",
+        "lldb-dap",
+        "Perl",
+        "Ruby",
+        "Go",
+        "OCaml",
+        "bash",
+        "tcsh",
+        "PowerShell",
+    ):
         assert f"\n{title}\n" in out, title
     # About text first, then the sections in order.
-    assert out.index(f"textual-debugger v{__version__}") < out.index("\ntextual-debugger\n")
+    assert out.index(f"textual-debugger v{__version__}") < out.index(
+        "\ntextual-debugger\n"
+    )
     assert out.index("\nGDB\n") < out.index("\nlldb-dap\n") < out.index("\nPerl\n")
 
 

@@ -24,7 +24,9 @@ from tdb.languages.go import is_breakpoint_hook_frame
 from tests.integration.hook_harness import HookDebuggee, TcpDapClient
 
 pytestmark = pytest.mark.skipif(
-    sys.platform != "linux" or shutil.which("go") is None or shutil.which("dlv") is None,
+    sys.platform != "linux"
+    or shutil.which("go") is None
+    or shutil.which("dlv") is None,
     reason="Go breakpoint hook needs Linux, the go toolchain and dlv",
 )
 
@@ -187,7 +189,11 @@ class Dlv:
 def _spawn_argv(debuggee: HookDebuggee, n: int) -> list[str]:
     argv = debuggee.wait_spawn(n)
     assert argv == [
-        "--lang", "go", "-a", str(debuggee.proc.pid), "--no-pause-on-attach"
+        "--lang",
+        "go",
+        "-a",
+        str(debuggee.proc.pid),
+        "--no-pause-on-attach",
     ], argv
     return argv
 
@@ -378,7 +384,9 @@ def test_continues_when_tdb_exits_before_attaching(tmp_path, hooked_binary):
 def test_go_module_vets_and_tests_clean():
     """The module's own checks: gofmt, go vet, and its unit tests (which
     run without a tty, so Breakpoint must be a no-op there)."""
-    fmt = subprocess.run(["gofmt", "-l", "."], cwd=GO_TDB_DIR, capture_output=True, text=True)
+    fmt = subprocess.run(
+        ["gofmt", "-l", "."], cwd=GO_TDB_DIR, capture_output=True, text=True
+    )
     assert fmt.stdout == "", f"gofmt would reformat: {fmt.stdout}"
     subprocess.run(["go", "vet", "./..."], cwd=GO_TDB_DIR, check=True)
     subprocess.run(["go", "test", "./..."], cwd=GO_TDB_DIR, check=True)

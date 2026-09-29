@@ -80,7 +80,9 @@ def find_native_debugger(
     return shutil.which(adapter_id)
 
 
-def version_output(executable: str, args: tuple[str, ...] = ("--version",)) -> str | None:
+def version_output(
+    executable: str, args: tuple[str, ...] = ("--version",)
+) -> str | None:
     """Combined stdout + stderr of ``<executable> *args``, or None if it
     can't be run. Bounded by a timeout so a wedged tool never stalls
     ``tdb --info``."""

@@ -311,3 +311,33 @@ def test_gdb_visible_mutex_guard_emits_confirmed_owner(monkeypatch):
     assert states[0]["primitive_id"] == "mutex:0x1234"
     assert states[0]["owner_os_thread_ids"] == ["101"]
     assert states[0]["evidence"][0]["confidence"] == "confirmed"
+
+
+def test_rust_version_probe_issues_list_before_info_source(monkeypatch):
+    executed: list[str] = []
+
+    def execute(command, to_string=False):
+        executed.append(command)
+        if command == "info source":
+            return "Producer is rustc version 1.98.0 (abc 2026-01-01).\n"
+        return ""
+
+    monkeypatch.setattr(
+        gdb_script, "gdb", SimpleNamespace(error=RuntimeError, execute=execute)
+    )
+
+    assert gdb_script._rust_version() == "1.98.0"
+    assert executed == ["list", "info source"]
+
+
+def test_rust_version_probe_tolerates_failing_list(monkeypatch):
+    def execute(command, to_string=False):
+        if command == "list":
+            raise RuntimeError("No symbol table is loaded.")
+        return "Producer is rustc version 1.98.0.\n"
+
+    monkeypatch.setattr(
+        gdb_script, "gdb", SimpleNamespace(error=RuntimeError, execute=execute)
+    )
+
+    assert gdb_script._rust_version() == "1.98.0"

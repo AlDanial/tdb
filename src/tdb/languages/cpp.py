@@ -286,6 +286,13 @@ class GdbDapAdapter(AdapterSpec):
             for local, remote in path_mappings
         )
 
+    def pre_stack_trace_commands(self) -> tuple[str, ...]:
+        # RHEL 8 gdb: frame source locations (`info source`, stackTrace
+        # `source`) stay empty until `list` selects the default source
+        # symtab. `list` with no argument picks the CU containing main
+        # and has no other effect on the session.
+        return ("list",)
+
 
 # gdb: `set $name = expr` creates a convenience variable; lldb: a `$name`
 # declared in an expression (`int $name = 42`, or the same after a

@@ -32,7 +32,9 @@ puts "counter=#{counter}"
 def _debuggee(tmp_path, **kw) -> HookDebuggee:
     prog = tmp_path / "hooked.rb"
     prog.write_text(PROG)
-    d = HookDebuggee(tmp_path, ["ruby", str(prog)], env={"RUBYLIB": str(RUBY_DIR)}, **kw)
+    d = HookDebuggee(
+        tmp_path, ["ruby", str(prog)], env={"RUBYLIB": str(RUBY_DIR)}, **kw
+    )
     d.prog = prog
     return d
 
@@ -68,11 +70,15 @@ async def _top_line(c: TcpDapClient, prog: Path) -> int:
 
 
 async def _eval(c: TcpDapClient, expr: str) -> str:
-    ev = await c.request("evaluate", {"expression": expr, "context": "repl", "frameId": 1})
+    ev = await c.request(
+        "evaluate", {"expression": expr, "context": "repl", "frameId": 1}
+    )
     if not ev["success"]:
         st = await c.request("stackTrace", {"threadId": 1})
         fid = st["body"]["stackFrames"][0]["id"]
-        ev = await c.request("evaluate", {"expression": expr, "context": "repl", "frameId": fid})
+        ev = await c.request(
+            "evaluate", {"expression": expr, "context": "repl", "frameId": fid}
+        )
     assert ev["success"] is True, ev
     return ev["body"]["result"]
 
