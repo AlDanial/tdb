@@ -387,6 +387,12 @@ class DAPClient:
         )
         return await self._send_raw("launch", arguments)
 
+    async def send_stdin(self, text: str | None = None, *, eof: bool = False) -> None:
+        """tdb-private `tdbStdin` request: forward Console-view input to
+        the debuggee's stdin pipe held by a tdb-owned adapter (perl, bash,
+        tcsh, ruby, powershell). `eof=True` closes that pipe."""
+        await self._send("tdbStdin", {"eof": True} if eof else {"text": text or ""})
+
     async def attach(
         self,
         host: str = "127.0.0.1",

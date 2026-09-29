@@ -675,6 +675,7 @@ class TdbApp(_AppMessageRoutes, App):
                     terminal=self._terminal,
                     sub_process=self._sub_process,
                 )
+            self._sync_stdin_input()
         except AdapterNotFoundError as exc:
             # The adapter couldn't be located (e.g. lldb-dap / gdb not
             # installed). Without this, the hint (what to install / which
@@ -893,6 +894,7 @@ class TdbApp(_AppMessageRoutes, App):
         self._show_program(code_view)
         code_view.current_line = None
 
+        self._sync_stdin_input()
         if not start_immediately:
             self._session_pending = True
             self.sub_title = (
@@ -913,6 +915,7 @@ class TdbApp(_AppMessageRoutes, App):
                 terminal=self._terminal,
                 sub_process=self._sub_process,
             )
+            self._sync_stdin_input()
         except Exception:
             log.exception("Failed to restart debug session")
             self.sub_title = "Failed to restart"
@@ -1519,6 +1522,39 @@ class TdbApp(_AppMessageRoutes, App):
         state = self.controller.state
         var_view = self.query_one("#variable-view", VariableView)
         var_view.update_variables(state.scopes, state.variables)
+
+    # --- Console view stdin ---
+
+    def _sync_stdin_input(self) -> None:
+        """Show the Console's stdin line iff the session can feed stdin."""
+        try:
+            console = self.query_one("#console-view", ConsoleView)
+            console.set_stdin_enabled(bool(self.controller.supports_stdin))
+        except Exception:
+            log.exception("Failed to sync Console stdin line")
+
+    async def on_console_view_stdin_submitted(
+        self, message: ConsoleView.StdinSubmitted
+    ) -> None:
+        self.recorder.record("stdin", [message.text])
+        console = self.query_one("#console-view", ConsoleView)
+        try:
+            await self.controller.write_stdin(message.text + "\n")
+        except Exception as exc:
+            self.notify(str(exc), title="stdin", severity="warning")
+            return
+        console.echo_input(message.text)
+
+    async def on_console_view_stdin_eof(self, message: ConsoleView.StdinEof) -> None:
+        self.recorder.record("stdin_eof", [])
+        console = self.query_one("#console-view", ConsoleView)
+        try:
+            await self.controller.close_stdin()
+        except Exception as exc:
+            self.notify(str(exc), title="stdin", severity="warning")
+            return
+        console.echo_input("^D")
+        console.set_stdin_enabled(False)
 
     async def on_variable_view_display_requested(
         self, message: VariableView.DisplayRequested

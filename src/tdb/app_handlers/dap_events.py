@@ -321,6 +321,7 @@ class DapEventCoordinator:
             self.app.panels.dismiss_rust_concurrency()
             console = self.app.query_one("#console-view", ConsoleView)
             console.write_output(f"\nProcess exited with code {exit_code}\n", "console")
+            console.set_stdin_enabled(False)
         except Exception:
             log.exception("Error handling exited event")
 

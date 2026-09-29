@@ -33,6 +33,14 @@ quirks handled here (all probe-verified, see the design spec):
   stdout            pumped into `output` events; the echoed prompt line
                     and the exit sentinel are dropped; ConciseView error
                     blocks are tagged "stderr" for the fatal-error modal
+  tdbStdin          (tdb-private) Console-view input for the script. PSES
+                    never asks the client for input: Read-Host,
+                    $Host.UI.ReadLine() and [Console]::ReadLine() all read
+                    the pwsh process's own stdin, so pwsh is spawned on a
+                    stdin pipe (and without -NonInteractive, which makes
+                    Read-Host throw) that this request writes to / closes.
+                    pwsh echoes the prompt and the line it read
+                    ("enter: 42") because stdin is not a tty.
 """
 
 from __future__ import annotations
@@ -112,11 +120,16 @@ def build_pwsh_command(
 ) -> list[str]:
     from tdb import __version__
 
+    # No -NonInteractive: under it Read-Host / $Host.UI.ReadLine() throw
+    # "Read and Prompt functionality is not available" instead of reading
+    # stdin, which is where tdbStdin delivers Console-view input. PSES runs
+    # with -File and exits with the script, so pwsh never falls into a REPL
+    # on that pipe; -DebugServiceOnly hosts the script on the console host,
+    # whose reads go to the pipe even while the debugger is stopped.
     return [
         pwsh,
         "-NoLogo",
         "-NoProfile",
-        "-NonInteractive",
         "-File",
         str(pses_dir / "Start-EditorServices.ps1"),
         "-HostName",
@@ -236,6 +249,7 @@ class PowerShellDapServer:
         self._sent_terminated = False
         self._terminated_seen = False  # PSES said the script ended
         self._exit_code: int | None = None  # from the launcher's sentinel
+        self._stdin_closed = False  # tdbStdin eof (or teardown) closed the pipe
         self._classifier = OutputClassifier()
         # stopOnEntry emulation / stop-reason rewrites
         self._stop_on_entry = False
@@ -361,6 +375,7 @@ class PowerShellDapServer:
         finally:
             self._shutting_down = True
             await self._ensure_pwsh_dead()
+            self._close_stdin()
             await self._await_watch_exit()
             await self._close_upstream()
             await self._drain_tasks()
@@ -533,6 +548,9 @@ class PowerShellDapServer:
     async def _watch_exit(self) -> None:
         assert self._proc is not None
         rc = await self._proc.wait()
+        # pwsh is gone: release the stdin pipe transport now rather than
+        # leaving it for GC after the loop has closed.
+        self._close_stdin()
         if self._pump_tasks:
             await asyncio.wait(self._pump_tasks, timeout=2.0)
         if not self._launched:
@@ -592,7 +610,7 @@ class PowerShellDapServer:
                 *cmd,
                 cwd=cwd,
                 env=env,
-                stdin=asyncio.subprocess.DEVNULL,
+                stdin=asyncio.subprocess.PIPE,  # tdbStdin writes here
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
                 **popen_kwargs,
@@ -911,3 +929,48 @@ class PowerShellDapServer:
         self._write_up(
             self._seqs.client_request_to_upstream({**request, "arguments": args})
         )
+
+    # ---- Console-view input ----
+    def _close_stdin(self) -> None:
+        """Close pwsh's stdin pipe once (EOF for the script). Synchronous and
+        error-tolerant so teardown and `_watch_exit` can call it freely."""
+        self._stdin_closed = True
+        proc = self._proc
+        if proc is None or proc.stdin is None:
+            return
+        try:
+            proc.stdin.close()
+        except (ConnectionError, OSError):
+            pass
+
+    async def _on_tdbStdin(self, request: dict) -> None:
+        """Deliver Console-view text to the script's stdin, or close it.
+
+        The proxy always owns pwsh's stdin (there is no runInTerminal path
+        for PowerShell), so the only "no channel" cases are: nothing
+        launched yet, pwsh already gone, or an earlier eof.
+        """
+        args = request.get("arguments") or {}
+        proc = self._proc
+        if proc is None or proc.stdin is None or not self._launched:
+            self.send_error(request, "no PowerShell program has been launched yet")
+            return
+        if proc.returncode is not None or self._sent_terminated:
+            self.send_error(request, "the PowerShell program has already exited")
+            return
+        if args.get("eof"):
+            self._close_stdin()  # a repeat eof is a no-op
+            self.send_response(request)
+            return
+        if self._stdin_closed:
+            self.send_error(request, "the program's input has already been closed")
+            return
+        text = str(args.get("text") or "")
+        try:
+            proc.stdin.write(text.encode("utf-8"))
+            await proc.stdin.drain()
+        except (ConnectionError, OSError) as e:
+            # pwsh exited between the check above and the write.
+            self.send_error(request, f"cannot write to the program's input: {e}")
+            return
+        self.send_response(request)

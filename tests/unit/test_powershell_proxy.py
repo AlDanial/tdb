@@ -433,14 +433,15 @@ def test_build_pwsh_command(tmp_path):
         tmp_path / "log",
         "tdb-pses-1",
     )
-    assert cmd[:6] == [
+    assert cmd[:5] == [
         "/bin/pwsh",
         "-NoLogo",
         "-NoProfile",
-        "-NonInteractive",
         "-File",
         str(tmp_path / "PSES" / "Start-EditorServices.ps1"),
     ]
+    # Read-Host must reach stdin (tdbStdin), which -NonInteractive forbids.
+    assert "-NonInteractive" not in cmd
     assert "-DebugServiceOnly" in cmd
     assert cmd[cmd.index("-DebugServicePipeName") + 1] == "tdb-pses-1"
     assert cmd[cmd.index("-BundledModulesPath") + 1] == str(tmp_path)

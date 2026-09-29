@@ -215,7 +215,11 @@ class PerlSession:
                 *argv,
                 cwd=cwd,
                 env=child_env,
-                stdin=asyncio.subprocess.DEVNULL,
+                # stdin is a pipe we own so Console-view input can reach
+                # the program's <STDIN> (see write_stdin/close_stdin).
+                # perl5db itself talks to us over the RemotePort socket,
+                # so fd 0 belongs entirely to the debugged program.
+                stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 start_new_session=True,
@@ -382,6 +386,50 @@ class PerlSession:
         self._collect = None
         self._writer.write(cmd.encode("utf-8") + b"\n")
 
+    def _stdin_pipe(self, *, allow_exited: bool = False) -> asyncio.StreamWriter:
+        """The owned stdin pipe, or a PerlProtocolError explaining why
+        there is none (attach mode, externalTerminal launch, no launch
+        yet, or -- unless `allow_exited` -- the program already exited)."""
+        if self._process is None or self._process.stdin is None:
+            if self._exit_status_path is not None:
+                raise PerlProtocolError(
+                    "stdin is not available: the program runs in an external "
+                    "terminal -- type into that terminal instead"
+                )
+            if self._writer is not None:
+                raise PerlProtocolError(
+                    "stdin is not available: the program was attached to, not "
+                    "launched by tdb"
+                )
+            raise PerlProtocolError("stdin is not available: no program launched")
+        if self._process.returncode is not None and not allow_exited:
+            raise PerlProtocolError("stdin is not available: the program has exited")
+        return self._process.stdin
+
+    async def write_stdin(self, text: str) -> None:
+        """Forward Console-view input to the program's stdin verbatim (the
+        caller decides whether a newline is included)."""
+        pipe = self._stdin_pipe()
+        if pipe.is_closing():
+            raise PerlProtocolError("stdin is not available: already closed (EOF sent)")
+        try:
+            pipe.write(text.encode("utf-8"))
+            await pipe.drain()
+        except (BrokenPipeError, ConnectionResetError) as e:
+            raise PerlProtocolError(f"stdin write failed: {e}")
+
+    def close_stdin(self) -> None:
+        """Send EOF: the program's next <STDIN> returns undef. Closing an
+        already-closed pipe is a no-op, matching a second Ctrl-D -- even
+        once the program has exited, since the first EOF may be what let
+        it finish."""
+        pipe = self._stdin_pipe(allow_exited=True)
+        if pipe.is_closing():
+            return
+        if self._process.returncode is not None:
+            raise PerlProtocolError("stdin is not available: the program has exited")
+        pipe.close()
+
     def attach_control(self, writer) -> None:
         """Adopt the armed control connection (attach mode)."""
         self._control_writer = writer
@@ -446,6 +494,11 @@ class PerlSession:
             self._control_writer.close()
             self._control_writer = None
         if self._process is not None:
+            # Close our end of the stdin pipe before reaping: a write
+            # transport left open past loop shutdown surfaces as an
+            # "Event loop is closed" unraisable warning at teardown.
+            if self._process.stdin is not None and not self._process.stdin.is_closing():
+                self._process.stdin.close()
             try:
                 self._process.kill()
             except ProcessLookupError:

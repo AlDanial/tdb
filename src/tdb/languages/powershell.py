@@ -37,7 +37,7 @@ from tdb.languages.errors import parse_powershell_error
 
 class PsesAdapter(AdapterSpec):
     id = "pses"
-    quirks = AdapterQuirks()
+    quirks = AdapterQuirks(stdin_route="request")
 
     def __init__(
         self, pwsh_executable: str | None = None, pses_dir: str | None = None

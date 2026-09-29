@@ -288,7 +288,10 @@ language — Python, Perl, Bash, Tcsh, Ruby, and C/C++, OCaml native, or Rust
 sessions via `--adapter lldb-dap` — see
 [External Terminal Support](#external-terminal-support). Go and PowerShell do
 not support `--terminal` yet (`dlv dap` and PSES have no terminal-routing
-mode).
+mode). Typing into the Console view to feed the program's stdin works for
+Python, Perl, Bash, Tcsh, Ruby, and PowerShell, but not for C/C++, Rust,
+OCaml, or Go, whose adapters spawn the debuggee themselves — see
+[Console Output and Input](#console-output-and-input).
 
 **Bash limitations (v1):** the bash adapter uses bash's own `DEBUG` trap and
 has a smaller feature set than Python:
@@ -354,10 +357,16 @@ picture:
   backtrace instead.
 - No Windows support, no remote attach, and a stripped native binary that
   byte-checking can't identify needs `--lang ocaml`.
+- No stdin forwarding from the Console view (both adapters spawn the
+  program themselves); a program that reads stdin needs `--terminal`
+  (native, `--adapter lldb-dap`) or input from a file.
 
 **Go limitations (v1):**
 
 - `--terminal` is not supported (`dlv dap` has no terminal-routing mode).
+- No stdin forwarding from the Console view: `dlv dap` spawns the program
+  itself, so a program that reads stdin must get it from a file or pipe on
+  its command line.
 - The Goroutines workspace's wait graph shows channel-send/-receive,
   mutex, and `WaitGroup` edges; a goroutine parked in a `select` is
   classified but contributes no wait edge (Delve can't tell which of the
@@ -384,6 +393,10 @@ See [Go](#go) below for launch details.
   If no breakpoint in a file can be
   bound, `tdb` prints a console warning suggesting the program may lack
   debug info.
+- The Console view's stdin line is not available: `gdb -i dap` and
+  `lldb-dap` spawn the program themselves, so `tdb` has no handle on its
+  stdin. A program that reads stdin needs `--terminal` (with
+  `--adapter lldb-dap`) or its input from a file.
 - Stack frames pointing into system libraries often have no source on disk;
   the Code View shows a `<Could not read …>` placeholder while the stack,
   variables, and evaluate console remain fully usable.
@@ -469,7 +482,9 @@ cargo rustc -- -C debuginfo=2 -C opt-level=0
 # Equivalent direct rustc settings: rustc -C debuginfo=2 -C opt-level=0 src/main.rs
 ```
 
-A panic that terminates the debuggee opens the error modal with the parsed
+As for C/C++, the Console view cannot feed the program's stdin (the gdb and
+lldb adapters spawn it themselves); use `--terminal` with `--adapter
+lldb-dap` for interactive programs. A panic that terminates the debuggee opens the error modal with the parsed
 panic message and backtrace; `tdb` injects `RUST_BACKTRACE=1` into launched
 programs (your own value wins if you set one) so the frames are present.
 
@@ -1159,6 +1174,12 @@ Notes:
   blocks attributed to tdb's own `tdb_launch.ps1` are skipped, so a bare
   `Write-Error` before the `exit` opens no modal at all.
 - `--terminal` and remote attach are not supported for PowerShell yet.
+- `Read-Host`, `$Host.UI.ReadLine()`, and `[Console]::ReadLine()` read
+  from the Console view's stdin line (pwsh is no longer started with
+  `-NonInteractive`, so mandatory-parameter and `-Confirm` prompts now wait
+  for your input there instead of failing). pwsh echoes the prompt and the
+  answer together once the line completes, so a bare `Read-Host` prompt
+  appears only after you answer it; a preceding `Write-Host` shows at once.
 - Windows PowerShell 5.1 is not supported (pwsh 7 only). Running tdb *on*
   Windows against pwsh is designed for but not yet verified (experimental).
 
@@ -1168,7 +1189,7 @@ Notes:
 ┌─ Header ──────────────────────────────────────────────┐
 ├─ Menu Bar (File / Configure / Help)───────────────────┤
 │                           │                           │
-│   Code View               │  Console View (stdout)    │
+│   Code View               │  Console View (stdio)     │
 │   (source + breakpoints)  ├───────────────────────────┤
 │                           │  Variable View (tree)     │
 │                           ├───────────────────────────┤
@@ -1478,12 +1499,35 @@ capture mouse events for their own use.
 Instead, hold the `Shift` key while performing your conventional cut/paste keystrokes or mouse
 operation to get the expected behavior.
 
-### Console Output
+### Console Output and Input
 
 The Console View captures stdout (normal text) and stderr (red text) from the debuggee
 in real time.
 
-If your program prints a lot, or prompts for input, or uses colors or
+Programs that read from stdin (`input()`, `<STDIN>`, `read`, `gets`, …) get
+their input from the same view: while the program runs, an input line sits
+under the output log. `Ctrl+O` focuses it, `Enter` sends the line (plus a
+newline) to the program and echoes it in cyan next to the program's prompt,
+and `Ctrl+D` sends end-of-file. A bare `Enter` sends an empty line, which is
+a real answer to `input()`. The line disappears when the program exits or
+when the session has no stdin to feed.
+
+Stdin forwarding works for the languages whose program `tdb` launches on a
+pipe it owns: Python, Perl, Bash, Tcsh, Ruby, and PowerShell. It is not
+available for the compiled languages — C/C++, Rust, OCaml, and Go — because
+their adapters (`gdb -i dap`, `lldb-dap`, `dlv dap`) spawn the debuggee
+themselves and give `tdb` no handle on its stdin; the input line stays
+hidden there. It is also unavailable for remote attach (`-r`), where the
+program's stdin belongs to whoever started it, and under `--terminal`,
+where the program reads from its own terminal window. For those cases run
+the program in an external terminal with `--terminal` (launch mode only),
+or give it its input another way (a file, a pipe on the command line).
+
+Every line typed here is captured by `--record` as a `stdin` gesture and
+replayed by `--replay`/`--replay-tui`, and the JSON-RPC server exposes the
+same thing as the `stdin` / `stdin_eof` actions.
+
+If your program prints a lot, or uses colors or
 terminal control codes, run the program in an external terminal
 with `--terminal` for a better experience.
 The `--terminal` switch requires a graphical environment and a compatible
@@ -1789,7 +1833,8 @@ terminal around.
 The debuggee runs in a separate window of the specified terminal, including
 all of its stdin/stdout/stderr. Keyboard input, program output, and
 anything the program itself draws to the terminal all happen in that
-window, not in `tdb`'s Console View. Supported choices:
+window, not in `tdb`'s Console View (whose stdin line is hidden in this
+mode). Supported choices:
 `xterm`, `konsole`, `gnome-terminal`, `ghostty`, `kitty`, `iterm2`, `warp`,
 `wezterm`, `terminator`. The selected terminal must be on `PATH`. Debugging
 (breakpoints, stepping, variable inspection, the evaluate console) proceeds
@@ -1814,7 +1859,10 @@ or a log file, then resumes the program.
 tdb --run my_program.py args...
 ```
 
-The debuggee's stdout/stderr stream straight to the terminal. If the program exits on
+The debuggee's stdout/stderr stream straight to the terminal, and for the
+languages with stdin forwarding (see
+[Console Output and Input](#console-output-and-input)) the program reads
+its stdin from that terminal too. If the program exits on
 its own, `tdb` exits with the same code:
 
 ```bash
@@ -2027,6 +2075,8 @@ curl -s -X POST http://127.0.0.1:8150/rpc \
 | `stack_down` | `[]` | Move down the call stack |
 | `get_stack_trace` | `[]` | Full call stack |
 | `get_output` | `[]` | Drain buffered stdout/stderr |
+| `stdin` | `["line"]` | Send a line (newline appended) to the program's stdin; errors when the session has no stdin (compiled languages, `--terminal`, remote attach) |
+| `stdin_eof` | `[]` | Close the program's stdin (Ctrl+D) |
 | `get_source` | `["file_path"]` | Read a source file |
 | `list_threads` | `[]` | List all threads |
 | `inspect_thread` | `[thread_id]` | Inspect a specific thread |
@@ -2054,7 +2104,8 @@ Each is JSON with `event`, `data`, and `timestamp` fields.
 
 `tdb --record session.jsonl prog.py` runs a normal TUI session and captures
 your debugging actions including breakpoints (including `-k`/`-t` and persisted
-ones), stepping, continue/pause, Evaluate-console entries, stack-frame
+ones), stepping, continue/pause, Evaluate-console entries, lines typed into
+the Console view for the program's stdin (and Ctrl+D), stack-frame
 navigation, variable expansion, restart, quit. The session is
 written to `session.jsonl` as
 JSON-RPC commands. Works with launch mode (any language) and `-r`

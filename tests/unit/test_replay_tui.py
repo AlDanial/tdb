@@ -415,3 +415,41 @@ async def test_fixed_interval_replaces_recorded_pacing(app_pilot, monkeypatch):
     driver.sleep = fake_sleep
     await driver.run(app)
     assert slept == [0.25, 0.25, 0.25]
+
+
+# --- stdin ------------------------------------------------------------
+
+
+async def test_stdin_gesture_feeds_program_and_echoes(app_pilot, monkeypatch):
+    from tdb.widgets.console_view import ConsoleView
+
+    app, pilot = app_pilot
+    written: list[str] = []
+
+    async def fake_write(text):
+        written.append(text)
+
+    monkeypatch.setattr(app.controller, "write_stdin", fake_write)
+    driver = make_driver(recording(("stdin", ["42"])))
+    errors = await driver.run(app)
+    await pilot.pause()
+    assert errors == 0
+    assert written == ["42\n"]
+    console = app.query_one("#console-view", ConsoleView)
+    text = "\n".join(strip.text for strip in console.query_one("#console-log").lines)
+    assert "42" in text
+
+
+async def test_stdin_eof_gesture_closes_program_stdin(app_pilot, monkeypatch):
+    app, pilot = app_pilot
+    closed: list[bool] = []
+
+    async def fake_close():
+        closed.append(True)
+
+    monkeypatch.setattr(app.controller, "close_stdin", fake_close)
+    driver = make_driver(recording(("stdin_eof", [])))
+    errors = await driver.run(app)
+    await pilot.pause()
+    assert errors == 0
+    assert closed == [True]

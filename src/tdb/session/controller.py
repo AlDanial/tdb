@@ -25,6 +25,7 @@ from .state import DISPLAY_SCOPE_REF, INTERACTIVE_SCOPE_REF, DebugState, Session
 
 if TYPE_CHECKING:
     from tdb.languages.base import LanguageProfile
+    from tdb.session.terminal import PipeLauncher
 
 log = logging.getLogger(__name__)
 
@@ -59,6 +60,9 @@ class DebugController:
         self.client = DAPClient(profile.adapter)
         self.state = DebugState()
         self._terminal: str | None = None
+        # PipeLauncher when this session owns the debuggee's stdio
+        # (debugpy launches without --terminal); see supports_stdin.
+        self._pipe_launcher: PipeLauncher | None = None
         self._launch_params: dict[str, Any] = {}
         # Future for the launch/attach response (set by start() /
         # remote_attach()) and an event marking that the request itself
@@ -264,8 +268,14 @@ class DebugController:
         python: str | None = None,
         terminal: str | None = None,
         sub_process: bool = True,
+        stdin_mode: str = "pipe",
     ) -> None:
         """Start the debug session.
+
+        `stdin_mode` applies to adapters whose stdin_route is
+        "run_in_terminal": "pipe" (TUI) makes the program's stdin a pipe
+        fed by write_stdin; "inherit" (headless run/eval modes) leaves it
+        as tdb's own stdin so the user's terminal feeds the program.
 
         DAP sequence:
         1. initialize → response
@@ -275,6 +285,7 @@ class DebugController:
         5. debugpy finally sends launch response
         """
         self._terminal = terminal
+        self._pipe_launcher = None
         self._setup_event_handlers()
 
         if terminal is not None:
@@ -288,6 +299,17 @@ class DebugController:
                 "runInTerminal",
                 self._terminal_launcher.handle_run_in_terminal,
             )
+        elif self.profile.adapter.quirks.stdin_route == "run_in_terminal":
+            from tdb.session.terminal import PipeLauncher
+
+            self._pipe_launcher = PipeLauncher(
+                self.event_handler.on_output,
+                inherit_stdin=stdin_mode == "inherit",
+            )
+            self.client.on_reverse_request(
+                "runInTerminal", self._pipe_launcher.handle_run_in_terminal
+            )
+        run_in_terminal = terminal is not None or self._pipe_launcher is not None
 
         self._launch_params = {
             "program": program,
@@ -305,7 +327,7 @@ class DebugController:
         }
 
         await self.client.start()
-        await self.client.initialize(support_run_in_terminal=terminal is not None)
+        await self.client.initialize(support_run_in_terminal=run_in_terminal)
 
         # Send launch — don't await response (debugpy holds it until configurationDone)
         p = self._launch_params
@@ -316,10 +338,52 @@ class DebugController:
             stop_on_entry=p["stop_on_entry"],
             just_my_code=p["just_my_code"],
             python=p["python"],
-            console="externalTerminal" if terminal is not None else "internalConsole",
+            console="externalTerminal" if run_in_terminal else "internalConsole",
             sub_process=p["sub_process"],
         )
         self._launch_sent.set()
+
+    # --- Program stdin ---
+
+    @property
+    def supports_stdin(self) -> bool:
+        """True when Console-view input can reach the debuggee's stdin:
+        a launched (not attached) session whose adapter routes stdin
+        (see AdapterQuirks.stdin_route) and that isn't in --terminal or
+        headless-inherit mode, where the terminal itself feeds it."""
+        if self._is_remote_attach or self._terminal is not None:
+            return False
+        if self._pipe_launcher is not None:
+            return self._pipe_launcher.supports_stdin
+        return self.profile.adapter.quirks.stdin_route == "request"
+
+    def _stdin_unavailable(self) -> RuntimeError:
+        if self._is_remote_attach:
+            return RuntimeError("stdin is not available for an attached program")
+        if self._terminal is not None:
+            return RuntimeError("the program reads stdin from its own terminal")
+        return RuntimeError(
+            f"stdin forwarding is not supported for {self.profile.display_name}"
+        )
+
+    async def write_stdin(self, text: str) -> None:
+        """Feed `text` (already newline-terminated by the caller) to the
+        debuggee's stdin. Raises RuntimeError when there is none."""
+        if not self.supports_stdin:
+            raise self._stdin_unavailable()
+        if self._pipe_launcher is not None:
+            self._pipe_launcher.write_stdin(text)
+        else:
+            await self.client.send_stdin(text)
+
+    async def close_stdin(self) -> None:
+        """Send EOF to the debuggee's stdin."""
+        if not self.supports_stdin:
+            raise self._stdin_unavailable()
+        if self._pipe_launcher is not None:
+            self._pipe_launcher.close_stdin()
+        else:
+            await self.client.send_stdin(eof=True)
 
     async def remote_attach(
         self,
@@ -595,6 +659,8 @@ class DebugController:
         except (asyncio.TimeoutError, Exception):
             pass
         await self.client.stop()
+        if self._pipe_launcher is not None:
+            await self._pipe_launcher.close()
         self.state.transition_to(SessionPhase.TERMINATED)
         # Remove any lingering Processes-modal snapshot file from this
         # tdb session so it doesn't get picked up by a future tdb that

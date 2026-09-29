@@ -659,3 +659,15 @@ async def test_launch_normalizes_missing_args_and_cwd(dap):
     assert spec.launch_calls[-1]["args"] == []
     assert spec.launch_calls[-1]["cwd"] == "."
     fut.cancel()
+
+
+# --- tdb-private stdin forwarding --------------------------------------
+
+
+async def test_send_stdin_text_and_eof(dap):
+    client, adapter = dap
+    await client.send_stdin("42\n")
+    await client.send_stdin(eof=True)
+    reqs = await adapter.wait_for_requests("tdbStdin", count=2)
+    assert reqs[0].arguments == {"text": "42\n"}
+    assert reqs[1].arguments == {"eof": True}

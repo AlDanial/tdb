@@ -136,6 +136,7 @@ class DAPServer:
             "scopes": self._scopes,
             "variables": self._variables,
             "evaluate": self._evaluate,
+            "tdbStdin": self._tdb_stdin,
             "continue": self._continue,
             "pause": self._pause,
             "next": self._next,
@@ -544,6 +545,26 @@ class DAPServer:
             "result": result.result,
             "variablesReference": result.variables_reference,
         }
+
+    async def _tdb_stdin(self, arguments: Mapping[str, object]) -> Mapping[str, object]:
+        """tdb-private request: console input for the debuggee's stdin.
+
+        `{"eof": true}` closes the pipe; `{"text": ...}` writes it verbatim
+        (the client supplies any newline). Pipe availability errors are
+        InvalidStateError from the session, i.e. ordinary domain errors.
+        """
+        session = self._require_session()
+        eof = arguments.get("eof", False)
+        if not isinstance(eof, bool):
+            raise RequestError("eof must be a boolean")
+        if eof:
+            await session.close_stdin()
+            return {}
+        text = arguments.get("text")
+        if not isinstance(text, str):
+            raise RequestError("text must be a string (or eof must be true)")
+        await session.write_stdin(text)
+        return {}
 
     async def _continue(self, arguments: Mapping[str, object]) -> Mapping[str, object]:
         session = self._require_session()

@@ -16,6 +16,7 @@ import sys
 from typing import Any
 
 from tdb.languages.base import (
+    AdapterQuirks,
     AdapterSpec,
     LanguageNotSupportedError,
     LanguageProfile,
@@ -27,6 +28,7 @@ from tdb.languages.base import (
 
 class BashAdapter(AdapterSpec):
     id = "bash-tdb"
+    quirks = AdapterQuirks(stdin_route="request")
 
     def __init__(self, bash_executable: str | None = None) -> None:
         self._bash = bash_executable

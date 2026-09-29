@@ -145,6 +145,16 @@ def should_stop_at_probe(
     return event_depth < start_depth
 
 
+def _workspace_prefix_tail(buffer: bytearray, workspace: bytes) -> int:
+    """Length of the longest buffer tail that is a proper prefix of workspace."""
+
+    longest = min(len(buffer), len(workspace) - 1)
+    for length in range(longest, 0, -1):
+        if buffer.endswith(workspace[:length]):
+            return length
+    return 0
+
+
 class DebugSession:
     """Prepare, launch, and clean up one owned tcsh process group."""
 
@@ -254,7 +264,15 @@ class DebugSession:
         self.state = SessionState.CONFIGURED
 
     async def start(self) -> None:
-        """Spawn tcsh with adapter stdin isolated from the debuggee."""
+        """Spawn tcsh on an adapter-owned stdin pipe, never the adapter's own.
+
+        The adapter's fd 0 carries the DAP stream, so the debuggee must
+        never inherit it. In pipe mode the debuggee gets a private pipe
+        instead of /dev/null so console input (`write_stdin`) can reach
+        the script's `$<`; tcsh reads the script from its `-f` argument,
+        leaving fd 0 free for that. The guardian in between neither reads
+        nor closes fd 0, so tcsh inherits the pipe untouched.
+        """
 
         if self.state is not SessionState.CONFIGURED:
             raise LaunchError(
@@ -330,7 +348,7 @@ class DebugSession:
                         *argv,
                         cwd=str(self.config.cwd),
                         env=environment,
-                        stdin=asyncio.subprocess.DEVNULL,
+                        stdin=asyncio.subprocess.PIPE,
                         stdout=asyncio.subprocess.PIPE,
                         stderr=asyncio.subprocess.PIPE,
                         start_new_session=True,
@@ -566,6 +584,44 @@ class DebugSession:
             self._completion_event.set()
         if primary_error is not None:
             raise primary_error
+
+    async def write_stdin(self, text: str) -> None:
+        """Feed console input to the debuggee's stdin pipe, as typed.
+
+        No newline is appended: the client decides what a "line" is.
+        """
+
+        writer = self._owned_stdin()
+        if writer.is_closing():
+            raise InvalidStateError("program stdin is already closed")
+        try:
+            writer.write(text.encode("utf-8"))
+            await writer.drain()
+        except (BrokenPipeError, ConnectionResetError) as error:
+            # The reader side went away between the checks above and the
+            # write (the program exited): report it as such rather than
+            # leaking a transport error.
+            raise InvalidStateError("program has already exited") from error
+
+    async def close_stdin(self) -> None:
+        """Deliver EOF on the debuggee's stdin pipe; repeat closes are no-ops."""
+
+        writer = self._owned_stdin()
+        if writer.is_closing():
+            return
+        writer.close()
+
+    def _owned_stdin(self) -> asyncio.StreamWriter:
+        if self.config.external_terminal:
+            raise InvalidStateError(
+                "program stdin belongs to the external terminal; type there instead"
+            )
+        process = self.process
+        if process is None or process.stdin is None:
+            raise InvalidStateError("no program has been launched yet")
+        if process.returncode is not None or self.state is SessionState.TERMINATED:
+            raise InvalidStateError("program has already exited")
+        return process.stdin
 
     def threads(self) -> tuple[ThreadInfo, ...]:
         """Return the adapter's single logical tcsh thread."""
@@ -1023,6 +1079,18 @@ class DebugSession:
                 data = bytes(buffer[:length])
                 del buffer[:length]
                 await emit(data)
+            # A script waiting on `$<` after `echo -n "prompt: "` never
+            # sends the newline the loop above waits for, so flush the
+            # unterminated remainder now instead of at stream EOF. The
+            # only bytes held back are a tail that could be the start of
+            # the workspace path split across two reads -- they go out
+            # with the next chunk, redacted if it completes the path.
+            held = _workspace_prefix_tail(buffer, workspace_bytes)
+            while len(buffer) > held:
+                length = min(len(buffer) - held, _OUTPUT_CHUNK_BYTES)
+                data = bytes(buffer[:length])
+                del buffer[:length]
+                await emit(data)
         if workspace_bytes:
             buffer[:] = buffer.replace(workspace_bytes, redaction_bytes)
         while buffer:
@@ -1446,6 +1514,7 @@ class DebugSession:
         async with self._cleanup_lock:
             async with self._guardian_termination_lock:
                 self._close_guardian_descriptors()
+            self._close_stdin_transport()
             restore_error: BaseException | None = None
             try:
                 self._restore_workspace_access()
@@ -1495,6 +1564,17 @@ class DebugSession:
                     return
                 self.failure = cleanup_error
                 raise cleanup_error
+
+    def _close_stdin_transport(self) -> None:
+        # The stdin write transport is not closed by the child exiting on
+        # its own (only its reader side hangs up); an unclosed transport
+        # outliving the event loop surfaces as an unraisable "Event loop
+        # is closed" at teardown, so drop it explicitly here.
+        process = self.process
+        if process is None or process.stdin is None:
+            return
+        if not process.stdin.is_closing():
+            process.stdin.close()
 
     def _restore_workspace_access(self) -> None:
         workspace = self.workspace

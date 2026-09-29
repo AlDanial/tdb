@@ -31,7 +31,7 @@ from tdb.languages.errors import parse_perl_error
 
 class PerlAdapter(AdapterSpec):
     id = "perl-tdb"
-    quirks = AdapterQuirks(attach_via_adapter=True)
+    quirks = AdapterQuirks(attach_via_adapter=True, stdin_route="request")
 
     def __init__(self, perl_executable: str | None = None) -> None:
         self._perl = perl_executable

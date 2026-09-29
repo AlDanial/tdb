@@ -470,3 +470,23 @@ class BashDapServer:
             return
         result = out if rc == 0 else f"{out}\n[exit status {rc}]".strip()
         self.send_response(request, {"result": result, "variablesReference": 0})
+
+    # ---- Console-view input -> debuggee stdin (tdb-private request) ----
+    async def _on_tdbStdin(self, request: Request) -> None:
+        # Not gated on _not_ready(): the whole point is feeding a script
+        # that is *running* (blocked in `read`).
+        if self.session is None:
+            self.send_error(
+                request, "the script's stdin is not available: no launch yet"
+            )
+            return
+        args = request.arguments
+        try:
+            if args.get("eof"):
+                self.session.close_stdin()
+            else:
+                self.session.write_stdin(str(args.get("text", "")))
+        except BashProtocolError as e:
+            self.send_error(request, str(e))
+            return
+        self.send_response(request)
