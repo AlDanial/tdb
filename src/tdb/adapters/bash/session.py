@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import binascii
+import codecs
 import dataclasses
 import logging
 import os
@@ -163,6 +164,7 @@ class BashSession:
         self._stderr_tail = ""  # last stderr bytes, for pre-ready failures
         self.debuggee_pid: int | None = None
         self._exit_status_path: str | None = None
+        self._stdin_closed = False  # EOF sent via close_stdin()
         # annotation only (script-touched marker in environment_vars()) --
         # does NOT affect the Globals/Environment split.
         self._launch_env_snapshot: dict[str, str] = {}
@@ -258,7 +260,11 @@ class BashSession:
                 *args,
                 cwd=cwd,
                 env=child_env,
-                stdin=asyncio.subprocess.DEVNULL,
+                # A pipe we own, so Console-view input (the private
+                # `tdbStdin` request) can reach the script's `read`: the
+                # harness never touches fd 0 (commands arrive on their own
+                # FIFO fd), so the pipe is the debuggee's alone.
+                stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 start_new_session=True,
@@ -303,14 +309,64 @@ class BashSession:
         self.stopped = True  # config phase
 
     async def _pump(self, stream: asyncio.StreamReader, category: str) -> None:
+        # Chunked reads, not readline(): a prompt like "enter: " has no
+        # newline and must reach the Console view before the script
+        # blocks in `read`. The incremental decoder keeps a multibyte
+        # character split across two chunks from being mangled.
+        decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
         while True:
             chunk = await stream.read(4096)
+            text = decoder.decode(chunk, final=not chunk)
+            if text:
+                if category == "stderr":
+                    self._stderr_tail = (self._stderr_tail + text)[-500:]
+                self._on_output(text, category)
             if not chunk:
                 return
-            text = chunk.decode(errors="replace")
-            if category == "stderr":
-                self._stderr_tail = (self._stderr_tail + text)[-500:]
-            self._on_output(text, category)
+
+    def write_stdin(self, text: str) -> None:
+        """Feed `text` (no newline added) to the debuggee's stdin pipe.
+
+        Raises BashProtocolError when there is nothing to write to:
+        terminal-mode launch (the terminal owns stdin), no process yet,
+        EOF already sent, or the script has exited.
+        """
+        proc = self._process
+        if proc is None or proc.stdin is None:
+            raise BashProtocolError(
+                "the script's stdin is not available (not launched, or "
+                "running in an external terminal)"
+            )
+        if self._stdin_closed:
+            raise BashProtocolError("the script's stdin has been closed")
+        if proc.returncode is not None:
+            raise BashProtocolError("the script has exited")
+        proc.stdin.write(text.encode("utf-8"))
+
+    def close_stdin(self) -> None:
+        """Send EOF (the Ctrl+D of a terminal); a repeat is a no-op.
+
+        Raises BashProtocolError only when there was never a pipe to
+        close (terminal mode / not launched).
+        """
+        proc = self._process
+        if proc is None or proc.stdin is None:
+            raise BashProtocolError(
+                "the script's stdin is not available (not launched, or "
+                "running in an external terminal)"
+            )
+        self._release_stdin()
+
+    def _release_stdin(self) -> None:
+        """Close the stdin transport if it's still open. Also called from
+        _reap()/stop() so the transport is never left for garbage
+        collection after the loop has closed ("Event loop is closed")."""
+        if self._stdin_closed:
+            return
+        self._stdin_closed = True
+        proc = self._process
+        if proc is not None and proc.stdin is not None:
+            proc.stdin.close()
 
     async def _reap(self) -> None:
         # asyncio.subprocess.Process.wait() does NOT resolve on process exit
@@ -331,6 +387,7 @@ class BashSession:
                 await asyncio.sleep(0.02)
             code = self._process.returncode
         self.exit_code = code
+        self._release_stdin()
         # Let the output pumps flush whatever's already buffered, but don't
         # block on their EOF for the same reason. Bounded wait, then move
         # on — the pump tasks get cancelled here (via wait_for's
@@ -495,6 +552,7 @@ class BashSession:
                 pass
             if self._process.returncode is None:
                 await self._process.wait()
+            self._release_stdin()
         if self._process is None and self.debuggee_pid is not None:
             # Terminal mode: the debuggee is not our child (the client
             # spawned it), so there's no process group to killpg -- it

@@ -1217,6 +1217,26 @@ class PerlDapServer:
             )
         self.send_response(request, {"variables": variables})
 
+    async def _on_tdbStdin(self, request: Request) -> None:
+        """tdb-private request: Console-view input for the debuggee's
+        stdin. Deliberately NOT gated on _not_ready() -- the program reads
+        stdin while it is RUNNING, which is exactly when every other data
+        request is refused. `{"text": ...}` writes verbatim; `{"eof":
+        true}` closes the pipe."""
+        if self.session is None:
+            self.send_error(request, "stdin is not available: no program launched")
+            return
+        args = request.arguments
+        try:
+            if args.get("eof"):
+                self.session.close_stdin()
+            else:
+                await self.session.write_stdin(str(args.get("text", "")))
+        except PerlProtocolError as e:
+            self.send_error(request, str(e))
+            return
+        self.send_response(request)
+
     async def _on_evaluate(self, request: Request) -> None:
         reason = self._not_ready()
         if reason is not None:

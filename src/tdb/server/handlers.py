@@ -106,6 +106,8 @@ class RpcHandlers:
         "stack_down",
         "get_stack_trace",
         "get_output",
+        "stdin",
+        "stdin_eof",
         "get_source",
         "list_threads",
         "inspect_thread",
@@ -137,6 +139,8 @@ class RpcHandlers:
         "stack_down": "params: []",
         "get_stack_trace": "params: []",
         "get_output": "params: []  -- drain buffered stdout/stderr",
+        "stdin": 'params: ["line"]  -- send a line (newline appended) to the program\'s stdin',
+        "stdin_eof": "params: []  -- close the program's stdin (Ctrl+D)",
         "get_source": 'params: ["file_path"]  -- read source file contents',
         "list_threads": "params: []  -- list all threads",
         "inspect_thread": "params: [thread_id]  -- inspect a specific thread",
@@ -216,6 +220,8 @@ class RpcHandlers:
             "stack_down": self.action_stack_down,
             "get_stack_trace": self.action_get_stack_trace,
             "get_output": self.action_get_output,
+            "stdin": self.action_stdin,
+            "stdin_eof": self.action_stdin_eof,
             "get_source": self.action_get_source,
             "list_threads": self.action_list_threads,
             "inspect_thread": self.action_inspect_thread,
@@ -563,6 +569,26 @@ class RpcHandlers:
 
     async def action_get_output(self, params: list[Any]) -> RpcResponse:
         return RpcResponse.ok(self.event_handler.drain_output())
+
+    async def action_stdin(self, params: list[Any]) -> RpcResponse:
+        """Send one line (newline appended) to the program's stdin. The
+        TUI records the same gesture, so a replay feeds the program the
+        answers the user typed."""
+        if not params:
+            return RpcResponse.error("params[0] must be the line to send")
+        try:
+            await self.controller.write_stdin(str(params[0]) + "\n")
+        except RuntimeError as e:
+            return RpcResponse.error(f"stdin: {e}")
+        return RpcResponse.ok()
+
+    async def action_stdin_eof(self, params: list[Any]) -> RpcResponse:
+        """Close the program's stdin (Ctrl+D)."""
+        try:
+            await self.controller.close_stdin()
+        except RuntimeError as e:
+            return RpcResponse.error(f"stdin: {e}")
+        return RpcResponse.ok()
 
     async def action_get_source(self, params: list[Any]) -> RpcResponse:
         if not params:

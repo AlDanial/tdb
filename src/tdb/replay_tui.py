@@ -139,6 +139,10 @@ class ReplayDriver:
             return await self._inspect(app, params)
         if action == "restart":
             return await self._restart(app)
+        if action == "stdin":
+            return await self._stdin(app, params)
+        if action == "stdin_eof":
+            return await self._stdin_eof(app)
         if action == "quit":
             await app.action_quit_debugger()
             return True, "quit"
@@ -165,6 +169,23 @@ class ReplayDriver:
             EvaluateConsole.EvaluateRequested(expression)
         )
         return True, expression
+
+    async def _stdin(self, app: TdbApp, params: list) -> tuple[bool, str]:
+        """Feed a recorded Console-view line to the program, through the
+        same handler the keystrokes used (echo + write)."""
+        from tdb.widgets.console_view import ConsoleView
+
+        if not params:
+            return False, "stdin needs a line"
+        text = str(params[0])
+        await app.on_console_view_stdin_submitted(ConsoleView.StdinSubmitted(text))
+        return True, text
+
+    async def _stdin_eof(self, app: TdbApp) -> tuple[bool, str]:
+        from tdb.widgets.console_view import ConsoleView
+
+        await app.on_console_view_stdin_eof(ConsoleView.StdinEof())
+        return True, "stdin closed"
 
     async def _stack(self, app: TdbApp, *, up: bool) -> tuple[bool, str]:
         moved = await app._navigate_stack(up)

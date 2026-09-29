@@ -571,6 +571,119 @@ async def test_chunked_output_preserves_utf8_and_redacts_workspace_across_bounda
     assert "�" not in output
 
 
+@pytest.fixture
+def echoing_tcsh(tmp_path: Path) -> Path:
+    """A fake tcsh that echoes one stdin line, then reports EOF on the next."""
+
+    executable = tmp_path / "echoing-tcsh"
+    executable.write_text(
+        "#!/usr/bin/env python3\n"
+        "import sys\n"
+        "line = sys.stdin.readline()\n"
+        "print('got:' + line.rstrip('\\n'), flush=True)\n"
+        "print('eof' if sys.stdin.readline() == '' else 'more', flush=True)\n"
+    )
+    executable.chmod(executable.stat().st_mode | stat.S_IXUSR)
+    return executable
+
+
+@pytest.mark.asyncio
+async def test_write_stdin_and_close_stdin_reach_the_debuggee(
+    basic_program: Path,
+    echoing_tcsh: Path,
+) -> None:
+    events: list[SessionEvent] = []
+    session = DebugSession(
+        launch_config(basic_program, echoing_tcsh),
+        collecting_sink(events),
+    )
+    await session.prepare()
+    await session.start()
+
+    await session.write_stdin("héllo\n")
+    await session.close_stdin()
+    with pytest.raises(InvalidStateError, match="closed"):
+        await session.write_stdin("late\n")
+    await session.close_stdin()  # repeated EOF is a no-op
+    await asyncio.wait_for(session.wait(), timeout=2.0)
+
+    stdout = "".join(
+        str(event.body["output"])
+        for event in events
+        if event.kind == "output" and event.body["category"] == "stdout"
+    )
+    assert stdout == "got:héllo\neof\n"
+
+
+@pytest.mark.asyncio
+async def test_stdin_is_unavailable_without_an_owned_pipe(
+    basic_program: Path,
+    recording_tcsh: Path,
+) -> None:
+    terminal_session = DebugSession(
+        launch_config(basic_program, recording_tcsh, external_terminal=True),
+        collecting_sink([]),
+    )
+    with pytest.raises(InvalidStateError, match="external terminal"):
+        await terminal_session.write_stdin("x\n")
+    with pytest.raises(InvalidStateError, match="external terminal"):
+        await terminal_session.close_stdin()
+
+    session = DebugSession(
+        launch_config(basic_program, recording_tcsh),
+        collecting_sink([]),
+    )
+    with pytest.raises(InvalidStateError, match="launched"):
+        await session.write_stdin("x\n")
+    with pytest.raises(InvalidStateError, match="launched"):
+        await session.close_stdin()
+
+    await session.prepare()
+    await session.start()
+    await asyncio.wait_for(session.wait(), timeout=2.0)
+    with pytest.raises(InvalidStateError, match="exited"):
+        await session.write_stdin("x\n")
+    with pytest.raises(InvalidStateError, match="exited"):
+        await session.close_stdin()
+
+
+@pytest.mark.asyncio
+async def test_output_pump_delivers_unterminated_prompt_immediately(
+    basic_program: Path,
+    recording_tcsh: Path,
+) -> None:
+    events: list[SessionEvent] = []
+    session = DebugSession(
+        launch_config(basic_program, recording_tcsh),
+        collecting_sink(events),
+    )
+    session.workspace = Path("/private/workspace-boundary")
+    stream = asyncio.StreamReader()
+    pump = asyncio.create_task(session._pump_output(stream, "stdout"))
+    try:
+        stream.feed_data(b"line\nenter: ")
+        async with asyncio.timeout(0.5):
+            while len(events) < 2:
+                await asyncio.sleep(0)
+        assert [str(event.body["output"]) for event in events] == ["line\n", "enter: "]
+
+        # Only a tail that could be the start of the (redacted) workspace
+        # path is held back, and just until the next chunk resolves it.
+        stream.feed_data(b"see /private/works")
+        async with asyncio.timeout(0.5):
+            while len(events) < 3:
+                await asyncio.sleep(0)
+        assert str(events[2].body["output"]) == "see "
+        stream.feed_data(b"pace-boundary/x ok")
+        async with asyncio.timeout(0.5):
+            while len(events) < 4:
+                await asyncio.sleep(0)
+        assert str(events[3].body["output"]) == "<adapter-workspace>/x ok"
+    finally:
+        stream.feed_eof()
+        await asyncio.wait_for(pump, timeout=1)
+
+
 @pytest.mark.asyncio
 async def test_start_failure_cleans_workspace_without_exit_events(
     tmp_path: Path,

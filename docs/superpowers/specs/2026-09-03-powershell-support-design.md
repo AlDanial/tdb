@@ -47,7 +47,7 @@ untracked interpreter package the user downloaded; add it to
 Verified by driving PSES with a scripted DAP client (throwaway scripts in
 the session scratchpad, not in the repo). Load-bearing for the design:
 
-- **Start command.** `pwsh -NoLogo -NoProfile -NonInteractive -File
+- **Start command.** `pwsh -NoLogo -NoProfile -File
   <PSES>/Start-EditorServices.ps1 -HostName tdb -HostProfileId tdb
   -HostVersion <v> -BundledModulesPath <PSES parent> -LogPath <dir>
   -LogLevel None -SessionDetailsPath <file> -DebugServiceOnly` plus a

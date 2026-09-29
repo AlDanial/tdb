@@ -33,7 +33,7 @@ from tdb.languages.errors import parse_ruby_error
 
 class RdbgAdapter(AdapterSpec):
     id = "rdbg"
-    quirks = AdapterQuirks()
+    quirks = AdapterQuirks(stdin_route="request")
 
     def __init__(self, rdbg_executable: str | None = None) -> None:
         self._rdbg = rdbg_executable

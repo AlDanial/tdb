@@ -90,6 +90,12 @@ class FakeSession:
         if self.continue_error is not None:
             raise self.continue_error
 
+    async def write_stdin(self, text: str) -> None:
+        self.calls.append(("write_stdin", text))
+
+    async def close_stdin(self) -> None:
+        self.calls.append("close_stdin")
+
     async def next(self) -> None:
         self.calls.append("next")
 
@@ -502,6 +508,25 @@ async def test_stray_reverse_response_is_consumed_without_unsupported_command_er
 
 
 @pytest.mark.asyncio
+async def test_tdb_stdin_dispatches_text_and_eof(server_client: object) -> None:
+    client = server_client
+    session = await initialize_and_launch(client)  # type: ignore[arg-type]
+    assert (await client.request("tdbStdin", {"text": "42\n"}))["body"] == {}  # type: ignore[attr-defined]
+    assert (await client.request("tdbStdin", {"eof": True}))["body"] == {}  # type: ignore[attr-defined]
+    assert session.calls[-2:] == [("write_stdin", "42\n"), "close_stdin"]
+
+
+@pytest.mark.asyncio
+async def test_tdb_stdin_before_launch_is_a_failed_response(
+    server_client: object,
+) -> None:
+    client = server_client
+    response = await client.request("tdbStdin", {"text": "42\n"})  # type: ignore[attr-defined]
+    assert response["success"] is False
+    assert "launch must be requested first" in response["message"]
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("command", "arguments", "fragment"),
     [
@@ -516,6 +541,9 @@ async def test_stray_reverse_response_is_consumed_without_unsupported_command_er
         ("variables", {"variablesReference": "1"}, "variablesReference"),
         ("evaluate", {"expression": 7}, "expression"),
         ("evaluate", {"expression": "x", "frameId": "4"}, "frameId"),
+        ("tdbStdin", {"text": 7}, "text"),
+        ("tdbStdin", {}, "text"),
+        ("tdbStdin", {"eof": "yes"}, "eof"),
         ("continue", {"threadId": 2}, "threadId"),
         ("next", {}, "threadId"),
     ],

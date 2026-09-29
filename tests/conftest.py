@@ -86,6 +86,7 @@ def recording_tcsh(tmp_path: Path) -> Path:
         "#!/usr/bin/env python3\n"
         "import json\n"
         "import os\n"
+        "import select\n"
         "import sys\n"
         "from pathlib import Path\n"
         "record = {\n"
@@ -93,7 +94,12 @@ def recording_tcsh(tmp_path: Path) -> Path:
         "    'cwd': os.getcwd(),\n"
         "    'original_0': os.environ.get('__tcsh_dap_original_0'),\n"
         "    'overlay': os.environ.get('TCSH_DAP_TEST_OVERLAY'),\n"
-        "    'stdin': os.read(0, 1).decode('utf-8'),\n"
+        # Non-blocking probe: the adapter now hands the debuggee an
+        # owned stdin pipe (for console input) that stays open, idle,
+        # until the user types or the session ends -- a plain blocking
+        # read here would wedge every test that runs this fake.
+        "    'stdin': os.read(0, 1).decode('utf-8')\n"
+        "    if select.select([0], [], [], 0)[0] else '',\n"
         "    'pid': os.getpid(),\n"
         "    'process_group': os.getpgrp(),\n"
         "}\n"

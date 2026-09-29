@@ -95,6 +95,9 @@ async def start_session(controller: DebugController, **start_kwargs) -> int | No
     Returns the exit code to bail with, or None on success."""
     from tdb.languages.base import AdapterNotFoundError
 
+    # Headless: the program's stdin is tdb's own terminal, not a pipe
+    # that nothing would feed.
+    start_kwargs.setdefault("stdin_mode", "inherit")
     try:
         await controller.start(**start_kwargs)
     except AdapterNotFoundError as exc:

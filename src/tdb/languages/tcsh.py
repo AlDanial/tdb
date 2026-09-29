@@ -21,6 +21,7 @@ from typing import Any
 
 from tdb.languages.base import (
     AdapterNotFoundError,
+    AdapterQuirks,
     AdapterSpec,
     LanguageNotSupportedError,
     LanguageProfile,
@@ -32,6 +33,7 @@ from tdb.languages.base import (
 
 class TcshAdapter(AdapterSpec):
     id = "tcsh-tdb"
+    quirks = AdapterQuirks(stdin_route="request")
 
     def __init__(self, tcsh_executable: str | None = None) -> None:
         self._tcsh = tcsh_executable

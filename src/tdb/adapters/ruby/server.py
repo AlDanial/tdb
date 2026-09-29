@@ -26,6 +26,7 @@ rdbg's own "DEBUGGER:" banner lines.
 from __future__ import annotations
 
 import asyncio
+import codecs
 import logging
 import os
 import re
@@ -138,6 +139,46 @@ _MAX_LAUNCH_ATTEMPTS = 2
 # connect-on-socket behavior instead of hanging.
 _RDBG_READY_MARKER = "wait for debugger connection..."
 _RDBG_READY_TIMEOUT = 10.0
+
+
+class _BannerFilter:
+    """Drop rdbg's own "DEBUGGER: ..." lines from a *chunked* stderr stream.
+
+    The output pumps read chunks, not lines (a prompt with no trailing
+    newline must reach the client while the program blocks on `gets`), so
+    banner detection can't just test each read. A chunk that ends
+    mid-line is held back only while it could still turn out to be a
+    banner (it's a prefix of, or starts with, `_BANNER_PREFIX` *at the
+    start of a line*); anything else is passed through immediately, and
+    the next chunk's leading text is then a continuation of an
+    already-emitted line, never a candidate banner.
+    """
+
+    def __init__(self) -> None:
+        self._held = ""
+        self._at_line_start = True
+
+    def feed(self, text: str, *, final: bool = False) -> str:
+        out: list[str] = []
+        lines = (self._held + text).split("\n")
+        self._held = ""
+        tail = lines.pop()
+        for line in lines:
+            if not (self._at_line_start and line.startswith(_BANNER_PREFIX)):
+                out.append(line + "\n")
+            self._at_line_start = True
+        if tail:
+            banner_like = self._at_line_start and (
+                _BANNER_PREFIX.startswith(tail) or tail.startswith(_BANNER_PREFIX)
+            )
+            if banner_like and not final:
+                self._held = tail
+            elif banner_like and tail.startswith(_BANNER_PREFIX):
+                pass  # EOF inside a banner line: drop it
+            else:
+                out.append(tail)
+                self._at_line_start = False
+        return "".join(out)
 
 
 class SeqTranslator:
@@ -577,19 +618,28 @@ class RubyDapServer:
         return False
 
     async def _pump_output(self, stream: asyncio.StreamReader, category: str) -> None:
+        # Chunked, not line-based: a prompt like `print "enter: "` has no
+        # newline and must reach the Console view *before* the program
+        # blocks in `gets` waiting for the answer (see _on_tdbStdin). The
+        # incremental decoder keeps a multibyte UTF-8 sequence split
+        # across two reads from decoding to replacement characters.
+        decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+        banners = _BannerFilter() if category == "stderr" else None
         while True:
-            line = await stream.readline()
-            if not line:
+            data = await stream.read(4096)
+            text = decoder.decode(data, final=not data)
+            if banners is not None:
+                text = banners.feed(text, final=not data)
+            if text:
+                self.send_event("output", {"category": category, "output": text})
+                await self._writer.drain()
+            if not data:
                 return
-            text = line.decode("utf-8", errors="replace")
-            if category == "stderr" and text.startswith(_BANNER_PREFIX):
-                continue
-            self.send_event("output", {"category": category, "output": text})
-            await self._writer.drain()
 
     async def _watch_exit(self) -> None:
         assert self._proc is not None
         code = await self._proc.wait()
+        self._close_stdin()  # nobody left to read it
         # let the pipe pumps drain the output tail before exit events
         if self._pump_tasks:
             await asyncio.wait(self._pump_tasks, timeout=2.0)
@@ -707,18 +757,22 @@ class RubyDapServer:
                         )
                     else:
                         popen_kwargs["start_new_session"] = True
-                    # stdin=DEVNULL: left unset, rdbg would inherit *our*
-                    # stdin — the pipe the client is actively writing DAP
-                    # requests into. Under rapid back-to-back launches that
-                    # race let rdbg's startup occasionally consume/contend
-                    # for bytes never meant for it, wedging its DAP socket
-                    # thread before it ever answered `initialize` (client
-                    # then hung ~30s on the "initialized" event).
+                    # stdin=PIPE: this pipe IS the program's stdin (rdbg
+                    # runs the script in-process), and `_on_tdbStdin`
+                    # writes the Console view's input into it. It must be
+                    # our own pipe and never left unset: rdbg would then
+                    # inherit *our* stdin — the pipe the client is
+                    # actively writing DAP requests into. Under rapid
+                    # back-to-back launches that race let rdbg's startup
+                    # occasionally consume/contend for bytes never meant
+                    # for it, wedging its DAP socket thread before it ever
+                    # answered `initialize` (client then hung ~30s on the
+                    # "initialized" event).
                     self._proc = await asyncio.create_subprocess_exec(
                         *cmd,
                         cwd=cwd,
                         env=env,
-                        stdin=asyncio.subprocess.DEVNULL,
+                        stdin=asyncio.subprocess.PIPE,
                         stdout=asyncio.subprocess.PIPE,
                         stderr=asyncio.subprocess.PIPE,
                         **popen_kwargs,
@@ -1098,6 +1152,69 @@ class RubyDapServer:
     async def _on_completions(self, request: dict) -> None:
         await self._forward_with_default_frame(request)
 
+    # ---- Console-view stdin (tdb-private `tdbStdin`) ----
+    async def _on_tdbStdin(self, request: dict) -> None:
+        """Forward Console-view input to the debuggee's stdin pipe.
+
+        `{"text": ...}` writes it verbatim (the client supplies the
+        newline); `{"eof": true}` closes the pipe so `gets` returns nil.
+        Only a proxy-owned launch has that pipe: an externalTerminal
+        launch's stdin is the terminal window's, and before any launch
+        there's no process at all.
+        """
+        args = request.get("arguments") or {}
+        proc = self._proc
+        stdin = proc.stdin if proc is not None else None
+        if stdin is None:
+            if self._launched or self._launch_task is not None:
+                msg = (
+                    "the program's stdin belongs to its external terminal "
+                    "window — type into that window instead"
+                )
+            else:
+                msg = (
+                    "no program has been launched yet, so there is no stdin to write to"
+                )
+            self.send_error(request, msg)
+            return
+        if args.get("eof"):
+            # Idempotent: a second EOF (or one after the program exited,
+            # which already closed our end) has nothing left to do.
+            self._close_stdin()
+            self.send_response(request)
+            return
+        if proc.returncode is not None:
+            self.send_error(
+                request, "the program has already exited; its stdin is gone"
+            )
+            return
+        if stdin.is_closing():
+            self.send_error(
+                request, "the program's stdin was already closed (EOF sent)"
+            )
+            return
+        try:
+            stdin.write(str(args.get("text", "")).encode("utf-8"))
+            await stdin.drain()
+        except (ConnectionError, OSError) as e:
+            # The pipe's read end vanished under us (program died between
+            # the exit check above and the write).
+            self.send_error(request, f"could not write to the program's stdin: {e}")
+            return
+        self.send_response(request)
+
+    def _close_stdin(self) -> None:
+        """Close our write end of rdbg's stdin pipe (EOF for `gets`).
+
+        Also part of every teardown path via `_ensure_rdbg_dead` and
+        `_watch_exit`: a pipe transport left open past `asyncio.run()`'s
+        loop shutdown surfaces as an "Event loop is closed" unraisable
+        warning from its finalizer.
+        """
+        proc = self._proc
+        if proc is not None and proc.stdin is not None and not proc.stdin.is_closing():
+            proc.stdin.close()
+
     # ---- teardown ----
     async def _cancel_launch_task(self) -> None:
         """Cancel an in-flight externalTerminal launch continuation before
@@ -1154,6 +1271,7 @@ class RubyDapServer:
             pass
 
     async def _ensure_rdbg_dead(self, grace: float = 2.0) -> None:
+        self._close_stdin()  # before the early return: an exited child's pipe still needs it
         proc = self._proc
         if proc is None or proc.returncode is not None:
             return

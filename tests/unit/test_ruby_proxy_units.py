@@ -14,9 +14,49 @@ from tdb.adapters.ruby.server import (
     MIN_DEBUG_GEM,
     RubyDapServer,
     SeqTranslator,
+    _BannerFilter,
     _free_port,
     pick_transport,
 )
+
+
+# ---- _BannerFilter: rdbg's "DEBUGGER: " lines vs. a chunked stderr pump ----
+def test_banner_filter_drops_whole_banner_lines_and_keeps_program_lines():
+    f = _BannerFilter()
+    assert f.feed("DEBUGGER: Connected.\nwarning: x\n") == "warning: x\n"
+
+
+def test_banner_filter_passes_a_partial_prompt_through_immediately():
+    # A prompt with no newline must not wait for a line terminator.
+    f = _BannerFilter()
+    assert f.feed("enter: ") == "enter: "
+
+
+def test_banner_filter_holds_a_banner_split_across_chunks():
+    f = _BannerFilter()
+    assert f.feed("DEBUG") == ""  # could still become a banner: hold
+    assert f.feed("GER: wait for debugger connection...\nok\n") == "ok\n"
+
+
+def test_banner_filter_emits_a_held_prefix_that_turns_out_to_be_program_output():
+    f = _BannerFilter()
+    assert f.feed("DEBUG") == ""
+    assert f.feed(" me please\n") == "DEBUG me please\n"
+
+
+def test_banner_filter_does_not_treat_a_line_continuation_as_a_banner():
+    # "xyz" was already emitted mid-line; the text that follows belongs to
+    # that same line even though it starts with the banner prefix.
+    f = _BannerFilter()
+    assert f.feed("xyz") == "xyz"
+    assert f.feed("DEBUGGER: not a banner\n") == "DEBUGGER: not a banner\n"
+    # ... and the very next line IS checked again.
+    assert f.feed("DEBUGGER: banner\n") == ""
+
+
+def test_banner_filter_final_flushes_or_drops_the_tail():
+    assert _BannerFilter().feed("DEBUG", final=True) == "DEBUG"
+    assert _BannerFilter().feed("DEBUGGER: bye", final=True) == ""
 
 
 def test_client_request_roundtrip():
@@ -325,6 +365,8 @@ async def test_reset_for_retry_does_not_let_a_cancelled_watch_exit_emit_stray_ev
     server._launched = True
 
     class FakeProc:
+        stdin = None  # externalTerminal-shaped: no proxy-owned stdin pipe
+
         def __init__(self):
             self.pid = 999999
             self.returncode = None
@@ -447,6 +489,7 @@ async def test_reset_for_retry_closes_rdbg_writer_for_proxy_owned_launch_too():
     class FakeProc:
         pid = 424242
         returncode = 0  # already dead -- keeps _ensure_rdbg_dead a no-op
+        stdin = None
 
         async def wait(self):
             return 0

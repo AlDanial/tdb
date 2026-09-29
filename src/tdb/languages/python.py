@@ -21,7 +21,7 @@ from tdb.languages.errors import parse_python_error
 
 class DebugpyAdapter(AdapterSpec):
     id = "debugpy"
-    quirks = AdapterQuirks(pre_arm_pause_on_attach=True)
+    quirks = AdapterQuirks(pre_arm_pause_on_attach=True, stdin_route="run_in_terminal")
 
     def command(self) -> list[str]:
         # Always tdb's own interpreter (which has debugpy installed).

@@ -661,6 +661,18 @@ async def test_launch_normalizes_missing_args_and_cwd(dap):
     fut.cancel()
 
 
+# --- tdb-private stdin forwarding --------------------------------------
+
+
+async def test_send_stdin_text_and_eof(dap):
+    client, adapter = dap
+    await client.send_stdin("42\n")
+    await client.send_stdin(eof=True)
+    reqs = await adapter.wait_for_requests("tdbStdin", count=2)
+    assert reqs[0].arguments == {"text": "42\n"}
+    assert reqs[1].arguments == {"eof": True}
+
+
 # --- Source-lookup priming before stackTrace ---------------------------
 #
 # Some gdb builds (RHEL 8) report no source location for a frame until a

@@ -81,6 +81,16 @@ class AdapterQuirks:
     # resume_after_remote_attach, whose stub-entry stop is never useful.
     attach_stop_is_pausable: bool = False
 
+    # How the Console view's input line reaches the debuggee's stdin.
+    #   "run_in_terminal" (debugpy): the adapter's own launch would hand
+    #     the debuggee the adapter's stdin, i.e. tdb's DAP pipe, so tdb
+    #     always requests an external terminal and answers runInTerminal
+    #     itself with a PipeLauncher (session/terminal.py) on pipes.
+    #   "request": a tdb-owned adapter spawns the debuggee on a stdin
+    #     pipe and forwards the private `tdbStdin` request into it.
+    #   None: no stdin (gdb, lldb-dap, dlv spawn the debuggee themselves).
+    stdin_route: str | None = None
+
 
 class AdapterSpec:
     """How to spawn and speak to one debug adapter. Subclass per adapter.
