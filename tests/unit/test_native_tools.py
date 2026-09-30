@@ -177,3 +177,90 @@ def test_tool_version_number_none_when_probe_fails(monkeypatch):
 
     monkeypatch.setattr(subprocess, "run", fake_run)
     assert nt.tool_version_number("/usr/bin/bash") is None
+
+
+# --- gdb DAP capability (GDB >= 14) --------------------------------------------
+
+
+def test_tool_version_tuple_parses_rhel_gdb(monkeypatch):
+    monkeypatch.setattr(
+        nt,
+        "version_output",
+        lambda exe, args: "GNU gdb (GDB) Red Hat Enterprise Linux 8.2-20.el8\n",
+    )
+    assert nt.tool_version_tuple("/usr/bin/gdb") == (8, 2)
+
+
+def test_tool_version_tuple_unknown_when_probe_fails(monkeypatch):
+    monkeypatch.setattr(nt, "version_output", lambda exe, args: None)
+    assert nt.tool_version_tuple("/usr/bin/gdb") is None
+
+
+def test_tool_version_tuple_unknown_when_no_number(monkeypatch):
+    monkeypatch.setattr(nt, "version_output", lambda exe, args: "")
+    assert nt.tool_version_tuple("/usr/bin/gdb") is None
+
+
+def _toolset_gdbs(monkeypatch, versions: dict[str, str]) -> None:
+    import fnmatch
+
+    monkeypatch.setattr(
+        nt.glob,
+        "glob",
+        lambda pattern: sorted(p for p in versions if fnmatch.fnmatch(p, pattern)),
+    )
+    monkeypatch.setattr(nt, "version_output", lambda exe, args: versions[exe])
+
+
+def test_find_dap_capable_gdb_picks_newest_toolset(monkeypatch):
+    _toolset_gdbs(
+        monkeypatch,
+        {
+            "/opt/rh/devtoolset-11/root/usr/bin/gdb": "GNU gdb (GDB) 10.2-5.el7\n",
+            "/opt/rh/gcc-toolset-13/root/usr/bin/gdb": "GNU gdb (GDB) 12.1-2.el8\n",
+            "/opt/rh/gcc-toolset-14/root/usr/bin/gdb": (
+                "GNU gdb (GDB) Red Hat Enterprise Linux 14.2-3.el8_10\n"
+            ),
+        },
+    )
+    assert nt.find_dap_capable_gdb() == (
+        "/opt/rh/gcc-toolset-14/root/usr/bin/gdb",
+        (14, 2),
+    )
+
+
+def test_find_dap_capable_gdb_prefers_highest_version_not_highest_toolset(
+    monkeypatch,
+):
+    _toolset_gdbs(
+        monkeypatch,
+        {
+            "/opt/rh/gcc-toolset-14/root/usr/bin/gdb": "GNU gdb (GDB) 14.2\n",
+            "/opt/rh/gcc-toolset-15/root/usr/bin/gdb": "GNU gdb (GDB) 14.1\n",
+        },
+    )
+    assert nt.find_dap_capable_gdb() == (
+        "/opt/rh/gcc-toolset-14/root/usr/bin/gdb",
+        (14, 2),
+    )
+
+
+def test_find_dap_capable_gdb_skips_pre_dap_toolsets(monkeypatch):
+    _toolset_gdbs(
+        monkeypatch,
+        {"/opt/rh/gcc-toolset-13/root/usr/bin/gdb": "GNU gdb (GDB) 12.1-2.el8\n"},
+    )
+    assert nt.find_dap_capable_gdb() is None
+
+
+def test_find_dap_capable_gdb_none_without_toolsets(monkeypatch):
+    _toolset_gdbs(monkeypatch, {})
+    assert nt.find_dap_capable_gdb() is None
+
+
+def test_find_dap_capable_gdb_skips_unprobeable_candidates(monkeypatch):
+    monkeypatch.setattr(
+        nt.glob, "glob", lambda pattern: ["/opt/rh/gcc-toolset-14/root/usr/bin/gdb"]
+    )
+    monkeypatch.setattr(nt, "version_output", lambda exe, args: None)
+    assert nt.find_dap_capable_gdb() is None

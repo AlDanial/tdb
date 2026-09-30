@@ -258,8 +258,11 @@ class OCamlGdbAdapter(GdbDapAdapter):
         # each project .ml file's first line back to its generated entry
         # function. The first project unit the program initializes becomes
         # the visible entry stop.
-        exe = self._executable or shutil.which("gdb") or "gdb"
         try:
+            # The same gdb command() will run (toolset fallback included);
+            # a gdb command() would reject is no use for the inventory
+            # either, and command() reports it with the full hint.
+            exe = self.resolve_executable()
             result = subprocess.run(
                 [exe, "-q", "-nx", "-batch", program, "-ex", "info sources"],
                 cwd=cwd,
@@ -268,7 +271,7 @@ class OCamlGdbAdapter(GdbDapAdapter):
                 timeout=10,
                 check=False,
             )
-        except (OSError, subprocess.SubprocessError):
+        except (OSError, subprocess.SubprocessError, AdapterNotFoundError):
             return ()
 
         root = Path(cwd).resolve()

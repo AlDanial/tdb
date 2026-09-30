@@ -14,6 +14,7 @@ Two consumers:
 
 from __future__ import annotations
 
+import glob
 import os
 import re
 import shutil
@@ -29,6 +30,23 @@ PATH_ADAPTER_IDS: tuple[str, ...] = ("lldb-dap", "gdb", "dlv")
 NATIVE_ADAPTER_IDS: tuple[str, ...] = ("gdb", "lldb-dap")
 
 _VERSION_TIMEOUT_S = 5.0
+
+# gdb's DAP interpreter (`gdb -i dap`) arrived in GDB 14. Older builds
+# answer `-i dap` with "Interpreter `dap' unrecognized" and exit 1 --
+# RHEL 8's stock gdb is 8.2, RHEL 9's is 10.2. Keep in sync with
+# tdb.info.MINIMUM_VERSIONS["gdb"].
+GDB_DAP_MIN_VERSION: tuple[int, ...] = (14,)
+
+# Where Red Hat's Software Collections install newer toolchains on
+# RHEL 7/8/9 and their rebuilds (Rocky, Alma, Oracle, CentOS Stream):
+# `dnf install gcc-toolset-14-gdb` puts a DAP-capable gdb 14.2 here
+# without touching /usr/bin/gdb, and it runs by absolute path (no
+# `scl enable` needed). tdb consults these only when the gdb it would
+# otherwise run is missing or provably too old.
+TOOLSET_GDB_GLOBS: tuple[str, ...] = (
+    "/opt/rh/gcc-toolset-*/root/usr/bin/gdb",
+    "/opt/rh/devtoolset-*/root/usr/bin/gdb",
+)
 
 
 def is_executable_path(value: str) -> bool:
@@ -139,3 +157,31 @@ def tool_version_number(
         if found:
             return found
     return None
+
+
+def tool_version_tuple(
+    executable: str, args: tuple[str, ...] = ("--version",)
+) -> tuple[int, ...] | None:
+    """``(8, 2)`` for a gdb whose ``--version`` says ``8.2-20.el8``; None
+    when the tool can't be run or prints no version number."""
+    number = tool_version_number(executable, args)
+    if number is None:
+        return None
+    m = re.match(r"\d+(?:\.\d+)*", number)
+    return tuple(int(n) for n in m.group(0).split(".")) if m else None
+
+
+def find_dap_capable_gdb() -> tuple[str, tuple[int, ...]] | None:
+    """The newest gdb at or above GDB_DAP_MIN_VERSION among the Software
+    Collections toolsets (TOOLSET_GDB_GLOBS), as ``(path, version)``, or
+    None. Candidates whose version can't be read are skipped: this is a
+    fallback and must never pick something it can't vouch for."""
+    best: tuple[str, tuple[int, ...]] | None = None
+    for pattern in TOOLSET_GDB_GLOBS:
+        for path in sorted(glob.glob(pattern)):
+            version = tool_version_tuple(path)
+            if version is None or version < GDB_DAP_MIN_VERSION:
+                continue
+            if best is None or version > best[1]:
+                best = (path, version)
+    return best

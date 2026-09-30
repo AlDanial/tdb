@@ -343,3 +343,107 @@ def test_gdb_primes_source_lookup_with_list_before_stack_trace():
 
 def test_lldb_needs_no_pre_stack_trace_commands():
     assert LldbDapAdapter().pre_stack_trace_commands() == ()
+
+
+# --- gdb version pre-flight (RHEL 8's stock gdb 8.2 has no DAP mode) ----------
+
+TOOLSET_GDB = "/opt/rh/gcc-toolset-14/root/usr/bin/gdb"
+
+
+def _gdb_versions(monkeypatch, versions: dict[str, tuple[int, ...] | None]):
+    from tdb.languages import native_tools as nt
+
+    monkeypatch.setattr(
+        nt, "tool_version_tuple", lambda exe, args=("--version",): versions[exe]
+    )
+
+
+def _toolset(monkeypatch, found):
+    from tdb.languages import native_tools as nt
+
+    monkeypatch.setattr(nt, "find_dap_capable_gdb", lambda: found)
+
+
+def test_gdb_command_rejects_explicit_gdb_too_old_for_dap(monkeypatch):
+    _gdb_versions(monkeypatch, {"/usr/bin/gdb": (8, 2)})
+    _toolset(monkeypatch, (TOOLSET_GDB, (14, 2)))
+    with pytest.raises(AdapterNotFoundError) as info:
+        GdbDapAdapter(executable="/usr/bin/gdb").command()
+    hint = info.value.hint
+    assert "/usr/bin/gdb" in hint
+    assert "8.2" in hint
+    assert "GDB >= 14" in hint
+    # An explicit path (--adapter or config.json) is never silently
+    # replaced, but the usable gdb tdb found is named so the fix is one
+    # config edit away.
+    assert TOOLSET_GDB in hint
+    assert "config.json" in hint
+    assert "--adapter" in hint
+
+
+def test_gdb_command_falls_back_to_toolset_gdb_when_path_gdb_too_old(
+    monkeypatch, caplog
+):
+    monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/gdb")
+    _gdb_versions(monkeypatch, {"/usr/bin/gdb": (8, 2)})
+    _toolset(monkeypatch, (TOOLSET_GDB, (14, 2)))
+    with caplog.at_level("INFO", logger="tdb.languages.cpp"):
+        assert GdbDapAdapter().command() == [TOOLSET_GDB, "-i", "dap"]
+    assert "/usr/bin/gdb" in caplog.text and TOOLSET_GDB in caplog.text
+
+
+def test_gdb_command_path_gdb_too_old_without_fallback_hints_rhel(monkeypatch):
+    monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/gdb")
+    _gdb_versions(monkeypatch, {"/usr/bin/gdb": (8, 2)})
+    _toolset(monkeypatch, None)
+    with pytest.raises(AdapterNotFoundError) as info:
+        GdbDapAdapter().command()
+    hint = info.value.hint
+    assert "/usr/bin/gdb" in hint and "8.2" in hint
+    assert "gcc-toolset-14-gdb" in hint
+    assert "--adapter" in hint
+
+
+def test_gdb_command_missing_on_path_uses_toolset_gdb(monkeypatch):
+    monkeypatch.setattr(shutil, "which", lambda name: None)
+    _gdb_versions(monkeypatch, {})
+    _toolset(monkeypatch, (TOOLSET_GDB, (14, 2)))
+    assert GdbDapAdapter().command() == [TOOLSET_GDB, "-i", "dap"]
+
+
+def test_gdb_command_trusts_unknown_version(monkeypatch):
+    # A gdb whose --version can't be parsed (wrapper scripts, exotic
+    # builds) is used as-is: the pre-flight only rejects what it can prove
+    # is too old. The toolset scan must not even run.
+    _gdb_versions(monkeypatch, {"/opt/odd/gdb": None})
+    _toolset(monkeypatch, (TOOLSET_GDB, (14, 2)))
+    assert GdbDapAdapter(executable="/opt/odd/gdb").command() == [
+        "/opt/odd/gdb",
+        "-i",
+        "dap",
+    ]
+
+
+def test_gdb_command_accepts_gdb_at_floor(monkeypatch):
+    _gdb_versions(monkeypatch, {"/usr/bin/gdb": (14,)})
+    _toolset(monkeypatch, None)
+    assert GdbDapAdapter(executable="/usr/bin/gdb").command() == [
+        "/usr/bin/gdb",
+        "-i",
+        "dap",
+    ]
+
+
+def test_gdb_diagnose_exit_recognizes_missing_dap_interpreter():
+    # gdb's exact wording when `-i dap` names no interpreter: a build
+    # older than 14, or one configured --without-python (the DAP layer
+    # is Python).
+    hint = GdbDapAdapter(executable="/usr/bin/gdb").diagnose_exit(
+        "❌️ Interpreter `dap' unrecognized"
+    )
+    assert hint is not None
+    assert "/usr/bin/gdb" in hint
+    assert "GDB >= 14" in hint
+    assert "Python" in hint
+    assert GdbDapAdapter().diagnose_exit("Segmentation fault") is None
+    assert GdbDapAdapter().diagnose_exit("") is None

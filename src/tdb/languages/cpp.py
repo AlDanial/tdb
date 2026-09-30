@@ -12,9 +12,11 @@ model), no task inspection, no child-process tracking.
 from __future__ import annotations
 
 import dataclasses
+import logging
 import shutil
 from typing import Any
 
+from tdb.languages import native_tools
 from tdb.languages.base import (
     AdapterNotFoundError,
     AdapterQuirks,
@@ -25,6 +27,8 @@ from tdb.languages.base import (
     assignment_matcher,
     ProfileCapabilities,
 )
+
+log = logging.getLogger(__name__)
 
 
 def _required_program(opts: dict[str, Any]) -> str:
@@ -189,6 +193,48 @@ GDB_BREAKPOINT_QUERY = (
 )
 
 
+# gdb's exact wording (gdb/main.c) when `-i NAME` names no registered
+# interpreter. The `dap` interpreter exists only in GDB >= 14 and only
+# when gdb was built with Python (gdb/python/py-dap.c registers it).
+GDB_NO_DAP_INTERPRETER = "Interpreter `dap' unrecognized"
+
+
+def _dotted(version: tuple[int, ...]) -> str:
+    return ".".join(str(n) for n in version)
+
+
+def gdb_too_old_hint(
+    exe: str,
+    version: tuple[int, ...],
+    explicit: str | None,
+    toolset: tuple[str, tuple[int, ...]] | None,
+) -> str:
+    """The AdapterNotFoundError hint for a gdb below GDB_DAP_MIN_VERSION."""
+    source = (
+        " (from --adapter or config.json's adapters.gdb)" if explicit else " on PATH"
+    )
+    hint = (
+        f"gdb{source} at {exe} is version {_dotted(version)}, but tdb needs "
+        f"GDB >= {_dotted(native_tools.GDB_DAP_MIN_VERSION)} for its DAP mode"
+        " (`gdb -i dap`)"
+    )
+    if toolset is not None:
+        hint += (
+            f"; a usable gdb {_dotted(toolset[1])} is at {toolset[0]} — pass it "
+            f"with `--adapter {toolset[0]}` or set "
+            f'{{"adapters": {{"gdb": "{toolset[0]}"}}}} in tdb\'s config.json'
+        )
+    else:
+        hint += (
+            "; on RHEL 8 `dnf install gcc-toolset-14-gdb` provides "
+            "/opt/rh/gcc-toolset-14/root/usr/bin/gdb, which tdb then finds "
+            "on its own; elsewhere install a newer gdb and name it with "
+            '`--adapter /path/to/gdb` or {"adapters": {"gdb": "/path/to/gdb"}} '
+            "in tdb's config.json"
+        )
+    return hint
+
+
 class GdbDapAdapter(AdapterSpec):
     """GDB's built-in DAP interpreter (`gdb -i dap`, GDB >= 14).
 
@@ -226,15 +272,73 @@ class GdbDapAdapter(AdapterSpec):
     def hook_function_breakpoints(self) -> tuple[str, ...]:
         return (HOOK_STOP_FUNCTION,) if self._attach_pid is not None else ()
 
-    def command(self) -> list[str]:
-        exe = self._executable or shutil.which("gdb")
+    def resolve_executable(self) -> str:
+        """The gdb this session runs, checked up front for DAP support.
+
+        `gdb -i dap` needs GDB >= 14 (and a build with Python, which
+        implements the DAP layer); an older gdb prints "Interpreter
+        `dap' unrecognized" and exits, which used to surface only as a
+        "Failed to start" subtitle. RHEL 8 ships gdb 8.2 as /usr/bin/gdb
+        while `gcc-toolset-14-gdb` installs a DAP-capable 14.2 under
+        /opt/rh, so:
+
+        * an explicit path (`--adapter /path/to/gdb` or config.json's
+          ``adapters.gdb``, which tdb seeds with the PATH gdb of its
+          first run) is honored, and rejected with a hint naming the
+          path, its version, and any usable toolset gdb, when it is
+          provably too old;
+        * the PATH gdb, when missing or provably too old, gives way to
+          the newest toolset gdb (logged), else the same hint;
+        * a gdb whose version can't be read is used as-is; the DAP
+          client's death diagnosis still names the remedy if it fails.
+        """
+        explicit = self._executable
+        exe = explicit or shutil.which("gdb")
+        toolset = None
         if exe is None:
+            toolset = native_tools.find_dap_capable_gdb()
+            if toolset is not None:
+                log.info(
+                    "gdb not on PATH; using %s (gdb %s)",
+                    toolset[0],
+                    _dotted(toolset[1]),
+                )
+                return toolset[0]
             raise AdapterNotFoundError(
                 "gdb not found on PATH — install GDB >= 14 (its DAP mode), "
                 'or set {"adapters": {"gdb": "/path/to/gdb"}} in '
                 "tdb's config.json"
             )
-        return [exe, "-i", "dap"]
+        version = native_tools.tool_version_tuple(exe)
+        if version is None or version >= native_tools.GDB_DAP_MIN_VERSION:
+            return exe
+        toolset = native_tools.find_dap_capable_gdb()
+        if toolset is not None and explicit is None:
+            log.info(
+                "gdb on PATH (%s) is %s, too old for DAP; using %s (gdb %s)",
+                exe,
+                _dotted(version),
+                toolset[0],
+                _dotted(toolset[1]),
+            )
+            return toolset[0]
+        raise AdapterNotFoundError(gdb_too_old_hint(exe, version, explicit, toolset))
+
+    def command(self) -> list[str]:
+        return [self.resolve_executable(), "-i", "dap"]
+
+    def diagnose_exit(self, stderr: str) -> str | None:
+        if GDB_NO_DAP_INTERPRETER not in stderr:
+            return None
+        exe = self._executable or shutil.which("gdb") or "gdb"
+        return (
+            f"{exe} has no DAP interpreter: tdb needs GDB >= 14 built with "
+            "Python support (`gdb --configuration` shows --with-python); "
+            "on RHEL 8 install gcc-toolset-14-gdb and run `tdb --info` to "
+            "see which gdb tdb picks, or point it at one with "
+            '`--adapter /path/to/gdb` or {"adapters": {"gdb": '
+            '"/path/to/gdb"}} in tdb\'s config.json'
+        )
 
     def breakpoint_query_command(self) -> str | None:
         return GDB_BREAKPOINT_QUERY

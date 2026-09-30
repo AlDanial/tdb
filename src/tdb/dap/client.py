@@ -49,6 +49,9 @@ class DAPClient:
         self._event_handlers: dict[str, list[EventHandler]] = {}
         self._reverse_request_handlers: dict[str, ReverseRequestHandler] = {}
         self._process: asyncio.subprocess.Process | None = None
+        # Set by _watch_adapter_death once the adapter subprocess has
+        # exited; every later request fails with it immediately.
+        self._death_error: ConnectionError | None = None
         self._reader: asyncio.StreamReader | None = None
         self._writer: asyncio.StreamWriter | None = None
         self._reader_task: asyncio.Task[None] | None = None
@@ -85,6 +88,7 @@ class DAPClient:
         ``ModuleNotFoundError`` and tdb would hang waiting on stdout.
         """
         self._stack_trace_primed = False
+        self._death_error = None
         argv = self._adapter.command()
         spawn_kwargs: dict = {}
         if os.name == "nt":
@@ -120,6 +124,26 @@ class DAPClient:
         # `DebugController` (asyncio holds only weak refs to tasks).
         self._watch_task = asyncio.create_task(self._watch_adapter_death())
 
+    async def _death_error_behind(self, exc: ConnectionError) -> ConnectionError:
+        """The death watcher's ConnectionError when the adapter process
+        exiting is what broke the stream, else ``exc`` itself.
+
+        A fast-dying adapter (gdb rejecting `-i dap` exits in
+        milliseconds) closes its pipes before the watcher has read its
+        stderr, so the write of the first request fails with asyncio's
+        "Connection lost" -- which would win the race and hide the
+        stderr line and the remedy. Wait briefly for the watcher.
+        """
+        from tdb._timeouts import ADAPTER_EXIT_GRACE
+
+        task = self._watch_task
+        if self._death_error is None and task is not None and not task.done():
+            try:
+                await asyncio.wait_for(asyncio.shield(task), timeout=ADAPTER_EXIT_GRACE)
+            except (asyncio.TimeoutError, Exception):
+                pass
+        return self._death_error or exc
+
     async def _watch_adapter_death(self) -> None:
         if self._process is None:
             return
@@ -138,10 +162,19 @@ class DAPClient:
             f"\nstderr:\n{stderr_text}" if stderr_text else "",
         )
         # Fail any still-pending requests so callers don't await forever.
-        err = ConnectionError(
+        message = (
             f"{self._adapter.id} adapter died (exit {rc}): "
             f"{stderr_text.splitlines()[-1] if stderr_text else 'no output'}"
         )
+        # A known failure signature gets its remedy appended (gdb without
+        # a DAP interpreter: "Interpreter `dap' unrecognized").
+        diagnosis = self._adapter.diagnose_exit(stderr_text)
+        if diagnosis:
+            message += f" — {diagnosis}"
+        err = ConnectionError(message)
+        # Kept for requests sent after this point (initialize racing the
+        # watcher): they must fail at once, not after DAP_REQUEST.
+        self._death_error = err
         for fut in list(self._pending.values()):
             if not fut.done():
                 fut.set_exception(err)
@@ -314,6 +347,8 @@ class DAPClient:
         self, command: str, arguments: dict[str, Any] | None = None
     ) -> asyncio.Future[Response]:
         """Send a DAP request. Returns the Future for the response (not awaited)."""
+        if self._death_error is not None:
+            raise self._death_error
         writer = self._get_write_stream()
         seq = self._next_seq()
         request = Request(seq=seq, command=command, arguments=arguments or {})
@@ -328,8 +363,16 @@ class DAPClient:
         future: asyncio.Future[Response] = asyncio.get_running_loop().create_future()
         self._pending[seq] = future
         data = encode_message(request.to_dict())
-        writer.write(data)
-        await writer.drain()
+        try:
+            writer.write(data)
+            await writer.drain()
+        except BaseException:
+            # Nothing was sent, so nothing can answer: drop the future
+            # before the death watcher fails it for a caller that is
+            # already handling the write error (else asyncio logs
+            # "Future exception was never retrieved").
+            self._pending.pop(seq, None)
+            raise
         return future
 
     async def _send(
@@ -338,8 +381,11 @@ class DAPClient:
         """Send a DAP request and wait for its response."""
         from tdb._timeouts import DAP_REQUEST
 
-        future = await self._send_raw(command, arguments)
-        response = await asyncio.wait_for(future, timeout=DAP_REQUEST)
+        try:
+            future = await self._send_raw(command, arguments)
+            response = await asyncio.wait_for(future, timeout=DAP_REQUEST)
+        except ConnectionError as exc:
+            raise await self._death_error_behind(exc) from None
         if not response.success:
             raise DAPError(command, response.message or "Unknown error", response.body)
         return response
