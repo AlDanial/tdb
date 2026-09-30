@@ -684,6 +684,15 @@ class TdbApp(_AppMessageRoutes, App):
             log.exception("Failed to start debug session")
             self._startup_error = f"tdb: {exc.hint}"
             self.exit(return_code=2)
+        except ConnectionError as exc:
+            # The adapter was found but died before serving DAP (a gdb
+            # without a DAP interpreter, a debugpy import failure, ...).
+            # DAPClient folds its stderr and any diagnosis into the
+            # message; an empty TUI titled "Failed to start" would hide
+            # exactly the line the user needs.
+            log.exception("Failed to start debug session")
+            self._startup_error = f"tdb: {exc}"
+            self.exit(return_code=2)
         except Exception:
             log.exception("Failed to start debug session")
             self.sub_title = "Failed to start"

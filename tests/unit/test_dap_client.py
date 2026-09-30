@@ -738,3 +738,89 @@ async def test_default_adapter_sends_no_priming_before_stack_trace(dap):
     adapter.responders["stackTrace"] = lambda req: {"stackFrames": []}
     await client.stack_trace(thread_id=1)
     assert [r.command for r in adapter.requests] == ["stackTrace"]
+
+
+# --- adapter death diagnosis -----------------------------------------------
+
+
+class _DiagnosingSpec(_RecordingSpec):
+    id = "gdb"
+
+    def diagnose_exit(self, stderr: str) -> str | None:
+        return "install GDB >= 14" if "Interpreter `dap'" in stderr else None
+
+
+async def test_adapter_death_appends_adapter_diagnosis():
+    client = DAPClient(adapter=_DiagnosingSpec())
+    client._process = _FakeProcess(1, "❌️ Interpreter `dap' unrecognized\n".encode())
+    fut: asyncio.Future = asyncio.get_running_loop().create_future()
+    client._pending[1] = fut
+    await client._watch_adapter_death()
+    with pytest.raises(
+        ConnectionError, match=r"exit 1.*unrecognized.*install GDB >= 14"
+    ):
+        fut.result()
+
+
+async def test_adapter_death_without_diagnosis_keeps_plain_message():
+    client = DAPClient(adapter=_DiagnosingSpec())
+    client._process = _FakeProcess(1, b"Segmentation fault\n")
+    fut: asyncio.Future = asyncio.get_running_loop().create_future()
+    client._pending[1] = fut
+    await client._watch_adapter_death()
+    with pytest.raises(ConnectionError, match=r"exit 1\): Segmentation fault$"):
+        fut.result()
+
+
+async def test_requests_after_adapter_death_fail_immediately():
+    # The death watcher fails the requests pending at that moment; a
+    # request sent *after* it ran (the watcher won the race against
+    # initialize) must not sit in DAP_REQUEST's timeout either.
+    client = DAPClient()
+    client._process = _FakeProcess(1, b"Interpreter `dap' unrecognized\n")
+    await client._watch_adapter_death()
+    with pytest.raises(ConnectionError, match="adapter died"):
+        await client.initialize()
+
+
+class _BrokenWriter:
+    """A pipe whose far end already closed: write buffers, drain fails."""
+
+    def write(self, data: bytes) -> None:
+        pass
+
+    async def drain(self) -> None:
+        raise ConnectionResetError("Connection lost")
+
+
+async def test_stream_loss_reports_adapter_death_diagnosis():
+    # The adapter exited so fast that the first request's write fails
+    # before the death watcher has read stderr; the request must still
+    # surface the watcher's message, not asyncio's "Connection lost".
+    client = DAPClient(adapter=_DiagnosingSpec())
+    client._process = _FakeProcess(1, "Interpreter `dap' unrecognized\n".encode())
+    client._writer = _BrokenWriter()
+    client._watch_task = asyncio.create_task(client._watch_adapter_death())
+    with pytest.raises(
+        ConnectionError, match=r"exit 1.*unrecognized.*install GDB >= 14"
+    ):
+        await client.initialize()
+
+
+async def test_stream_loss_without_adapter_death_keeps_original_error(monkeypatch):
+    from tdb import _timeouts
+
+    monkeypatch.setattr(_timeouts, "ADAPTER_EXIT_GRACE", 0.05)
+
+    class _LivingProcess(_FakeProcess):
+        async def wait(self) -> int:
+            await asyncio.sleep(10)
+            return 0
+
+    client = DAPClient(adapter=_DiagnosingSpec())
+    client._process = _LivingProcess(0, b"")
+    client._writer = _BrokenWriter()
+    client._watch_task = asyncio.create_task(client._watch_adapter_death())
+    with pytest.raises(ConnectionError, match="Connection lost"):
+        await client.initialize()
+    client._watch_task.cancel()

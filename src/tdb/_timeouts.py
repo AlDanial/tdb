@@ -51,6 +51,13 @@ DAP_CHILD_ATTACH = 30.0
 
 # Ceiling for a spawn_tcp adapter to print its "listening at" line.
 ADAPTER_LISTEN = 15.0
+
+# How long a request that lost the DAP stream waits for the adapter's
+# death watcher, so the error carries the adapter's stderr and diagnosis
+# (gdb: "Interpreter `dap' unrecognized" + remedy) instead of asyncio's
+# bare "Connection lost". An adapter that broke its pipe is exiting; a
+# live one (TCP hiccup) keeps the original error after this.
+ADAPTER_EXIT_GRACE = 2.0
 """Timeout for spawn_tcp adapter to announce its listening port."""
 
 # Run-mode examine reads each child process's threads and stacks in

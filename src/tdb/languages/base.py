@@ -118,6 +118,18 @@ class AdapterSpec:
         """
         raise NotImplementedError
 
+    def diagnose_exit(self, stderr: str) -> str | None:
+        """One user-facing sentence explaining why the adapter process
+        exited before tdb was done with it, from its stderr; None when
+        the adapter has nothing to add to the raw stderr tail.
+
+        The DAP client appends it to the ConnectionError that fails the
+        pending requests, so a known failure signature (gdb's
+        "Interpreter `dap' unrecognized") reaches the user with the
+        remedy instead of just the debugger's one-liner.
+        """
+        return None
+
     def launch_body(
         self,
         *,

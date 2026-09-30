@@ -75,6 +75,11 @@ async def setup_headless_session(
         except AdapterNotFoundError as exc:
             print(f"tdb: {exc.hint}", file=sys.stderr)
             sys.exit(2)
+        except ConnectionError as exc:
+            # Adapter spawned but died before serving DAP; the message
+            # carries its stderr tail and any adapter diagnosis.
+            print(f"tdb: {exc}", file=sys.stderr)
+            sys.exit(2)
         except OSError as exc:
             # No server listening, route unreachable, DNS failure, etc.
             # Mirror the TUI's failure mode: clear message on stderr,
@@ -101,6 +106,11 @@ async def setup_headless_session(
             # installed). Mirror the remote-attach OSError handling
             # above: print the install hint instead of a raw traceback.
             print(f"tdb: {exc.hint}", file=sys.stderr)
+            sys.exit(2)
+        except ConnectionError as exc:
+            # Adapter found but exited before answering `initialize`
+            # (gdb without a DAP interpreter, ...): same contract.
+            print(f"tdb: {exc}", file=sys.stderr)
             sys.exit(2)
 
     # Wait for initialized event, then configure

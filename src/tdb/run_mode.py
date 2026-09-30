@@ -91,8 +91,9 @@ class ConsoleRunHandler:
 
 async def start_session(controller: DebugController, **start_kwargs) -> int | None:
     """controller.start() with the shared headless-mode contract: a
-    missing adapter prints its one-line hint and yields exit code 2.
-    Returns the exit code to bail with, or None on success."""
+    missing adapter, or one that dies before serving DAP, prints its
+    one-line hint and yields exit code 2. Returns the exit code to bail
+    with, or None on success."""
     from tdb.languages.base import AdapterNotFoundError
 
     # Headless: the program's stdin is tdb's own terminal, not a pipe
@@ -102,6 +103,11 @@ async def start_session(controller: DebugController, **start_kwargs) -> int | No
         await controller.start(**start_kwargs)
     except AdapterNotFoundError as exc:
         print(f"tdb: {exc.hint}", file=sys.stderr)
+        return 2
+    except ConnectionError as exc:
+        # Adapter spawned but died before answering (gdb without a DAP
+        # interpreter, ...); DAPClient's message names the remedy.
+        print(f"tdb: {exc}", file=sys.stderr)
         return 2
     return None
 

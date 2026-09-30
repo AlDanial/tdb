@@ -188,7 +188,7 @@ languages are supported out of the box:
 | Language | Adapter(s) | Dependencies           | Feature level |
 |----------|------------|------------------------|---------------|
 | Python | `debugpy` (default) | Python ≥ 3.11 | everything in this README |
-| C / C++ (any native binary) | `gdb` (default), `lldb-dap` (alternate) | `gdb -i dap` requires GDB ≥ 14; `lldb-dap` ships with LLVM ≥ 17 (e.g. `apt install lldb`) | core debugging: breakpoints, stepping, stack, variables, evaluate console + remote attach (gdbserver/lldb-server, local symbol-bearing executable required) |
+| C / C++ (any native binary) | `gdb` (default), `lldb-dap` (alternate) | `gdb -i dap` requires GDB ≥ 14 built with Python (RHEL 8/9: `dnf install gcc-toolset-14-gdb`, see [C/C++ tips](#cc-tips)); `lldb-dap` ships with LLVM ≥ 17 (e.g. `apt install lldb`) | core debugging: breakpoints, stepping, stack, variables, evaluate console + remote attach (gdbserver/lldb-server, local symbol-bearing executable required) |
 | Rust (explicit `--lang rust`) | `gdb` (Linux default), `lldb-dap` (macOS default) | any rustc building with debug info; GDB ≥ 14 or LLVM `lldb-dap` ≥ 17 (concurrency ownership evidence additionally requires stable Rust 1.98) | core debugging + best-effort Rust concurrency inspection + remote attach |
 | Perl | perl-tdb (bundled) | perl ≥ 5.18 on PATH  | core debugging + remote attach |
 | Bash | bash-tdb (bundled) | bash ≥ 4.4 on PATH  | core debugging (no remote attach) |
@@ -243,6 +243,14 @@ file's basename — versioned and variant names such as `lldb-dap-21` and
 `gdb-multiarch` work — and that exact executable is used for the session,
 ahead of anything on `$PATH` or in `config.json`'s `adapters` map.
 `tdb --info` shows which `gdb` and `lldb-dap` would be used otherwise.
+
+`gdb`'s DAP mode needs GDB ≥ 14, so `tdb` checks `gdb --version` before
+starting a session. A `gdb` that is provably too old is refused with a
+message naming its path and version; when that `gdb` came from `PATH`
+(not from `--adapter` or `config.json`), `tdb` first looks for a newer one
+installed by Red Hat's Software Collections
+(`/opt/rh/gcc-toolset-*/root/usr/bin/gdb`, `/opt/rh/devtoolset-*/...`) and
+uses the newest that qualifies. See [C/C++ tips](#cc-tips) for RHEL 8.
 
 > **Migration note:** extensionless Python scripts without a `python` shebang
 > were previously assumed to be Python; they now require `--lang python`.
@@ -421,6 +429,26 @@ See [Go](#go) below for launch details.
   first stack query, so the Code View can find the source. This is why a
   fresh gdb session shows `Current source file is …` in `info source`
   from the evaluate console without you having typed `list`.
+- **RHEL 8 (and 9) gdb is too old for DAP:** the stock `/usr/bin/gdb` is
+  8.2 on RHEL 8 (10.2 on RHEL 9) and answers `gdb -i dap` with
+  ``Interpreter `dap' unrecognized``. Install a newer one from the
+  GCC Toolset, which leaves `/usr/bin/gdb` alone:
+
+  ```bash
+  sudo dnf install gcc-toolset-14-gdb   # gdb 14.2 under /opt/rh/gcc-toolset-14
+  ```
+
+  `tdb` then finds `/opt/rh/gcc-toolset-14/root/usr/bin/gdb` by itself
+  whenever the `gdb` on `PATH` is missing or too old — no `scl enable`
+  needed (`tdb --info` shows it as `gdb used instead`). Two things pin
+  the old one and must be changed by hand: `--adapter /usr/bin/gdb`, and
+  an `"adapters": {"gdb": "/usr/bin/gdb"}` entry in `config.json` (`tdb`
+  seeds that entry with whatever `gdb` was on `PATH` the first time it
+  wrote the file). Either delete the entry or point it at the toolset
+  gdb. A GDB ≥ 14 that was built without Python support gives the same
+  ``Interpreter `dap' unrecognized`` error (`gdb --configuration` shows
+  `--without-python`); use `--adapter lldb-dap` or a gdb built with
+  Python.
 
 **Attach to a running process:** `tdb -a PID` attaches gdb (or `--adapter
 lldb-dap`) to a live native process and stops it. On Linux tdb reads
@@ -2305,6 +2333,51 @@ On Windows, it uses `%APPDATA%\tdb\`.
 |------|----------|
 | `config.json` | User preferences (keybinding scheme, color theme, step mode, adapter overrides) |
 | `breakpoints.json` | Breakpoints from previous sessions, keyed by project directory |
+
+### Sample `config.json`
+
+Every key `tdb` reads, with its default or a representative value. Copy
+this to restore a deleted or corrupted file, then delete the entries you
+don't need: a missing key takes its default, an unknown key is ignored,
+and an invalid value (say a misspelled `step_mode`) falls back to the
+default instead of stopping `tdb`.
+
+```json
+{
+  "keybindings": "vim",
+  "theme": null,
+  "step_mode": "statement",
+  "adapters": {
+    "gdb": "/usr/bin/gdb",
+    "lldb-dap": null,
+    "dlv": "/home/me/go/bin/dlv",
+    "perl": "/usr/bin/perl",
+    "rdbg": "/usr/local/bin/rdbg",
+    "bash": "/usr/bin/bash",
+    "tcsh": "/usr/bin/tcsh",
+    "pwsh": "/usr/bin/pwsh",
+    "pses": "/home/me/.local/share/PowerShellEditorServices",
+    "ocamlearlybird": "/home/me/.opam/default/bin/ocamlearlybird"
+  },
+  "default_adapters": {
+    "cpp": "gdb",
+    "rust": "gdb",
+    "ocaml": "lldb-dap"
+  }
+}
+```
+
+| Key | Values | Meaning |
+|-----|--------|---------|
+| `keybindings` | `"vim"` (default), `"emacs"`, `"default"` | Code View keybinding scheme; also set by `--keybindings` |
+| `theme` | `null` (default) or a Textual theme name such as `"textual-dark"`, `"textual-light"`, `"nord"`, `"gruvbox"`, `"dracula"`, `"monokai"`, `"tokyo-night"`, `"catppuccin-mocha"` | Color theme; the names offered under **Configure > Theme** are the valid ones, and an unknown name is ignored |
+| `step_mode` | `"statement"` (default), `"line"` | How `n`/`s` treat multi-line statements (see **Step mode** below) |
+| `adapters` | adapter id → executable path, or `null` | Where to find a debugger or interpreter instead of searching `PATH`. Ids: `gdb`, `lldb-dap`, `dlv` (debuggers); `perl`, `rdbg`, `bash`, `tcsh`, `pwsh` (interpreters `tdb` spawns); `pses` (the PowerShell Editor Services module directory); `ocamlearlybird`. Only list the ones you need |
+| `default_adapters` | language id → adapter id | Which adapter a language uses when `--adapter` isn't given. Languages with a choice: `cpp` and `rust` (`gdb` or `lldb-dap`), `ocaml` (`lldb-dap`, `gdb`, or `ocamlearlybird`) |
+
+The file is plain JSON: no comments, no trailing commas. `tdb` rewrites it
+when you change a setting from the **Configure** menu, so hand edits made
+while `tdb` is running may be overwritten.
 
 Adapter-related keys in `config.json`: `adapters` maps an adapter id to an
 executable path (`{"adapters": {"lldb-dap": "/opt/llvm/bin/lldb-dap"}}`), and

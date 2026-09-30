@@ -34,6 +34,8 @@ def test_gdb_stop_on_entry_discovers_project_ocaml_sources(tmp_path, monkeypatch
 
     results = iter((SourcesResult(), LineResult()))
     monkeypatch.setattr(subprocess, "run", lambda *a, **k: next(results))
+    # resolve_executable() would spend a subprocess.run on `gdb --version`.
+    monkeypatch.setattr(OCamlGdbAdapter, "resolve_executable", lambda self: "gdb")
 
     assert OCamlGdbAdapter().initial_source_breakpoints(
         program=str(program), cwd=str(tmp_path), stop_on_entry=True

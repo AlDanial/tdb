@@ -102,6 +102,28 @@ def tool_rows(
     ]
 
 
+def gdb_rows(adapter_paths: dict[str, str | None] | None) -> list[str]:
+    """The GDB section: ``tool_rows`` for the gdb tdb would look at
+    first, plus a ``gdb used instead`` row when that one is missing or
+    below the DAP floor and a Software Collections toolset gdb
+    (``/opt/rh/gcc-toolset-*``) qualifies -- the one the C/C++ profile
+    falls back to when no ``adapters.gdb`` override pins the old one."""
+    from tdb.languages import native_tools as nt
+
+    rows = tool_rows("gdb executable", "gdb", adapter_paths)
+    exe = nt.find_native_debugger("gdb", adapter_paths)
+    if exe is not None:
+        found = version_tuple(nt.tool_version_number(exe))
+        if not found or found >= MINIMUM_VERSIONS["gdb"]:
+            return rows
+    toolset = nt.find_dap_capable_gdb()
+    if toolset is not None:
+        path, version = toolset
+        dotted = ".".join(str(n) for n in version)
+        rows.append(row("gdb used instead", f"{path} (version {dotted})"))
+    return rows
+
+
 def info_text() -> str:
     from tdb import __version__
     import importlib.resources
@@ -134,7 +156,7 @@ def info_text() -> str:
                 version_row("python", _python_version()),
             ],
         ),
-        ("GDB", tool_rows("gdb executable", "gdb", adapters)),
+        ("GDB", gdb_rows(adapters)),
         ("lldb-dap", tool_rows("lldb-dap", "lldb-dap", adapters)),
         (
             "C/C++",

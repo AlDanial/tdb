@@ -334,3 +334,64 @@ def test_cpp_section_points_at_the_hook_header(stub_tools):
     body = _section(text, "C/C++")
     assert "tdb.h dir" in body
     assert body.split(":", 1)[1].strip().endswith(os.path.join("adapters", "native"))
+
+
+# --- gdb too old for DAP: name the toolset gdb tdb would use instead -----------
+
+
+def _gdb_8_2(monkeypatch):
+    monkeypatch.setattr(
+        nt, "find_native_debugger", lambda name, paths: f"/usr/bin/{name}"
+    )
+    monkeypatch.setattr(
+        nt,
+        "version_output",
+        lambda exe, args: (
+            "GNU gdb (GDB) Red Hat Enterprise Linux 8.2-20.el8\n"
+            if exe.endswith("gdb")
+            else "x 99.0\n"
+        ),
+    )
+
+
+def test_gdb_section_names_toolset_gdb_when_path_gdb_too_old(monkeypatch):
+    _gdb_8_2(monkeypatch)
+    monkeypatch.setattr(
+        nt,
+        "find_dap_capable_gdb",
+        lambda: ("/opt/rh/gcc-toolset-14/root/usr/bin/gdb", (14, 2)),
+    )
+    lines = _section(info.info_text(), "GDB").splitlines()
+    assert lines[0] == "    gdb executable           : /usr/bin/gdb"
+    assert "DOES NOT MEET MINIMUM REQUIRED VERSION OF 14" in lines[1]
+    assert lines[2].startswith("    gdb used instead         : ")
+    assert "/opt/rh/gcc-toolset-14/root/usr/bin/gdb" in lines[2]
+    assert "14.2" in lines[2]
+
+
+def test_gdb_section_without_toolset_gdb_has_no_fallback_row(monkeypatch):
+    _gdb_8_2(monkeypatch)
+    monkeypatch.setattr(nt, "find_dap_capable_gdb", lambda: None)
+    lines = _section(info.info_text(), "GDB").splitlines()
+    assert len(lines) == 2
+
+
+def test_gdb_section_new_enough_has_no_fallback_row(stub_tools, monkeypatch):
+    monkeypatch.setattr(
+        nt,
+        "find_dap_capable_gdb",
+        lambda: ("/opt/rh/gcc-toolset-14/root/usr/bin/gdb", (14, 2)),
+    )
+    assert len(_section(info.info_text(), "GDB").splitlines()) == 2
+
+
+def test_gdb_section_missing_gdb_names_toolset_gdb(monkeypatch):
+    monkeypatch.setattr(nt, "find_native_debugger", lambda name, paths: None)
+    monkeypatch.setattr(
+        nt,
+        "find_dap_capable_gdb",
+        lambda: ("/opt/rh/gcc-toolset-14/root/usr/bin/gdb", (14, 2)),
+    )
+    lines = _section(info.info_text(), "GDB").splitlines()
+    assert lines[0] == f"    gdb executable           : {info.NOT_FOUND}"
+    assert lines[1].startswith("    gdb used instead         : ")
