@@ -9,6 +9,7 @@ from tdb.languages.cpp import (
     GdbDapAdapter,
     LldbDapAdapter,
     build_cpp_profile,
+    gdb_init_args,
     hook_frame_base,
     is_breakpoint_hook_frame,
 )
@@ -37,7 +38,7 @@ def test_command_uses_explicit_executable():
 
 def test_adapter_paths_override_reaches_default_adapter():
     p = build_cpp_profile(adapter_paths={"gdb": "/opt/gdb"})
-    assert p.adapter.command() == ["/opt/gdb", "-i", "dap"]
+    assert p.adapter.command() == ["/opt/gdb", *gdb_init_args(), "-i", "dap"]
 
 
 def test_command_missing_executable_hints_install(monkeypatch):
@@ -141,6 +142,7 @@ def test_lldb_adapter_selectable():
 def test_gdb_command():
     assert GdbDapAdapter(executable="/usr/bin/gdb").command() == [
         "/usr/bin/gdb",
+        *gdb_init_args(),
         "-i",
         "dap",
     ]
@@ -388,7 +390,7 @@ def test_gdb_command_falls_back_to_toolset_gdb_when_path_gdb_too_old(
     _gdb_versions(monkeypatch, {"/usr/bin/gdb": (8, 2)})
     _toolset(monkeypatch, (TOOLSET_GDB, (14, 2)))
     with caplog.at_level("INFO", logger="tdb.languages.cpp"):
-        assert GdbDapAdapter().command() == [TOOLSET_GDB, "-i", "dap"]
+        assert GdbDapAdapter().command() == [TOOLSET_GDB, *gdb_init_args(), "-i", "dap"]
     assert "/usr/bin/gdb" in caplog.text and TOOLSET_GDB in caplog.text
 
 
@@ -408,7 +410,7 @@ def test_gdb_command_missing_on_path_uses_toolset_gdb(monkeypatch):
     monkeypatch.setattr(shutil, "which", lambda name: None)
     _gdb_versions(monkeypatch, {})
     _toolset(monkeypatch, (TOOLSET_GDB, (14, 2)))
-    assert GdbDapAdapter().command() == [TOOLSET_GDB, "-i", "dap"]
+    assert GdbDapAdapter().command() == [TOOLSET_GDB, *gdb_init_args(), "-i", "dap"]
 
 
 def test_gdb_command_trusts_unknown_version(monkeypatch):
@@ -419,6 +421,7 @@ def test_gdb_command_trusts_unknown_version(monkeypatch):
     _toolset(monkeypatch, (TOOLSET_GDB, (14, 2)))
     assert GdbDapAdapter(executable="/opt/odd/gdb").command() == [
         "/opt/odd/gdb",
+        *gdb_init_args(),
         "-i",
         "dap",
     ]
@@ -429,6 +432,7 @@ def test_gdb_command_accepts_gdb_at_floor(monkeypatch):
     _toolset(monkeypatch, None)
     assert GdbDapAdapter(executable="/usr/bin/gdb").command() == [
         "/usr/bin/gdb",
+        *gdb_init_args(),
         "-i",
         "dap",
     ]

@@ -22,6 +22,7 @@ from tdb.languages.cpp import (
     NATIVE_INTERACTIVE_VARIABLE,
     GdbDapAdapter,
     LldbDapAdapter,
+    gdb_source_filename,
     hook_frame_base,
     is_native_hook_name,
     quote_debugger_arg,
@@ -58,19 +59,6 @@ def is_rust_binary(path: str) -> bool:
         return False
 
 
-def _gdb_source_filename(value: str) -> str:
-    """Validate one filename for GDB's ``source`` command parser.
-
-    ``source`` takes the rest of the line as a literal filename (tilde
-    expansion only — no backslash unescaping, no quote stripping), so the
-    path must be passed raw: escaping would corrupt paths containing
-    spaces or Windows backslashes.
-    """
-    if "\n" in value or "\r" in value:
-        raise LanguageNotSupportedError("GDB probe path contains a newline")
-    return value
-
-
 def _with_rust_backtrace(env: dict[str, str] | None) -> dict[str, str]:
     """Merge RUST_BACKTRACE=1 into the debuggee env (panic backtraces for
     the error modal) without clobbering a user-provided value."""
@@ -95,7 +83,7 @@ class RustGdbAdapter(GdbDapAdapter):
                 "-iex",
                 "set width unlimited",
                 "-iex",
-                f"source {_gdb_source_filename(str(script_path))}",
+                f"source {gdb_source_filename(str(script_path))}",
             ]
             + command[1:]
         )
