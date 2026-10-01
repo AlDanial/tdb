@@ -8,7 +8,17 @@ import sys
 import pytest
 
 from tdb import info
+from tdb.adapters.perl import padwalker as pw
 from tdb.languages import native_tools as nt
+
+
+@pytest.fixture(autouse=True)
+def stub_probes(monkeypatch):
+    """The gdb DAP and perl ExtUtils::MakeMaker probes would otherwise run
+    whatever /stub/gdb or /usr/bin/gdb resolves to on the test host."""
+    monkeypatch.setattr(nt, "gdb_supports_dap", lambda exe: True)
+    monkeypatch.setattr(pw, "makemaker_version", lambda perl: "7.70")
+    monkeypatch.setattr(pw, "is_loadable", lambda perl: False)
 
 
 @pytest.fixture
@@ -37,6 +47,7 @@ def test_tool_sections_show_path_and_version(stub_tools):
     assert _section(text, "GDB").splitlines() == [
         "    gdb executable           : /stub/gdb",
         "    version                  : 99.2.3",
+        "    DAP interpreter          : available",
     ]
     assert _section(text, "lldb-dap").splitlines() == [
         "    lldb-dap                 : /stub/lldb-dap",
@@ -181,9 +192,10 @@ def test_perl_section_has_padwalker_rows_and_note(stub_tools):
     from tdb.adapters.perl import padwalker as pw
 
     lines = _section(info.info_text(), "Perl").splitlines()
-    assert lines[:2] == [
+    assert lines[:3] == [
         "    perl executable          : /stub/perl",
         "    version                  : 99.2.3",
+        "    ExtUtils::MakeMaker      : 7.70",
     ]
     assert f"    PadWalker sources        : {pw.padwalker_dir()}" in lines
     assert f"    PadWalker build cache    : {pw.cache_root()}" in lines
@@ -343,6 +355,7 @@ def _gdb_8_2(monkeypatch):
     monkeypatch.setattr(
         nt, "find_native_debugger", lambda name, paths: f"/usr/bin/{name}"
     )
+    monkeypatch.setattr(nt, "gdb_supports_dap", lambda exe: False)
     monkeypatch.setattr(
         nt,
         "version_output",
@@ -364,16 +377,18 @@ def test_gdb_section_names_toolset_gdb_when_path_gdb_too_old(monkeypatch):
     lines = _section(info.info_text(), "GDB").splitlines()
     assert lines[0] == "    gdb executable           : /usr/bin/gdb"
     assert "DOES NOT MEET MINIMUM REQUIRED VERSION OF 14" in lines[1]
-    assert lines[2].startswith("    gdb used instead         : ")
-    assert "/opt/rh/gcc-toolset-14/root/usr/bin/gdb" in lines[2]
-    assert "14.2" in lines[2]
+    assert lines[2] == f"    DAP interpreter          : {info.GDB_NO_DAP}"
+    assert lines[3].startswith("    gdb used instead         : ")
+    assert "/opt/rh/gcc-toolset-14/root/usr/bin/gdb" in lines[3]
+    assert "14.2" in lines[3]
 
 
 def test_gdb_section_without_toolset_gdb_has_no_fallback_row(monkeypatch):
     _gdb_8_2(monkeypatch)
     monkeypatch.setattr(nt, "find_dap_capable_gdb", lambda: None)
     lines = _section(info.info_text(), "GDB").splitlines()
-    assert len(lines) == 2
+    assert len(lines) == 3
+    assert lines[2] == f"    DAP interpreter          : {info.GDB_NO_DAP}"
 
 
 def test_gdb_section_new_enough_has_no_fallback_row(stub_tools, monkeypatch):
@@ -382,7 +397,7 @@ def test_gdb_section_new_enough_has_no_fallback_row(stub_tools, monkeypatch):
         "find_dap_capable_gdb",
         lambda: ("/opt/rh/gcc-toolset-14/root/usr/bin/gdb", (14, 2)),
     )
-    assert len(_section(info.info_text(), "GDB").splitlines()) == 2
+    assert len(_section(info.info_text(), "GDB").splitlines()) == 3
 
 
 def test_gdb_section_missing_gdb_names_toolset_gdb(monkeypatch):
@@ -395,3 +410,93 @@ def test_gdb_section_missing_gdb_names_toolset_gdb(monkeypatch):
     lines = _section(info.info_text(), "GDB").splitlines()
     assert lines[0] == f"    gdb executable           : {info.NOT_FOUND}"
     assert lines[1].startswith("    gdb used instead         : ")
+
+
+# --- gdb DAP interpreter probe (`gdb -i dap`) ------------------------------------
+
+
+def test_gdb_section_flags_gdb_without_dap_interpreter(stub_tools, monkeypatch):
+    """A gdb that answers `-i dap` with "Interpreter `dap' unrecognized"
+    (too old, or built without Python) is called out in capitals."""
+    monkeypatch.setattr(nt, "gdb_supports_dap", lambda exe: False)
+    assert _section(info.info_text(), "GDB").splitlines() == [
+        "    gdb executable           : /stub/gdb",
+        "    version                  : 99.2.3",
+        "    DAP interpreter          : GDB LACKS DAP CAPABILITY AND CANNOT BE USED",
+    ]
+
+
+def test_gdb_section_dap_unknown_when_probe_fails(stub_tools, monkeypatch):
+    monkeypatch.setattr(nt, "gdb_supports_dap", lambda exe: None)
+    assert _section(info.info_text(), "GDB").splitlines()[2] == (
+        "    DAP interpreter          : unknown"
+    )
+
+
+def test_gdb_section_probes_the_gdb_it_reports(stub_tools, monkeypatch):
+    """The probe targets the configured/PATH gdb (`gdb executable` row),
+    and is skipped entirely when there is none."""
+    probed = []
+
+    def fake(exe):
+        probed.append(exe)
+        return True
+
+    monkeypatch.setattr(nt, "gdb_supports_dap", fake)
+    info.info_text()
+    assert probed == ["/stub/gdb"]
+    probed.clear()
+    monkeypatch.setattr(nt, "find_native_debugger", lambda name, paths: None)
+    monkeypatch.setattr(nt, "find_dap_capable_gdb", lambda: None)
+    text = info.info_text()
+    assert probed == []
+    assert "DAP interpreter" not in _section(text, "GDB")
+
+
+# --- perl ExtUtils::MakeMaker (needed to build the bundled PadWalker) ------------
+
+
+def test_perl_section_warns_when_makemaker_is_missing(stub_tools, monkeypatch):
+    monkeypatch.setattr(pw, "makemaker_version", lambda perl: None)
+    lines = _section(info.info_text(), "Perl").splitlines()
+    assert lines[2] == "    ExtUtils::MakeMaker      : not found"
+    warning = " ".join(line.strip() for line in lines[3:5])
+    assert warning.startswith("WARNING: ExtUtils::MakeMaker cannot be found")
+    assert "PadWalker module will not be installed" in warning
+    assert "variable inspection will be degraded" in warning
+    assert lines[5].startswith("    PadWalker sources        : ")
+
+
+def test_perl_section_no_warning_when_padwalker_already_loads(stub_tools, monkeypatch):
+    """No build is needed when the perl already has PadWalker (CPAN,
+    distro package, or an earlier tdb build in the cache)."""
+    monkeypatch.setattr(pw, "makemaker_version", lambda perl: None)
+    monkeypatch.setattr(pw, "is_loadable", lambda perl: True)
+    lines = _section(info.info_text(), "Perl").splitlines()
+    assert lines[2] == (
+        "    ExtUtils::MakeMaker      : not found (PadWalker already loads with "
+        "this perl, so no build is needed)"
+    )
+    assert "WARNING" not in "\n".join(lines)
+    assert lines[3].startswith("    PadWalker sources        : ")
+
+
+def test_perl_section_probes_the_perl_it_reports(stub_tools, monkeypatch):
+    probed = []
+
+    def fake(perl):
+        probed.append(perl)
+        return "7.70"
+
+    monkeypatch.setattr(pw, "makemaker_version", fake)
+    info.info_text()
+    assert probed == ["/stub/perl"]
+
+
+def test_perl_section_without_perl_has_no_makemaker_row(monkeypatch):
+    monkeypatch.setattr(nt, "find_native_debugger", lambda name, paths: None)
+    monkeypatch.setattr(nt, "find_dap_capable_gdb", lambda: None)
+    monkeypatch.setattr(pw, "makemaker_version", lambda perl: 1 / 0)
+    lines = _section(info.info_text(), "Perl").splitlines()
+    assert lines[0] == f"    perl executable          : {info.NOT_FOUND}"
+    assert "MakeMaker" not in "\n".join(lines)

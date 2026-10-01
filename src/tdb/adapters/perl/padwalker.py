@@ -49,6 +49,10 @@ PROBE_TIMEOUT = 30.0
 
 # A perl one-liner that fails unless PadWalker both loads and bootstraps.
 _PROBE = "require PadWalker; PadWalker::peek_my(0); print $INC{'PadWalker.pm'}"
+# Run with -MExtUtils::MakeMaker: prints e.g. "7.70", or dies with
+# "Can't locate ExtUtils/MakeMaker.pm" on perls that ship without it
+# (then `perl Makefile.PL` cannot run and the bundled copy can't be built).
+_MAKEMAKER_PROBE = "print $ExtUtils::MakeMaker::VERSION"
 _CONFIG = (
     "use Config; print join qq(\\n), "
     "$Config{version}, $Config{archname}, $Config{make}, $Config{dlext}"
@@ -202,6 +206,22 @@ _INSTALL_HINT = (
     "perl-PadWalker), or install perl's headers (libperl-dev / perl-devel) "
     "and a C compiler so tdb can build its bundled copy."
 )
+_MAKEMAKER_HINT = (
+    "ExtUtils::MakeMaker is not available to this perl, so the bundled "
+    "PadWalker cannot be built and variable inspection will be degraded "
+    "(lexicals in outer frames will be limited). Install it (a distro "
+    "package such as perl-ExtUtils-MakeMaker, or `cpanm ExtUtils::MakeMaker`) "
+    "or install PadWalker itself (`cpanm PadWalker`, libpadwalker-perl / "
+    "perl-PadWalker)."
+)
+
+
+def _hint_for(reasons: list[str]) -> str:
+    text = " ".join(reasons)
+    if "ExtUtils/MakeMaker" in text or "ExtUtils::MakeMaker" in text:
+        return _MAKEMAKER_HINT
+    return _INSTALL_HINT
+
 
 _memo: dict[tuple[str, str], PadWalkerResult] = {}
 
@@ -267,7 +287,39 @@ def _resolve(perl: str, env: dict) -> PadWalkerResult:
         f"tdb: PadWalker unavailable for perl {version} ({archname}): "
         + "; ".join(reasons)
         + ". "
-        + _INSTALL_HINT,
+        + _hint_for(reasons),
+    )
+
+
+def makemaker_version(perl: str, env: dict | None = None) -> str | None:
+    """``$ExtUtils::MakeMaker::VERSION`` as seen by ``perl`` (e.g. "7.70"),
+    or None when the module can't be loaded or perl won't run. Without
+    MakeMaker, ``perl Makefile.PL`` dies and the bundled PadWalker cannot
+    be built. Side-effect free: for ``tdb --info``."""
+    env = dict(env if env is not None else os.environ)
+    try:
+        proc = _run([perl, "-MExtUtils::MakeMaker", "-e", _MAKEMAKER_PROBE], env)
+    except (OSError, subprocess.SubprocessError) as e:
+        log.debug("ExtUtils::MakeMaker probe via %s failed: %s", perl, e)
+        return None
+    if proc.returncode != 0:
+        return None
+    return (proc.stdout or "").strip() or None
+
+
+def is_loadable(perl: str, env: dict | None = None) -> bool:
+    """True when ``perl`` already loads PadWalker, natively or from a
+    cached tdb build. Never builds: for ``tdb --info``."""
+    env = dict(env if env is not None else os.environ)
+    if _loads(perl, env):
+        return True
+    cfg = _perl_config(perl, env)
+    if cfg is None:
+        return False
+    name = cache_key(cfg[0], cfg[1])
+    return any(
+        (root / name).is_dir() and _loads(perl, with_perl5lib(env, str(root / name)))
+        for root in _cache_candidates()
     )
 
 
