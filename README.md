@@ -107,7 +107,9 @@ tdb --doc
 # show the Help > About text, where tdb and its config, breakpoints and
 # log files live, and the path + version of each interpreter and native
 # debugger it would use (python, gdb, lldb-dap, perl, ruby, dlv,
-# ocamlearlybird, bash, tcsh, pwsh)
+# ocamlearlybird, bash, tcsh, pwsh), whether gdb has its DAP interpreter
+# (`gdb -i dap`), and whether perl has ExtUtils::MakeMaker (needed to
+# build the bundled PadWalker)
 tdb --info
 
 # debug a Python program (stops at first line by default)
@@ -447,7 +449,10 @@ See [Go](#go) below for launch details.
   wrote the file). Either delete the entry or point it at the toolset
   gdb. A GDB ≥ 14 that was built without Python support gives the same
   ``Interpreter `dap' unrecognized`` error (`gdb --configuration` shows
-  `--without-python`); use `--adapter lldb-dap` or a gdb built with
+  `--without-python`); `tdb --info` probes for this and reports
+  `GDB LACKS DAP CAPABILITY AND CANNOT BE USED` in its `DAP interpreter`
+  row when the gdb it found rejects `-i dap`. Use `--adapter lldb-dap`
+  or a gdb built with
   Python.
 
 **Attach to a running process:** `tdb -a PID` attaches gdb (or `--adapter
@@ -626,11 +631,14 @@ per interpreter under its config directory (`~/.config/tdb/padwalker/` on
 Linux/macOS, `%APPDATA%\\tdb\\padwalker\\` on Windows), and prepends that
 directory to the debuggee's `PERL5LIB`.  The build takes about a second and
 needs perl's headers (`libperl-dev` on Debian/Ubuntu, `perl-devel` on
-Fedora/RHEL) plus a C compiler; Strawberry Perl on Windows ships both.  When
-the build is not possible, `tdb` prints a one-line notice on the console and
-falls back to a read-only pad walk, so outer-frame lexicals degrade but
-debugging otherwise proceeds.  `tdb --info` reports the source directory, the
-cache directory, and whether a build exists for the `perl` on your `PATH`.
+Fedora/RHEL), a C compiler, and the core `ExtUtils::MakeMaker` module (some
+minimal distro perls omit it; `perl-ExtUtils-MakeMaker` on Fedora/RHEL);
+Strawberry Perl on Windows ships all three.  When the build is not possible,
+`tdb` prints a one-line notice on the console and falls back to a read-only
+pad walk, so outer-frame lexicals degrade but debugging otherwise proceeds.
+`tdb --info` reports the source directory, the cache directory, and the
+`ExtUtils::MakeMaker` version of the `perl` it would use, with a warning when
+that module is missing and PadWalker therefore cannot be built.
 `TDB_PADWALKER_CACHE` overrides the cache location.
 
 **Launching a script:**

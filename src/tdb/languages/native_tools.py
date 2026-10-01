@@ -37,6 +37,16 @@ _VERSION_TIMEOUT_S = 5.0
 # tdb.info.MINIMUM_VERSIONS["gdb"].
 GDB_DAP_MIN_VERSION: tuple[int, ...] = (14,)
 
+# gdb's exact wording (gdb/main.c) when `-i NAME` names no registered
+# interpreter. The `dap` interpreter exists only in GDB >= 14 and only
+# when gdb was built with Python (gdb/python/py-dap.c registers it), so
+# a new-enough gdb configured --without-python prints this too.
+GDB_NO_DAP_INTERPRETER = "Interpreter `dap' unrecognized"
+
+# `gdb -i dap` on a capable gdb prints its banner as DAP output events
+# and exits at EOF on stdin, well under a second; allow for slow hosts.
+_DAP_PROBE_TIMEOUT_S = 10.0
+
 # Where Red Hat's Software Collections install newer toolchains on
 # RHEL 7/8/9 and their rebuilds (Rocky, Alma, Oracle, CentOS Stream):
 # `dnf install gcc-toolset-14-gdb` puts a DAP-capable gdb 14.2 here
@@ -169,6 +179,32 @@ def tool_version_tuple(
         return None
     m = re.match(r"\d+(?:\.\d+)*", number)
     return tuple(int(n) for n in m.group(0).split(".")) if m else None
+
+
+def gdb_supports_dap(executable: str) -> bool | None:
+    """Whether ``executable -i dap`` starts gdb's DAP interpreter.
+
+    False when gdb answers with GDB_NO_DAP_INTERPRETER (too old, or built
+    without Python); True when it starts and exits cleanly at EOF; None
+    when the probe is inconclusive (gdb can't be run, times out, or
+    fails for some other reason). ``-nx`` keeps the user's gdbinit out
+    of it and ``-batch`` plus a closed stdin guarantees gdb exits instead
+    of waiting for DAP requests from the terminal."""
+    try:
+        proc = subprocess.run(
+            [executable, "-nx", "-batch", "-i", "dap"],
+            capture_output=True,
+            text=True,
+            errors="replace",
+            stdin=subprocess.DEVNULL,
+            timeout=_DAP_PROBE_TIMEOUT_S,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    output = (proc.stdout or "") + (proc.stderr or "")
+    if GDB_NO_DAP_INTERPRETER in output:
+        return False
+    return True if proc.returncode == 0 else None
 
 
 def find_dap_capable_gdb() -> tuple[str, tuple[int, ...]] | None:
