@@ -168,3 +168,96 @@ def test_subprocess_timeout_is_a_soft_failure(monkeypatch, cache):
 
     monkeypatch.setattr(pw.subprocess, "run", run)
     assert pw.ensure_padwalker("perl", {}).source == "unavailable"
+
+
+# --- ExtUtils::MakeMaker ---------------------------------------------------------
+
+
+def _fake_makemaker(monkeypatch, rc, out="", err=""):
+    calls = []
+
+    def run(argv, env=None, cwd=None, **kw):
+        calls.append(list(argv))
+        return _Proc(rc, out, err)
+
+    monkeypatch.setattr(pw.subprocess, "run", run)
+    return calls
+
+
+def test_makemaker_version_reports_version_string(monkeypatch):
+    calls = _fake_makemaker(monkeypatch, 0, "7.70")
+    assert pw.makemaker_version("perl") == "7.70"
+    assert calls == [["perl", "-MExtUtils::MakeMaker", "-e", pw._MAKEMAKER_PROBE]]
+
+
+def test_makemaker_version_none_when_module_missing(monkeypatch):
+    _fake_makemaker(
+        monkeypatch,
+        2,
+        "",
+        "Can't locate ExtUtils/MakeMaker.pm in @INC (you may need to install "
+        "the ExtUtils::MakeMaker module)\nBEGIN failed--compilation aborted.\n",
+    )
+    assert pw.makemaker_version("perl") is None
+
+
+def test_makemaker_version_none_when_perl_does_not_run(monkeypatch):
+    def run(argv, **kw):
+        raise OSError("no such perl")
+
+    monkeypatch.setattr(pw.subprocess, "run", run)
+    assert pw.makemaker_version("/nope/perl") is None
+
+
+def test_build_without_makemaker_degrades_with_a_pointed_hint(monkeypatch, cache):
+    """`perl Makefile.PL` dying on a missing ExtUtils::MakeMaker is the
+    common failure on minimal distro perls: the resolver must come back
+    unavailable (so the launch proceeds without PadWalker) and name the
+    module to install."""
+    calls = []
+
+    def run(argv, env=None, cwd=None, **kw):
+        calls.append(list(argv))
+        if argv[-1] == "Makefile.PL":
+            return _Proc(
+                2,
+                "",
+                "Can't locate ExtUtils/MakeMaker.pm in @INC (you may need to "
+                "install the ExtUtils::MakeMaker module) (@INC entries checked: "
+                "/usr/share/perl5).\nBEGIN failed--compilation aborted at "
+                "Makefile.PL line 1.\n",
+            )
+        if argv[0] == "make":
+            raise AssertionError("make must not run when Makefile.PL failed")
+        script = argv[-1]
+        if script == pw._CONFIG:
+            return _Proc(0, CFG)
+        if script == pw._PROBE:
+            return _Proc(2, "", "Can't locate PadWalker.pm")
+        raise AssertionError(f"unexpected perl call {argv}")
+
+    monkeypatch.setattr(pw.subprocess, "run", run)
+    r = pw.ensure_padwalker("perl", {})
+    assert r.source == "unavailable"
+    assert r.lib_dir is None
+    assert "ExtUtils::MakeMaker" in r.message
+    assert "variable inspection" in r.message.lower() or "Lexicals" in r.message
+    assert ["make"] not in calls
+
+
+def test_is_loadable_native(monkeypatch, cache):
+    _fake_perl(monkeypatch, native=True, cached_ok=True)
+    assert pw.is_loadable("perl") is True
+
+
+def test_is_loadable_cached_build(monkeypatch, cache):
+    _fake_perl(monkeypatch, native=False, cached_ok=True)
+    d = cache / pw.cache_key("5.40.1", "x86_64-linux-gnu-thread-multi")
+    d.mkdir(parents=True)
+    (d / "PadWalker.pm").write_text("pm")
+    assert pw.is_loadable("perl") is True
+
+
+def test_is_loadable_false_without_native_or_cache(monkeypatch, cache):
+    _fake_perl(monkeypatch, native=False, cached_ok=True)
+    assert pw.is_loadable("perl") is False

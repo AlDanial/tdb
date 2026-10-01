@@ -3,7 +3,9 @@ tool tdb runs (its own files, then each language's interpreter or native
 debugger), each as an indented `label : value` table.
 
 Read-only: never triggers a PadWalker build; the only subprocesses are
-`<tool> --version` probes, each bounded by a timeout.
+`<tool> --version` probes, `gdb -i dap` (does this gdb have a DAP
+interpreter?) and perl one-liners (is ExtUtils::MakeMaker there to build
+PadWalker with? does PadWalker already load?), each bounded by a timeout.
 """
 
 from __future__ import annotations
@@ -14,6 +16,11 @@ from pathlib import Path
 
 LABEL_WIDTH = 25
 NOT_FOUND = "not found on PATH"
+GDB_NO_DAP = "GDB LACKS DAP CAPABILITY AND CANNOT BE USED"
+MAKEMAKER_WARNING = (
+    "    WARNING: ExtUtils::MakeMaker cannot be found, so the bundled PadWalker",
+    "    module will not be installed and variable inspection will be degraded.",
+)
 
 # Oldest version of each tool tdb works with, keyed by executable name.
 # Sources: pyproject requires-python; GDB's DAP mode (gdb -i dap) arrived
@@ -102,6 +109,47 @@ def tool_rows(
     ]
 
 
+def dap_interpreter_row(supported: bool | None) -> str:
+    """The ``DAP interpreter`` row from a ``gdb_supports_dap`` result:
+    a gdb that rejects ``-i dap`` (pre-14, or built without Python) is
+    unusable by tdb however new its version row says it is."""
+    if supported is None:
+        return row("DAP interpreter", "unknown")
+    return row("DAP interpreter", "available" if supported else GDB_NO_DAP)
+
+
+def makemaker_rows(perl: str) -> list[str]:
+    """The ``ExtUtils::MakeMaker`` row for ``perl``: its version, or
+    ``not found`` plus MAKEMAKER_WARNING -- unless PadWalker already
+    loads (CPAN, distro package, or a cached tdb build), in which case
+    no build is needed and the missing module is only noted."""
+    from tdb.adapters.perl import padwalker as pw
+
+    version = pw.makemaker_version(perl)
+    if version:
+        return [row("ExtUtils::MakeMaker", version)]
+    if pw.is_loadable(perl):
+        return [
+            row(
+                "ExtUtils::MakeMaker",
+                "not found (PadWalker already loads with this perl, "
+                "so no build is needed)",
+            )
+        ]
+    return [row("ExtUtils::MakeMaker", "not found"), *MAKEMAKER_WARNING]
+
+
+def perl_rows(adapter_paths: dict[str, str | None] | None) -> list[str]:
+    """``tool_rows`` for perl plus, when it is found, its MakeMaker row."""
+    from tdb.languages import native_tools as nt
+
+    rows = tool_rows("perl executable", "perl", adapter_paths)
+    exe = nt.find_native_debugger("perl", adapter_paths)
+    if exe is not None:
+        rows.extend(makemaker_rows(exe))
+    return rows
+
+
 def gdb_rows(adapter_paths: dict[str, str | None] | None) -> list[str]:
     """The GDB section: ``tool_rows`` for the gdb tdb would look at
     first, plus a ``gdb used instead`` row when that one is missing or
@@ -113,6 +161,7 @@ def gdb_rows(adapter_paths: dict[str, str | None] | None) -> list[str]:
     rows = tool_rows("gdb executable", "gdb", adapter_paths)
     exe = nt.find_native_debugger("gdb", adapter_paths)
     if exe is not None:
+        rows.append(dap_interpreter_row(nt.gdb_supports_dap(exe)))
         found = version_tuple(nt.tool_version_number(exe))
         if not found or found >= MINIMUM_VERSIONS["gdb"]:
             return rows
@@ -165,7 +214,7 @@ def info_text() -> str:
         ),
         (
             "Perl",
-            tool_rows("perl executable", "perl", adapters)
+            perl_rows(adapters)
             + [
                 row("PadWalker sources", padwalker_dir()),
                 row("PadWalker build cache", cache_root()),

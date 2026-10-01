@@ -264,3 +264,52 @@ def test_find_dap_capable_gdb_skips_unprobeable_candidates(monkeypatch):
     )
     monkeypatch.setattr(nt, "version_output", lambda exe, args: None)
     assert nt.find_dap_capable_gdb() is None
+
+
+# --- gdb_supports_dap -----------------------------------------------------------
+
+
+def _dap_probe(monkeypatch, rc, out="", err="", exc=None):
+    seen = {}
+
+    def fake_run(argv, **kw):
+        seen["argv"] = argv
+        seen.update(kw)
+        if exc is not None:
+            raise exc
+        return subprocess.CompletedProcess(argv, rc, stdout=out, stderr=err)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    return seen
+
+
+def test_gdb_supports_dap_true_on_clean_exit(monkeypatch):
+    seen = _dap_probe(monkeypatch, 0, out='{"type": "event", "event": "output"}')
+    assert nt.gdb_supports_dap("/usr/bin/gdb") is True
+    assert seen["argv"][0] == "/usr/bin/gdb"
+    assert seen["argv"][-2:] == ["-i", "dap"]
+    # A DAP-capable gdb reads requests from stdin: it must see EOF, not
+    # the user's terminal, or `tdb --info` would hang.
+    assert seen["stdin"] == subprocess.DEVNULL
+    assert seen["timeout"]
+
+
+def test_gdb_supports_dap_false_when_interpreter_unrecognized(monkeypatch):
+    _dap_probe(monkeypatch, 1, err="Interpreter `dap' unrecognized\n")
+    assert nt.gdb_supports_dap("/usr/bin/gdb") is False
+
+
+def test_gdb_supports_dap_false_when_message_is_on_stdout(monkeypatch):
+    _dap_probe(monkeypatch, 1, out="Interpreter `dap' unrecognized\n")
+    assert nt.gdb_supports_dap("/usr/bin/gdb") is False
+
+
+@pytest.mark.parametrize("exc", [OSError("boom"), subprocess.TimeoutExpired(["x"], 5)])
+def test_gdb_supports_dap_unknown_when_probe_fails(monkeypatch, exc):
+    _dap_probe(monkeypatch, 0, exc=exc)
+    assert nt.gdb_supports_dap("/usr/bin/gdb") is None
+
+
+def test_gdb_supports_dap_unknown_on_other_failure(monkeypatch):
+    _dap_probe(monkeypatch, 1, err="gdb: some unrelated error\n")
+    assert nt.gdb_supports_dap("/usr/bin/gdb") is None

@@ -221,10 +221,9 @@ GDB_BREAKPOINT_QUERY = (
 )
 
 
-# gdb's exact wording (gdb/main.c) when `-i NAME` names no registered
-# interpreter. The `dap` interpreter exists only in GDB >= 14 and only
-# when gdb was built with Python (gdb/python/py-dap.c registers it).
-GDB_NO_DAP_INTERPRETER = "Interpreter `dap' unrecognized"
+# gdb's exact wording when `-i NAME` names no registered interpreter;
+# defined with the `tdb --info` probe that looks for it.
+GDB_NO_DAP_INTERPRETER = native_tools.GDB_NO_DAP_INTERPRETER
 
 
 def _dotted(version: tuple[int, ...]) -> str:
