@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from tdb.cli import parse_args
+from tdb.languages.cpp import gdb_init_args
 
 
 def test_program_required_without_remote_attach():
@@ -936,7 +937,7 @@ def test_adapter_accepts_full_path_to_gdb(tmp_path, monkeypatch):
     exe.chmod(0o755)
     args = parse_args(["--adapter", str(exe), str(binary)])
     assert args.profile.adapter.id == "gdb"
-    assert args.profile.adapter.command() == [str(exe), "-i", "dap"]
+    assert args.profile.adapter.command() == [str(exe), *gdb_init_args(), "-i", "dap"]
 
 
 def test_adapter_accepts_full_path_to_lldb_dap(tmp_path, monkeypatch):

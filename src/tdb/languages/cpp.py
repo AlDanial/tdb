@@ -14,6 +14,7 @@ from __future__ import annotations
 import dataclasses
 import logging
 import shutil
+from importlib import resources
 from typing import Any
 
 from tdb.languages import native_tools
@@ -50,6 +51,33 @@ def quote_debugger_arg(value: str) -> str:
     Shared by the rust and ocaml profiles — keep semantics in sync with
     both debuggers when changing."""
     return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def gdb_source_filename(value: str) -> str:
+    """Validate one filename for GDB's ``source`` command parser.
+
+    ``source`` takes the rest of the line as a literal filename (tilde
+    expansion only — no backslash unescaping, no quote stripping), so the
+    path must be passed raw: escaping would corrupt paths containing
+    spaces or Windows backslashes. Shared with the rust profile's probe.
+    """
+    if "\n" in value or "\r" in value:
+        raise LanguageNotSupportedError("GDB script path contains a newline")
+    return value
+
+
+# gdb-side helper that guarantees libstdc++ pretty-printing (see its
+# docstring): a gdb built into its own prefix never auto-loads the
+# printers gcc installs, so std::vector shows as _M_impl pointer soup.
+STL_PRINTERS_SCRIPT = "gdb_stl_printers.py"
+
+
+def gdb_init_args() -> list[str]:
+    """`-iex` arguments every tdb gdb session starts with: the STL
+    pretty-printer helper, sourced before gdb enters DAP mode (it is
+    silent, so it cannot disturb the protocol stream)."""
+    script = resources.files("tdb.adapters.native").joinpath(STL_PRINTERS_SCRIPT)
+    return ["-iex", f"source {gdb_source_filename(str(script))}"]
 
 
 # The C symbol every native live breakpoint hook (tdb.h, Rust `tdb`,
@@ -325,7 +353,7 @@ class GdbDapAdapter(AdapterSpec):
         raise AdapterNotFoundError(gdb_too_old_hint(exe, version, explicit, toolset))
 
     def command(self) -> list[str]:
-        return [self.resolve_executable(), "-i", "dap"]
+        return [self.resolve_executable(), *gdb_init_args(), "-i", "dap"]
 
     def diagnose_exit(self, stderr: str) -> str | None:
         if GDB_NO_DAP_INTERPRETER not in stderr:

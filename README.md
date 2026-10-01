@@ -415,6 +415,29 @@ See [Go](#go) below for launch details.
 - GDB (the default adapter) has the most complete libstdc++
   pretty-printing. `lldb-dap` (via `--adapter lldb-dap`) also debugs
   GCC-built binaries fine.  DWARF is compiler-neutral.
+- **STL containers in the Variables view.** A distro `gdb` shows
+  `std::vector<Result>` as `std::vector of length 2, capacity 2` with
+  `[0]`, `[1]` children because gcc installs libstdc++'s pretty-printers
+  next to it and `gdb` auto-loads them. A `gdb` built from source into
+  its own prefix never finds that auto-load script and shows the same
+  variable as `_M_impl` / `_M_start` pointer soup. `tdb` sources a small
+  helper into every `gdb` session that, on the first `std::` value it
+  sees, looks for gcc's printers (the distro auto-load script for the
+  loaded `libstdc++.so`, `share/gcc*/python` near that library or near
+  gdb's data directory, then the usual distro, Red Hat toolset, Homebrew
+  and MacPorts locations) and uses them; when none are installed it
+  falls back to its own bundled printers for `std::string`, `vector`,
+  `deque`, `list`, `map`/`set` (and multi-), `unordered_map`/`set`,
+  `unique_ptr`, `shared_ptr`/`weak_ptr` and `optional`. Printers gdb
+  auto-loads itself or that your `.gdbinit` registers still take
+  precedence. The helper also shields gdb's DAP layer from gcc 15's map
+  and set printers, whose child count is broken there (expanding a
+  `std::map` fails with "name 'self' is not defined" on an unpatched
+  distro gdb). `TDB_GDB_STL_PRINTERS` tunes it: `off` registers nothing,
+  `bundled` forces the bundled printers (and drops gdb's auto-loaded
+  ones), a directory holding `libstdcxx/` names gcc's printers
+  explicitly. Type `tdb-stl-printers` in the evaluate console to see
+  which printers are in use.
 - **GDB evaluate-console quirk:** GDB's DAP treats REPL input as CLI
   commands, so evaluate expressions with an explicit `print`, e.g.
   `print x` rather than bare `x` (bare `x` collides with GDB's
