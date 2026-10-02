@@ -16,6 +16,7 @@ import signal
 import tempfile
 from typing import Awaitable, Callable
 
+from tdb.adapters.bash.arith_for import arith_for_fixups
 from tdb.adapters.bash.declares import BashVar, parse_declares
 
 log = logging.getLogger(__name__)
@@ -168,6 +169,9 @@ class BashSession:
         # annotation only (script-touched marker in environment_vars()) --
         # does NOT affect the Globals/Environment split.
         self._launch_env_snapshot: dict[str, str] = {}
+        # canonical paths whose nested-arithmetic-for line fixups (see
+        # arith_for.py) have already been pushed to the harness
+        self._fixups_sent: set[str] = set()
 
     async def launch(
         self,
@@ -306,6 +310,7 @@ class BashSession:
                 raise BashProtocolError(message)
         finally:
             os.close(resp_w_holder)
+        self._ensure_fixups(program)
         self.stopped = True  # config phase
 
     async def _pump(self, stream: asyncio.StreamReader, category: str) -> None:
@@ -466,7 +471,12 @@ class BashSession:
                         self._ready.set_result(None)
                 elif kind == "stopped":
                     self.stopped = True
-                    self._on_stop(fields[1], unb64(fields[2]), int(fields[3]))
+                    path = unb64(fields[2])
+                    # a `source`d file we haven't seen a breakpoint for:
+                    # push its fixups now so stepping through it reports
+                    # the right lines from here on
+                    self._ensure_fixups(path)
+                    self._on_stop(fields[1], path, int(fields[3]))
                 elif kind in ("ok", "err"):
                     # I1: the harness echoes back the id of the REQUEST it's
                     # replying to ("ok 7 <b64>" / "err 7 <b64>"; "-" for a
@@ -574,7 +584,30 @@ class BashSession:
             self._tmpdir.cleanup()
             self._tmpdir = None
 
+    def _ensure_fixups(self, path: str) -> None:
+        """Push `fixup` entries for `path` once (fire-and-forget, in any
+        phase: the harness acks a bare command with id "-", which
+        _resp_loop drops). bash reports an arithmetic `for` loop that
+        contains another arithmetic `for` at the inner loop's line; the
+        harness remaps those stops back to the true line by matching
+        $BASH_COMMAND against the patterns sent here (arith_for.py).
+        An unreadable/undecodable file simply gets no fixups.
+        """
+        cpath = canonical(path, self.launch_cwd)
+        if cpath in self._fixups_sent or self._cmd_w is None:
+            return
+        self._fixups_sent.add(cpath)
+        try:
+            with open(cpath, encoding="utf-8", errors="replace") as f:
+                text = f.read()
+        except OSError:
+            return
+        for reported, entries in arith_for_fixups(text).items():
+            payload = "\n".join(f"{true_line} {pat}" for true_line, pat in entries)
+            self.send_async(f"fixup {b64(cpath)} {reported} {b64(payload)}")
+
     def _bp_line(self, path: str, line: int, condition: str) -> str:
+        self._ensure_fixups(path)
         return f"setbp {b64(canonical(path, self.launch_cwd))} {line} {b64(condition)}"
 
     async def set_breakpoint(self, path: str, line: int, condition: str = "") -> None:
