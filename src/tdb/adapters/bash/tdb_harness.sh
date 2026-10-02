@@ -59,6 +59,11 @@ set -o functrace
 
 declare -A __tdb_bp=()      # "canonical:line" -> condition ("" = always)
 declare -A __tdb_canon=()   # raw source path -> canonical path
+# "canonical:reported_line" -> newline-separated "true_line pattern"
+# entries (see arith_for.py): bash reports an arithmetic for loop that
+# contains another one at the INNER loop's line, so a stop whose
+# $BASH_COMMAND matches one of these glob patterns is moved to true_line.
+declare -A __tdb_fix=()
 __tdb_mode=continue         # step|next|finish|continue
 __tdb_depth=0               # ${#FUNCNAME[@]} when the last resume was armed
 __tdb_entry_pending=1       # first step-stop reports reason "entry"
@@ -120,6 +125,10 @@ __tdb_apply_cmd() {  # setbp/clearbp/clearall/pause from __tdb_cmd/__tdb_a*
         unset "__tdb_bp[$__tdb_dec:$__tdb_a2]" 2>/dev/null || true ;;
     clearall) __tdb_bp=() ;;
     pause) __tdb_pause=1 ;;
+    fixup)
+        __tdb_unb64 "$__tdb_a1"; local __tdb_f=$__tdb_dec
+        __tdb_unb64 "$__tdb_a3"
+        __tdb_fix["$__tdb_f:$__tdb_a2"]=$__tdb_dec ;;
     esac
     return 0
 }
@@ -150,14 +159,27 @@ __tdb_dispatch() {  # scope-independent commands, acked (stopped/config phase)
     case $__tdb_cmd in
     stack)   __tdb_send "ok ${__tdb_id:--} $(__tdb_b64 "$(__tdb_stack 2)")" ;;
     globals) __tdb_send "ok ${__tdb_id:--} $(__tdb_b64 "$(declare -p 2>/dev/null || true)")" ;;
-    setbp|clearbp|clearall|pause)
+    setbp|clearbp|clearall|pause|fixup)
              __tdb_apply_cmd; __tdb_send "ok ${__tdb_id:--} -" ;;
     *)       __tdb_send "err ${__tdb_id:--} $(__tdb_b64 "unknown command: $__tdb_cmd")" ;;
     esac
     return 0
 }
 
-__tdb_should_stop() {  # args: file line; 0 = stop (fills __tdb_cur_*/__tdb_reason)
+__tdb_fixline() {  # args: canonical-file line command; sets __tdb_l to the true line
+    # Only reached for a (file, line) the adapter flagged (nested arithmetic
+    # for loops, see __tdb_fix), so the per-entry loop costs nothing on the
+    # ordinary path. First matching pattern wins; no match keeps bash's line.
+    local __tdb_e IFS=$' \t\n'
+    while IFS= read -r __tdb_e; do
+        [[ $3 == ${__tdb_e#* } ]] || continue
+        __tdb_l=${__tdb_e%% *}
+        break
+    done <<< "${__tdb_fix[$1:$2]}"
+    return 0
+}
+
+__tdb_should_stop() {  # args: file line command; 0 = stop (fills __tdb_cur_*/__tdb_reason)
     # Depth is computed here, not passed in from the trap string: at top
     # level (no debuggee function on the stack) FUNCNAME is unset, and
     # "${#FUNCNAME[@]}" as a trap argument is an unbound-variable error
@@ -167,6 +189,10 @@ __tdb_should_stop() {  # args: file line; 0 = stop (fills __tdb_cur_*/__tdb_reas
     local __tdb_f=$1 __tdb_l=$2 __tdb_d=$(( ${#FUNCNAME[@]} - 1 ))
     (( BASH_SUBSHELL )) && return 1
     __tdb_drain
+    if (( ${#__tdb_fix[@]} )); then
+        __tdb_canonical "$__tdb_f"
+        [[ -v "__tdb_fix[$__tdb_cpath:$__tdb_l]" ]] && __tdb_fixline "$__tdb_cpath" "$__tdb_l" "$3"
+    fi
     if (( __tdb_pause )); then
         __tdb_pause=0; __tdb_reason=pause
     elif [[ $__tdb_mode == step ]]; then
@@ -219,7 +245,7 @@ done
 # bash's $LINENO inside a DEBUG trap is offset by however many newlines
 # precede it *within the trap string itself* — putting `shopt -s extdebug`
 # on its own line before `$LINENO` made every reported line 1 too high.
-trap 'shopt -s extdebug; __tdb_should_stop "${BASH_SOURCE[0]:-$0}" "$LINENO" && {
+trap 'shopt -s extdebug; __tdb_should_stop "${BASH_SOURCE[0]:-$0}" "$LINENO" "$BASH_COMMAND" && {
     __tdb_notify
     while __tdb_read_cmd; do
         case $__tdb_cmd in
