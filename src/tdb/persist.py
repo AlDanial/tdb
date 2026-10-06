@@ -8,6 +8,7 @@ import os
 import shutil
 import sys
 from dataclasses import dataclass, field, fields
+from datetime import datetime
 from pathlib import Path
 
 from tdb.dap.types import SourceBreakpoint
@@ -245,3 +246,33 @@ def save_config(config: TdbConfig) -> None:
         log.debug("Saved config to %s", CONFIG_FILE)
     except Exception:
         log.exception("Failed to save config to %s", CONFIG_FILE)
+
+
+def backup_suffix(now: datetime | None = None) -> str:
+    """Timestamp used to rename an existing config.json aside:
+    ``YYYY-mm-DD-HH:MM:SS``, except on Windows where filenames may not
+    contain colons, so the time part uses dots (``HH.MM.SS``)."""
+    now = now if now is not None else datetime.now()
+    time_sep = "." if sys.platform == "win32" else ":"
+    return now.strftime(f"%Y-%m-%d-%H{time_sep}%M{time_sep}%S")
+
+
+def write_default_config(now: datetime | None = None) -> tuple[Path | None, Path]:
+    """`tdb --config write-default`: move an existing config.json to
+    ``config.json-<backup_suffix>`` and write a fresh file holding every
+    default (with the native ``adapters`` keys seeded, exactly like the
+    file tdb writes on first run).
+
+    Returns ``(backup_path_or_None, CONFIG_FILE)``. Unlike ``save_config``
+    this raises OSError: the user asked for the write explicitly and
+    must hear about a failure."""
+    backup: Path | None = None
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    if CONFIG_FILE.exists():
+        backup = CONFIG_FILE.with_name(f"{CONFIG_FILE.name}-{backup_suffix(now)}")
+        CONFIG_FILE.replace(backup)
+    config = TdbConfig()
+    seed_native_adapters(config)
+    CONFIG_FILE.write_text(json.dumps(config.to_dict(), indent=2) + "\n")
+    log.info("Wrote default config to %s (previous: %s)", CONFIG_FILE, backup)
+    return backup, CONFIG_FILE

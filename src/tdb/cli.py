@@ -340,6 +340,19 @@ def build_parser() -> argparse.ArgumentParser:
         "each interpreter and native debugger tdb would use (python, gdb, "
         "lldb-dap, perl, ruby, dlv, ocamlearlybird, bash, tcsh, pwsh), then exit",
     )
+    parser.add_argument(
+        "--config",
+        choices=["write-default", "install-padwalker"],
+        default=None,
+        metavar="{write-default,install-padwalker}",
+        help="Maintenance action, then exit (no program needed). "
+        "write-default: rename the existing config.json to "
+        "config.json-YYYY-mm-DD-HH:MM:SS (HH.MM.SS on Windows) and write "
+        "a new one holding every default value. install-padwalker: build "
+        "and cache the bundled PadWalker Perl module now, for the perl "
+        "tdb would debug with (adapters.perl in config.json, else perl "
+        "on PATH), instead of on the first Perl launch",
+    )
     return parser
 
 
@@ -811,8 +824,9 @@ def _snap_breakpoints(args: argparse.Namespace) -> None:
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """Public entry: build parser, parse argv, run post-processing.
 
-    Short-circuit modes (`--doc`, `--doc-text`, `--info`, `--post-mortem`)
-    skip the launch-related validation since they don't run a debuggee.
+    Short-circuit modes (`--doc`, `--doc-text`, `--info`, `--config`,
+    `--post-mortem`) skip the launch-related validation since they don't
+    run a debuggee.
     """
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -923,7 +937,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     if args.replay_timeout != 30.0:
         parser.error("--replay-timeout has no effect without --replay/--replay-tui")
 
-    if args.doc or args.doc_text or args.info or args.post_mortem or args.mcp:
+    if (
+        args.doc
+        or args.doc_text
+        or args.info
+        or args.config
+        or args.post_mortem
+        or args.mcp
+    ):
         return args
 
     _validate_terminal_choice(args, parser)
@@ -986,6 +1007,8 @@ def main(argv: list[str] | None = None) -> None:
         _run_doc_text()
     elif args.info:
         _run_info()
+    elif args.config:
+        sys.exit(_run_config(args))
     elif args.post_mortem:
         _run_post_mortem(args)
     elif args.mcp:
@@ -1050,6 +1073,61 @@ def _run_info() -> None:
     from tdb.app_helpers import info_text
 
     print(info_text())
+
+
+def _run_config(args: argparse.Namespace, now=None) -> int:
+    """`tdb --config ACTION`: run one maintenance action, return the exit
+    code (0 ok, 1 failure). `now` injects the clock for tests."""
+    if args.config == "write-default":
+        return _config_write_default(now)
+    return _config_install_padwalker()
+
+
+def _config_write_default(now=None) -> int:
+    from tdb import persist
+
+    try:
+        backup, written = persist.write_default_config(now=now)
+    except OSError as e:
+        print(f"tdb: cannot write default config: {e}", file=sys.stderr)
+        return 1
+    if backup is not None:
+        print(f"Renamed existing config to {backup}")
+    print(f"Wrote default config to {written}")
+    return 0
+
+
+def _config_install_padwalker() -> int:
+    """Build/cache the bundled PadWalker for the perl tdb would launch:
+    the `adapters.perl` override in config.json, else `perl` on PATH --
+    the same resolution the Perl adapter uses."""
+    from tdb.adapters.perl import padwalker
+    from tdb.languages.native_tools import find_native_debugger
+    from tdb.persist import load_config
+
+    perl = find_native_debugger("perl", load_config().adapters)
+    if perl is None:
+        print(
+            "tdb: perl not found (not on PATH and no adapters.perl entry in "
+            "config.json); nothing to build PadWalker for",
+            file=sys.stderr,
+        )
+        return 1
+    result = padwalker.ensure_padwalker(perl)
+    if result.source == "native":
+        print(f"PadWalker already loads natively with {perl}; nothing to install")
+    elif result.source == "cached":
+        print(f"PadWalker already built for {perl}; cached in {result.lib_dir}")
+    elif result.source == "built":
+        print(
+            result.message or f"Built PadWalker for {perl}; cached in {result.lib_dir}"
+        )
+    else:
+        print(
+            result.message or f"tdb: PadWalker unavailable for {perl}", file=sys.stderr
+        )
+        return 1
+    return 0
 
 
 def _run_doc_text() -> None:
