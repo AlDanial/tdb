@@ -112,6 +112,14 @@ tdb --doc
 # build the bundled PadWalker)
 tdb --info
 
+# reset config.json to defaults (the old file is kept as
+# config.json-YYYY-mm-DD-HH:MM:SS; HH.MM.SS on Windows)
+tdb --config write-default
+
+# build and cache the bundled PadWalker Perl module now rather than
+# on the first Perl launch
+tdb --config install-padwalker
+
 # debug a Python program (stops at first line by default)
 tdb my_program.py
 
@@ -663,6 +671,11 @@ pad walk, so outer-frame lexicals degrade but debugging otherwise proceeds.
 `ExtUtils::MakeMaker` version of the `perl` it would use, with a warning when
 that module is missing and PadWalker therefore cannot be built.
 `TDB_PADWALKER_CACHE` overrides the cache location.
+To build it ahead of time (for example when provisioning a machine, or to
+see the compiler's error output without starting a debug session), run
+`tdb --config install-padwalker`; it exits 0 when PadWalker loads
+(natively, from the cache, or freshly built) and 1 with the reason when it
+cannot be built.
 
 **Launching a script:**
 
@@ -2318,6 +2331,7 @@ usage: tdb [-h] [-v] [-r [HOST:]PORT] [--cwd CWD] [--no-stop-on-entry]
            [--terminal {xterm,konsole,gnome-terminal,ghostty,kitty,iterm2,warp,wezterm,terminator}]
            [--local-root PATH] [--remote-root PATH]
            [--server] [--headless] [-k FILE:LINE|LINE] [--server-port SERVER_PORT] [-d] [--doc-text] [--info]
+           [--config {write-default,install-padwalker}]
            [program] [args ...]
 ```
 
@@ -2353,6 +2367,11 @@ usage: tdb [-h] [-v] [-r [HOST:]PORT] [--cwd CWD] [--no-stop-on-entry]
 | `--replay-interval S` | With `--replay`/`--replay-tui`: fixed S-second delay before each action instead of the recorded gaps |
 | `--replay-timeout S` | With `--replay`/`--replay-tui`: per-action stop-wait timeout (default 30) |
 | `--examine-log DEST` | With --run: write each Ctrl-\ / SIGUSR2 stack snapshot to DEST (- = stdout; repeatable) |
+| `--doc` | Display this README in a terminal Markdown viewer and exit |
+| `--doc-text` | Print this README to stdout as wrapped plain text and exit |
+| `--info` | Print the About text, file locations, and the path and version of each interpreter and debugger `tdb` would use, then exit |
+| `--config write-default` | Rename the existing `config.json` to `config.json-YYYY-mm-DD-HH:MM:SS` (`HH.MM.SS` on Windows, which forbids colons in filenames) and write a new one holding every default value, then exit |
+| `--config install-padwalker` | Build and cache the bundled PadWalker Perl module now, for the perl `tdb` would debug with (`adapters.perl` in `config.json`, else `perl` on `PATH`), instead of waiting for the first Perl launch; exits 1 if it cannot be built |
 
 ## Configuration
 
@@ -2367,7 +2386,9 @@ On Windows, it uses `%APPDATA%\tdb\`.
 
 ### Sample `config.json`
 
-Every key `tdb` reads, with its default or a representative value. Copy
+Every key `tdb` reads, with its default or a representative value.
+`tdb --config write-default` writes a fresh file with these defaults
+(moving the old one aside as `config.json-YYYY-mm-DD-HH:MM:SS`), or copy
 this to restore a deleted or corrupted file, then delete the entries you
 don't need: a missing key takes its default, an unknown key is ignored,
 and an invalid value (say a misspelled `step_mode`) falls back to the
