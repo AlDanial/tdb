@@ -1,4 +1,8 @@
 #!/usr/bin/env perl
+
+# Run:    ./pi_digits.pl -r 2 -d 20 -p
+# Debug:  tdb -- ./pi_digits.pl -r 2 -d 20 -p
+
 use strict;
 use warnings;
 use Getopt::Long;

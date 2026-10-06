@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+
+# Run:    ./pi_digits.sh -r 2 -d 20 -p
+# Debug:  tdb -- ./pi_digits.sh -r 2 -d 20 -p
+
 set -euo pipefail
 runs=1
 count=10

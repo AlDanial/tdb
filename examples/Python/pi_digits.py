@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-Computes P number of digits of pi N number of times.
+Run:    ./pi_digits.py -r 2 -d 20 -t 2 -p
+Debug:  tdb -- ./pi_digits.py -r 2 -d 20 -t 2 -p
 """
 
 import argparse

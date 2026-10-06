@@ -1,4 +1,8 @@
 #!/usr/bin/env tcsh
+
+# Run:    ./pi_digits.tcsh -r 2 -d 20 -p
+# Debug:  tdb -- ./pi_digits.tcsh -r 2 -d 20 -p
+
 set runs = 1
 set count = 10
 set print_digits = 0
