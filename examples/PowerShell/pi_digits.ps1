@@ -1,3 +1,7 @@
+<#
+   Run:    pwsh ./pi_digits.ps1 -r 2 -d 20 -p
+   Debug:  tdb --lang powershell -- ./pi_digits.ps1 -r 2 -d 20 -p
+ #>
 param(
     [Alias('r')][int]$Runs = 1,
     [Alias('d')][int]$Digits = 10,
