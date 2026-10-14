@@ -326,3 +326,82 @@ async def test_hook_step_out_count_resets_after_a_normal_stop():
         await co.on_stopped(DapStopped(1, "breakpoint"))
     assert calls["step_out"] == 3 + MAX_HOOK_STEP_OUTS
     assert calls["rendered"] == 2
+
+
+# --- pytest --trace trampoline step-in ----------------------------------
+
+
+def _trampoline_frame() -> StackFrame:
+    return StackFrame(
+        id=1,
+        name="_trace_trampoline",
+        source=Source(path="/site-packages/tdb/pytest_debugger.py"),
+        line=103,
+    )
+
+
+def test_step_in_hook_check_true_for_pytest_trace_trampoline():
+    co, app = _coord()
+    app.controller._is_remote_attach = True
+    app.controller.state.stack_frames = [_trampoline_frame()]
+    assert co._stopped_inside_breakpoint_hook(step_in=True) is True
+    # Not a step-*out* hook frame.
+    assert co._stopped_inside_breakpoint_hook() is False
+
+
+def test_step_in_hook_check_false_for_other_pytest_debugger_functions():
+    co, app = _coord()
+    app.controller._is_remote_attach = True
+    frame = _trampoline_frame()
+    frame.name = "runcall"
+    app.controller.state.stack_frames = [frame]
+    assert co._stopped_inside_breakpoint_hook(step_in=True) is False
+
+
+async def test_trampoline_stop_steps_in_instead_of_rendering():
+    import asyncio
+
+    from tdb.session.messages import DapStopped
+
+    co, app = _coord()
+    ctrl = app.controller
+    ctrl._is_remote_attach = True
+    stops = iter(
+        [
+            _trampoline_frame(),
+            StackFrame(id=2, name="test_x", source=Source(path="/p/test_x.py"), line=2),
+        ]
+    )
+    calls = {"step_in": 0, "step_out": 0, "rendered": 0}
+
+    async def fetch_stop_info():
+        ctrl.state.stack_frames = [next(stops)]
+
+    async def step_in():
+        calls["step_in"] += 1
+
+    async def step_out():  # pragma: no cover - must not happen
+        calls["step_out"] += 1
+
+    async def no():
+        return False
+
+    async def nothing():
+        return None
+
+    ctrl.fetch_stop_info = fetch_stop_info  # type: ignore[method-assign]
+    ctrl.step_in = step_in  # type: ignore[method-assign]
+    ctrl.step_out = step_out  # type: ignore[method-assign]
+    ctrl.maybe_continue_statement_step = no  # type: ignore[method-assign]
+    ctrl.cleanup_run_to_cursor = nothing  # type: ignore[method-assign]
+    app._update_ui_state = lambda: calls.__setitem__("rendered", calls["rendered"] + 1)
+    app._update_thread_count = lambda: None
+    app._fetch_process_count = lambda: None
+    app._fetch_async_task_count = lambda: None
+    app.stop_settled = asyncio.Event()
+
+    await co.on_stopped(DapStopped(1, "step"))
+    assert calls == {"step_in": 1, "step_out": 0, "rendered": 0}
+    await co.on_stopped(DapStopped(1, "step"))
+    assert calls == {"step_in": 1, "step_out": 0, "rendered": 1}
+    assert co._hook_step_outs == 0

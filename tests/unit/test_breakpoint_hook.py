@@ -161,3 +161,35 @@ def test_first_call_starts_listener(hook, monkeypatch):
     # pre-armed pause would race it and can leave the thread suspended
     # with no client after quit (see test_controller_pre_arm_pause.py).
     assert "--no-pause-on-attach" in argv
+
+
+def test_attach_and_pause_reports_false_without_tty(hook, monkeypatch):
+    monkeypatch.setattr("sys.stdin", _fake_stdio(tty=False))
+    monkeypatch.setattr("sys.stdout", _fake_stdio(tty=True))
+    assert hook.attach_and_pause() is False
+
+
+def test_pause_at_frame_uses_settrace_stop_at_frame(hook, monkeypatch):
+    """With a target frame, the pause goes through pydevd's settrace so the
+    stop lands in that frame, not in the hook module."""
+    import sys
+
+    import debugpy.server.api as api
+
+    calls = []
+    monkeypatch.setattr(api, "_settrace", lambda **kw: calls.append(kw))
+    fake_debugpy = SimpleNamespace(
+        breakpoint=lambda: pytest.fail("debugpy.breakpoint must not be used"),
+        is_client_connected=lambda: True,
+    )
+    frame = sys._getframe()
+    hook._pause(fake_debugpy, frame)
+    assert len(calls) == 1
+    assert calls[0]["stop_at_frame"] is frame
+    assert calls[0]["suspend"] is True
+
+
+def test_pause_without_frame_uses_debugpy_breakpoint(hook):
+    hits = []
+    hook._pause(SimpleNamespace(breakpoint=lambda: hits.append(1)), None)
+    assert hits == [1]

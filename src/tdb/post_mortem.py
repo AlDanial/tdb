@@ -21,8 +21,8 @@ import subprocess
 import sys
 import tempfile
 import traceback as _tb_mod
-from types import TracebackType
-from typing import Any
+from types import FrameType, TracebackType
+from typing import Any, Callable
 
 log = logging.getLogger(__name__)
 
@@ -62,6 +62,18 @@ def exception_hook(
         log.exception("tdb.exception_hook: snapshot failed")
         return
 
+    launch_snapshot(snapshot)
+
+
+def launch_snapshot(
+    snapshot: dict[str, Any], *, live_tdb_wait: float | None = 10
+) -> None:
+    """Write ``snapshot`` to a temp file and run the post-mortem TUI on it.
+
+    Blocks until the user quits tdb. The caller must already have checked
+    that stdin/stdout are a tty. ``live_tdb_wait`` bounds the wait for a
+    still-running ``tdb.breakpoint()`` TUI (None waits indefinitely).
+    """
     # If the program also used tdb.breakpoint() and the user just quit that
     # session, the live tdb subprocess may still be tearing down its TUI
     # (alt-screen exit, cursor restore, etc.) when this hook fires. Spawning
@@ -76,12 +88,13 @@ def exception_hook(
 
         if _bp_proc is not None and _bp_proc.poll() is None:
             try:
-                _bp_proc.wait(timeout=10)
+                _bp_proc.wait(timeout=live_tdb_wait)
             except subprocess.TimeoutExpired:
                 log.warning(
                     "tdb.exception_hook: live tdb.breakpoint() subprocess "
-                    "still running after 10s — proceeding with post-mortem "
-                    "anyway; the terminal display may be corrupted."
+                    "still running after %ss — proceeding with post-mortem "
+                    "anyway; the terminal display may be corrupted.",
+                    live_tdb_wait,
                 )
     except Exception:
         log.exception("tdb.exception_hook: error checking breakpoint subprocess")
@@ -106,17 +119,29 @@ def exception_hook(
 
 
 def _make_snapshot(
-    exc_type: type[BaseException],
-    exc_value: BaseException,
+    exc_type: type[BaseException] | None,
+    exc_value: BaseException | None,
     tb: TracebackType,
+    *,
+    hide_frame: Callable[[FrameType], bool] | None = None,
 ) -> dict[str, Any]:
-    """Build a JSON-serializable snapshot of the crash."""
+    """Build a JSON-serializable snapshot of the crash.
+
+    ``exc_type``/``exc_value`` may be None when only a traceback is known.
+    ``hide_frame`` drops matching frames from the snapshot's stack (the
+    traceback text is unaffected); if it would hide every frame it is
+    ignored.
+    """
     # Collect traceback entries from outermost to innermost (tb.tb_next chain).
     tb_entries: list[TracebackType] = []
     cur: TracebackType | None = tb
     while cur is not None:
         tb_entries.append(cur)
         cur = cur.tb_next
+    if hide_frame is not None:
+        kept = [t for t in tb_entries if not hide_frame(t.tb_frame)]
+        if kept:
+            tb_entries = kept
 
     # DAP stack frames go innermost-first (index 0 = deepest = crash site).
     tb_entries.reverse()
@@ -222,13 +247,20 @@ def _make_snapshot(
             }
         )
 
-    tb_text = "".join(_tb_mod.format_exception(exc_type, exc_value, tb))
+    if exc_value is None:
+        tb_text = "Traceback (most recent call last):\n" + "".join(
+            _tb_mod.format_tb(tb)
+        )
+        message = ""
+    else:
+        tb_text = "".join(_tb_mod.format_exception(exc_type, exc_value, tb))
+        message = str(exc_value)
 
     return {
         "version": 1,
         "exception": {
             "type": getattr(exc_type, "__name__", "Exception"),
-            "message": str(exc_value),
+            "message": message,
             "traceback_text": tb_text,
         },
         "frames": frames_out,

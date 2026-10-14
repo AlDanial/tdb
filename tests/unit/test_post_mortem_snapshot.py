@@ -368,3 +368,28 @@ def test_hook_proceeds_when_breakpoint_subprocess_hangs(hook_env, monkeypatch):
     monkeypatch.setattr(bph, "_subprocess", HungProc())
     exception_hook(*_capture(_crash_two_frames))  # must not raise
     assert len(hook_env) == 1  # launched anyway, with a warning logged
+
+
+def test_snapshot_hide_frame_drops_matching_frames():
+    et, ev, tb = _capture(_crash_two_frames)
+    snap = _make_snapshot(et, ev, tb, hide_frame=lambda f: f.f_code.co_name == "outer")
+    names = [f["funcname"] for f in snap["frames"]]
+    assert "outer" not in names
+    assert names[0] == "boom"
+    # Traceback text is untouched by the filter.
+    assert "outer" in snap["exception"]["traceback_text"]
+
+
+def test_snapshot_hide_frame_ignored_when_it_would_hide_everything():
+    et, ev, tb = _capture(_crash_two_frames)
+    snap = _make_snapshot(et, ev, tb, hide_frame=lambda f: True)
+    assert snap["frames"][0]["funcname"] == "boom"
+
+
+def test_snapshot_without_exception_object():
+    _, _, tb = _capture(_crash_two_frames)
+    snap = _make_snapshot(None, None, tb)
+    assert snap["exception"]["type"] == "Exception"
+    assert snap["exception"]["message"] == ""
+    assert snap["exception"]["traceback_text"].startswith("Traceback")
+    assert snap["frames"][0]["funcname"] == "boom"

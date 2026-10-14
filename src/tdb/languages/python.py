@@ -97,6 +97,17 @@ def _is_breakpoint_hook_frame(frame) -> bool:
     return bool(src) and os.path.basename(src) == "breakpoint_hook.py"
 
 
+def _is_pytest_trace_trampoline_frame(frame) -> bool:
+    """pytest `--trace` under tdb.pytest_debugger pauses in a trampoline
+    on the line that calls the test function."""
+    src = frame.source.path if frame.source else None
+    return (
+        bool(src)
+        and os.path.basename(src) == "pytest_debugger.py"
+        and frame.name.endswith("_trace_trampoline")
+    )
+
+
 def build_python_profile(
     adapter: str | None = None,
     adapter_paths: dict[str, str] | None = None,
@@ -119,6 +130,7 @@ def build_python_profile(
         capabilities=ProfileCapabilities(
             compute_step_units=compute_step_units,
             breakpoint_hook_frame=_is_breakpoint_hook_frame,
+            breakpoint_hook_step_in_frame=_is_pytest_trace_trampoline_frame,
             child_process_strategy="debugpy",
             task_inspection=True,
             pause_while_running=True,

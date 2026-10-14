@@ -76,6 +76,14 @@ class DapEventCoordinator:
             # were already set by controller._on_stopped before this async
             # handler ran — the controller is now the single state authority.
             await ctrl.fetch_stop_info()
+            if self._stopped_inside_breakpoint_hook(step_in=True):
+                if self._hook_step_outs < MAX_HOOK_STEP_OUTS:
+                    # pytest --trace under tdb.pytest_debugger pauses on
+                    # the line calling the test; step in so the user lands
+                    # on the test's first line.
+                    self._hook_step_outs += 1
+                    await ctrl.step_in()
+                    return
             if self._stopped_inside_breakpoint_hook():
                 if self._hook_step_outs < MAX_HOOK_STEP_OUTS:
                     # tdb.breakpoint() pauses inside breakpoint_hook.breakpoint;
@@ -109,12 +117,19 @@ class DapEventCoordinator:
             self.app.panels.exception_modal_shown = True
             self._show_exception_modal(message)
 
-    def _stopped_inside_breakpoint_hook(self) -> bool:
+    def _stopped_inside_breakpoint_hook(self, *, step_in: bool = False) -> bool:
         """True if the active stop is inside a live breakpoint hook's own
         helper (`tdb.breakpoint()`, Go's `tdb.Breakpoint()`), per the
-        profile's `breakpoint_hook_frame` capability."""
+        profile's `breakpoint_hook_frame` capability. With `step_in`,
+        checks `breakpoint_hook_step_in_frame` instead (a trampoline
+        paused on the line that calls the user's code)."""
         ctrl = self.app.controller
-        is_hook_frame = ctrl.profile.capabilities.breakpoint_hook_frame
+        caps = ctrl.profile.capabilities
+        is_hook_frame = (
+            caps.breakpoint_hook_step_in_frame
+            if step_in
+            else caps.breakpoint_hook_frame
+        )
         if is_hook_frame is None:
             return False
         if not ctrl.is_remote_attach:
