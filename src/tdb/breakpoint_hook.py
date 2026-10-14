@@ -25,6 +25,7 @@ from __future__ import annotations
 import logging
 import subprocess
 import sys
+from types import FrameType
 from typing import Any
 
 log = logging.getLogger(__name__)
@@ -46,12 +47,30 @@ def breakpoint(*args: Any, **kwargs: Any) -> None:
     """Pause the caller and open tdb attached to this process."""
     # Args are accepted and ignored for compatibility with the builtin
     # breakpoint() signature (which forwards *args/**kwargs to the hook).
+    attach_and_pause()
 
+
+def _stdio_is_tty() -> bool:
     try:
-        if not (sys.stdin.isatty() and sys.stdout.isatty()):
-            return
+        return bool(sys.stdin.isatty() and sys.stdout.isatty())
     except (AttributeError, ValueError):
-        return
+        return False
+
+
+def attach_and_pause(stop_at_frame: FrameType | None = None) -> bool:
+    """Open (or reuse) a live tdb attached to this process and pause.
+
+    With ``stop_at_frame`` None, pauses in the caller (via
+    ``debugpy.breakpoint()``). Otherwise the pause lands on the next line
+    executed in ``stop_at_frame`` — this is how ``pdb.set_trace(frame)``
+    style callers (e.g. pytest's ``--pdbcls`` wrapper) get the user's own
+    frame rather than an intermediate helper.
+
+    Returns False if nothing happened (no tty, debugpy missing, launch
+    failure) so callers can fall back to another debugger.
+    """
+    if not _stdio_is_tty():
+        return False
 
     try:
         import debugpy
@@ -60,7 +79,7 @@ def breakpoint(*args: Any, **kwargs: Any) -> None:
             "tdb.breakpoint: debugpy is not installed "
             "(install with: uv pip install debugpy)"
         )
-        return
+        return False
 
     global _server_port, _subprocess
     if _server_port is None:
@@ -77,14 +96,14 @@ def breakpoint(*args: Any, **kwargs: Any) -> None:
             )
         except Exception:
             log.exception("tdb.breakpoint: debugpy.listen failed")
-            return
+            return False
 
     if _subprocess is not None and _subprocess.poll() is None:
         # Existing tdb is still running and attached — let it handle this
         # stop event. Skip Popen and skip wait_for_client (a client is
-        # already connected, so debugpy.breakpoint() pauses immediately).
-        debugpy.breakpoint()
-        return
+        # already connected, so the pause takes effect immediately).
+        _pause(debugpy, stop_at_frame)
+        return True
 
     # --no-pause-on-attach: tdb normally pre-arms a `pause` on remote
     # attach so a plain listen()+wait_for_client() program stops at its
@@ -110,7 +129,33 @@ def breakpoint(*args: Any, **kwargs: Any) -> None:
         )
     except Exception:
         log.exception("tdb.breakpoint: failed to launch tdb subprocess")
-        return
+        return False
 
     debugpy.wait_for_client()
-    debugpy.breakpoint()
+    _pause(debugpy, stop_at_frame)
+    return True
+
+
+def _pause(debugpy: Any, stop_at_frame: FrameType | None) -> None:
+    """Suspend the current thread, optionally at a specific frame."""
+    if stop_at_frame is None:
+        debugpy.breakpoint()
+        return
+    try:
+        # debugpy.breakpoint() always stops in its caller (the first
+        # non-pydevd frame), which here would be this module. pydevd's
+        # settrace accepts the frame to stop in; debugpy's thin wrapper
+        # around it is private, so fall back to the public call if it
+        # ever moves.
+        from debugpy.server.api import _settrace
+    except ImportError:
+        debugpy.breakpoint()
+        return
+    if not debugpy.is_client_connected():
+        return
+    _settrace(
+        suspend=True,
+        trace_only_current_thread=True,
+        patch_multiprocessing=False,
+        stop_at_frame=stop_at_frame,
+    )

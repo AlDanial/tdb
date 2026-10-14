@@ -379,6 +379,13 @@ class ProfileCapabilities:
     # StackFrame. None = the language has no such hook.
     breakpoint_hook_frame: Callable[[Any], bool] | None = None
 
+    # Companion to breakpoint_hook_frame for hooks that pause on the line
+    # that *calls* the user's code (pytest `--trace` via
+    # tdb.pytest_debugger): True when this top frame is such a trampoline,
+    # so the stop is stepped *into* and the user lands on the first line
+    # of the callee. None = the language has no such hook.
+    breakpoint_hook_step_in_frame: Callable[[Any], bool] | None = None
+
     # Classify the debuggee's threads for display: label domains, hide
     # runtime service threads (OCaml backup threads). Receives all
     # threads plus per-thread stacks (dict may be missing entries —
