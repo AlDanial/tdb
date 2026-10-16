@@ -173,6 +173,25 @@ def gdb_rows(adapter_paths: dict[str, str | None] | None) -> list[str]:
     return rows
 
 
+def _package_dir() -> Path:
+    import importlib.resources
+
+    return Path(str(importlib.resources.files("tdb")))
+
+
+def examples_dir() -> Path:
+    """The per-language examples (C, Fortran, Perl, ...) shipped with tdb.
+
+    In a source checkout src/tdb/examples is a symlink to the repository's
+    examples/; a Windows checkout with core.symlinks=false leaves it a
+    small text file instead, so fall back to the repository directory."""
+    packaged = _package_dir() / "examples"
+    if packaged.is_dir():
+        return packaged.resolve()
+    checkout = _package_dir().parent.parent / "examples"
+    return checkout.resolve() if checkout.is_dir() else packaged
+
+
 def info_text() -> str:
     from tdb import __version__
     import importlib.resources
@@ -196,6 +215,7 @@ def info_text() -> str:
                 row("config file", CONFIG_FILE),
                 row("breakpoints file", STATE_FILE),
                 _log_row(log_file()),
+                row("examples dir", examples_dir()),
             ],
         ),
         (

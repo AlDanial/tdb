@@ -1,5 +1,7 @@
 """Native live breakpoint hooks (tdb.h, rust/tdb, ocaml/tdb) end to end.
 
+Fortran reaches tdb.h through bind(C), linked against tdb.h compiled as C.
+
 Each demo calls its hook twice. The demo runs under a pty with a fake tdb
 (hook_harness) so we can check the spawn argv; then this test plays tdb's
 part for real: build the language profile with attach_pid, attach through
@@ -86,6 +88,23 @@ fn main() {
     println!("counter = {}", counter);
 }
 """
+FORTRAN_SRC = """\
+program hooked
+    implicit none
+    interface
+        subroutine tdb_breakpoint() bind(C, name="tdb_breakpoint")
+        end subroutine tdb_breakpoint
+    end interface
+    integer :: counter
+    counter = 10
+    call tdb_breakpoint()
+    counter = counter + 1
+    counter = counter + 20
+    call tdb_breakpoint()
+    counter = counter + 300
+    write(*, '(a,i0)') 'counter = ', counter
+end program hooked
+"""
 OCAML_SRC = """\
 let () =
   let counter = ref 10 in
@@ -115,6 +134,14 @@ CASES = {
         ("10", "31"),
         shutil.which("g++") or shutil.which("c++"),
     ),
+    "fortran": (
+        "cpp",
+        FORTRAN_SRC,
+        (10, 13),
+        "counter",
+        ("10", "31"),
+        shutil.which("gfortran"),
+    ),
     "rust": ("rust", RUST_SRC, (4, 7), "counter", ("10", "31"), shutil.which("rustc")),
     # OCaml deviates from the others in two observed ways (gdb 17.1 and
     # lldb-dap 21.1.8, ocamlopt 5.4): the return address after
@@ -137,6 +164,35 @@ def _build(lang: str, tmp_path: Path) -> Path:
         s.write_text(src)
         subprocess.run(
             [tool, "-g", "-O0", "-I", str(HEADER_DIR), "-o", str(exe), str(s)],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    elif lang == "fortran":
+        cc = shutil.which("gcc") or shutil.which("cc")
+        if cc is None:
+            pytest.skip("no C compiler for tdb.h")
+        obj = tmp_path / "tdb.o"
+        subprocess.run(
+            [
+                cc,
+                "-g",
+                "-O0",
+                "-c",
+                "-x",
+                "c",
+                str(HEADER_DIR / "tdb.h"),
+                "-o",
+                str(obj),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        s = tmp_path / "hooked.f90"
+        s.write_text(src)
+        subprocess.run(
+            [tool, "-g", "-O0", "-o", str(exe), str(s), str(obj)],
             check=True,
             capture_output=True,
             text=True,
@@ -286,6 +342,10 @@ async def _attach_and_land(
 @pytest.mark.parametrize("lang", list(CASES))
 async def test_hook_opens_tdb_twice_and_program_finishes(lang, adapter, tmp_path):
     lang_id, _, lines, local, values, _ = CASES[lang]
+    if lang == "fortran" and adapter == "lldb-dap":
+        # LLDB has no Fortran language plugin: lldb-dap 21.1.8 stops on
+        # the right lines but lists only registers, no Fortran locals.
+        local, values = None, None
     exe = _build(lang, tmp_path)
     dbg = HookDebuggee(tmp_path, [str(exe)])
     try:

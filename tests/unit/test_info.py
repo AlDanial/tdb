@@ -165,6 +165,7 @@ def test_tdb_section_lists_files(stub_tools, tmp_path, monkeypatch):
         f"    config file              : {persist.CONFIG_FILE}",
         f"    breakpoints file         : {persist.STATE_FILE}",
         f"    log file                 : {log} [15 KB]",
+        f"    examples dir             : {info.examples_dir()}",
     ]
 
 
@@ -500,3 +501,36 @@ def test_perl_section_without_perl_has_no_makemaker_row(monkeypatch):
     lines = _section(info.info_text(), "Perl").splitlines()
     assert lines[0] == f"    perl executable          : {info.NOT_FOUND}"
     assert "MakeMaker" not in "\n".join(lines)
+
+
+def test_textual_debugger_section_lists_examples_dir():
+    """The per-language examples ship inside the package; --info says where."""
+    rows = _section(info.info_text(), "textual-debugger").splitlines()
+    assert rows[-1] == f"    examples dir             : {info.examples_dir()}"
+    for lang in (
+        "C",
+        "C++",
+        "Fortran",
+        "Go",
+        "OCaml",
+        "Perl",
+        "PowerShell",
+        "Python",
+        "Ruby",
+        "Rust",
+        "bash",
+        "tcsh",
+    ):
+        assert (info.examples_dir() / lang).is_dir(), lang
+    assert (info.examples_dir() / "Fortran" / "pi_digits.f90").is_file()
+
+
+def test_examples_dir_falls_back_to_checkout(monkeypatch, tmp_path):
+    """A Windows checkout with core.symlinks=false turns the src/tdb/examples
+    link into a text file; fall back to the repository's examples/."""
+    pkg = tmp_path / "src" / "tdb"
+    pkg.mkdir(parents=True)
+    (pkg / "examples").write_text("../../examples")
+    (tmp_path / "examples" / "C").mkdir(parents=True)
+    monkeypatch.setattr(info, "_package_dir", lambda: pkg)
+    assert info.examples_dir() == (tmp_path / "examples").resolve()

@@ -108,8 +108,10 @@ tdb --doc
 # log files live, and the path + version of each interpreter and native
 # debugger it would use (python, gdb, lldb-dap, perl, ruby, dlv,
 # ocamlearlybird, bash, tcsh, pwsh), whether gdb has its DAP interpreter
-# (`gdb -i dap`), and whether perl has ExtUtils::MakeMaker (needed to
-# build the bundled PadWalker)
+# (`gdb -i dap`), whether perl has ExtUtils::MakeMaker (needed to
+# build the bundled PadWalker), and the `examples dir` holding the
+# per-language examples (C, C++, Fortran, Go, OCaml, Perl, PowerShell,
+# Python, Ruby, Rust, bash, tcsh) installed with the package
 tdb --info
 
 # reset config.json to defaults (the old file is kept as
@@ -532,6 +534,29 @@ stop symbol cannot be resolved. The header is C99 and C++ compatible and
 header-only. Linux only: the hook grants ptrace access to tdb's debugger
 with `PR_SET_PTRACER`; elsewhere it warns once and returns. See
 `examples/C/breakpoint_hook_demo.c` and `examples/C++/breakpoint_hook_demo.cpp`.
+
+Fortran (or any language that can call C) uses the same header: compile
+`tdb.h` as C into an object that defines `tdb_breakpoint()`, declare it with
+`bind(C)`, and link the object in:
+
+```fortran
+interface
+    subroutine tdb_breakpoint() bind(C, name="tdb_breakpoint")
+    end subroutine tdb_breakpoint
+end interface
+...
+call tdb_breakpoint()   ! tdb opens here, paused on the next line
+```
+
+```bash
+gcc -g -O0 -c -x c "$(tdb --info | awk -F': ' '/tdb.h dir/ {print $2}')/tdb.h" -o tdb.o
+gfortran -g -O0 -o prog prog.f90 tdb.o
+./prog    # run it directly, not under tdb
+```
+
+Use gdb (the default) for Fortran: lldb-dap stops on the right line but,
+lacking Fortran support, shows no Fortran locals. See
+`examples/Fortran/breakpoint_hook_demo.f90`.
 
 ### Rust
 

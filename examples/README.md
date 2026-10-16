@@ -29,11 +29,11 @@ is a best-effort stopped-state snapshot: confirmed evidence is directly
 observed, probable evidence is inferred, and unknown evidence is incomplete.
 Suspected cycles and whole-program stalls are leads to investigate, not proofs.
 
-## Live breakpoint hook demos (C, C++, Rust, OCaml)
+## Live breakpoint hook demos (C, C++, Fortran, Rust, OCaml)
 
 Each demo sums `0..9` into a local `total` alongside a five-element
 `local_list`, then calls the language's live breakpoint hook. Run each
-directly, not under `tdb`. C, C++, and Rust stop in `tdb` on the line
+directly, not under `tdb`. C, C++, Fortran, and Rust stop in `tdb` on the line
 after the hook call, with `total` and `local_list` visible in the
 Variables view. OCaml stops in `tdb` on the `Tdb.breakpoint ()` line
 itself, and ocamlopt's native code emits no debug info for locals, so
@@ -52,6 +52,15 @@ gcc -std=c99 -g -O0 -I "$(tdb --info | awk -F': ' '/tdb.h dir/ {print $2}')" \
 ```bash
 g++ -g -O0 -I "$(tdb --info | awk -F': ' '/tdb.h dir/ {print $2}')" \
     -o demo breakpoint_hook_demo.cpp && ./demo
+```
+
+**Fortran** (tdb.h compiled as C supplies `tdb_breakpoint()`; use gdb,
+since lldb-dap shows no Fortran locals):
+
+```bash
+gcc -g -O0 -c -x c "$(tdb --info | awk -F': ' '/tdb.h dir/ {print $2}')/tdb.h" \
+    -o tdb.o
+gfortran -g -O0 -o demo breakpoint_hook_demo.f90 tdb.o && ./demo
 ```
 
 **Rust:**
