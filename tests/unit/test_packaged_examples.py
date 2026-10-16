@@ -46,20 +46,38 @@ def test_examples_link_points_at_repo_examples():
     assert link.resolve() == (REPO / "examples").resolve()
 
 
+def _example_sources() -> set[str]:
+    """Example files that belong in the package, relative to examples/.
+
+    `git ls-files` when git works. CI runs in a container holding a clean
+    copy of the checkout but no git binary; there, every file on disk is a
+    tracked one, so walk the directories (skipping build outputs anyway)."""
+    try:
+        tracked = subprocess.run(
+            ["git", "ls-files", "--", *(f"examples/{lang}" for lang in LANGUAGES)],
+            cwd=REPO,
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError:
+        tracked = None
+    if tracked is not None and tracked.returncode == 0:
+        files = [f.removeprefix("examples/") for f in tracked.stdout.splitlines()]
+    else:
+        root = REPO / "examples"
+        files = [
+            p.relative_to(root).as_posix()
+            for lang in LANGUAGES
+            for p in (root / lang).rglob("*")
+            if p.is_file()
+            and "target" not in p.relative_to(root).parts
+            and p.name != "Cargo.lock"
+        ]
+    return {f for f in files if not f.endswith(".gitignore")}
+
+
 def test_every_tracked_language_example_is_packaged():
-    tracked = subprocess.run(
-        ["git", "ls-files", "--", *(f"examples/{lang}" for lang in LANGUAGES)],
-        cwd=REPO,
-        capture_output=True,
-        text=True,
-    )
-    if tracked.returncode != 0:
-        pytest.skip("not a git checkout")
-    want = {
-        f.removeprefix("examples/")
-        for f in tracked.stdout.splitlines()
-        if not f.endswith(".gitignore")
-    }
+    want = _example_sources()
     got = _packaged()
     assert want <= got, sorted(want - got)
     for lang in LANGUAGES:
