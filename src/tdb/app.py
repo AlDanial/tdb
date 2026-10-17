@@ -8,7 +8,7 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from textual import work
+from textual import events, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
@@ -292,6 +292,10 @@ class TdbApp(_AppMessageRoutes, App):
         # repeat keypresses while `controller.stop()` is in flight don't
         # pile up modals or kick off concurrent shutdowns.
         self._is_quitting = False
+        # The view (pane id) holding focus and the one before it, so a
+        # Ctrl+<view> shortcut pressed inside its own view toggles back.
+        self._current_view: str | None = None
+        self._previous_view: str | None = None
 
         # Logic collaborators that the App forwards to. Keeping them on
         # the instance (rather than importing functions) lets each one
@@ -1897,23 +1901,58 @@ class TdbApp(_AppMessageRoutes, App):
         if not code_view.has_focus:
             code_view.focus()
 
+    _VIEW_IDS = (
+        "code-view",
+        "console-view",
+        "eval-console",
+        "variable-view",
+        "stack-view",
+        "breakpoint-view",
+    )
+
+    def _view_of(self, widget) -> str | None:
+        """The id of the top-level view containing `widget`, if any."""
+        node = widget
+        while node is not None:
+            if node.id in self._VIEW_IDS:
+                return node.id
+            node = node.parent
+        return None
+
+    def on_descendant_focus(self, event: events.DescendantFocus) -> None:
+        # Tracks every focus change (shortcut, click, Tab), so "previous
+        # view" is wherever the user really was, not just the last shortcut.
+        view = self._view_of(event.widget)
+        if view is not None and view != self._current_view:
+            self._previous_view = self._current_view
+            self._current_view = view
+
+    def _focus_view(self, view_id: str) -> None:
+        """Focus `view_id`; pressed from inside it, return to the previous view."""
+        if self._view_of(self.focused) == view_id and self._previous_view:
+            view_id = self._previous_view
+        if view_id == "eval-console":
+            self.query_one("#eval-console", EvaluateConsole).focus_input()
+        else:
+            self.query_one(f"#{view_id}").focus()
+
     def action_focus_code(self) -> None:
-        self.query_one("#code-view", CodeView).focus()
+        self._focus_view("code-view")
 
     def action_focus_console(self) -> None:
-        self.query_one("#console-view", ConsoleView).focus()
+        self._focus_view("console-view")
 
     def action_focus_eval(self) -> None:
-        self.query_one("#eval-console", EvaluateConsole).focus_input()
+        self._focus_view("eval-console")
 
     def action_focus_variables(self) -> None:
-        self.query_one("#variable-view", VariableView).focus()
+        self._focus_view("variable-view")
 
     def action_focus_stack(self) -> None:
-        self.query_one("#stack-view", StackView).focus()
+        self._focus_view("stack-view")
 
     def action_focus_breakpoints(self) -> None:
-        self.query_one("#breakpoint-view", BreakpointView).focus()
+        self._focus_view("breakpoint-view")
 
     async def action_quit_debugger(self) -> None:
         if self._adopted:

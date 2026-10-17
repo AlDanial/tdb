@@ -21,6 +21,9 @@ class _StdinInput(Input):
 
     BINDINGS = [
         Binding("ctrl+d", "send_eof", "EOF", show=False, priority=True),
+        # View shortcuts win over Input's end-of-line and paste.
+        Binding("ctrl+e", "app.focus_eval", "Evaluate", show=False),
+        Binding("ctrl+v", "app.focus_variables", "Variables", show=False),
     ]
 
     class EofPressed(Message):
