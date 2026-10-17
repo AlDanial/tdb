@@ -1329,6 +1329,13 @@ A cursor line (blue) tracks your position; the current execution line is highlig
 | `Ctrl+S` | Stack View |
 | `Ctrl+B` | Breakpoint View |
 
+Pressing the shortcut of the view that already has focus returns focus to
+the previous view, so e.g. `Ctrl+E` jumps from the Code View to the
+Evaluate Console and a second `Ctrl+E` jumps back.
+The shortcuts also work while typing in the Evaluate Console and the
+Console View's stdin line, where `Ctrl+E` and `Ctrl+V` take precedence over
+end-of-line and paste (`End` and the terminal's own paste still work).
+
 **Menu-bar shortcuts (global):**
 
 `Alt+<first-letter>` opens the corresponding tab in the menu bar.

@@ -10,10 +10,16 @@ from rich.text import Text
 
 
 class _EvalInput(Input):
-    """Input subclass that intercepts Tab for DAP completions."""
+    """Input subclass that intercepts Tab for DAP completions.
+
+    Ctrl+E / Ctrl+V are view shortcuts here, overriding Input's
+    end-of-line and paste (End and the terminal's paste still work).
+    """
 
     BINDINGS = [
         Binding("tab", "complete", "Complete", show=False, priority=True),
+        Binding("ctrl+e", "app.focus_eval", "Evaluate", show=False),
+        Binding("ctrl+v", "app.focus_variables", "Variables", show=False),
     ]
 
     class TabPressed(Message):
