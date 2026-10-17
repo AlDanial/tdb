@@ -36,6 +36,33 @@ def test_parse_env_splits_only_the_first_equals_and_sorts_names() -> None:
     assert pairs(parsed) == [("A", "one=two"), ("EMPTY", ""), ("Z", "last")]
 
 
+def test_parse_env_keeps_newlines_inside_values() -> None:
+    """`env` prints a value's embedded newlines verbatim, so an exported
+    multi-line PS1 (or an exported bash function) spans several lines."""
+    output = (
+        "A=1\n"
+        "PS1=%(?..exit %?\n"
+        "%{$reset_color%})%~ \n"
+        "BASH_FUNC_greet%%=() {  echo hi;\n"
+        "  local x=1\n"
+        "}\n"
+        "Z=last\n"
+    )
+
+    assert pairs(parse_env(output)) == [
+        ("A", "1"),
+        ("BASH_FUNC_greet%%", "() {  echo hi;\n  local x=1\n}"),
+        ("PS1", "%(?..exit %?\n%{$reset_color%})%~ "),
+        ("Z", "last"),
+    ]
+
+
+def test_parse_env_drops_continuations_of_adapter_internal_records() -> None:
+    output = "__tcsh_dap_x=a\nb c\nHOME=/home/al\n"
+
+    assert pairs(parse_env(output)) == [("HOME", "/home/al")]
+
+
 def test_parse_alias_preserves_embedded_whitespace_and_sorts_names() -> None:
     parsed = parse_alias("where\tpwd\nll\techo one  two\tthree\n")
 
@@ -47,6 +74,7 @@ def test_parse_alias_preserves_embedded_whitespace_and_sorts_names() -> None:
     [
         (parse_set, "missing-tab\n"),
         (parse_env, "missing-equals\n"),
+        (parse_env, "=no-name\n"),
         (parse_alias, "missing-tab\n"),
         (parse_set, "name\tvalue\n\nother\tvalue\n"),
     ],

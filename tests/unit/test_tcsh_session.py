@@ -2507,7 +2507,12 @@ async def test_live_tcsh_exposes_all_four_current_shell_scopes(
             program,
             tcsh_path,
             args=("first", "second word"),
-            env={"TCSH_DAP_SCOPE_TEST": "one=two"},
+            # A multi-line value (like an exported zsh PS1) spans several
+            # lines of `env` output and must not break the Environment scope.
+            env={
+                "TCSH_DAP_SCOPE_TEST": "one=two",
+                "TCSH_DAP_MULTILINE": "first line\n  second line",
+            },
         ),
         collecting_sink(events),
     )
@@ -2534,6 +2539,9 @@ async def test_live_tcsh_exposes_all_four_current_shell_scopes(
             (item.name, item.value) for item in values["Shell Variables"]
         ]
         assert ("TCSH_DAP_SCOPE_TEST", "one=two") in [
+            (item.name, item.value) for item in values["Environment"]
+        ]
+        assert ("TCSH_DAP_MULTILINE", "first line\n  second line") in [
             (item.name, item.value) for item in values["Environment"]
         ]
         assert ("ll", "echo one two") in [

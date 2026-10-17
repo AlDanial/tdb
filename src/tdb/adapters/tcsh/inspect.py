@@ -61,38 +61,54 @@ _SCOPE_DEFINITIONS = (
 def parse_set(output: str) -> tuple[Variable, ...]:
     """Parse the tab-delimited output of tcsh's ``set`` builtin."""
 
-    return _parse_records(output, "set", lambda line: line.partition("\t"))
+    return _parse_records(output.splitlines(), "set", lambda line: line.partition("\t"))
 
 
 def parse_env(output: str) -> tuple[Variable, ...]:
-    """Parse environment records, retaining equals signs after the first."""
+    """Parse environment records, retaining equals signs after the first.
 
-    return _parse_records(output, "env", lambda line: line.partition("="))
+    `env` prints embedded newlines verbatim (an exported multi-line PS1, an
+    exported bash function), so a line that does not start a record -- no
+    `=`, or whitespace before the first one -- continues the previous
+    value. A continuation line shaped like `NAME=...` is indistinguishable
+    from a new record; line-oriented `env` output cannot resolve that."""
+
+    records: list[str] = []
+    for line in output.splitlines():
+        name, separator, _ = line.partition("=")
+        starts_record = bool(separator) and not any(c.isspace() for c in name)
+        if records and not starts_record:
+            records[-1] += "\n" + line
+        else:
+            records.append(line)
+    return _parse_records(records, "env", lambda record: record.partition("="))
 
 
 def parse_alias(output: str) -> tuple[Variable, ...]:
     """Parse tab-delimited aliases without splitting their command text."""
 
-    return _parse_records(output, "alias", lambda line: line.partition("\t"))
+    return _parse_records(
+        output.splitlines(), "alias", lambda line: line.partition("\t")
+    )
 
 
 _ADAPTER_INTERNAL_PREFIX = "__tcsh_dap"
 
 
 def _parse_records(
-    output: str,
+    records: list[str],
     command: str,
     split: Callable[[str], tuple[str, str, str]],
 ) -> tuple[Variable, ...]:
-    records: list[Variable] = []
-    for line_number, line in enumerate(output.splitlines(), 1):
-        name, separator, value = split(line)
+    variables: list[Variable] = []
+    for number, record in enumerate(records, 1):
+        name, separator, value = split(record)
         if not name or not separator:
-            raise InspectionError(f"malformed {command} output at line {line_number}")
+            raise InspectionError(f"malformed {command} output at line {number}")
         if name.startswith(_ADAPTER_INTERNAL_PREFIX):
             continue
-        records.append(Variable(name, value))
-    return tuple(sorted(records, key=lambda variable: variable.name))
+        variables.append(Variable(name, value))
+    return tuple(sorted(variables, key=lambda variable: variable.name))
 
 
 class VariableStore:
