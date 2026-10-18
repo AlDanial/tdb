@@ -1,7 +1,7 @@
 """TdbApp wires VariableView display clicks to the controller.
 
 `DisplayRequested` / `UndisplayRequested` (right-click a variable row,
-left-click a Display row) go through `controller.set_display`, which
+right-click a top-level Display row) go through `controller.set_display`, which
 re-fetches scopes; the app then redraws the Variables View so the
 Display scope appears or shrinks at once.
 """

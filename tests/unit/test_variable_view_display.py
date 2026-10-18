@@ -1,9 +1,11 @@
 """Mouse routing for the gdb-style Display scope in VariableView.
 
-Right-click on a variable row asks for it to be displayed; left-click
-on a row under the "Display" scope asks for it to be removed. Ordinary
-left-clicks keep Tree's cursor behaviour, and only same-button clicks
-count toward the double-click that opens Full Contents.
+Right-click on a top-level row of the "Display" scope asks for it to be
+removed; right-click on any other variable row asks for it to be
+displayed. Right-clicks never expand/collapse a row. Left-clicks keep
+Tree's cursor + expand/collapse behaviour in every scope (Display
+included), and only same-button clicks count toward the double-click
+that opens Full Contents.
 """
 
 from __future__ import annotations
@@ -95,18 +97,65 @@ async def test_right_click_on_scope_header_does_nothing(harness):
     assert app.messages == []
 
 
-async def test_right_click_on_display_row_does_nothing(harness):
+async def test_right_click_on_display_row_requests_undisplay(harness):
     app, pilot = harness
     await pilot.click(VariableView, offset=(6, ROW_DISPLAY_X), button=3)
     await pilot.pause()
-    assert app.messages == []
+    assert app.messages == [("undisplay", "x")]
 
 
-async def test_left_click_on_display_row_requests_undisplay(harness):
+async def test_left_click_on_display_row_moves_cursor_only(harness):
     app, pilot = harness
     await pilot.click(VariableView, offset=(6, ROW_DISPLAY_X), button=1)
     await pilot.pause()
-    assert app.messages == [("undisplay", "x")]
+    assert app.messages == []
+    assert app.query_one(VariableView).cursor_line == ROW_DISPLAY_X
+
+
+async def test_left_click_expands_display_container(harness):
+    app, pilot = harness
+    view = app.query_one(VariableView)
+    view.update_variables(
+        [Scope(name="Display", variables_reference=DISPLAY_SCOPE_REF)],
+        {
+            DISPLAY_SCOPE_REF: [
+                Variable(
+                    name="obj", value="Obj", variables_reference=9, evaluate_name="obj"
+                )
+            ]
+        },
+    )
+    await pilot.pause()
+    node = view.get_node_at_line(1)
+    assert not node.is_expanded
+    await pilot.click(VariableView, offset=(6, 1), button=1)
+    await pilot.pause()
+    assert node.is_expanded
+    assert app.messages == []
+    # Expanding fetches the children; give the nested child a value.
+    view.load_children(
+        node, [Variable(name="count", value="3", evaluate_name="obj.count")]
+    )
+    await pilot.pause()
+    # Left-click on a nested child under Display does not undisplay.
+    await pilot.click(VariableView, offset=(8, 2), button=1)
+    await pilot.pause()
+    assert app.messages == []
+    # Right-click on a nested child displays its full path.
+    await pilot.click(VariableView, offset=(8, 2), button=3)
+    await pilot.pause()
+    assert app.messages == [("display", "obj.count")]
+
+
+async def test_right_click_does_not_toggle_expansion(harness):
+    app, pilot = harness
+    view = app.query_one(VariableView)
+    node = view.get_node_at_line(ROW_LOCALS_OBJ)
+    assert not node.is_expanded
+    await pilot.click(VariableView, offset=(6, ROW_LOCALS_OBJ), button=3)
+    await pilot.pause()
+    assert not node.is_expanded
+    assert app.messages == [("display", "obj")]
 
 
 async def test_left_click_on_ordinary_row_moves_cursor_only(harness):
