@@ -4,7 +4,7 @@
 a full-featured terminal-based debugger for Python and other languages
 with a Debug Adapter Protocol (DAP) implementation.  In addition to Python,
 `tdb` comes with built-in support for
-- C and C++ (via `gdb` or `lldb-dap`)
+- C, C++, Fortran (via `gdb` or `lldb-dap`)
 - Rust (via `gdb` or `lldb-dap`, selected explicitly)
 - Perl (via `perl -d`)
 - Bash (via bash's own `DEBUG` trap; bash ≥ 4.4)
@@ -30,12 +30,12 @@ MIT License.  Copyright 2026 by Al Danial.
 `tdb`:
 
 - debugs multiple languages through the Debug Adapter Protocol: Python (via `debugpy`,
-the richest feature set), C/C++ (via `gdb -i dap` or `lldb-dap`), Rust (via `gdb` or
-`lldb-dap`), Perl (via `perl -d`),
-Bash (via bash's own `DEBUG` trap), Tcsh (via source instrumentation of a
-stock `tcsh`), Ruby (via the debug gem's `rdbg`), OCaml (native via
-`lldb-dap`/`gdb`, bytecode via ocamlearlybird), Go (via Delve's `dlv
-dap`), and PowerShell 7 (via PowerShell Editor Services). Most languages are
+the richest feature set); C/C++ and Fortran (via `gdb -i dap` or `lldb-dap`); Rust (via `gdb` or
+`lldb-dap`); Perl (via `perl -d`);
+Bash (via bash's own `DEBUG` trap); Tcsh (via source instrumentation of a
+stock `tcsh`); Ruby (via the debug gem's `rdbg`); OCaml (native via
+`lldb-dap`/`gdb`, bytecode via ocamlearlybird); Go (via Delve's `dlv
+dap`); and PowerShell 7 (via PowerShell Editor Services). Most languages are
 auto-detected from the target; Rust intentionally requires `--lang rust`
 (ref. [Multi-Language Debugging](#multi-language-debugging)).
 
@@ -58,7 +58,7 @@ built with `textual`, `prompt-toolkit`, `urwid`, `curses`, `rich`, and so on
 to have `tdb` pop open automatically at the first uncaught exception, and a live
 breakpoint hook (`tdb.breakpoint()` in Python, `Devel::TdbRemote::breakpoint()`
 in Perl, `Tdb.breakpoint` in Ruby, `tdb.Breakpoint()` in Go, `tdb_breakpoint()`
-in C/C++, `tdb::breakpoint()` in Rust, `Tdb.breakpoint ()` in OCaml) that opens
+in C/C++ and Fortran, `tdb::breakpoint()` in Rust, `Tdb.breakpoint ()` in OCaml) that opens
 `tdb` paused at a line of your choosing
 
 - can be entirely keyboard-driven
@@ -200,7 +200,7 @@ languages are supported out of the box:
 | Language | Adapter(s) | Dependencies           | Feature level |
 |----------|------------|------------------------|---------------|
 | Python | `debugpy` (default) | Python ≥ 3.11 | everything in this README |
-| C / C++ (any native binary) | `gdb` (default), `lldb-dap` (alternate) | `gdb -i dap` requires GDB ≥ 14 built with Python (RHEL 8/9: `dnf install gcc-toolset-14-gdb`, see [C/C++ tips](#cc-tips)); `lldb-dap` ships with LLVM ≥ 17 (e.g. `apt install lldb`) | core debugging: breakpoints, stepping, stack, variables, evaluate console + remote attach (gdbserver/lldb-server, local symbol-bearing executable required) |
+| C / C++ / Fortran (any native binary) | `gdb` (default), `lldb-dap` (alternate) | `gdb -i dap` requires GDB ≥ 14 built with Python (RHEL 8/9: `dnf install gcc-toolset-14-gdb`, see [C/C++/Fortran tips](#cc-tips)); `lldb-dap` ships with LLVM ≥ 17 (e.g. `apt install lldb`) | core debugging: breakpoints, stepping, stack, variables, evaluate console + remote attach (gdbserver/lldb-server, local symbol-bearing executable required) |
 | Rust (explicit `--lang rust`) | `gdb` (Linux default), `lldb-dap` (macOS default) | any rustc building with debug info; GDB ≥ 14 or LLVM `lldb-dap` ≥ 17 (concurrency ownership evidence additionally requires stable Rust 1.98) | core debugging + best-effort Rust concurrency inspection + remote attach |
 | Perl | perl-tdb (bundled) | perl ≥ 5.18 on PATH  | core debugging + remote attach |
 | Bash | bash-tdb (bundled) | bash ≥ 4.4 on PATH  | core debugging (no remote attach) |
@@ -221,7 +221,7 @@ The language is auto-detected from the debug target:
    `.sh` / `.bash` → Bash; `.csh` / `.tcsh` → Tcsh; `.rb` → Ruby; `.ps1` /
    `.psm1` → PowerShell. (`.ml` / `.mli` do *not* auto-select OCaml, see
    point 6.)
-3. Native executables (ELF, Mach-O, PE magic bytes) → C/C++, unless
+3. Native executables (ELF, Mach-O, PE magic bytes) → C/C++/Fortran, unless
    byte-checking finds an OCaml marker (a native binary's
    `caml_program`/`caml_startup` runtime symbols, a bytecode file's
    trailing `Caml1999` marker, or a `#!...ocamlrun` shebang) → OCaml
@@ -229,13 +229,13 @@ The language is auto-detected from the debug target:
    `go version` itself locates, scanned in the first 16MB of the file) →
    Go. A stripped native OCaml binary, or a Go binary whose buildinfo
    blob sits beyond the 16MB scan window, that byte-checking can't
-   identify falls back to C/C++; force it with `--lang ocaml` or `--lang
+   identify falls back to C/C++/Fortran; force it with `--lang ocaml` or `--lang
    go` respectively. Rust is never inferred from an executable; select it
    explicitly with `--lang rust`.
 4. A `#!...python`, `#!...perl`, `#!...bash`, `#!...csh`/`#!...tcsh`,
    `#!...ruby`, or `#!...pwsh` shebang → Python / Perl / Bash / Tcsh / Ruby /
    PowerShell respectively.
-5. C/C++/Rust *source* files (`.c`, `.cpp`, `.rs`, …) produce an error with a
+5. C/C++/Fortran/Rust *source* files (`.c`, `.cpp`, `.rs`, …) produce an error with a
    hint: compile with debug info (`g++ -g -O0`) and debug the binary.
 6. `.ml` / `.mli` (OCaml source) produce an error too: build the project
    first (dune's dev profile keeps debug info) and pass the **built
@@ -262,7 +262,7 @@ message naming its path and version; when that `gdb` came from `PATH`
 (not from `--adapter` or `config.json`), `tdb` first looks for a newer one
 installed by Red Hat's Software Collections
 (`/opt/rh/gcc-toolset-*/root/usr/bin/gdb`, `/opt/rh/devtoolset-*/...`) and
-uses the newest that qualifies. See [C/C++ tips](#cc-tips) for RHEL 8.
+uses the newest that qualifies. See [C/C++/Fortran tips](#cc-tips) for RHEL 8.
 
 > **Migration note:** extensionless Python scripts without a `python` shebang
 > were previously assumed to be Python; they now require `--lang python`.
@@ -300,16 +300,16 @@ programs by nature). Remote attach (`-r`) also works for Perl (see
 [Perl](#perl), `Devel::TdbRemote` in place of `debugpy.listen()`), Ruby
 (see [Ruby](#ruby), `rdbg --open` in place of `debugpy.listen()`), Go (see
 [Go](#go), `dlv dap --listen` in place of `debugpy.listen()`), and for
-Rust and C/C++ native binaries (against a gdbserver/lldb-server stub, with
+Rust and C/C++/Fortran native binaries (against a gdbserver/lldb-server stub, with
 a local symbol-bearing executable; see [Rust](#rust) — the same flags work
-for a C/C++ target without `--lang`), but not for Bash, Tcsh, OCaml, or
+for a C/C++/Fortran target without `--lang`), but not for Bash, Tcsh, OCaml, or
 PowerShell. `--terminal` works for every launch-mode
-language — Python, Perl, Bash, Tcsh, Ruby, and C/C++, OCaml native, or Rust
+language — Python, Perl, Bash, Tcsh, Ruby, and C/C++/Fortran, OCaml native, or Rust
 sessions via `--adapter lldb-dap` — see
 [External Terminal Support](#external-terminal-support). Go and PowerShell do
 not support `--terminal` yet (`dlv dap` and PSES have no terminal-routing
 mode). Typing into the Console view to feed the program's stdin works for
-Python, Perl, Bash, Tcsh, Ruby, and PowerShell, but not for C/C++, Rust,
+Python, Perl, Bash, Tcsh, Ruby, and PowerShell, but not for C/C++/Fortran, Rust,
 OCaml, or Go, whose adapters spawn the debuggee themselves — see
 [Console Output and Input](#console-output-and-input).
 
@@ -400,14 +400,14 @@ picture:
   multiprocessing child attach.
 - Detection of a Go binary via buildinfo check scans only the first
   16MB of the file; a huge binary whose buildinfo blob sits beyond that
-  falls back to C/C++ — force it with `--lang go`.
+  falls back to C/C++/Fortran — force it with `--lang go`.
 - `-a`/`--attach`'s language auto-detection (reading the target pid's
   buildinfo from `/proc/PID/exe`) is Linux-only; on macOS/Windows pass
   `--lang go` alongside `-a`.
 
 See [Go](#go) below for launch details.
 
-### C/C++ tips
+### C/C++/Fortran tips
 
 - Compile with `-g` (ideally `-g -O0` or `-g3 -O0`).
   If no breakpoint in a file can be
@@ -466,7 +466,8 @@ See [Go](#go) below for launch details.
   from the evaluate console without you having typed `list`.
 - **RHEL 8 (and 9) gdb is too old for DAP:** the stock `/usr/bin/gdb` is
   8.2 on RHEL 8 (10.2 on RHEL 9) and answers `gdb -i dap` with
-  ``Interpreter `dap' unrecognized``. Install a newer one from the
+  ``Interpreter `dap' unrecognized``. Install a newer one
+  (minimum GCC Toolset version is 14) from the
   GCC Toolset, which leaves `/usr/bin/gdb` alone:
 
   ```bash
@@ -491,13 +492,13 @@ See [Go](#go) below for launch details.
 **Attach to a running process:** `tdb -a PID` attaches gdb (or `--adapter
 lldb-dap`) to a live native process and stops it. On Linux tdb reads
 `/proc/PID/exe` to identify the language (Go, OCaml, Rust, otherwise
-C/C++) and to load symbols; pass the executable path as well to use a
+C/C++/Fortran) and to load symbols; pass the executable path as well to use a
 different symbol file, and pass `--lang` off Linux. `--no-pause-on-attach`
 leaves the process running, for a program about to stop itself. An
-interpreter process (python3, perl, ruby, bash) is attached as C/C++; for
+interpreter process (python3, perl, ruby, bash) is attached as C/C++/Fortran; for
 Python, Perl, and Ruby programs use `--remote-attach` instead.
 
-**Live breakpoint hook:** the C/C++ counterpart of Python's
+**Live breakpoint hook:** the C/C++/Fortran counterpart of Python's
 [`tdb.breakpoint()`](#live-breakpoint-hook). Include `tdb.h` (its directory
 is the `tdb.h dir` row of `tdb --info`) and call `tdb_breakpoint()`:
 
@@ -578,7 +579,7 @@ cargo rustc -- -C debuginfo=2 -C opt-level=0
 # Equivalent direct rustc settings: rustc -C debuginfo=2 -C opt-level=0 src/main.rs
 ```
 
-As for C/C++, the Console view cannot feed the program's stdin (the gdb and
+As for C/C++/Fortran, the Console view cannot feed the program's stdin (the gdb and
 lldb adapters spawn it themselves); use `--terminal` with `--adapter
 lldb-dap` for interactive programs. A panic that terminates the debuggee opens the error modal with the parsed
 panic message and backtrace; `tdb` injects `RUST_BACKTRACE=1` into launched
@@ -615,7 +616,7 @@ for example `ssh -L 2345:127.0.0.1:2345 host`, then attach to `127.0.0.1:2345`.
 `--adapter lldb-dap`) to a live Rust process and stops it; tdb loads
 symbols from `/proc/PID/exe`, or from an executable path you pass as well.
 Without `--lang`, tdb recognizes a non-stripped Rust binary by its runtime
-symbols; a stripped one is debugged as C/C++.
+symbols; a stripped one is debugged as C/C++/Fortran.
 
 **Live breakpoint hook:** the Rust counterpart of Python's
 [`tdb.breakpoint()`](#live-breakpoint-hook). Depend on the `tdb` crate from
@@ -1000,7 +1001,7 @@ tihs line correctly.
 usual behavior.
 
 A stripped native binary that byte-checking can't identify as OCaml falls
-back to C/C++; force it with `--lang ocaml`. Override the adapter or point
+back to C/C++/Fortran; force it with `--lang ocaml`. Override the adapter or point
 at a non-`PATH` install in `config.json` (see
 [Configuration](#configuration)):
 
@@ -1130,7 +1131,7 @@ tdb -r host:port --lang go # attach to a `dlv dap --listen` already running remo
 
 `tdb --test ./pkg` debugs the package's tests under Delve's `test` mode;
 pass test-binary flags after `--`, e.g. `tdb --test ./pkg -- -run TestFoo`.
-`-a`/`--attach` works for Go and, through gdb/lldb-dap, for C/C++, Rust,
+`-a`/`--attach` works for Go and, through gdb/lldb-dap, for C/C++/Fortran, Rust,
 and OCaml; on Linux `tdb` identifies the language from `/proc/PID/exe`
 without `--lang` (elsewhere pass `--lang go` alongside `-a`). Attaching
 stops the process immediately so you get control right away;
@@ -1596,8 +1597,8 @@ variable lives:
 | tcsh | `set name …`, `setenv NAME …` | the whole run |
 | Ruby | `name = …`, `$name = …`, `@name = …` | globals and instance variables persist; plain locals live only in the eval's binding and read back as unavailable after the next step |
 | PowerShell | `$name = …`, `$global:name = …` | the function scope, or the whole run for `$global:` |
-| C/C++/Rust/OCaml under gdb | `set $name = …` (a gdb convenience variable) | the whole run |
-| C/C++/Rust/OCaml under lldb-dap | `int $name = …` (an lldb persistent variable) | the whole run |
+| C/C++/Fortran/Rust/OCaml under gdb | `set $name = …` (a gdb convenience variable) | the whole run |
+| C/C++/Fortran/Rust/OCaml under lldb-dap | `int $name = …` (an lldb persistent variable) | the whole run |
 | Go (dlv), OCaml under ocamlearlybird | not possible: their evaluate cannot create variables | — |
 
 A tracked name that no longer resolves (a Python local after its frame
@@ -1627,7 +1628,7 @@ when the session has no stdin to feed.
 
 Stdin forwarding works for the languages whose program `tdb` launches on a
 pipe it owns: Python, Perl, Bash, Tcsh, Ruby, and PowerShell. It is not
-available for the compiled languages — C/C++, Rust, OCaml, and Go — because
+available for the compiled languages — C/C++/Fortran, Rust, OCaml, and Go — because
 their adapters (`gdb -i dap`, `lldb-dap`, `dlv dap`) spawn the debuggee
 themselves and give `tdb` no handle on its stdin; the input line stays
 hidden there. It is also unavailable for remote attach (`-r`), where the
@@ -1752,10 +1753,10 @@ This behavior matches hitting `c` while in a conventional (that is, the Python
 standard library's) `breakpoint()` session.
 If you want to kill the program instead, use `Ctrl+c` in the terminal running the debuggee.
 
-Perl, Ruby, Go, C/C++, Rust, and OCaml programs get the same hook as
+Perl, Ruby, Go, C/C++/Fortran, Rust, and OCaml programs get the same hook as
 `Devel::TdbRemote::breakpoint()`, `Tdb.breakpoint`, `tdb.Breakpoint()`,
 `tdb_breakpoint()`, `tdb::breakpoint()`, and `Tdb.breakpoint ()`; see
-[Perl](#perl), [Ruby](#ruby), [Go](#go), [C/C++ tips](#cc-tips),
+[Perl](#perl), [Ruby](#ruby), [Go](#go), [C/C++/Fortran tips](#cc-tips),
 [Rust](#rust), and [OCaml](#ocaml).
 
 ### pytest Integration (`--pdbcls`)
@@ -1977,8 +1978,8 @@ tdb --terminal xterm my_tui_app.py
 ```
 
 `--terminal` works for every language `tdb` can *launch* (as opposed to
-attach to): Python, Perl, Bash, Tcsh, Ruby, and C/C++ or native OCaml
-sessions via `--adapter lldb-dap`. Neither `gdb -i dap` (the default C/C++
+attach to): Python, Perl, Bash, Tcsh, Ruby, and C/C++/Fortran or native OCaml
+sessions via `--adapter lldb-dap`. Neither `gdb -i dap` (the default C/C++/Fortran
 adapter, and an alternate for native OCaml) nor `ocamlearlybird` (the
 bytecode OCaml adapter) has any terminal integration -- `tdb` rejects
 `--terminal` up front for both, with an error pointing at `--adapter
@@ -2086,7 +2087,7 @@ nonzero `sys.exit()`, which `debugpy` treats as an uncaught `SystemExit` -- `tdb
 the TUI at the point of failure instead of exiting silently, so you can inspect the
 crash. Exit-code passthrough applies only to a clean exit during the headless phase.
 
-Supported languages: Python, Perl, Bash, Tcsh, Ruby, PowerShell 7, C/C++
+Supported languages: Python, Perl, Bash, Tcsh, Ruby, PowerShell 7, C/C++/Fortran
 (both `gdb` and `lldb-dap`), and native OCaml (both `gdb` and `lldb-dap`;
 bytecode/`ocamlearlybird` sessions don't support pause, so `--run` is
 unavailable for those). `--run` is rejected up front for any other
@@ -2138,7 +2139,7 @@ evaluated in each child process that reaches it.
   uncaught-exception stop) is continued untouched, so the program runs to
   completion unattended.
 - For non-Python debuggees the expression must be in the debug adapter's
-  own syntax, for example gdb's `print x` / `set var x=3` for C/C++, and not
+  own syntax, for example gdb's `print x` / `set var x=3` for C/C++/Fortran, and not
   necessarily the debuggee's language. The adapter may bind the breakpoint
   to the next executable line (gdb moves one off a declaration or brace);
   the eval point matches that bound line, so the expression still runs.
@@ -2417,7 +2418,7 @@ usage: tdb [-h] [-v] [-r [HOST:]PORT] [--cwd CWD] [--no-stop-on-entry]
 | Flag | Description |
 |------|-------------|
 | `-r HOST:PORT` | Attach to a remote debugpy server |
-| `-a`, `--attach PID` | Attach to a running local process by pid: Go (Delve) or a native C/C++, Rust, or OCaml program (gdb or lldb-dap). Linux identifies the language from `/proc/PID/exe`; elsewhere pass `--lang` and, for native programs, the executable path. |
+| `-a`, `--attach PID` | Attach to a running local process by pid: Go (Delve) or a native C/C++, Fortran, Rust, or OCaml program (gdb or lldb-dap). Linux identifies the language from `/proc/PID/exe`; elsewhere pass `--lang` and, for native programs, the executable path. |
 | `--local-root PATH` | Local directory containing a copy of remote code (repeat to mirror multiple trees). Pair with `--remote-root`; counts must match. Required when `-k` sets a breakpoint against a remote debuggee whose code lives at a different path. |
 | `--remote-root PATH` | Remote directory matched to `--local-root` (same CLI position via `zip()`). |
 | `-k`, `--breakpoint FILE:LINE|LINE` | Set a breakpoint (may be repeated). Passing `-k` implies `--no-stop-on-entry` so the program runs straight to the first breakpoint. |
@@ -2556,7 +2557,7 @@ fires as expected.
 
 - [textual](https://github.com/Textualize/textual) : TUI framework
 - [debugpy](https://github.com/microsoft/debugpy) : Debug Adapter Protocol implementation for Python
-- [gdb](https://sourceware.org/gdb/) / [lldb-dap](https://lldb.llvm.org/resources/lldbdap.html) : optional, user-installed DAP adapters for C/C++
+- [gdb](https://sourceware.org/gdb/) / [lldb-dap](https://lldb.llvm.org/resources/lldbdap.html) : optional, user-installed DAP adapters for C/C++/Fortran
 - [debug gem](https://github.com/ruby/debug) (`rdbg`) : optional, user-installed DAP adapter for Ruby
 - [ocamlearlybird](https://github.com/hackwaly/ocamlearlybird) : optional, user-installed DAP adapter for OCaml bytecode (native OCaml reuses `gdb`/`lldb-dap`)
 - [pygments](https://pygments.org/) : Syntax highlighting
