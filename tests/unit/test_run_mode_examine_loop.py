@@ -76,7 +76,16 @@ def script(monkeypatch):
     async def stop(self):
         s.calls.append("stop")
 
+    async def push_all_breakpoints(self):
+        bps = sorted(
+            (path, bp.line)
+            for path, lst in self.state.breakpoints.items()
+            for bp in lst
+        )
+        s.calls.append(f"push:{bps}")
+
     for name, fn in [
+        ("push_all_breakpoints", push_all_breakpoints),
         ("start", start),
         ("do_configure", do_configure),
         ("pause", pause),
@@ -104,7 +113,9 @@ def _capture_console(script):
     return Hooked
 
 
-async def _run(script, monkeypatch, sink, *, driver, episode=None):
+async def _run(
+    script, monkeypatch, sink, *, driver, episode=None, cli_breakpoints=None
+):
     monkeypatch.setattr(run_mode, "ConsoleRunHandler", _capture_console(script))
     monkeypatch.setattr(run_mode.examine, "open_sinks", lambda dests: [sink])
 
@@ -132,6 +143,7 @@ async def _run(script, monkeypatch, sink, *, driver, episode=None):
                 tui_episode=episode or default_episode,
                 on_session_ready=on_ready,
                 examine_dests=["-"],
+                cli_breakpoints=cli_breakpoints,
             ),
             timeout=10,
         )
@@ -434,3 +446,67 @@ async def test_partial_stdout_line_gets_newline_before_record(script, monkeypatc
     assert (
         buf.getvalue() == 'progress...\n{"seq":1,"status":"ok","trigger":"SIGUSR2"}\n'
     )
+
+
+async def test_cli_breakpoints_held_back_until_first_episode(script, monkeypatch):
+    """-k/-t breakpoints must not be active during the headless phase —
+    not even across an examine capture's pause/resume — and are pushed
+    exactly once, right before the first TUI episode opens."""
+    sink = _Sink()
+    sink.name = "s"
+    seen_in_episode = []
+
+    async def episode(controller, handler, console, config, program):
+        script.calls.append("episode")
+        seen_in_episode.append(
+            {
+                p: [bp.line for bp in lst]
+                for p, lst in controller.state.breakpoints.items()
+            }
+        )
+        return True  # detach
+
+    async def driver():
+        await _settle()
+        assert script.controller.state.breakpoints == {}
+        os.kill(os.getpid(), signal.SIGUSR2)  # examine: must not install
+        await _settle()
+        assert script.controller.state.breakpoints == {}
+        os.kill(os.getpid(), signal.SIGUSR1)  # episode 1: installs
+        await _settle()
+        os.kill(os.getpid(), signal.SIGUSR1)  # episode 2: no re-push
+        await _settle()
+        script.console.on_exited(0)
+
+    await _run(
+        script,
+        monkeypatch,
+        sink,
+        driver=driver,
+        episode=episode,
+        cli_breakpoints=[("/p.py", 3, True), ("/q.py", 7, False)],
+    )
+    pushes = [c for c in script.calls if c.startswith("push:")]
+    assert pushes == ["push:[('/p.py', 3), ('/q.py', 7)]"]
+    first_episode = script.calls.index("episode")
+    assert script.calls.index(pushes[0]) < first_episode
+    assert script.calls.index("collect:ok:1:SIGUSR2") < script.calls.index(pushes[0])
+    assert seen_in_episode == [{"/p.py": [3], "/q.py": [7]}] * 2
+    # -t stays session-only even after installation.
+    q_bp = script.controller.state.breakpoints["/q.py"][0]
+    assert q_bp.persist is False
+
+
+async def test_no_cli_breakpoints_means_no_push(script, monkeypatch):
+    sink = _Sink()
+    sink.name = "s"
+
+    async def driver():
+        await _settle()
+        os.kill(os.getpid(), signal.SIGUSR1)
+        await _settle()
+        script.console.on_exited(0)
+
+    await _run(script, monkeypatch, sink, driver=driver)
+    assert "episode" in script.calls
+    assert not any(c.startswith("push:") for c in script.calls)

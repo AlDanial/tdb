@@ -142,6 +142,53 @@ async def test_signal_pause_episode_detach_and_terminate(tmp_path):
     assert box["controller"].state.is_terminated
 
 
+async def test_cli_breakpoint_activates_only_after_first_interrupt(tmp_path):
+    """A -k breakpoint on the loop body is not hit during the headless
+    phase (the program loops freely); after the first SIGUSR1 episode
+    installs it and detaches, the very next iteration stops there."""
+    p = tmp_path / "loop.py"
+    p.write_text(LOOP_SCRIPT)
+    box = {}
+    stops = []
+
+    def ready(controller):
+        box["controller"] = controller
+
+    async def fake_episode(controller, handler, console, config, program):
+        stops.append(console.last_stop[1])
+        # Episode 1 (the interrupt) detaches; episode 2 terminates.
+        return len(stops) == 1
+
+    async def pulse():
+        await _wait_until(
+            lambda: (
+                box.get("controller") is not None
+                and box["controller"].state.phase is SessionPhase.RUNNING
+            )
+        )
+        # Plenty of loop iterations pass the breakpoint line meanwhile.
+        await asyncio.sleep(1.0)
+        assert stops == []
+        os.kill(os.getpid(), signal.SIGUSR1)
+
+    pulse_task = asyncio.ensure_future(pulse())
+    try:
+        code = await asyncio.wait_for(
+            run_mode.run(
+                program=str(p),
+                config=TdbConfig(),
+                tui_episode=fake_episode,
+                on_session_ready=ready,
+                cli_breakpoints=[(str(p), 4, True)],
+            ),
+            timeout=90.0,
+        )
+    finally:
+        pulse_task.cancel()
+    assert stops == ["pause", "breakpoint"]
+    assert code == 0
+
+
 async def test_run_cleans_up_when_tui_episode_raises(tmp_path):
     """A TUI episode that raises must not orphan the adapter+debuggee:
     run() should stop the controller before re-raising."""

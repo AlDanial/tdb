@@ -74,7 +74,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="Run the program without the TUI, at full speed, ignoring "
         "all breakpoints. Press Ctrl-C (or send SIGUSR1 on Unix) to "
         "pause it and open the debugger at the current line; quitting "
-        "the debugger can detach and resume the program. For "
+        "the debugger can detach and resume the program. Saved "
+        "breakpoints are never used; -k/-t breakpoints become active "
+        "only once the debugger first opens. For "
         "inspecting programs that appear to be hung. Ctrl-\\ (or SIGUSR2 "
         "on Unix; Ctrl-Break on Windows, untested) instead writes a JSON "
         "stack snapshot of every thread and resumes; see --examine-log.",
@@ -835,8 +837,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     if args.run:
         for flag, value in (
             ("-r/--remote-attach", args.remote_attach),
-            ("-k/--breakpoint", args.breakpoint),
-            ("-t/--to-line", args.to_line),
             ("--record", args.record),
             ("--replay", args.replay),
             ("--replay-tui", args.replay_tui),
@@ -1223,6 +1223,7 @@ def _run_run(args: argparse.Namespace) -> None:
             profile=args.profile,
             config=load_config(),
             examine_dests=args.examine_log,
+            cli_breakpoints=args.cli_bps,
         )
     )
     sys.exit(code)

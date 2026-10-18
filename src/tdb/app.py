@@ -369,12 +369,9 @@ class TdbApp(_AppMessageRoutes, App):
 
         if self._adopted:
             code_view.focus()
-            # Load saved breakpoints once per run-mode process: episode 2+
-            # inherits live state from episode 1 and must not re-merge.
-            program_key = str(Path(self._program).resolve()) if self._program else ""
-            saved = load_breakpoints(program=program_key) if program_key else {}
-            if saved and not self.controller.state.breakpoints:
-                self.controller.state.breakpoints = saved
+            # Run mode never uses breakpoints.json: the live state holds
+            # only -k/-t breakpoints (installed by run_mode before the
+            # first episode) and ones set during earlier episodes.
             if self.controller.state.breakpoints:
                 bp_view = self.query_one("#breakpoint-view", BreakpointView)
                 bp_view.update_breakpoints(self.controller.state.breakpoints)
@@ -624,15 +621,12 @@ class TdbApp(_AppMessageRoutes, App):
     async def _adopt_session(self) -> None:
         """Bring the adopted (already stopped) session into the UI.
 
-        Pushes any saved breakpoints (the session was configured with
-        none), then replays the recorded stop through the normal
-        DapStopped pipeline so the code/stack/variable views populate
-        exactly as they would for a live stop event.
+        Replays the recorded stop through the normal DapStopped
+        pipeline so the code/stack/variable views populate exactly as
+        they would for a live stop event. Breakpoints are already live:
+        run_mode pushed the -k/-t ones before the first episode, and
+        ones set in the TUI are sent as they are set.
         """
-        try:
-            await self.controller.push_all_breakpoints()
-        except Exception:
-            log.exception("push_all_breakpoints failed during adoption")
         stop = self._adopted_stop
         if stop is None and self.controller.state.current_thread_id is not None:
             stop = (
@@ -1994,9 +1988,7 @@ class TdbApp(_AppMessageRoutes, App):
             return
         self._is_quitting = True
         self.recorder.record("quit", [])
-        if self._program:
-            program_key = str(Path(self._program).resolve())
-            save_breakpoints(self.controller.state.breakpoints, program=program_key)
+        # Run mode ignores breakpoints.json, so it never overwrites it.
         self.detach_and_resume = True
         self.exit()
 
@@ -2007,9 +1999,6 @@ class TdbApp(_AppMessageRoutes, App):
             return
         self._is_quitting = True
         self.recorder.record("quit", [])
-        if self._program:
-            program_key = str(Path(self._program).resolve())
-            save_breakpoints(self.controller.state.breakpoints, program=program_key)
         await self.controller.stop()
         self.exit()
 

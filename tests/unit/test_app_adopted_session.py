@@ -148,9 +148,9 @@ async def test_episode2_does_not_remerge_saved_breakpoints(monkeypatch, tmp_path
         assert controller.state.breakpoints == live_set
 
 
-async def test_episode1_loads_saved_breakpoints_when_state_empty(monkeypatch, tmp_path):
-    """With no pre-existing live breakpoints (episode 1 / first adoption),
-    saved (persisted) breakpoints ARE loaded into state."""
+async def test_episode1_ignores_saved_breakpoints(monkeypatch, tmp_path):
+    """Run mode never uses breakpoints.json: with no live breakpoints
+    (episode 1, no -k/-t), nothing is loaded from disk."""
     program = str(tmp_path / "prog.py")
     disk_set = {"other.py": [SourceBreakpoint(line=99)]}
 
@@ -159,4 +159,26 @@ async def test_episode1_loads_saved_breakpoints_when_state_empty(monkeypatch, tm
     app, controller = _make_adopted_app(monkeypatch, program, {})
     async with app.run_test() as pilot:
         await pilot.pause()
-        assert controller.state.breakpoints == disk_set
+        assert controller.state.breakpoints == {}
+
+
+@pytest.mark.parametrize("key", ["d", "t"])
+async def test_quit_paths_never_write_breakpoints_file(monkeypatch, tmp_path, key):
+    """Neither detach nor terminate may save: run mode ignores
+    breakpoints.json, and saving its (CLI/episode-only) breakpoints
+    would clobber the user's saved set for this program."""
+    program = str(tmp_path / "prog.py")
+    saves = []
+    monkeypatch.setattr(
+        "tdb.app.save_breakpoints", lambda bps, program: saves.append(program)
+    )
+    live_set = {program: [SourceBreakpoint(line=5)]}
+    app, controller = _make_adopted_app(monkeypatch, program, dict(live_set))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        app.action_confirm_quit()
+        await pilot.pause()
+        await pilot.press(key)
+        for _ in range(20):
+            await pilot.pause()
+    assert saves == []
