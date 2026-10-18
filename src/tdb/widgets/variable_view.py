@@ -58,16 +58,17 @@ class VariableView(Tree[int]):
             super().__init__()
 
     class DisplayRequested(Message):
-        """Posted on right-click of a variable row: add its expression
-        to the gdb-style display list."""
+        """Posted on right-click of a variable row outside the top
+        level of the "Display" scope: add its expression to the
+        gdb-style display list."""
 
         def __init__(self, expression: str) -> None:
             self.expression = expression
             super().__init__()
 
     class UndisplayRequested(Message):
-        """Posted on left-click of a row under the "Display" scope:
-        drop its expression from the display list."""
+        """Posted on right-click of a top-level row of the "Display"
+        scope: drop its expression from the display list."""
 
         def __init__(self, expression: str) -> None:
             self.expression = expression
@@ -151,21 +152,27 @@ class VariableView(Tree[int]):
 
     # --- Full-Contents trigger ----------------------------------------
 
-    def _in_display_scope(self, node: TreeNode[int]) -> bool:
-        """True when `node` sits under the synthetic "Display" scope."""
-        while node.parent is not None and node.parent is not self.root:
-            node = node.parent
-        return node.data == DISPLAY_SCOPE_REF
+    def _is_display_entry(self, node: TreeNode[int]) -> bool:
+        """True when `node` is a top-level entry of the synthetic
+        "Display" scope (not a scope header, not a nested child)."""
+        parent = node.parent
+        return (
+            parent is not None
+            and parent.parent is self.root
+            and parent.data == DISPLAY_SCOPE_REF
+        )
 
     def on_click(self, event: Click) -> None:
-        """Route clicks: right-click displays a variable, left-click on a
-        Display row undisplays it, a left double-click opens Full
-        Contents; anything else falls through to Tree.
+        """Route clicks: right-click on a top-level Display entry
+        undisplays it, right-click on any other variable row displays
+        it, a left double-click opens Full Contents; other left-clicks
+        fall through to Tree (cursor + expand/collapse) in every scope.
 
-        Tree's own `_on_click` will run on every click and handle cursor
-        positioning + posting `NodeSelected`. We MUST NOT `event.stop()`
-        on the single-click branch or that machinery breaks. Only the
-        double-click branch consumes the event.
+        Tree's own `_on_click` runs after this handler on every click
+        and handles cursor positioning + posting `NodeSelected` (which
+        toggles expansion). Right-clicks `prevent_default()` so they
+        never toggle a row; left single-clicks MUST fall through or
+        that machinery breaks.
         """
         line = event.style.meta.get("line")
         node = self.get_node_at_line(line) if line is not None else None
@@ -175,14 +182,13 @@ class VariableView(Tree[int]):
             # right-then-left on the same row is two separate clicks.
             self._last_click_time = 0.0
             self._last_click_y = -1
+            event.prevent_default()
+            event.stop()
             if event.button == 3 and expr is not None and node is not None:
-                if not self._in_display_scope(node):
+                if self._is_display_entry(node):
+                    self.post_message(self.UndisplayRequested(expr))
+                else:
                     self.post_message(self.DisplayRequested(expr))
-            return
-        if expr is not None and node is not None and self._in_display_scope(node):
-            self._last_click_time = 0.0
-            self._last_click_y = -1
-            self.post_message(self.UndisplayRequested(expr))
             return
         now = time.monotonic()
         is_double = (

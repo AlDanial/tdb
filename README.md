@@ -1513,7 +1513,7 @@ returns. Two ways to pin, two ways to unpin:
 | | Evaluate Console | Variables View |
 |---|---|---|
 | pin | `display b` | right-click the variable's row |
-| unpin | `undisplay b` | left-click its row under **Display** |
+| unpin | `undisplay b` | right-click its row under **Display** |
 
 ```
 >>> display b
@@ -1529,6 +1529,8 @@ returns. Two ways to pin, two ways to unpin:
 
 Right-clicking a child of an expanded object pins the full path
 (`obj.count`, `items[2]`), and a bare `display` lists everything pinned.
+Left-click works the same under **Display** as in every other scope:
+it expands or collapses an object, and a double-click opens it in a modal.
 A click in the Variables View is recorded exactly as the typed command,
 so `--record`/`--replay` sessions reproduce it. Some terminals keep
 right-click for their own paste or context menu (Windows Terminal and
