@@ -2097,7 +2097,18 @@ language.
 blocking external call or syscall, the pause can't land until that call returns --
 `tdb` prints a notice and opens the TUI once the stop actually arrives.
 
-**Incompatible flags:** `-r`, `-k`/`-t`, `--record`, `--replay`, `--replay-tui`, `--server`,
+**Breakpoints:** run mode never uses breakpoints saved in `breakpoints.json`, and
+never writes to it either, so the breakpoints you saved for normal sessions are left
+untouched. Breakpoints given on the command line with `-k`/`-t` are accepted, but they
+stay inactive while the program runs headlessly. They are installed the first time the
+TUI opens (normally when you press Ctrl-C), and stay live after you detach, so the
+program then stops at them:
+
+```bash
+tdb --run -k 120 -k utils.py:45 my_program.py   # breakpoints arm on the first Ctrl-C
+```
+
+**Incompatible flags:** `-r`, `--record`, `--replay`, `--replay-tui`, `--server`,
 `--headless`, `--mcp`, `--terminal`.
 
 ### Eval Mode (`-e`/`--eval`)

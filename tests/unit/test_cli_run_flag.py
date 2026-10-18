@@ -32,8 +32,6 @@ def test_run_rejects_short_r_as_remote_attach(prog):
     "extra",
     [
         ["-r", "5678"],
-        ["-k", "3"],
-        ["-t", "3"],
         ["--record", "out.json"],
         ["--server"],
         ["--headless"],
@@ -44,6 +42,15 @@ def test_run_conflicts(prog, extra, capsys):
     with pytest.raises(SystemExit):
         parse_args(["--run", prog] + extra)
     assert "--run cannot be combined with" in capsys.readouterr().err
+
+
+def test_run_accepts_cli_breakpoints(tmp_path):
+    p = tmp_path / "prog.py"
+    p.write_text("a = 1\nb = 2\nc = 3\n")
+    args = parse_args(["--run", "-k", "2", "-t", "3", str(p)])
+    assert args.run is True
+    assert args.stop_on_entry is False
+    assert args.cli_bps == [(str(p), 2, True), (str(p), 3, False)]
 
 
 def test_run_conflicts_with_replay(capsys):

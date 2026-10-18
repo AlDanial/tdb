@@ -1,7 +1,9 @@
 """`tdb --run`: headless execution with signal-triggered TUI episodes.
 
 The debuggee runs under the normal adapter session but with no TUI, no
-stop-on-entry, and no breakpoints. Debuggee output streams to the
+stop-on-entry, and no breakpoints: saved breakpoints (breakpoints.json)
+are ignored, and -k/-t breakpoints from the command line are held back
+until the first TUI episode opens. Debuggee output streams to the
 terminal. Ctrl-C (or SIGUSR1 on POSIX) pauses the debuggee and opens
 the TUI at the paused line; quitting the TUI can detach back here.
 See docs/superpowers/specs/2026-08-15-run-mode-signal-tui-design.md.
@@ -273,9 +275,15 @@ async def run(
     tui_episode: TuiEpisode | None = None,
     on_session_ready: Callable[[DebugController], None] | None = None,
     examine_dests: list[str] | None = None,
+    cli_breakpoints: list[tuple[str, int, bool]] | None = None,
 ) -> int:
     """Run `program` headless; signals open TUI episodes. Returns tdb's
-    exit code (the debuggee's when it exits during the run phase)."""
+    exit code (the debuggee's when it exits during the run phase).
+
+    `cli_breakpoints` ((path, line, persist) from -k/-t) stay inactive
+    during the headless phase and are installed when the first TUI
+    episode opens, so the program runs at full speed until the user
+    first interrupts it."""
     from tdb.persist import load_config
 
     if config is None:
@@ -350,6 +358,8 @@ async def run(
             # pausing via `controller.pause()` from `on_session_ready`)
             # a pause stop must open the TUI like any other stop.
             examine_resumed = False
+            # -k/-t breakpoints not yet installed; consumed by episode 1.
+            pending_bps = list(cli_breakpoints or [])
 
             async def emit(
                 status: str,
@@ -504,6 +514,13 @@ async def run(
                     examine_ev.clear()
                     examine_sig.clear()
                     _disarm_signals(loop, installed, ignore=True)
+                    if pending_bps:
+                        controller.state.install_cli_breakpoints(pending_bps)
+                        pending_bps = []
+                        try:
+                            await controller.push_all_breakpoints()
+                        except Exception:
+                            log.exception("failed to install CLI breakpoints")
                     detach = await episode(
                         controller, handler, console, config, program
                     )
