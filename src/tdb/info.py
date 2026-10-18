@@ -192,6 +192,17 @@ def examples_dir() -> Path:
     return checkout.resolve() if checkout.is_dir() else packaged
 
 
+def _mcp_row() -> str:
+    """Whether the optional `mcp` extra (tdb-mcp / tdb --mcp) is usable."""
+    from tdb.mcp import INSTALL_HINT, mcp_import_error
+
+    if mcp_import_error() is not None:
+        return row("MCP server", f"not installed ({INSTALL_HINT})")
+    from importlib.metadata import version
+
+    return row("MCP server", f"available (mcp {version('mcp')})")
+
+
 def info_text() -> str:
     from tdb import __version__
     import importlib.resources
@@ -216,6 +227,7 @@ def info_text() -> str:
                 row("breakpoints file", STATE_FILE),
                 _log_row(log_file()),
                 row("examples dir", examples_dir()),
+                _mcp_row(),
             ],
         ),
         (

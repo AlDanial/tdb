@@ -166,6 +166,7 @@ def test_tdb_section_lists_files(stub_tools, tmp_path, monkeypatch):
         f"    breakpoints file         : {persist.STATE_FILE}",
         f"    log file                 : {log} [15 KB]",
         f"    examples dir             : {info.examples_dir()}",
+        info._mcp_row(),
     ]
 
 
@@ -506,7 +507,7 @@ def test_perl_section_without_perl_has_no_makemaker_row(monkeypatch):
 def test_textual_debugger_section_lists_examples_dir():
     """The per-language examples ship inside the package; --info says where."""
     rows = _section(info.info_text(), "textual-debugger").splitlines()
-    assert rows[-1] == f"    examples dir             : {info.examples_dir()}"
+    assert f"    examples dir             : {info.examples_dir()}" in rows
     for lang in (
         "C",
         "C++",
@@ -534,3 +535,19 @@ def test_examples_dir_falls_back_to_checkout(monkeypatch, tmp_path):
     (tmp_path / "examples" / "C").mkdir(parents=True)
     monkeypatch.setattr(info, "_package_dir", lambda: pkg)
     assert info.examples_dir() == (tmp_path / "examples").resolve()
+
+
+def test_mcp_row_reports_missing_extra(monkeypatch):
+    import tdb.mcp
+
+    monkeypatch.setattr(tdb.mcp, "mcp_import_error", lambda: "No module named 'mcp'")
+    assert "not installed" in info._mcp_row()
+    assert "textual-debugger[mcp]" in info._mcp_row()
+
+
+def test_mcp_row_reports_available(monkeypatch):
+    import tdb.mcp
+
+    pytest.importorskip("mcp")
+    monkeypatch.setattr(tdb.mcp, "mcp_import_error", lambda: None)
+    assert "available (mcp " in info._mcp_row()

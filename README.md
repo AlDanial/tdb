@@ -97,6 +97,14 @@ or run it without installing:
 uvx --from textual-debugger tdb  my_program.py
 ```
 
+The MCP server (`tdb-mcp`, `tdb --mcp`) is an optional extra because its
+`mcp` dependency requires the `cryptography` package, which cannot be
+installed on every platform. Add it with:
+
+```bash
+pip install "textual-debugger[mcp]"
+```
+
 
 ## Quick Start
 
@@ -2336,6 +2344,16 @@ runtime bugs in a sample program) see
 its companion `examples/sales_report_buggy.py`.
 
 ### Running the MCP server
+
+The MCP server needs the optional `mcp` extra:
+
+```bash
+pip install "textual-debugger[mcp]"
+```
+
+Without it, `tdb-mcp` and `tdb --mcp` exit with that install hint, and
+`tdb --info` reports `MCP server : not installed`. Everything else in
+tdb works without the extra.
 
 Configure your MCP client (Claude Desktop, an IDE extension, etc.) to
 launch `tdb-mcp` over stdio. Example `claude_desktop_config.json`:

@@ -28,7 +28,9 @@ Python, ELF/Mach-O/PE executable → C/C++, `.pl`/`.pm`/`.t` → Perl.
 
 ## MCP mode
 
-Register the server once (any of the three invocations work):
+MCP mode needs the optional extra: `pip install "textual-debugger[mcp]"`
+(without it `tdb-mcp` exits with that hint). Register the server once
+(any of the three invocations work):
 
 ```bash
 claude mcp add tdb -- tdb-mcp          # or: tdb --mcp, or: python -m tdb.mcp

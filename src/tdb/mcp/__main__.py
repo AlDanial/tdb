@@ -1,6 +1,6 @@
-"""Entry point: `python -m tdb.mcp`. Delegates to server.main()."""
+"""Entry point: `python -m tdb.mcp`. Delegates to tdb.mcp.main()."""
 
-from .server import main
+from . import main
 
 if __name__ == "__main__":
     main()

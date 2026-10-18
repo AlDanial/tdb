@@ -16,13 +16,15 @@ The output is incorrect though.
 
 ## 1. Setup
 
-Install tdb and register the MCP server with your agent. From a
-checkout:
+Install tdb with its optional `mcp` extra and register the MCP server
+with your agent. From a checkout:
 
 ```bash
 cd tdb
-uv pip install -e .
+uv pip install -e ".[mcp]"
 ```
+
+(From PyPI: `pip install "textual-debugger[mcp]"`.)
 
 **Claude Code** (one-time registration):
 

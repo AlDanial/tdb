@@ -392,9 +392,9 @@ def test_main_dispatches_to_mcp_runner(monkeypatch):
     def _fake_mcp_main():
         called.append(True)
 
-    import tdb.mcp.server as mcp_server
+    import tdb.mcp
 
-    monkeypatch.setattr(mcp_server, "main", _fake_mcp_main)
+    monkeypatch.setattr(tdb.mcp, "main", _fake_mcp_main)
 
     from tdb.cli import main as cli_main
 
@@ -995,3 +995,18 @@ def test_adapter_path_to_dlv_reaches_go_test_mode(tmp_path):
     args = parse_args(["--test", "--adapter", str(exe), str(pkg)])
     assert args.profile.adapter.id == "dlv"
     assert args.profile.adapter.command()[0] == str(exe)
+
+
+def test_mcp_without_extra_exits_with_install_hint(monkeypatch):
+    """When the optional `mcp` extra is missing (e.g. cryptography could
+    not be installed), `tdb --mcp` must exit with an install hint rather
+    than a traceback."""
+    import tdb.mcp
+
+    monkeypatch.setattr(tdb.mcp, "mcp_import_error", lambda: "No module named 'mcp'")
+
+    from tdb.cli import main as cli_main
+
+    with pytest.raises(SystemExit) as exc:
+        cli_main(["--mcp"])
+    assert "textual-debugger[mcp]" in str(exc.value.code)
