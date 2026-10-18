@@ -1036,7 +1036,7 @@ def main(argv: list[str] | None = None) -> None:
 
 def _run_mcp() -> None:
     """Launch the MCP server over stdio. Mirrors `python -m tdb.mcp`."""
-    from tdb.mcp.server import main as mcp_main
+    from tdb.mcp import main as mcp_main
 
     mcp_main()
 

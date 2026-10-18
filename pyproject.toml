@@ -27,13 +27,16 @@
       "pygments>=2.17.0",
       "fastapi>=0.115.0",
       "uvicorn>=0.30.0",
-      "mcp>=2.0.0,<3.0.0",
 ]
 
   # extras needed to run the examples and tests
   [project.optional-dependencies]
   edit = ["textual[syntax]>=8.0.0"]
-  dev = ["pytest", "pytest-cov", "pytest-asyncio", "httpx",
+  # MCP server (tdb-mcp / tdb --mcp). Optional because mcp pulls in
+  # pyjwt[crypto] -> cryptography, which some platforms cannot build.
+  mcp = ["mcp>=2.0.0,<3.0.0"]
+  dev = ["textual-debugger[mcp]",
+         "pytest", "pytest-cov", "pytest-asyncio", "httpx",
          "matplotlib",
          "pyyaml",
          "toml",
@@ -47,7 +50,7 @@
 
   [project.scripts]
   tdb = "tdb.cli:main"
-  tdb-mcp = "tdb.mcp.server:main"
+  tdb-mcp = "tdb.mcp:main"
 
   [build-system]
   requires = ["setuptools>=68.0"]

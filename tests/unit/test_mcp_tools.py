@@ -16,6 +16,8 @@ import asyncio
 
 import pytest
 
+pytest.importorskip("mcp")
+
 from tdb.mcp.server import _format, _parse_breakpoints, _parse_path_mappings, build_mcp
 from tdb.mcp.session import McpSession
 from tdb.server.rpc_types import RpcResponse
