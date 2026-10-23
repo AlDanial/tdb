@@ -20,8 +20,8 @@ It provides a rich interactive interface for stepping through
 code, inspecting variables, managing breakpoints, and evaluating expressions in
 complex programs.
 
-- PyPI: https://pypi.org/project/textual-debugger/
-- GitHub: https://github.com/AlDanial/tdb
+- PyPI: [https://pypi.org/project/textual-debugger/](https://pypi.org/project/textual-debugger/)
+- GitHub: [https://github.com/AlDanial/tdb](https://github.com/AlDanial/tdb)
 
 MIT License.  Copyright 2026 by Al Danial.
 

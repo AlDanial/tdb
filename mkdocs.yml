@@ -40,6 +40,21 @@ markdown_extensions:
   - pymdownx.highlight
   - pymdownx.superfences
 
+plugins:
+  # Listing plugins replaces MkDocs' default plugin list, so search must
+  # be named explicitly.
+  - search
+  # Single-file PDF of the whole site, rendered by WeasyPrint. Read the
+  # Docs copies it to $READTHEDOCS_OUTPUT/pdf/ so it is offered as a
+  # download (see .readthedocs.yaml); it is also served from the site at
+  # pdf/textual-debugger.pdf.
+  - to-pdf:
+      author: Al Danial
+      cover_subtitle: A terminal debugger for Python and nine other languages
+      toc_level: 2
+      ordered_chapter_level: 2
+      output_path: pdf/textual-debugger.pdf
+
 # Internal design notes, not user documentation.
 exclude_docs: |
   superpowers/
