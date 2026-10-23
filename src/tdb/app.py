@@ -44,7 +44,7 @@ from tdb.widgets.modals import (
 from tdb.widgets.full_contents_modal import FullContentsModal
 from tdb.widgets.stack_view import StackView
 from tdb.widgets.status_bar import StatusBar
-from tdb.app_helpers import about_text, find_readme, unquote_dap_string
+from tdb.app_helpers import about_text, unquote_dap_string
 from tdb.persist import (
     TdbConfig,
     load_breakpoints,
@@ -1741,15 +1741,17 @@ class TdbApp(_AppMessageRoutes, App):
         self.push_screen(_StepModeModal(self.controller.step_mode, on_mode_change))
 
     def action_documentation(self) -> None:
-        readme = find_readme()
-        if readme is None:
+        from tdb.documentation import load_docs
+
+        docs = load_docs()
+        if docs is None:
             self.notify(
-                "README.md not found in the installation.",
+                "Documentation not found in the installation.",
                 title="Documentation",
                 severity="warning",
             )
             return
-        self.push_screen(_DocumentationModal(readme))
+        self.push_screen(_DocumentationModal(docs))
 
     def action_about(self) -> None:
         self.push_screen(_AboutModal(about_text(markup=True)))

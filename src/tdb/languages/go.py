@@ -38,7 +38,7 @@ def is_go_binary(program: str) -> bool:
 
     Bounded scan of the first 16MB (the blob sits in an early data
     section in practice). Best-effort: unreadable files and misses
-    beyond the limit return False — `--lang go` overrides (README).
+    beyond the limit return False — `--lang go` overrides (docs/languages/go.md).
     """
     scanned = 0
     tail = b""

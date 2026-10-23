@@ -433,7 +433,7 @@ class _TracebackModal(ModalScreen[str | None]):
 
 
 class _DocumentationModal(ModalScreen):
-    """Full-screen markdown viewer for README.md."""
+    """Full-screen markdown viewer for the bundled documentation."""
 
     DEFAULT_CSS = """
     _DocumentationModal {

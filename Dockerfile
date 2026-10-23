@@ -58,7 +58,7 @@ RUN apk add --no-cache go \
  && rm -rf /root/go /root/.cache/go-build
 
 # PowerShell 7 (musl build for Alpine) + PowerShell Editor Services (the
-# DAP server tdb's PowerShell proxy drives). Version pins match README's
+# DAP server tdb's PowerShell proxy drives). Version pins match docs/languages/powershell.md's
 # "PowerShell" section; bump both together. `libstdc++`/`icu-libs`/
 # `lttng-ust` are pwsh's documented Alpine runtime deps.
 ARG PWSH_VERSION=7.6.5

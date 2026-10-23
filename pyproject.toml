@@ -62,11 +62,17 @@
   [tool.setuptools.packages.find]
   where = ["src"]
   include = ["tdb", "tdb.*"]
-  # examples/ is package data (see below), not importable modules.
-  exclude = ["tdb.examples", "tdb.examples.*"]
+  # examples/ and docs/ are package data (see below), not importable modules.
+  exclude = ["tdb.examples", "tdb.examples.*", "tdb.docs", "tdb.docs.*"]
 
   [tool.setuptools.package-data]
-  tdb = ["README.md", "adapters/perl/helpers.pl", "adapters/perl/padwalker_src/PadWalker.pm", "adapters/perl/padwalker_src/PadWalker.xs", "adapters/perl/padwalker_src/Makefile.PL", "adapters/perl/Devel/TdbRemote.pm", "adapters/perl/Devel/TdbCompile.pm", "adapters/ruby/tdb.rb", "adapters/bash/tdb_harness.sh", "adapters/powershell/tdb_launch.ps1", "adapters/native/tdb.h", "rust_concurrency/probes/gdb_script.py", "rust_concurrency/probes/lldb_script.py",
+  tdb = [
+         # Documentation pages shown by `tdb --doc` / `--doc-text` (tdb.documentation).
+         # src/tdb/docs and src/tdb/mkdocs.yml are symlinks to the repository's
+         # docs/ and mkdocs.yml; per-directory globs keep docs/superpowers/ out.
+         "mkdocs.yml", "docs/*.md", "docs/languages/*.md", "docs/using/*.md",
+         "docs/python/*.md", "docs/automation/*.md", "docs/reference/*.md",
+         "adapters/perl/helpers.pl", "adapters/perl/padwalker_src/PadWalker.pm", "adapters/perl/padwalker_src/PadWalker.xs", "adapters/perl/padwalker_src/Makefile.PL", "adapters/perl/Devel/TdbRemote.pm", "adapters/perl/Devel/TdbCompile.pm", "adapters/ruby/tdb.rb", "adapters/bash/tdb_harness.sh", "adapters/powershell/tdb_launch.ps1", "adapters/native/tdb.h", "rust_concurrency/probes/gdb_script.py", "rust_concurrency/probes/lldb_script.py",
          # Per-language examples, shown by `tdb --info` ("examples dir").
          # src/tdb/examples is a symlink to the repository's examples/;
          # extension globs keep build outputs (Rust target/, binaries) out.

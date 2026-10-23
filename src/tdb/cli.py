@@ -326,12 +326,12 @@ def build_parser() -> argparse.ArgumentParser:
         "-d",
         "--doc",
         action="store_true",
-        help="Display README.md in a markdown viewer and exit (no program needed)",
+        help="Display the documentation in a markdown viewer and exit (no program needed)",
     )
     parser.add_argument(
         "--doc-text",
         action="store_true",
-        help="Print README.md to stdout as wrapped plain text and exit "
+        help="Print the documentation to stdout as wrapped plain text and exit "
         "(useful for `tdb --doc-text | less`, piping to a file, etc.)",
     )
     parser.add_argument(
@@ -1042,12 +1042,12 @@ def _run_mcp() -> None:
 
 
 def _run_doc() -> None:
-    """Display the bundled README.md in a Textual MarkdownViewer."""
-    from tdb.app_helpers import find_readme
+    """Display the bundled documentation in a Textual MarkdownViewer."""
+    from tdb.documentation import load_docs
 
-    readme = find_readme()
-    if readme is None:
-        print("README.md not found in the installation.", file=sys.stderr)
+    docs = load_docs()
+    if docs is None:
+        print("Documentation not found in the installation.", file=sys.stderr)
         sys.exit(1)
 
     from textual.app import App, ComposeResult
@@ -1062,7 +1062,7 @@ def _run_doc() -> None:
         ]
 
         def compose(self) -> ComposeResult:
-            yield MarkdownViewer(readme, show_table_of_contents=True)
+            yield MarkdownViewer(docs, show_table_of_contents=True)
             yield Footer()
 
     _DocApp().run()
@@ -1131,7 +1131,7 @@ def _config_install_padwalker() -> int:
 
 
 def _run_doc_text() -> None:
-    """Render the bundled README.md to stdout as wrapped plain text.
+    """Render the bundled documentation to stdout as wrapped plain text.
 
     Uses Rich's Markdown renderer so headings, lists, code blocks, and
     tables come out nicely formatted (boxed tables, indented code, etc.)
@@ -1139,11 +1139,11 @@ def _run_doc_text() -> None:
     or redirection to a file.
     """
     import shutil
-    from tdb.app_helpers import find_readme
+    from tdb.documentation import load_docs
 
-    readme = find_readme()
-    if readme is None:
-        print("README.md not found in the installation.", file=sys.stderr)
+    docs = load_docs()
+    if docs is None:
+        print("Documentation not found in the installation.", file=sys.stderr)
         sys.exit(1)
 
     from rich.console import Console
@@ -1158,7 +1158,7 @@ def _run_doc_text() -> None:
     else:
         width = 100
 
-    Console(width=width).print(Markdown(readme))
+    Console(width=width).print(Markdown(docs))
 
 
 def _run_post_mortem(args: argparse.Namespace) -> None:

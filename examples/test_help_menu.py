@@ -1,4 +1,4 @@
-"""Verify: Alt+H opens Help, Documentation opens the README modal, and the
+"""Verify: Alt+H opens Help, Documentation opens the documentation modal, and the
 dropdown's Documentation entry is fully visible (not clipped)."""
 
 import os
@@ -43,11 +43,9 @@ def main():
         print("Pressing Enter to select Documentation...")
         child.send("\r")
         try:
-            # README content-specific string
-            child.expect(
-                "A Python debugger built with textual and debugpy.", timeout=10
-            )
-            print("  OK: Documentation modal opened with rendered README.")
+            # documentation content-specific string
+            child.expect("Feature Overview", timeout=10)
+            print("  OK: Documentation modal opened with rendered documentation.")
         except pexpect.exceptions.TIMEOUT:
             print("  FAIL: Documentation modal did not open")
             ok = False
