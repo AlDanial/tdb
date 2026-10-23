@@ -1,0 +1,97 @@
+# MkDocs site for https://textual-debugger.readthedocs.io/ (see .readthedocs.yaml).
+#
+# `nav` is also read by `tdb --doc` / `tdb --doc-text` (tdb.docs), which
+# stitch the pages together in this order into one document, so every
+# page under docs/ that users should see must be listed here.
+site_name: textual-debugger
+site_description: A terminal debugger for Python and nine other languages, built on textual and the Debug Adapter Protocol
+site_url: https://textual-debugger.readthedocs.io/
+repo_url: https://github.com/AlDanial/tdb
+repo_name: AlDanial/tdb
+edit_uri: edit/main/docs/
+copyright: Copyright 2026 by Al Danial. MIT License.
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - search.highlight
+    - content.code.copy
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+markdown_extensions:
+  - tables
+  - admonition
+  - attr_list
+  - toc:
+      permalink: true
+  - pymdownx.highlight
+  - pymdownx.superfences
+
+# Internal design notes, not user documentation.
+exclude_docs: |
+  superpowers/
+
+validation:
+  omitted_files: warn
+  absolute_links: info
+  unrecognized_links: warn
+  anchors: warn
+
+nav:
+  - Home: index.md
+  - Installation: installation.md
+  - Quick Start: quickstart.md
+  - Languages:
+      - Overview: languages/index.md
+      - C, C++, and Fortran: languages/c-cpp-fortran.md
+      - Rust: languages/rust.md
+      - Perl: languages/perl.md
+      - Bash: languages/bash.md
+      - Tcsh: languages/tcsh.md
+      - Ruby: languages/ruby.md
+      - OCaml: languages/ocaml.md
+      - Go: languages/go.md
+      - PowerShell: languages/powershell.md
+  - Using tdb:
+      - Layout: using/layout.md
+      - Navigation and Keybindings: using/keybindings.md
+      - Debugging Controls: using/debugging-controls.md
+      - Breakpoints: using/breakpoints.md
+      - Variables: using/variables.md
+      - Call Stack: using/call-stack.md
+      - Evaluate Console: using/evaluate-console.md
+      - Console Output and Input: using/console.md
+      - Crash Detection: using/crash-detection.md
+      - Remote Attach: using/remote-attach.md
+      - External Terminal: using/external-terminal.md
+      - Run Mode: using/run-mode.md
+      - Eval Mode: using/eval-mode.md
+  - Python:
+      - Post-Mortem Exception Hook: python/post-mortem.md
+      - Live Breakpoint Hook: python/breakpoint-hook.md
+      - pytest Integration: python/pytest.md
+      - Async Task Inspector: python/async-tasks.md
+      - Thread Inspector: python/threads.md
+      - Process Inspector: python/processes.md
+  - Automation:
+      - JSON-RPC Server: automation/json-rpc.md
+      - Recording and Replay: automation/record-replay.md
+      - MCP Integration: automation/mcp.md
+      - "Tutorial: MCP Debugging": tutorial-mcp-debugging.md
+  - Reference:
+      - CLI Reference: reference/cli.md
+      - Configuration: reference/configuration.md
+  - About: about.md

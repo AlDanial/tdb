@@ -348,7 +348,7 @@ _OCAML_FATAL_RE = re.compile(r"^Fatal error: exception (?P<msg>.+?)\s*$", re.MUL
 # first line; the "-M" tail is deliberately left unconsumed (every match
 # is ^-anchored, so it can't corrupt the next one). The "<func> in file"
 # segment requires OCaml >= 4.12 — Printexc gained function names there,
-# and that is tdb's documented OCaml floor (see README); older runtimes'
+# and that is tdb's documented OCaml floor (see docs/languages/ocaml.md); older runtimes'
 # backtraces parse as header-only.
 _OCAML_FRAME_RE = re.compile(
     r"^(?:Raised at|Raised by primitive operation at|Re-raised at"

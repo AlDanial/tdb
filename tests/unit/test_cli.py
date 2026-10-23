@@ -356,7 +356,7 @@ def test_doc_flag_default_false(tmp_path):
 
 
 def test_doc_text_flag_short_circuits_program_check():
-    """--doc-text prints the README to stdout; no program needed."""
+    """--doc-text prints the documentation to stdout; no program needed."""
     args = parse_args(["--doc-text"])
     assert args.doc_text is True
     assert args.program is None
@@ -419,15 +419,15 @@ def test_version_short_form(capsys):
 
 
 def test_doc_text_renders_to_stdout(capsys):
-    """End-to-end: _run_doc_text writes the rendered README to stdout."""
+    """End-to-end: _run_doc_text writes the rendered documentation to stdout."""
     from tdb.cli import _run_doc_text
 
     _run_doc_text()
     out = capsys.readouterr().out
-    # README starts with the project title — should be visible after Rich
+    # The docs start with the project title — should be visible after Rich
     # renders the markdown (centred or otherwise, but the text is there).
     assert "textual-debugger" in out
-    # And tables in the README produce box-drawing characters.
+    # And tables in the docs produce box-drawing characters.
     assert "─" in out or "━" in out
 
 

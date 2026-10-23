@@ -1387,7 +1387,7 @@ class DebugController:
         """Re-point `_active_client` at the child process for `pid`, then
         behave like `switch_active_thread` on that child's first thread.
 
-        Matches the README's documented behavior for the Processes tab:
+        Matches the documented behavior (docs/python/processes.md) for the Processes tab:
         Code View switches focus to that process, and subsequent step
         commands operate on it.
         """

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from tdb.app_helpers import find_readme, unquote_dap_string
+from tdb.app_helpers import unquote_dap_string
 
 
 # --- unquote_dap_string -------------------------------------------------
@@ -34,15 +34,3 @@ def test_unquote_invalid_python_returns_input():
 
 def test_unquote_empty_string_returns_empty():
     assert unquote_dap_string("") == ""
-
-
-# --- find_readme --------------------------------------------------------
-
-
-def test_find_readme_returns_string_or_none():
-    """In a working install README is locatable; we accept either result
-    rather than asserting on filesystem layout, but if it returns
-    something it must be the actual README content."""
-    result = find_readme()
-    if result is not None:
-        assert "tdb" in result.lower() or "textual" in result.lower()

@@ -51,7 +51,7 @@ def ocaml_flavor(program: str) -> str | None:
     """ "native"/"bytecode" when `program` is an OCaml executable, else None.
 
     Best-effort byte sniffing: a stripped native binary may return None
-    (lands in cpp; --lang ocaml overrides — documented in README).
+    (lands in cpp; --lang ocaml overrides — documented in docs/languages/ocaml.md).
     """
     path = Path(program)
     try:
