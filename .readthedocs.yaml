@@ -10,6 +10,11 @@ build:
   tools:
     python: "3.12"
 
+formats:
+  - pdf
+  - epub
+  - htmlzip
+
 # Build documentation with Mkdocs
 mkdocs:
    configuration: mkdocs.yml
