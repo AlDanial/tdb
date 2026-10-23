@@ -6,9 +6,29 @@ version: 2
 
 # Set the OS, Python version, and other tools you might need
 build:
-  os: ubuntu-26.04
+  os: ubuntu-24.04
   tools:
-    python: "3.12"
+    python: "3.13"
+  apt_packages:
+    - pandoc
+    # WeasyPrint's system libraries, for mkdocs-to-pdf (see mkdocs.yml)
+    - libpango-1.0-0
+    - libpangoft2-1.0-0
+  jobs:
+    post_build:
+      # PDF rendered during the HTML build by the to-pdf plugin; a single
+      # file in $READTHEDOCS_OUTPUT/pdf/ is offered as the PDF download
+      - mkdir -p $READTHEDOCS_OUTPUT/pdf
+      - cp $READTHEDOCS_OUTPUT/html/pdf/textual-debugger.pdf $READTHEDOCS_OUTPUT/pdf/
+      # HTML zip of the built site
+      - mkdir -p $READTHEDOCS_OUTPUT/htmlzip
+      - cd $READTHEDOCS_OUTPUT/html && zip -qr $READTHEDOCS_OUTPUT/htmlzip/textual-debugger.zip .
+      # EPUB from the same single document `tdb --doc` shows
+      - mkdir -p $READTHEDOCS_OUTPUT/epub
+      - pip install -e . && python -c "from tdb.documentation import load_docs; print(load_docs())" > all.md
+      - pandoc all.md -o $READTHEDOCS_OUTPUT/epub/textual-debugger.epub --metadata title=textual-debugger --toc
+
+
 
 formats:
   - pdf
