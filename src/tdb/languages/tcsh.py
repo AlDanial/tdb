@@ -105,6 +105,7 @@ def build_tcsh_profile(
         presentation=Presentation(lexer="tcsh", frame_placeholder="main"),
         capabilities=ProfileCapabilities(
             pause_while_running=True,
+            conditional_breakpoints=False,
             interactive_variable=assignment_matcher(
                 r"^\s*(?:set|setenv)\s+(?P<name>[A-Za-z_]\w*)",
                 read=lambda name: f"echo ${name}",

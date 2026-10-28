@@ -49,8 +49,8 @@ working breakpoints/stepping/stack/variables/eval for any DAP adapter; tiers
 - **Invocation:** auto-detect language from the target, `--lang` / `--adapter`
   override.
 - **Adapter supply:** user-installed, found on PATH, with config-file path
-  overrides and a clear install hint when missing. tdb does not download or
-  bundle adapters.
+  overrides and a clear install hint when missing. tdb does not download
+  adapters.
 - **Architecture:** approach B — a `LanguageProfile` abstraction with a
   registry (entry-point plugin packaging deferred; the interface must not
   preclude it).

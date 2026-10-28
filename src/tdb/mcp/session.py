@@ -239,7 +239,7 @@ class McpSession:
         if not breakpoints or self._controller is None:
             return
         self._controller.state.install_cli_breakpoints(
-            [(path, line, True) for path, line in breakpoints]
+            [(path, line, True, None) for path, line in breakpoints]
         )
 
     async def _finish_initialize(

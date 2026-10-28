@@ -69,6 +69,7 @@ tdb --doc                        # full documentation in a terminal Markdown vie
 tdb --info                       # versions and locations of tdb, its config, and every debugger it would use
 tdb my_program.py arg1 arg2      # debug a Python program (stops at the first line)
 tdb -k 20 -k module.py:14 my_program.py   # run to breakpoints
+tdb -k module.py:27 --if "a > 7" my_program.py   # ... stopping only when a > 7
 tdb ./myprog                     # debug a native executable built with -g
 tdb script.pl                    # ... or a Perl, Bash, Tcsh, Ruby, PowerShell script
 tdb -r remotehost:5678           # attach to a remote debugpy server

@@ -50,7 +50,14 @@ def test_run_accepts_cli_breakpoints(tmp_path):
     args = parse_args(["--run", "-k", "2", "-t", "3", str(p)])
     assert args.run is True
     assert args.stop_on_entry is False
-    assert args.cli_bps == [(str(p), 2, True), (str(p), 3, False)]
+    assert args.cli_bps == [(str(p), 2, True, None), (str(p), 3, False, None)]
+
+
+def test_run_accepts_conditional_cli_breakpoint(tmp_path):
+    p = tmp_path / "prog.py"
+    p.write_text("a = 1\nb = 2\nc = 3\n")
+    args = parse_args(["--run", "-k", "2", "--if", "a > 7", str(p)])
+    assert args.cli_bps == [(str(p), 2, True, "a > 7")]
 
 
 def test_run_conflicts_with_replay(capsys):

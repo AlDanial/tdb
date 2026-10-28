@@ -96,14 +96,24 @@ blocking external call or syscall, the pause can't land until that call returns 
 
 **Breakpoints:** run mode never uses breakpoints saved in `breakpoints.json`, and
 never writes to it either, so the breakpoints you saved for normal sessions are left
-untouched. Breakpoints given on the command line with `-k`/`-t` are accepted, but they
-stay inactive while the program runs headlessly. They are installed the first time the
-TUI opens (normally when you press Ctrl-C), and stay live after you detach, so the
-program then stops at them:
+untouched. Breakpoints given on the command line with `-k`/`-t` are live from the
+start: the program runs headlessly until it reaches one, and then `tdb` opens the TUI
+there, just as Ctrl-C would. They stay live after you detach, so the next hit reopens
+the TUI. In run mode `-k` and `-t` behave the same, since nothing is saved.
+
+Add `--if EXPR` after a `-k`/`-t` to make that breakpoint conditional: the TUI opens
+only when `EXPR` is true at that line. The expression uses the program's own language
+(the debug adapter's expression syntax); for Bash it is a command whose exit status
+decides, e.g. `--if '(( count > 7 ))'` or `--if '[[ $name == foo ]]'`. Tcsh doesn't
+support conditions.
 
 ```bash
-tdb --run -k 120 -k utils.py:45 my_program.py   # breakpoints arm on the first Ctrl-C
+tdb --run -k 120 -k utils.py:45 my_program.py         # stop at either line
+tdb --run -k module.py:27 --if "a > 7" my_program.py  # stop at line 27 only when a > 7
 ```
+
+If a `Ctrl-\` snapshot's pause lands as a breakpoint hit, the snapshot is still
+written, and then the TUI opens at the breakpoint instead of the program resuming.
 
 **Incompatible flags:** `-r`, `--record`, `--replay`, `--replay-tui`, `--server`,
 `--headless`, `--mcp`, `--terminal`.

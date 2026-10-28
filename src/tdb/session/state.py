@@ -250,20 +250,29 @@ class DebugState:
 
     # --- Existing helper methods ---------------------------------------
 
-    def install_cli_breakpoints(self, cli_bps: list[tuple[str, int, bool]]) -> None:
+    def install_cli_breakpoints(
+        self, cli_bps: list[tuple[str, int, bool, str | None]]
+    ) -> None:
         """Add `-k` / `-t` CLI breakpoints to the session state.
 
-        Each entry is (abs_path, line, persist); `-t`/--to-line entries
-        carry persist=False so they never reach breakpoints.json. A
+        Each entry is (abs_path, line, persist, condition); `-t`/--to-line
+        entries carry persist=False so they never reach breakpoints.json,
+        and condition is the `--if` expression (None for none). A
         breakpoint already present at the same spot (e.g. restored from
         a previous session) wins — it is neither duplicated nor
-        downgraded to transient.
+        downgraded to transient — except that an explicit `--if`
+        replaces its condition.
         """
-        for bp_path, bp_line, persist in cli_bps:
+        for bp_path, bp_line, persist, condition in cli_bps:
             bps = self.breakpoints.get(bp_path, [])
-            if not any(bp.line == bp_line for bp in bps):
-                bps.append(SourceBreakpoint(line=bp_line, persist=persist))
+            existing = next((bp for bp in bps if bp.line == bp_line), None)
+            if existing is None:
+                bps.append(
+                    SourceBreakpoint(line=bp_line, persist=persist, condition=condition)
+                )
                 self.breakpoints[bp_path] = bps
+            elif condition is not None:
+                existing.condition = condition
 
     def clear_frame_data(self) -> None:
         self.stack_frames.clear()

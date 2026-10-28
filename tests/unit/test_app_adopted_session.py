@@ -26,16 +26,12 @@ def adopted(monkeypatch):
     async def fake_fetch_stop_info():
         stops.append(True)
 
-    async def fake_push_all_breakpoints():
-        pass
-
     stopped_calls = []
 
     async def fake_stop():
         stopped_calls.append(True)
 
     monkeypatch.setattr(controller, "fetch_stop_info", fake_fetch_stop_info)
-    monkeypatch.setattr(controller, "push_all_breakpoints", fake_push_all_breakpoints)
     monkeypatch.setattr(controller, "stop", fake_stop)
     app = TdbApp(
         program="",
@@ -112,14 +108,10 @@ def _make_adopted_app(monkeypatch, program: str, pre_existing_breakpoints: dict)
     async def fake_fetch_stop_info():
         pass
 
-    async def fake_push_all_breakpoints():
-        pass
-
     async def fake_stop():
         pass
 
     monkeypatch.setattr(controller, "fetch_stop_info", fake_fetch_stop_info)
-    monkeypatch.setattr(controller, "push_all_breakpoints", fake_push_all_breakpoints)
     monkeypatch.setattr(controller, "stop", fake_stop)
     app = TdbApp(
         program=program,

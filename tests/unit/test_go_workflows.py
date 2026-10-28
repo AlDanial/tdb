@@ -10,7 +10,6 @@ none exists, this stub-based approach stands alone).
 import pytest
 
 from tdb.app_handlers.inspection import InspectionWorkflows
-from tdb.session.inspect_service import SessionGateError
 
 
 class _Caps:

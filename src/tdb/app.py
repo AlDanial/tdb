@@ -186,7 +186,7 @@ class TdbApp(_AppMessageRoutes, App):
         python: str | None = None,
         terminal: str | None = None,
         config: TdbConfig | None = None,
-        cli_breakpoints: list[tuple[str, int, bool]] | None = None,
+        cli_breakpoints: list[tuple[str, int, bool, str | None]] | None = None,
         attach_host: str | None = None,
         attach_port: int | None = None,
         path_mappings: list[tuple[str, str]] | None = None,

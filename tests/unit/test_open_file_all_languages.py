@@ -1,6 +1,5 @@
 """File->Open ungating: extension filters + same-language validation."""
 
-from pathlib import Path
 from types import SimpleNamespace
 
 from tdb.languages import registry

@@ -83,7 +83,8 @@ module directory (see [PowerShell](../languages/powershell.md)).
 Breakpoints are saved on exit and restored when debugging a program in the same
 directory. Each project's breakpoints are independent. Breakpoints set with
 `-t`/`--to-line` are the exception: they behave like `-k` breakpoints during
-the session but are never saved.
+the session but are never saved. A `--if` condition on a `-k` breakpoint is
+saved along with it.
 
 **Step mode** (`step_mode` in `config.json`) controls how `n` (step over) and `s` (step
 into) handle multi-line source statements:
