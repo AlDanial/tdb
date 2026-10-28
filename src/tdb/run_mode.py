@@ -1,11 +1,12 @@
 """`tdb --run`: headless execution with signal-triggered TUI episodes.
 
-The debuggee runs under the normal adapter session but with no TUI, no
-stop-on-entry, and no breakpoints: saved breakpoints (breakpoints.json)
-are ignored, and -k/-t breakpoints from the command line are held back
-until the first TUI episode opens. Debuggee output streams to the
-terminal. Ctrl-C (or SIGUSR1 on POSIX) pauses the debuggee and opens
-the TUI at the paused line; quitting the TUI can detach back here.
+The debuggee runs under the normal adapter session but with no TUI and
+no stop-on-entry. Saved breakpoints (breakpoints.json) are ignored;
+-k/-t breakpoints from the command line (optionally conditional via
+--if) are installed before the program starts, and hitting one opens
+the TUI there. Debuggee output streams to the terminal. Ctrl-C (or
+SIGUSR1 on POSIX) pauses the debuggee and opens the TUI at the paused
+line; quitting the TUI can detach back here.
 See docs/superpowers/specs/2026-08-15-run-mode-signal-tui-design.md.
 """
 
@@ -148,6 +149,25 @@ TuiEpisode = Callable[
     Awaitable[bool],
 ]
 
+# Stop reasons that open the TUI even when they land while an examine
+# capture's pause is outstanding: the snapshot is still written, but the
+# program is not resumed past a breakpoint (or exception) the user asked
+# to stop at.
+_TUI_STOP_REASONS = frozenset(
+    {
+        "breakpoint",
+        "exception",
+        "function breakpoint",
+        "data breakpoint",
+        "instruction breakpoint",
+    }
+)
+
+
+def _stopped_for_tui(console: ConsoleRunHandler) -> bool:
+    return console.last_stop is not None and console.last_stop[1] in _TUI_STOP_REASONS
+
+
 # Longer than the interactive pause timeout: nothing else is happening,
 # and slow-to-stop debuggees (deep C calls) deserve the extra grace.
 _PAUSE_TIMEOUT = 5.0
@@ -275,15 +295,14 @@ async def run(
     tui_episode: TuiEpisode | None = None,
     on_session_ready: Callable[[DebugController], None] | None = None,
     examine_dests: list[str] | None = None,
-    cli_breakpoints: list[tuple[str, int, bool]] | None = None,
+    cli_breakpoints: list[tuple[str, int, bool, str | None]] | None = None,
 ) -> int:
     """Run `program` headless; signals open TUI episodes. Returns tdb's
     exit code (the debuggee's when it exits during the run phase).
 
-    `cli_breakpoints` ((path, line, persist) from -k/-t) stay inactive
-    during the headless phase and are installed when the first TUI
-    episode opens, so the program runs at full speed until the user
-    first interrupts it."""
+    `cli_breakpoints` ((path, line, persist, condition) from -k/-t and
+    --if) are installed before configurationDone, so even a breakpoint
+    on the program's first lines is hit; a hit opens a TUI episode."""
     from tdb.persist import load_config
 
     if config is None:
@@ -298,6 +317,9 @@ async def run(
     controller = DebugController(handler, profile=profile)
     controller.step_mode = config.step_mode
     controller.adopted_session = True  # restart is never offered in run mode
+    if cli_breakpoints:
+        # Sent by do_configure(), ahead of configurationDone.
+        controller.state.install_cli_breakpoints(cli_breakpoints)
 
     launched_at = time.monotonic()
     try:
@@ -326,8 +348,11 @@ async def run(
                 if os.name == "nt"
                 else f"{EXAMINE_KEY} or `kill -USR2 {pid}`"
             )
+            bp_note = (
+                " (as does reaching a -k/-t breakpoint)" if cli_breakpoints else ""
+            )
             print(
-                f"tdb: running {program} — {hint} opens the debugger; "
+                f"tdb: running {program} — {hint} opens the debugger{bp_note}; "
                 f"{ehint} writes a stack snapshot to {examine.sink_names(sinks)}",
                 file=sys.stderr,
             )
@@ -358,8 +383,6 @@ async def run(
             # pausing via `controller.pause()` from `on_session_ready`)
             # a pause stop must open the TUI like any other stop.
             examine_resumed = False
-            # -k/-t breakpoints not yet installed; consumed by episode 1.
-            pending_bps = list(cli_breakpoints or [])
 
             async def emit(
                 status: str,
@@ -477,15 +500,27 @@ async def run(
                             )
                             outstanding = (seq, trigger, requested)
                             continue
-                        await finish_capture(seq, trigger, requested)
-                        continue
+                        if _stopped_for_tui(console):
+                            # A breakpoint hit beat the capture's pause:
+                            # record the snapshot, then debug the hit.
+                            await emit("ok", seq, trigger, requested, examine.now_iso())
+                        else:
+                            await finish_capture(seq, trigger, requested)
+                            continue
 
                     elif console.stopped.is_set() and outstanding is not None:
                         # A deferred examine's pause finally landed.
                         seq_, trigger, requested = outstanding
                         outstanding = None
-                        await finish_capture(seq_, trigger, requested)
-                        continue
+                        if _stopped_for_tui(console):
+                            # ...as a breakpoint hit rather than the pause:
+                            # record the snapshot, then debug the hit.
+                            await emit(
+                                "ok", seq_, trigger, requested, examine.now_iso()
+                            )
+                        else:
+                            await finish_capture(seq_, trigger, requested)
+                            continue
 
                     elif (
                         console.stopped.is_set()
@@ -506,21 +541,16 @@ async def run(
                         continue
 
                     # Reached on a landed Ctrl-C pause, on a Ctrl-C pause that
-                    # landed late, or on a spontaneous stop (a breakpoint set
-                    # during a previous episode).
+                    # landed late, or on a spontaneous stop (a -k/-t
+                    # breakpoint, one set during a previous episode, or an
+                    # exception), including one that an examine capture's
+                    # pause collided with.
                     interrupt_pending = False
                     examine_resumed = False
                     interrupt.clear()
                     examine_ev.clear()
                     examine_sig.clear()
                     _disarm_signals(loop, installed, ignore=True)
-                    if pending_bps:
-                        controller.state.install_cli_breakpoints(pending_bps)
-                        pending_bps = []
-                        try:
-                            await controller.push_all_breakpoints()
-                        except Exception:
-                            log.exception("failed to install CLI breakpoints")
                     detach = await episode(
                         controller, handler, console, config, program
                     )

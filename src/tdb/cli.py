@@ -22,6 +22,32 @@ def _get_version() -> str:
     return __version__
 
 
+class _BreakpointAppend(argparse._AppendAction):
+    """`-k` / `-t`: append the spec as usual, plus a None slot in the
+    parallel `<dest>_if` list that a following `--if` fills in, and
+    remember which list `--if` would attach to."""
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        super().__call__(parser, namespace, values, option_string)
+        conditions = list(getattr(namespace, f"{self.dest}_if", None) or [])
+        conditions.append(None)
+        setattr(namespace, f"{self.dest}_if", conditions)
+        namespace.last_bp_dest = self.dest
+
+
+class _BreakpointCondition(argparse.Action):
+    """`--if EXPR`: the condition for the `-k` / `-t` just before it."""
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        dest = getattr(namespace, "last_bp_dest", None)
+        if dest is None:
+            parser.error("--if must follow a -k/--breakpoint or -t/--to-line")
+        conditions = getattr(namespace, f"{dest}_if")
+        if conditions[-1] is not None:
+            parser.error("only one --if is allowed per -k/-t breakpoint")
+        conditions[-1] = values
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Construct the tdb ArgumentParser.
 
@@ -71,12 +97,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--run",
         action="store_true",
-        help="Run the program without the TUI, at full speed, ignoring "
-        "all breakpoints. Press Ctrl-C (or send SIGUSR1 on Unix) to "
-        "pause it and open the debugger at the current line; quitting "
-        "the debugger can detach and resume the program. Saved "
-        "breakpoints are never used; -k/-t breakpoints become active "
-        "only once the debugger first opens. For "
+        help="Run the program without the TUI, at full speed. Press "
+        "Ctrl-C (or send SIGUSR1 on Unix) to pause it and open the "
+        "debugger at the current line; quitting the debugger can detach "
+        "and resume the program. Saved breakpoints are never used; "
+        "hitting a -k/-t breakpoint (whose --if condition, if any, is "
+        "true) also opens the debugger. For "
         "inspecting programs that appear to be hung. Ctrl-\\ (or SIGUSR2 "
         "on Unix; Ctrl-Break on Windows, untested) instead writes a JSON "
         "stack snapshot of every thread and resumes; see --examine-log.",
@@ -277,13 +303,23 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "-k",
         "--breakpoint",
-        action="append",
+        action=_BreakpointAppend,
         default=[],
         metavar="FILE:LINE|LINE",
         help="Set a breakpoint at FILE:LINE, or just LINE for the program "
         "being debugged (may be repeated). Implies --no-stop-on-entry "
         "so the program runs to the first breakpoint instead of pausing "
         "at line 1.",
+    )
+    parser.add_argument(
+        "--if",
+        dest="bp_condition",
+        action=_BreakpointCondition,
+        metavar="EXPR",
+        help="Make the -k/-t breakpoint just before it conditional: the "
+        "program stops there only when EXPR is true (e.g. "
+        '`-k module.py:27 --if "a > 7"`). EXPR uses the debug '
+        "adapter's expression syntax for the program's language.",
     )
     parser.add_argument(
         "-e",
@@ -303,7 +339,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "-t",
         "--to-line",
-        action="append",
+        action=_BreakpointAppend,
         default=[],
         metavar="FILE:LINE|LINE",
         help="Like -k/--breakpoint, but the breakpoint is not saved to "
@@ -355,6 +391,9 @@ def build_parser() -> argparse.ArgumentParser:
         "tdb would debug with (adapters.perl in config.json, else perl "
         "on PATH), instead of on the first Perl launch",
     )
+    # Bookkeeping for --if: per-spec conditions parallel to -k/-t, and
+    # which of the two lists the most recent -k/-t went to.
+    parser.set_defaults(breakpoint_if=None, to_line_if=None, last_bp_dest=None)
     return parser
 
 
@@ -772,6 +811,9 @@ def _parse_breakpoints(
 
     args.breakpoint = parse_spec_list(args.breakpoint, "-k")
     args.to_line = parse_spec_list(args.to_line, "-t")
+    # --if conditions, index-aligned with the lists above (None = none).
+    args.breakpoint_if = args.breakpoint_if or [None] * len(args.breakpoint)
+    args.to_line_if = args.to_line_if or [None] * len(args.to_line)
     # -e locations resolve exactly like -k ones; the expression rides
     # along untouched. (path, line, expr) — lines still need snapping.
     eval_locs = parse_spec_list([loc for loc, _ in args.eval], "-e")
@@ -812,8 +854,18 @@ def _snap_breakpoints(args: argparse.Namespace) -> None:
             snapped_bps.append((bp_path, snapped))
         return snapped_bps
 
-    args.breakpoint = snap_list(args.breakpoint, "-k")
-    args.to_line = snap_list(args.to_line, "-t")
+    # Snap one at a time so each --if condition stays paired with its
+    # breakpoint even when snapping drops some.
+    for dest, flag in (("breakpoint", "-k"), ("to_line", "-t")):
+        kept: list[tuple[str, int]] = []
+        kept_if: list[str | None] = []
+        for loc, condition in zip(getattr(args, dest), getattr(args, f"{dest}_if")):
+            snapped = snap_list([loc], flag)
+            if snapped:
+                kept.append(snapped[0])
+                kept_if.append(condition)
+        setattr(args, dest, kept)
+        setattr(args, f"{dest}_if", kept_if)
 
     snapped_points: list[tuple[str, int, str]] = []
     for bp_path, line, expr in args.eval_points:
@@ -958,6 +1010,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             f"adapter cannot pause a running program"
         )
     _parse_breakpoints(args, parser)
+    if not args.profile.capabilities.conditional_breakpoints and any(
+        args.breakpoint_if + args.to_line_if
+    ):
+        parser.error(
+            f"--if is not supported for {args.profile.id}: its debug "
+            f"adapter cannot evaluate breakpoint conditions"
+        )
     _snap_breakpoints(args)
     if args.eval and not args.eval_points:
         # Every -e location was dropped by statement snapping. Launching
@@ -968,11 +1027,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "--eval: no eval point survived line snapping "
             "(see the warnings above); nothing would be evaluated"
         )
-    # Merged (path, line, persist) list consumed by the TUI and headless
-    # runner: -k breakpoints are saved on exit, -t ones are session-only.
-    args.cli_bps = [(p, ln, True) for p, ln in args.breakpoint] + [
-        (p, ln, False) for p, ln in args.to_line
-    ]
+    # Merged (path, line, persist, condition) list consumed by the TUI and
+    # headless runner: -k breakpoints are saved on exit, -t ones are
+    # session-only; condition is the --if expression or None.
+    args.cli_bps = [
+        (p, ln, True, cond)
+        for (p, ln), cond in zip(args.breakpoint, args.breakpoint_if)
+    ] + [(p, ln, False, cond) for (p, ln), cond in zip(args.to_line, args.to_line_if)]
     return args
 
 

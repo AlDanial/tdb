@@ -254,7 +254,7 @@ async def run(
     # Transient (persist=False): eval points must never reach the
     # breakpoints file.
     controller.state.install_cli_breakpoints(
-        [(path, line, False) for path, line, _ in eval_points]
+        [(path, line, False, None) for path, line, _ in eval_points]
     )
 
     bail = await start_session(

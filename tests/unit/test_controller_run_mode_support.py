@@ -64,28 +64,6 @@ async def test_pause_reports_false_when_no_threads(controller, monkeypatch):
     assert await controller.pause(timeout=0.1) is False
 
 
-async def test_push_all_breakpoints_sends_each_file(controller, monkeypatch):
-    from tdb.dap.types import SourceBreakpoint
-
-    controller.state.breakpoints = {
-        "/a.py": [SourceBreakpoint(line=3)],
-        "/b.py": [SourceBreakpoint(line=9)],
-    }
-    sent = []
-
-    async def fake_send(path, bps):
-        sent.append((path, [bp.line for bp in bps]))
-
-    monkeypatch.setattr(controller, "_send_breakpoints", fake_send)
-    await controller.push_all_breakpoints()
-    assert sorted(sent) == [("/a.py", [3]), ("/b.py", [9])]
-
-    sent.clear()
-    controller.state.breakpoints_disabled = True
-    await controller.push_all_breakpoints()
-    assert sent == []
-
-
 def test_adopted_session_disables_restart(controller):
     assert controller.supports_restart is True
     controller.adopted_session = True

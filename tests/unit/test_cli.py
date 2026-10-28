@@ -840,9 +840,66 @@ def test_cli_bps_merges_breakpoint_and_to_line_with_persist_flag(tmp_path):
     prog.write_text("a = 1\nb = 2\nc = 3\n")
     args = parse_args([str(prog), "-k", "1", "-t", "2"])
     assert args.cli_bps == [
-        (str(prog.resolve()), 1, True),
-        (str(prog.resolve()), 2, False),
+        (str(prog.resolve()), 1, True, None),
+        (str(prog.resolve()), 2, False, None),
     ]
+
+
+def test_if_attaches_condition_to_preceding_breakpoint(tmp_path):
+    prog = tmp_path / "x.py"
+    prog.write_text("a = 1\nb = 2\nc = 3\n")
+    args = parse_args([str(prog), "-k", "1", "--if", "a > 7", "-t", "2", "-k", "3"])
+    path = str(prog.resolve())
+    assert args.cli_bps == [
+        (path, 1, True, "a > 7"),
+        (path, 3, True, None),
+        (path, 2, False, None),
+    ]
+
+
+def test_if_on_to_line(tmp_path):
+    prog = tmp_path / "x.py"
+    prog.write_text("a = 1\nb = 2\n")
+    args = parse_args([str(prog), "-k", "1", "-t", "2", "--if", "b"])
+    path = str(prog.resolve())
+    assert args.cli_bps == [(path, 1, True, None), (path, 2, False, "b")]
+
+
+def test_if_without_preceding_breakpoint_is_rejected(tmp_path, capsys):
+    prog = tmp_path / "x.py"
+    prog.write_text("a = 1\n")
+    with pytest.raises(SystemExit):
+        parse_args([str(prog), "--if", "a", "-k", "1"])
+    assert "--if must follow" in capsys.readouterr().err
+
+
+def test_second_if_for_same_breakpoint_is_rejected(tmp_path, capsys):
+    prog = tmp_path / "x.py"
+    prog.write_text("a = 1\n")
+    with pytest.raises(SystemExit):
+        parse_args([str(prog), "-k", "1", "--if", "a", "--if", "b"])
+    assert "only one --if" in capsys.readouterr().err
+
+
+def test_if_condition_follows_snapped_breakpoint(tmp_path, capsys):
+    """Snapping drops the first breakpoint and moves the second; each
+    condition stays with its own breakpoint."""
+    prog = tmp_path / "x.py"
+    prog.write_text("# comment\nx = (1 +\n     2)\ny = 3\n")
+    args = parse_args(
+        [str(prog), "-k", "1", "--if", "dropped", "-k", "3", "--if", "x > 2"]
+    )
+    assert args.cli_bps == [(str(prog.resolve()), 2, True, "x > 2")]
+    err = capsys.readouterr().err
+    assert "dropping breakpoint" in err and "moved to line 2" in err
+
+
+def test_if_rejected_for_tcsh(tmp_path, capsys):
+    prog = tmp_path / "x.csh"
+    prog.write_text("set a = 1\n")
+    with pytest.raises(SystemExit):
+        parse_args(["--lang", "tcsh", str(prog), "-k", "1", "--if", "$a > 0"])
+    assert "--if is not supported for tcsh" in capsys.readouterr().err
 
 
 def test_remote_attach_allowed_for_perl():

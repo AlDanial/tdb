@@ -909,24 +909,6 @@ class DebugController:
         except asyncio.TimeoutError:
             return False
 
-    async def push_all_breakpoints(self) -> None:
-        """Install every enabled breakpoint over DAP.
-
-        Used when the TUI adopts an already-configured session (run
-        mode): `do_configure` ran long ago with an empty breakpoint
-        map, so saved breakpoints loaded at adoption time must be sent
-        explicitly.
-
-        Parent-client only, like `_send_breakpoints`: any child
-        processes already attached at adoption time (multiprocessing
-        debuggees can attach children during the headless run-mode
-        phase) do not get these breakpoints fanned out to them here.
-        """
-        if self.state.breakpoints_disabled:
-            return
-        for source_path, bps in self.state.breakpoints.items():
-            await self._send_breakpoints(source_path, self._enabled_bps(bps))
-
     async def toggle_breakpoint(self, source_path: str, line: int) -> None:
         bps = self.state.breakpoints.get(source_path, [])
         existing = [bp for bp in bps if bp.line == line]

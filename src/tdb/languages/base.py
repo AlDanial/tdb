@@ -360,6 +360,11 @@ class ProfileCapabilities:
     # its pause handler; gdb/lldb-dap pending verification.
     pause_while_running: bool = False
 
+    # False -> the adapter ignores DAP breakpoint conditions (it does not
+    # advertise supportsConditionalBreakpoints), so `--if` is rejected
+    # up front rather than silently stopping on every hit.
+    conditional_breakpoints: bool = True
+
     # "rust" -> Rust-specific concurrency inspection is available.
     # None -> no language-specific concurrency inspection support.
     concurrency_inspection: str | None = None

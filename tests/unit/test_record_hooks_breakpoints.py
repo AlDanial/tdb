@@ -120,7 +120,7 @@ async def test_mount_dumps_initial_breakpoints_and_autocontinue(tmp_path):
         program="",
         config=TdbConfig(),
         stop_on_entry=False,
-        cli_breakpoints=[("/x.py", 5, False)],
+        cli_breakpoints=[("/x.py", 5, False, None)],
         recorder=cap,
     )
     async with app.run_test() as pilot:

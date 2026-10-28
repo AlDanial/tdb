@@ -1,8 +1,6 @@
 """Headless run phase: debuggee output streams straight to the
 terminal; exit/stop events become asyncio.Events the run loop awaits."""
 
-import asyncio
-
 from tdb.run_mode import ConsoleRunHandler
 from tdb.session.event_bus import DebugEventHandler
 

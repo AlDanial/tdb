@@ -142,50 +142,71 @@ async def test_signal_pause_episode_detach_and_terminate(tmp_path):
     assert box["controller"].state.is_terminated
 
 
-async def test_cli_breakpoint_activates_only_after_first_interrupt(tmp_path):
-    """A -k breakpoint on the loop body is not hit during the headless
-    phase (the program loops freely); after the first SIGUSR1 episode
-    installs it and detaches, the very next iteration stops there."""
+async def test_cli_breakpoint_opens_tui_without_interrupt(tmp_path):
+    """A -k breakpoint is live from the start of the headless phase: the
+    first hit opens a TUI episode with no Ctrl-C/SIGUSR1, and its --if
+    condition is honored (the loop passes line 4 with i = 1..24 first)."""
     p = tmp_path / "loop.py"
     p.write_text(LOOP_SCRIPT)
-    box = {}
-    stops = []
-
-    def ready(controller):
-        box["controller"] = controller
+    seen = []
 
     async def fake_episode(controller, handler, console, config, program):
-        stops.append(console.last_stop[1])
-        # Episode 1 (the interrupt) detaches; episode 2 terminates.
-        return len(stops) == 1
+        seen.append((console.last_stop[1], await controller.evaluate("i")))
+        return False  # terminate
 
-    async def pulse():
-        await _wait_until(
-            lambda: (
-                box.get("controller") is not None
-                and box["controller"].state.phase is SessionPhase.RUNNING
-            )
-        )
-        # Plenty of loop iterations pass the breakpoint line meanwhile.
-        await asyncio.sleep(1.0)
-        assert stops == []
-        os.kill(os.getpid(), signal.SIGUSR1)
+    code = await asyncio.wait_for(
+        run_mode.run(
+            program=str(p),
+            config=TdbConfig(),
+            tui_episode=fake_episode,
+            cli_breakpoints=[(str(p), 4, True, "i == 25")],
+        ),
+        timeout=90.0,
+    )
+    assert seen == [("breakpoint", "25")]
+    assert code == 0
 
-    pulse_task = asyncio.ensure_future(pulse())
-    try:
-        code = await asyncio.wait_for(
-            run_mode.run(
-                program=str(p),
-                config=TdbConfig(),
-                tui_episode=fake_episode,
-                on_session_ready=ready,
-                cli_breakpoints=[(str(p), 4, True)],
-            ),
-            timeout=90.0,
-        )
-    finally:
-        pulse_task.cancel()
-    assert stops == ["pause", "breakpoint"]
+
+# Parent and child both loop forever; only the child ever executes the
+# line the breakpoint is on (`n += 1` inside child()).
+MP_BP_SCRIPT = """\
+import multiprocessing, time
+def child():
+    n = 0
+    while True:
+        n += 1
+        time.sleep(0.01)
+if __name__ == "__main__":
+    p = multiprocessing.Process(target=child, name="kid")
+    p.start()
+    while True:
+        time.sleep(0.01)
+"""
+
+
+async def test_cli_breakpoint_in_child_process_opens_tui(tmp_path):
+    """The first stop of the run is a -k (with --if) hit inside a
+    multiprocessing child that attached during the headless phase: the
+    child gets the CLI breakpoint at attach time, and the stop opens the
+    TUI on the child with its locals."""
+    p = tmp_path / "mp_bp.py"
+    p.write_text(MP_BP_SCRIPT)
+    seen = []
+
+    async def fake_episode(controller, handler, console, config, program):
+        seen.append((console.last_stop[1], await controller.evaluate("n")))
+        return False  # terminate
+
+    code = await asyncio.wait_for(
+        run_mode.run(
+            program=str(p),
+            config=TdbConfig(),
+            tui_episode=fake_episode,
+            cli_breakpoints=[(str(p), 5, True, "n == 3")],
+        ),
+        timeout=90.0,
+    )
+    assert seen == [("breakpoint", "3")]
     assert code == 0
 
 

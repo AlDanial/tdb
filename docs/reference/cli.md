@@ -20,6 +20,7 @@ usage: tdb [-h] [-v] [-r [HOST:]PORT] [--cwd CWD] [--no-stop-on-entry]
 | `--remote-root PATH` | Remote directory matched to `--local-root` (same CLI position via `zip()`). |
 | `-k`, `--breakpoint FILE:LINE|LINE` | Set a breakpoint (may be repeated). Passing `-k` implies `--no-stop-on-entry` so the program runs straight to the first breakpoint. |
 | `-t`, `--to-line FILE:LINE|LINE` | Like `-k`, but the breakpoint is not saved to the breakpoints file, it just takes you to that spot in the code for this session (may be repeated). |
+| `--if EXPR` | Make the `-k`/`-t` breakpoint just before it conditional: the program stops there only when `EXPR` is true, e.g. `-k module.py:27 --if "a > 7"`. `EXPR` uses the debug adapter's expression syntax for the program's language. At most one `--if` per breakpoint; not supported for Tcsh. |
 | `--no-stop-on-entry` | Do not pause at the first line (default: stop on entry; automatic when `-k` is given) |
 | `--cwd DIR` | Working directory for the debuggee |
 | `--python PATH` | Python interpreter for the debuggee (Python targets only) |

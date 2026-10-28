@@ -41,6 +41,11 @@ class Script:
     def __init__(self):
         self.calls: list[str] = []
         self.pause_lands = True
+        # Reason of the stop a landing pause reports: "breakpoint" models
+        # a breakpoint hit that beats the pause.
+        self.pause_reason = "pause"
+        # {path: [(line, persist, condition)]} as do_configure saw it.
+        self.configured_bps: dict | None = None
         self.console: run_mode.ConsoleRunHandler | None = None
         self.controller: DebugController | None = None
 
@@ -60,11 +65,15 @@ def script(monkeypatch):
 
     async def do_configure(self):
         s.calls.append("configure")
+        s.configured_bps = {
+            path: [(bp.line, bp.persist, bp.condition) for bp in lst]
+            for path, lst in self.state.breakpoints.items()
+        }
 
     async def pause(self, timeout=2.0):
         s.calls.append("pause")
         if s.pause_lands:
-            s.stop_now()
+            s.stop_now(s.pause_reason)
             return True
         return False
 
@@ -76,16 +85,7 @@ def script(monkeypatch):
     async def stop(self):
         s.calls.append("stop")
 
-    async def push_all_breakpoints(self):
-        bps = sorted(
-            (path, bp.line)
-            for path, lst in self.state.breakpoints.items()
-            for bp in lst
-        )
-        s.calls.append(f"push:{bps}")
-
     for name, fn in [
-        ("push_all_breakpoints", push_all_breakpoints),
         ("start", start),
         ("do_configure", do_configure),
         ("pause", pause),
@@ -448,33 +448,14 @@ async def test_partial_stdout_line_gets_newline_before_record(script, monkeypatc
     )
 
 
-async def test_cli_breakpoints_held_back_until_first_episode(script, monkeypatch):
-    """-k/-t breakpoints must not be active during the headless phase —
-    not even across an examine capture's pause/resume — and are pushed
-    exactly once, right before the first TUI episode opens."""
+async def test_cli_breakpoints_installed_before_configure(script, monkeypatch):
+    """-k/-t breakpoints (with their --if conditions) are in the session
+    state when do_configure runs, i.e. sent ahead of configurationDone,
+    so a breakpoint on the program's first lines is hit."""
     sink = _Sink()
     sink.name = "s"
-    seen_in_episode = []
-
-    async def episode(controller, handler, console, config, program):
-        script.calls.append("episode")
-        seen_in_episode.append(
-            {
-                p: [bp.line for bp in lst]
-                for p, lst in controller.state.breakpoints.items()
-            }
-        )
-        return True  # detach
 
     async def driver():
-        await _settle()
-        assert script.controller.state.breakpoints == {}
-        os.kill(os.getpid(), signal.SIGUSR2)  # examine: must not install
-        await _settle()
-        assert script.controller.state.breakpoints == {}
-        os.kill(os.getpid(), signal.SIGUSR1)  # episode 1: installs
-        await _settle()
-        os.kill(os.getpid(), signal.SIGUSR1)  # episode 2: no re-push
         await _settle()
         script.console.on_exited(0)
 
@@ -483,21 +464,101 @@ async def test_cli_breakpoints_held_back_until_first_episode(script, monkeypatch
         monkeypatch,
         sink,
         driver=driver,
-        episode=episode,
-        cli_breakpoints=[("/p.py", 3, True), ("/q.py", 7, False)],
+        cli_breakpoints=[("/p.py", 3, True, "a > 7"), ("/q.py", 7, False, None)],
     )
-    pushes = [c for c in script.calls if c.startswith("push:")]
-    assert pushes == ["push:[('/p.py', 3), ('/q.py', 7)]"]
-    first_episode = script.calls.index("episode")
-    assert script.calls.index(pushes[0]) < first_episode
-    assert script.calls.index("collect:ok:1:SIGUSR2") < script.calls.index(pushes[0])
-    assert seen_in_episode == [{"/p.py": [3], "/q.py": [7]}] * 2
-    # -t stays session-only even after installation.
-    q_bp = script.controller.state.breakpoints["/q.py"][0]
-    assert q_bp.persist is False
+    assert script.configured_bps == {
+        "/p.py": [(3, True, "a > 7")],
+        "/q.py": [(7, False, None)],
+    }
+    assert "episode" not in script.calls
 
 
-async def test_no_cli_breakpoints_means_no_push(script, monkeypatch):
+async def test_cli_breakpoint_hit_opens_tui_then_detach_resumes(script, monkeypatch):
+    """A -k hit during the headless phase opens a TUI episode without any
+    Ctrl-C; detaching resumes the program, and a second hit reopens it."""
+    sink = _Sink()
+    sink.name = "s"
+
+    async def driver():
+        await _settle()
+        script.stop_now("breakpoint")
+        await _settle()
+        script.stop_now("breakpoint")
+        await _settle()
+        script.console.on_exited(0)
+
+    code = await _run(
+        script,
+        monkeypatch,
+        sink,
+        driver=driver,
+        cli_breakpoints=[("/p.py", 3, True, None)],
+    )
+    assert code == 0
+    assert script.calls == [
+        "start",
+        "configure",
+        "episode",
+        "continue",
+        "episode",
+        "continue",
+    ]
+
+
+async def test_examine_pause_beaten_by_breakpoint_opens_tui(script, monkeypatch):
+    """An examine capture whose pause lands as a breakpoint hit still
+    writes its snapshot, but opens the TUI instead of resuming past the
+    breakpoint."""
+    sink = _Sink()
+    sink.name = "s"
+    script.pause_reason = "breakpoint"
+
+    async def driver():
+        await _settle()
+        os.kill(os.getpid(), signal.SIGUSR2)
+        await _settle()
+        script.console.on_exited(0)
+
+    await _run(script, monkeypatch, sink, driver=driver)
+    assert script.calls == [
+        "start",
+        "configure",
+        "pause",
+        "collect:ok:1:SIGUSR2",
+        "episode",
+        "continue",
+    ]
+    assert [(r["seq"], r["status"]) for r in _records(sink)] == [(1, "ok")]
+
+
+async def test_deferred_examine_landing_as_breakpoint_opens_tui(script, monkeypatch):
+    """Same as above for a capture whose pause was still pending: the stop
+    that completes it is a breakpoint hit, so the TUI opens."""
+    sink = _Sink()
+    sink.name = "s"
+    script.pause_lands = False
+
+    async def driver():
+        await _settle()
+        os.kill(os.getpid(), signal.SIGUSR2)
+        await _settle()
+        script.stop_now("breakpoint")
+        await _settle()
+        script.console.on_exited(0)
+
+    await _run(script, monkeypatch, sink, driver=driver)
+    assert script.calls == [
+        "start",
+        "configure",
+        "pause",
+        "collect:pending:1:SIGUSR2",
+        "collect:ok:1:SIGUSR2",
+        "episode",
+        "continue",
+    ]
+
+
+async def test_no_cli_breakpoints_means_none_configured(script, monkeypatch):
     sink = _Sink()
     sink.name = "s"
 
@@ -509,4 +570,4 @@ async def test_no_cli_breakpoints_means_no_push(script, monkeypatch):
 
     await _run(script, monkeypatch, sink, driver=driver)
     assert "episode" in script.calls
-    assert not any(c.startswith("push:") for c in script.calls)
+    assert script.configured_bps == {}
