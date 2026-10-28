@@ -75,7 +75,7 @@ uses the newest that qualifies. See [C/C++/Fortran](c-cpp-fortran.md) for RHEL 8
 
 ## Adapters are found on `PATH`
 
-`tdb` does not download or bundle adapters. If the adapter executable isn't
+`tdb` does not download adapters. If the adapter executable isn't
 found, the error names the package to install. To use an adapter from a
 non-standard location, or change a language's default adapter, add to
 `config.json` (see [Configuration](../reference/configuration.md)):
