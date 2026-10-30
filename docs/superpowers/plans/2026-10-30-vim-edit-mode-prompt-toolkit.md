@@ -114,9 +114,12 @@ async def test_redo_ctrl_r():
 
 
 async def test_ctrl_v_is_noop():
-    e = ViEngine("abc\nabc\n"); e.feed_keys("<C-v>")
+    e = ViEngine("abc\nabc\n")
+    e.feed_keys("<C-v>")
     assert e.mode == "normal" and not e.has_pending
-    e.feed_keys("jx"); assert e.text == "abc\nbc\n"
+    e.feed_keys("jx")
+    assert e.text == "abc\nbc\n"
+
 
 async def test_exception_restores_buffer():
     kb = boom_bindings("Z")  # helper: binding for "Z" that edits then raises
