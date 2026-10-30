@@ -23,10 +23,12 @@ from textual.widgets import Input, Label
 
 from tdb.keybindings import KeybindingConfig, Mode
 from tdb.source_edit import atomic_write_text
+from tdb.vi import ViSession
 from tdb.widgets.code_editor import CodeEditor, _UnsavedChangesModal
 
 if TYPE_CHECKING:
     from tdb.dap.types import SourceBreakpoint
+    from tdb.vi.marks import MarkTable
 
 
 # How much of a file load_file inspects before deciding it is binary.
@@ -51,6 +53,14 @@ def looks_binary(path: str) -> bool:
 
 
 log = logging.getLogger(__name__)
+
+# Pane-title suffix for each vi sub-mode that has a fixed label.
+_SUBMODE_LABELS = {
+    "insert": ":INSERT",
+    "replace": ":REPLACE",
+    "visual": ":VISUAL",
+    "visual-line": ":V-LINE",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -462,6 +472,10 @@ class CodeView(ScrollableContainer, can_focus=True):
         # Cleared by the App for replay / post-mortem sessions.
         self.edit_enabled: bool = True
         self._editor: CodeEditor | None = None
+        # vim scheme: registers/history shared by every Edit session, and
+        # marks per file (filled in by the marks support).
+        self._vi_session = ViSession()
+        self._vi_marks: dict[str, MarkTable] = {}
         # True when the displayed text came from a readable local file
         # (load_file success). load_content (remote source) clears it.
         self._source_is_local: bool = False
@@ -641,15 +655,18 @@ class CodeView(ScrollableContainer, can_focus=True):
 
     def mode_label(self) -> str:
         """Text for the pane title: 'Debug', 'Navigation', 'Edit',
-        'Edit*', 'Edit:INSERT*', 'Edit :wq' ..."""
+        'Edit*', 'Edit:INSERT*', 'Edit:V-LINE', 'Edit :wq', 'Edit 2d',
+        'Edit /pat' ..."""
         if self.mode != Mode.EDIT or self._editor is None:
             return self.mode.value
         label = "Edit"
         sub = self._editor.submode
-        if sub == "insert":
-            label += ":INSERT"
-        elif sub == "command":
-            label += f" :{self._editor.command_text}"
+        status = self._editor.command_text
+        if sub in _SUBMODE_LABELS:
+            label += _SUBMODE_LABELS[sub]
+        elif status and sub in ("normal", "command", "search", "confirm"):
+            # The engine's status already carries its ':' / '/' / '?'.
+            label += f" {status}"
         if self._editor.is_dirty:
             label += "*"
         return label
@@ -697,6 +714,7 @@ class CodeView(ScrollableContainer, can_focus=True):
         self.mode = Mode.EDIT
         await self.mount(editor)
         editor.move_cursor((max(0, self.cursor_line - 1), 0))
+        editor.sync_layer_from_widget()
         editor.scroll_cursor_visible(center=True)
         editor.focus()
         self._announce_mode()
@@ -704,12 +722,12 @@ class CodeView(ScrollableContainer, can_focus=True):
 
     def _install_key_layer(self, editor: CodeEditor) -> None:
         """Attach the scheme's key layer. The Notepad scheme has none."""
-        from tdb.widgets.code_editor import EmacsLayer, VimLayer
+        from tdb.widgets.code_editor import EmacsLayer, ViLayer
 
         if self.keybindings.scheme == "emacs":
             editor._set_layer(EmacsLayer(editor))
         elif self.keybindings.scheme == "vim":
-            editor._set_layer(VimLayer(editor))
+            editor._set_layer(ViLayer(editor, session=self._vi_session))
 
     def leave_edit_mode(self, discard: bool = False) -> None:
         """The one exit from Edit mode. Prompts when there are unsaved
@@ -753,6 +771,7 @@ class CodeView(ScrollableContainer, can_focus=True):
         self._editor.replace(text, (0, 0), self._editor.document.end)
         self._editor.mark_clean()
         self._editor.move_cursor((0, 0))
+        self._editor.sync_layer_from_widget()  # the vi engine is undoable too
         self._announce_mode()
         return True
 

@@ -7,7 +7,8 @@ and mode are read back.  The application always uses ``DummyInput`` /
 
 The engine stores the text *without* its final newline (prompt_toolkit
 would otherwise show a phantom empty last row that vim does not have)
-and remembers whether there was one in ``_eol``.
+and remembers whether there was one in the buffer's ``eol`` flag, which
+is part of the undo history.
 """
 
 from __future__ import annotations
@@ -217,6 +218,48 @@ class ViSession:
     last_change: list[ViKey] | None = None
 
 
+class _ViBuffer(Buffer):
+    """A Buffer whose undo/redo history also covers the final-newline flag.
+
+    Same algorithm as prompt_toolkit's ``Buffer`` undo, with stack entries
+    of ``(text, cursor_position, eol)`` instead of ``(text, cursor_position)``.
+    """
+
+    eol: bool = False
+
+    def _state(self) -> tuple[str, int, bool]:
+        return self.text, self.cursor_position, self.eol
+
+    def save_to_undo_stack(self, clear_redo_stack: bool = True) -> None:
+        undo: list = self._undo_stack
+        if undo and undo[-1][0] == self.text and undo[-1][2] == self.eol:
+            undo[-1] = self._state()
+        else:
+            undo.append(self._state())
+        if clear_redo_stack:
+            self._redo_stack = []
+
+    def undo(self) -> None:
+        undo: list = self._undo_stack
+        redo: list = self._redo_stack
+        while undo:
+            text, pos, eol = undo.pop()
+            if text != self.text or eol != self.eol:
+                redo.append(self._state())
+                self._restore(text, pos, eol)
+                break
+
+    def redo(self) -> None:
+        redo: list = self._redo_stack
+        if redo:
+            self.save_to_undo_stack(clear_redo_stack=False)
+            self._restore(*redo.pop())
+
+    def _restore(self, text: str, pos: int, eol: bool) -> None:
+        self.eol = eol
+        self.document = Document(text, cursor_position=pos)
+
+
 class ViEngine:
     """A headless vi editor over one text buffer."""
 
@@ -237,9 +280,12 @@ class ViEngine:
         self.indent_unit = indent_unit
         self._events: list[EngineEvent] = []
         self._pending_keys: list[ViKey] = []
+        # Text of the ':' line while in the stub command mode, else None.
+        self._cmdline: str | None = None
 
-        body, self._eol = _split_eol(text)
-        self.buffer = Buffer(document=Document(body, 0), multiline=True)
+        body, eol = _split_eol(text)
+        self.buffer = _ViBuffer(document=Document(body, 0), multiline=True)
+        self.buffer.eol = eol
         kb = load_tdb_vi_bindings(self)
         if _extra_bindings is not None:
             kb = merge_key_bindings([kb, _extra_bindings])
@@ -267,8 +313,19 @@ class ViEngine:
 
     def feed(self, key: ViKey) -> None:
         """Process one key; on an exception restore the pre-key state."""
-        before = self.buffer.document
-        eol = self._eol
+        if self._cmdline is not None:
+            self._feed_cmdline(key)
+            return
+        if key.name == ":" and self.mode == "normal" and not self._key_pending():
+            self._cmdline = ""
+            return
+        buff = self.buffer
+        before = (
+            buff.document,
+            buff.eol,
+            list(buff._undo_stack),
+            list(buff._redo_stack),
+        )
         self._pending_keys.append(key)
         try:
             with set_app(self.app):
@@ -276,7 +333,7 @@ class ViEngine:
                 self.app.key_processor.process_keys()
         except Exception as exc:  # a stray key must never crash tdb
             log.exception("vi engine error on key %r", key.name)
-            self._recover(before, eol)
+            self._recover(*before)
             self._events.append(Notify(f"vi: {key.notation} failed: {exc}", "warning"))
             return
         if not self._key_pending():
@@ -287,16 +344,48 @@ class ViEngine:
         for key in ViKey.parse(notation):
             self.feed(key)
 
-    def _recover(self, document: Document, eol: bool) -> None:
+    def _recover(self, document: Document, eol: bool, undo: list, redo: list) -> None:
+        """Put back the pre-key buffer, undo/redo history and normal mode."""
         self.app.key_processor.reset()
         vs = self.app.vi_state
         vs.input_mode = InputMode.NAVIGATION
         vs.waiting_for_digraph = False
         vs.temporary_navigation_mode = False
-        self.buffer.selection_state = None
-        self.buffer.set_document(document, bypass_readonly=True)
-        self._eol = eol
+        buff = self.buffer
+        buff.selection_state = None
+        buff.set_document(document, bypass_readonly=True)
+        buff.eol = eol
+        buff._undo_stack = undo
+        buff._redo_stack = redo
         self._pending_keys.clear()
+
+    # ------------------------------------------------------------------
+    # ':' command line (minimal stub; Task 10 replaces it with real ex)
+
+    def _feed_cmdline(self, key: ViKey) -> None:
+        cmd = self._cmdline or ""
+        if key.name == "escape" or (key.name == "backspace" and not cmd):
+            self._cmdline = None
+        elif key.name == "backspace":
+            self._cmdline = cmd[:-1]
+        elif key.name == "enter":
+            self._cmdline = None
+            self._run_cmdline(cmd.strip())
+        elif len(key.name) == 1:
+            self._cmdline = cmd + key.name
+
+    def _run_cmdline(self, cmd: str) -> None:
+        if cmd == "w":
+            self._events.append(SaveRequest())
+        elif cmd in ("q", "q!"):
+            self._events.append(LeaveRequest(discard=cmd == "q!"))
+        elif cmd in ("wq", "x"):
+            self._events += [SaveRequest(), LeaveRequest()]
+        elif cmd.isdigit():
+            row = max(1, min(int(cmd), self.buffer.document.line_count)) - 1
+            self._move_to(row, self.cursor[1])  # nvim nostartofline
+        elif cmd:
+            self._events.append(Notify(f"Unknown command: :{cmd}", "warning"))
 
     def drain_events(self) -> list[EngineEvent]:
         """Return and clear the events produced since the last drain."""
@@ -305,6 +394,11 @@ class ViEngine:
 
     # ------------------------------------------------------------------
     # State
+
+    @property
+    def _eol(self) -> bool:
+        """Whether the text ends with a final newline."""
+        return self.buffer.eol
 
     @property
     def text(self) -> str:
@@ -319,7 +413,9 @@ class ViEngine:
 
     @property
     def mode(self) -> str:
-        """``normal insert replace visual visual-line`` (more in later tasks)."""
+        """``normal insert replace visual visual-line command`` (more later)."""
+        if self._cmdline is not None:
+            return "command"
         input_mode = self.app.vi_state.input_mode
         if input_mode in (InputMode.INSERT, InputMode.INSERT_MULTIPLE):
             return "insert"
@@ -348,7 +444,9 @@ class ViEngine:
 
     @property
     def status(self) -> str:
-        """Pending keys (``"a2d``), ``recording @a``, or ``""``."""
+        """``:cmd`` line, pending keys (``"a2d``), ``recording @a``, or ``""``."""
+        if self._cmdline is not None:
+            return ":" + self._cmdline
         if self._pending_keys and self._key_pending():
             return "".join(k.notation for k in self._pending_keys)
         reg = self.app.vi_state.recording_register
@@ -394,7 +492,7 @@ class ViEngine:
         row, col = self.cursor
         self.buffer.exit_selection()
         self.buffer.save_to_undo_stack()
-        body, self._eol = _split_eol(text)
+        body, self.buffer.eol = _split_eol(text)
         self.buffer.set_document(Document(body, 0), bypass_readonly=True)
         self._move_to(row, col)
 

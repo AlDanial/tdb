@@ -6,23 +6,40 @@
   `_on_key` handler up the DOM has run and none stopped the event, so
   handling a key here and calling `event.stop()` pre-empts both
   TextArea's own bindings and the App's (ctrl+s = focus Stack, etc.).
-- a per-scheme key layer (EmacsLayer / VimLayer, Tasks 5-6). With
-  scheme "default" there is no layer: TextArea's stock behavior *is*
-  the Notepad-style editor.
+- a per-scheme key layer (EmacsLayer / ViLayer). With scheme "default"
+  there is no layer: TextArea's stock behavior *is* the Notepad-style
+  editor. ViLayer hands every key to the headless vi engine in
+  `tdb.vi` and mirrors the engine's text, cursor and selection back
+  into the TextArea; TextArea's own edit keys are never used then.
 - messages instead of reach-ups: the editor never touches CodeView or
   the App. It asks to leave, asks to save, reports sub-mode changes.
 """
 
 from __future__ import annotations
 
-from typing import ClassVar, Protocol
+from typing import TYPE_CHECKING, ClassVar, Protocol
 
 from textual.binding import Binding, BindingType
 from textual.containers import Vertical
 from textual.events import Key
+from textual.keys import key_to_character
 from textual.message import Message
 from textual.screen import ModalScreen
 from textual.widgets import Static, TextArea
+from textual.widgets.text_area import Selection
+
+from tdb.vi import (
+    LeaveRequest,
+    Notify,
+    SaveRequest,
+    ViEngine,
+    ViKey,
+    ViSession,
+    diff_text,
+)
+
+if TYPE_CHECKING:
+    from tdb.vi.marks import MarkTable
 
 # Lexer names (LanguageProfile.presentation.lexer) that Textual's
 # bundled tree-sitter grammars can highlight.
@@ -135,6 +152,12 @@ class CodeEditor(TextArea):
     def _set_layer(self, layer: KeyLayer | None) -> None:
         self._layer = layer
 
+    def sync_layer_from_widget(self) -> None:
+        """Tell the key layer the TextArea text/cursor changed behind its back."""
+        resync = getattr(self._layer, "resync_from_widget", None)
+        if resync is not None:
+            resync()
+
     # ---- footer hint no-ops ----
 
     def action_footer_hint_leave(self) -> None: ...
@@ -143,7 +166,11 @@ class CodeEditor(TextArea):
     def check_action(self, action: str, parameters: tuple) -> bool | None:
         if action == "footer_hint_save":
             return self.scheme != "emacs"
-        return True
+        # With ViLayer the vi engine owns the buffer: TextArea's own
+        # bindings (ctrl+e line end, ctrl+v paste, ...) would bypass it.
+        # Declining them lets keys ViLayer did not take (pane keys) reach
+        # the App.
+        return not isinstance(self._layer, ViLayer) or action.startswith("footer_hint_")
 
     # ---- key routing ----
 
@@ -177,6 +204,13 @@ class CodeEditor(TextArea):
             event.stop()
             event.prevent_default()
             self.post_message(self.SaveRequested())
+            return
+        if isinstance(self._layer, ViLayer):
+            # A key ViLayer declined belongs to tdb (pane keys, menus).
+            # prevent_default skips TextArea._on_key (which would type a
+            # terminal's alt+e, whose character is "e") but, unlike
+            # stop(), still lets the key bubble to the App's bindings.
+            event.prevent_default()
             return
         if key == "insert":
             # TextArea has no overwrite mode; swallow so the key does
@@ -303,393 +337,197 @@ class EmacsLayer:
         ed.move_cursor(start)
 
 
-class VimLayer:
-    """Vim-lite: a normal/insert/command state machine over TextArea.
+# Keys tdb owns in the vim scheme: never fed to the vi engine.
+_VI_TDB_KEYS = frozenset(
+    {"ctrl+c", "ctrl+o", "ctrl+e", "ctrl+v", "ctrl+s", "ctrl+b", "ctrl+q", "ctrl+p"}
+)
+# Textual key names that are ViKey names as they are.
+_VI_NAMED_KEYS = frozenset(
+    {
+        "escape",
+        "enter",
+        "backspace",
+        "tab",
+        "delete",
+        "up",
+        "down",
+        "left",
+        "right",
+        "home",
+        "end",
+        "pageup",
+        "pagedown",
+    }
+)
+# Textual's rewrites of a fast Esc f / Esc b (readline word motion).
+_VI_ESC_REWRITES = {"ctrl+right": "f", "ctrl+left": "b"}
+_VI_ESC = ViKey("escape")
 
-    Insert mode passes every key through to TextArea (so typing is
-    native). Normal and command mode swallow keys that would insert or
-    edit the buffer (a stray letter never edits it); everything else
-    (Ctrl+S, Ctrl+Q, Alt+*, the Ctrl+O/V/E pane-focus keys, ...) is
-    left unhandled so it bubbles to CodeEditor and the App. Deliberately
-    NOT vim: no visual mode, registers, text objects, `.` repeat, or
-    macros.
+
+def _is_function_key(key: str) -> bool:
+    return key[:1] == "f" and key[1:].isdigit()
+
+
+def _vi_key(name: str, character: str | None) -> ViKey | None:
+    """The ViKey for a Textual key name (without alt+), or None."""
+    if name in _VI_NAMED_KEYS:
+        return ViKey(name)
+    if character is not None and len(character) == 1 and character.isprintable():
+        return ViKey(character)
+    if len(name) == 6 and name.startswith("ctrl+") and "a" <= name[5] <= "z":
+        return ViKey(name)
+    if len(name) == 7 and name.startswith("shift+") and name[6].isalpha():
+        return ViKey(name[6].upper())  # Pilot's alt+shift+j has no character
+    char = key_to_character(name)
+    if char is not None and len(char) == 1 and char.isprintable():
+        return ViKey(char)
+    return None
+
+
+def _widget_text(editor: TextArea) -> str:
+    """The TextArea text with ``\n`` line ends (never raw ``\r\n``)."""
+    return "\n".join(editor.document.lines)
+
+
+def _location(text: str, offset: int) -> tuple[int, int]:
+    """``(row, column)`` of character *offset* in *text*."""
+    row = text.count("\n", 0, offset)
+    return row, offset - (text.rfind("\n", 0, offset) + 1)
+
+
+class ViLayer:
+    """Vim scheme: every key goes to a headless prompt_toolkit vi engine.
+
+    The engine (`tdb.vi.ViEngine`) is the source of truth. After each key
+    its text change is applied to the TextArea as one `replace`, then the
+    cursor and visual selection are copied over. Keys tdb owns (pane
+    keys, Ctrl+S/Q/P, F-keys, and Alt+* outside insert/replace mode) are
+    declined so they bubble to CodeEditor and the App.
     """
 
-    # Keys TextArea itself binds to an edit; normal mode still needs to
-    # swallow these even though they are not "would insert" characters.
-    _NORMAL_EDIT_KEYS: ClassVar[frozenset[str]] = frozenset(
-        {
-            "ctrl+k",
-            "ctrl+u",
-            "ctrl+w",
-            "ctrl+x",
-            "ctrl+v",
-            "backspace",
-            "delete",
-            "enter",
-            "tab",
-        }
-    )
-
-    # Key names Textual delivers for the punctuation we use.
-    _KEYS: ClassVar[dict[str, str]] = {
-        "dollar_sign": "$",
-        "circumflex_accent": "^",
-        "colon": ":",
-        "slash": "/",
-        "question_mark": "?",
-        "exclamation_mark": "!",
-    }
-
-    def __init__(self, editor: CodeEditor) -> None:
+    def __init__(
+        self,
+        editor: CodeEditor,
+        *,
+        session: ViSession,
+        marks: MarkTable | None = None,
+    ) -> None:
         self.ed = editor
-        self._submode = "normal"
-        self._command = ""
-        self.count = ""
-        self.pending = ""  # "", "d", "y", "g"
-        self.yank_buffer = ""
-        self.yank_linewise = False
+        text = _widget_text(editor)
+        indent = "\t" if editor.indent_type == "tabs" else " " * editor.indent_width
+        self.engine = ViEngine(
+            text,
+            cursor=editor.cursor_location,
+            session=session,
+            marks=marks,
+            indent_unit=indent,
+        )
+        self._text = text  # engine text as last mirrored into the TextArea
+        self._label = (self.engine.mode, self.engine.status)
 
     # ---- state exposed to CodeEditor / CodeView ----
 
     @property
     def submode(self) -> str:
-        return self._submode
+        return self.engine.mode
 
     @property
     def command_text(self) -> str:
-        return self._command
+        return self.engine.status
 
-    def _set_submode(self, submode: str) -> None:
-        self._submode = submode
-        self.ed.post_message(CodeEditor.SubmodeChanged())
-
-    def _take_count(self) -> tuple[int, bool]:
-        had = bool(self.count)
-        n = int(self.count) if had else 1
-        self.count = ""
-        return max(1, n), had
-
-    # ---- dispatch ----
+    # ---- input ----
 
     def handle_key(self, event: Key) -> bool:
-        key = self._KEYS.get(event.key, event.key)
-        if self._submode == "insert":
-            if key == "escape":
-                self._set_submode("normal")
-                return True
-            return False  # native TextArea typing
-        if self._submode == "command":
-            return self._handle_command_key(key, event.character)
-        return self._handle_normal_key(key, event.character)
-
-    # ---- command line ----
-
-    def _handle_command_key(self, key: str, char: str | None) -> bool:
-        if key == "escape":
-            self._command = ""
-            self._set_submode("normal")
-        elif key == "enter":
-            cmd = self._command.strip()
-            self._command = ""
-            self._set_submode("normal")
-            self._run_command(cmd)
-        elif key == "backspace":
-            self._command = self._command[:-1]
-            self.ed.post_message(CodeEditor.SubmodeChanged())
-        elif char is not None and char.isprintable():
-            self._command += char
-            self.ed.post_message(CodeEditor.SubmodeChanged())
-        else:
-            return False  # e.g. ctrl+q, alt+*: let it bubble
-        return True
-
-    def _run_command(self, cmd: str) -> None:
-        ed = self.ed
-        if cmd == "w":
-            ed.post_message(CodeEditor.SaveRequested())
-        elif cmd == "q":
-            ed.post_message(CodeEditor.LeaveRequested())
-        elif cmd == "q!":
-            ed.post_message(CodeEditor.LeaveRequested(discard=True))
-        elif cmd in ("wq", "x"):
-            ed.post_message(CodeEditor.SaveRequested())
-            ed.post_message(CodeEditor.LeaveRequested())
-        elif cmd.isdigit():
-            line = max(1, min(int(cmd), ed.document.line_count))
-            ed.move_cursor((line - 1, 0))
-        elif cmd:
-            ed.app.notify(f"Unknown command: :{cmd}", title="Edit", severity="warning")
-
-    # ---- normal mode ----
-
-    def _handle_normal_key(self, key: str, char: str | None = None) -> bool:
-        ed = self.ed
-
-        # Count prefix ('0' alone is a motion)
-        if key.isdigit() and (self.count or key != "0"):
-            self.count += key
-            return True
-
-        if self.pending:
-            op, self.pending = self.pending, ""
-            return self._handle_operator(op, key)
-
-        count, had_count = self._take_count()
-        row, col = ed.cursor_location
-        line = ed.document.get_line(row)
-
-        if key == "escape":
+        engine = self.engine
+        if event.key == "escape" and not engine.has_pending:
             return False  # CodeEditor turns this into LeaveRequested
-        if key in ("h", "left"):
-            for _ in range(count):
-                ed.action_cursor_left()
-        elif key in ("l", "right"):
-            for _ in range(count):
-                ed.action_cursor_right()
-        elif key in ("j", "down"):
-            for _ in range(count):
-                ed.action_cursor_down()
-        elif key in ("k", "up"):
-            for _ in range(count):
-                ed.action_cursor_up()
-        elif key == "w":
-            for _ in range(count):
-                self._word_start_next()
-        elif key == "b":
-            for _ in range(count):
-                ed.action_cursor_word_left()
-        elif key == "e":
-            for _ in range(count):
-                self._word_end()
-        elif key == "0":
-            ed.move_cursor((row, 0))
-        elif key == "^":
-            ed.move_cursor((row, len(line) - len(line.lstrip())))
-        elif key == "$":
-            ed.move_cursor((row, len(line)))
-        elif key == "G":
-            if had_count:
-                ed.move_cursor((min(count, ed.document.line_count) - 1, 0))
-            else:
-                ed.move_cursor((ed.document.line_count - 1, 0))
-        elif key == "g":
-            self.pending = "g"
-        elif key in ("ctrl+f", "pagedown"):
-            ed.action_cursor_page_down()
-        elif key in ("ctrl+b", "pageup"):
-            ed.action_cursor_page_up()
-        elif key == "i":
-            self._set_submode("insert")
-        elif key == "a":
-            if col < len(line):
-                ed.move_cursor((row, col + 1))
-            self._set_submode("insert")
-        elif key == "I":
-            ed.move_cursor((row, len(line) - len(line.lstrip())))
-            self._set_submode("insert")
-        elif key == "A":
-            ed.move_cursor((row, len(line)))
-            self._set_submode("insert")
-        elif key == "o":
-            ed.insert("\n", (row, len(line)))
-            self._set_submode("insert")
-        elif key == "O":
-            ed.insert("\n", (row, 0))
-            ed.move_cursor((row, 0))
-            self._set_submode("insert")
-        elif key == ":":
-            self._command = ""
-            self._set_submode("command")
-        elif key == "/":
-            ed.post_message(CodeEditor.SearchRequested(backward=False))
-        elif key == "?":
-            ed.post_message(CodeEditor.SearchRequested(backward=True))
-        elif key == "n":
-            ed.post_message(CodeEditor.SearchStepRequested(forward=True))
-        elif key == "N":
-            ed.post_message(CodeEditor.SearchStepRequested(forward=False))
-        elif key in ("d", "y"):
-            self.pending = key
-            self.count = str(count) if had_count else ""
-        elif not self._edit_key(key, count):
-            # Not a recognized vim-lite command. Swallow it only if it
-            # would type (a printable char) or is one of TextArea's own
-            # edit bindings; everything else (ctrl+s, ctrl+q, alt+*,
-            # the pane-focus ctrl+o/v/e ...) bubbles up so CodeEditor and
-            # the App still see it.
-            typed = char is not None and char.isprintable()
-            if not (typed or key in self._NORMAL_EDIT_KEYS):
-                return False
-        return True
-
-    def _handle_operator(self, op: str, key: str) -> bool:
-        """Second key of gg / dd / dw / yy. Task 7 fills in d/y."""
-        if op == "g":
-            if key == "g":
-                self.ed.move_cursor((0, 0))
-            self.count = ""
-            return True
-        count, _ = self._take_count()
-        return self._operator(op, key, count)
-
-    def _operator(self, op: str, key: str, count: int) -> bool:
-        ed = self.ed
-        row, _ = ed.cursor_location
-        if key == op:  # dd / yy
-            start, end, text = self._line_range(row, count)
-            self.yank_buffer, self.yank_linewise = text, True
-            if op == "d":
-                ed.delete(start, end)
-                ed.move_cursor((min(row, ed.document.line_count - 1), 0))
-        elif op == "d" and key == "w":
-            start = ed.cursor_location
-            for _ in range(count):
-                self._word_start_next()
-            end = ed.cursor_location
-            self.yank_buffer, self.yank_linewise = ed.get_text_range(start, end), False
-            ed.delete(start, end)
-            ed.move_cursor(start)
-        # any other second key: operator cancelled
-        return True
-
-    def _line_range(
-        self, row: int, count: int
-    ) -> tuple[tuple[int, int], tuple[int, int], str]:
-        """Location span covering `count` whole lines from `row`, and
-        the text (always newline-terminated) they contain. Deleting the
-        last line takes the preceding newline instead of a trailing one."""
-        ed = self.ed
-        last = ed.document.line_count - 1
-        end_row = min(row + count, last + 1)
-        if end_row <= last:
-            start, end = (row, 0), (end_row, 0)
-            text = ed.get_text_range(start, end)
-        else:
-            end = ed.document.end
-            text = ed.get_text_range((row, 0), end)
-            if not text.endswith("\n"):
-                text += "\n"
-            start = (row - 1, len(ed.document.get_line(row - 1))) if row > 0 else (0, 0)
-        return start, end, text
-
-    def _edit_key(self, key: str, count: int) -> bool:
-        """Recognized vim-lite edit commands. Returns False (unhandled)
-        for anything else, so the caller can decide whether to swallow
-        or let it bubble."""
-        ed = self.ed
-        row, col = ed.cursor_location
-        line = ed.document.get_line(row)
-        if key == "x":
-            end_col = min(len(line), col + count)
-            if end_col > col:
-                self.yank_buffer, self.yank_linewise = line[col:end_col], False
-                ed.delete((row, col), (row, end_col))
-                ed.move_cursor((row, col))
-        elif key == "X":
-            start_col = max(0, col - count)
-            if start_col < col:
-                self.yank_buffer, self.yank_linewise = line[start_col:col], False
-                ed.delete((row, start_col), (row, col))
-                ed.move_cursor((row, start_col))
-        elif key == "D":
-            self.yank_buffer, self.yank_linewise = line[col:], False
-            ed.delete((row, col), (row, len(line)))
-            ed.move_cursor((row, col))
-        elif key == "J":
-            for _ in range(count):
-                self._join_line()
-        elif key == "p":
-            self._put(after=True)
-        elif key == "P":
-            self._put(after=False)
-        elif key == "u":
-            for _ in range(count):
-                ed.undo()
-        elif key == "ctrl+r":
-            for _ in range(count):
-                ed.redo()
-        else:
+        keys = self._translate(event.key, event.character)
+        if keys is None:
             return False
+        for key in keys:
+            engine.feed(key)
+        self._mirror()
+        return True  # unmapped keys are swallowed: a stray key never edits
+
+    def _translate(self, key: str, character: str | None) -> list[ViKey] | None:
+        """ViKeys for a Textual key; None when the key belongs to tdb."""
+        if key in _VI_TDB_KEYS or _is_function_key(key):
+            return None
+        inserting = self.engine.mode in ("insert", "replace")
+        if key in _VI_ESC_REWRITES:
+            return [_VI_ESC, ViKey(_VI_ESC_REWRITES[key])] if inserting else None
+        if key.startswith("alt+"):
+            if not inserting:
+                return None  # menu shortcuts
+            # A fast Esc+key (ssh/tmux) arrives as alt+key: split it back.
+            rest = _vi_key(key[4:], character)
+            return [_VI_ESC] if rest is None else [_VI_ESC, rest]
+        vi_key = _vi_key(key, character)
+        return [] if vi_key is None else [vi_key]
+
+    def handle_paste(self, text: str) -> bool:
+        """Insert pasted text at the cursor as one undo step (any mode)."""
+        self.engine.insert_text(text.replace("\r\n", "\n").replace("\r", "\n"))
+        self._mirror()
         return True
 
-    def _join_line(self) -> None:
-        ed = self.ed
-        row, _ = ed.cursor_location
-        if row + 1 >= ed.document.line_count:
-            return
-        line = ed.document.get_line(row)
-        nxt = ed.document.get_line(row + 1)
-        trimmed_len = len(line.rstrip(" \t"))
-        lead = len(nxt) - len(nxt.lstrip(" \t"))
-        ed.replace(" " if nxt.strip() else "", (row, trimmed_len), (row + 1, lead))
-        ed.move_cursor((row, trimmed_len))
-
-    def _put(self, *, after: bool) -> None:
-        ed = self.ed
-        if not self.yank_buffer:
-            return
-        row, col = ed.cursor_location
-        if self.yank_linewise:
-            text = self.yank_buffer
-            if after:
-                if row + 1 < ed.document.line_count:
-                    ed.insert(text, (row + 1, 0))
-                    ed.move_cursor((row + 1, 0))
-                elif ed.document.get_line(row) == "":
-                    # Phantom empty last row of a newline-terminated file
-                    # (or an empty document): the "line after the cursor"
-                    # is this row itself.
-                    ed.insert(text, (row, 0))
-                    ed.move_cursor((row, 0))
-                else:
-                    # Real last line with no trailing newline.
-                    line = ed.document.get_line(row)
-                    ed.insert("\n" + text.rstrip("\n"), (row, len(line)))
-                    ed.move_cursor((row + 1, 0))
-            else:
-                ed.insert(text, (row, 0))
-                ed.move_cursor((row, 0))
+    def on_mouse_selection(self, start: tuple[int, int], end: tuple[int, int]) -> None:
+        """A click (start == end) moves the cursor; a drag selects."""
+        if start == end:
+            self.engine.set_cursor(*start)
         else:
-            line = ed.document.get_line(row)
-            at = (row, min(len(line), col + 1)) if after else (row, col)
-            result = ed.insert(self.yank_buffer, at)
-            end = result.end_location
-            ed.move_cursor((end[0], max(0, end[1] - 1)))
+            self.engine.select(start, end)
+        self._mirror()
 
-    def _word_start_next(self) -> None:
-        """`w`: move to the start of the next word.
+    def resync_from_widget(self) -> None:
+        """Adopt TextArea text/cursor changed outside the engine (undoable)."""
+        text = _widget_text(self.ed)
+        if text != self.engine.text:
+            self.engine.reset_text(text)
+        self.engine.set_cursor(*self.ed.cursor_location)
+        self._text = text
+        self._mirror()
 
-        Textual's `action_cursor_word_right` (used for emacs `M-f`)
-        lands at the END of the current/next word, not vim's
-        start-of-next-word. Land there, then skip the whitespace run
-        that follows so the cursor sits on the next word's first
-        character. At/past end of line, continue onto the first
-        non-blank of the next line; stays put at end of document.
-        """
-        ed = self.ed
-        ed.action_cursor_word_right()
-        row, col = ed.cursor_location
-        line = ed.document.get_line(row)
-        while col < len(line) and line[col] in (" ", "\t"):
-            col += 1
-            ed.move_cursor((row, col))
-        if col >= len(line) and row + 1 < ed.document.line_count:
-            next_row = row + 1
-            next_line = ed.document.get_line(next_row)
-            first_non_blank = len(next_line) - len(next_line.lstrip(" \t"))
-            ed.move_cursor((next_row, first_non_blank))
+    # ---- engine -> TextArea ----
 
-    def _word_end(self) -> None:
-        """Approximate `e`: jump to the last char of the next word."""
-        ed = self.ed
-        ed.action_cursor_word_right()
-        row, col = ed.cursor_location
-        line = ed.document.get_line(row)
-        # word_right lands after the word (on the space); step back onto
-        # its last character when we're not at a line boundary.
-        if col > 0 and (col >= len(line) or line[col] == " "):
-            ed.move_cursor((row, col - 1))
+    def _mirror(self) -> None:
+        ed, engine = self.ed, self.engine
+        new = engine.text
+        edit = diff_text(self._text, new)
+        if edit is not None:
+            start = _location(self._text, edit.start)
+            end = _location(self._text, edit.old_end)
+            ed.replace(edit.new_text, start, end)
+            self._text = new
+        ed.selection = self._selection()
+        for event in engine.drain_events():
+            if isinstance(event, SaveRequest):
+                ed.post_message(CodeEditor.SaveRequested())
+            elif isinstance(event, LeaveRequest):
+                ed.post_message(CodeEditor.LeaveRequested(discard=event.discard))
+            elif isinstance(event, Notify):
+                ed.app.notify(event.text, title="Edit", severity=event.severity)
+        label = (engine.mode, engine.status)
+        if label != self._label:
+            self._label = label
+            ed.post_message(CodeEditor.SubmodeChanged())
+
+    def _selection(self) -> Selection:
+        """TextArea selection for the engine's cursor / visual selection."""
+        engine = self.engine
+        cursor = engine.cursor
+        sel = engine.selection
+        if sel is None:
+            return Selection.cursor(cursor)
+        (r1, c1), (r2, c2) = sel
+        if engine.mode == "visual-line":
+            start, end = (r1, 0), (r2, len(self.ed.document.get_line(r2)))
+            backward = cursor[0] == r1 and r1 != r2
+        else:
+            start = (r1, c1)
+            end = (r2, min(c2 + 1, len(self.ed.document.get_line(r2))))
+            backward = cursor == sel[0] and sel[0] != sel[1]
+        return Selection(end, start) if backward else Selection(start, end)
 
 
 class _UnsavedChangesModal(ModalScreen[str]):

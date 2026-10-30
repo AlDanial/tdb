@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from tdb.vi import Notify, ViEngine, ViKey, ViSession
+from tdb.vi import LeaveRequest, Notify, SaveRequest, ViEngine, ViKey, ViSession
 
 
 def boom_bindings(key: str):
@@ -94,6 +94,23 @@ async def test_exception_restores_buffer():
     assert e.text == "abc\n" and e.mode == "normal"
     assert [type(x) for x in e.drain_events()] == [Notify]
     assert e.drain_events() == []
+    assert not e.has_pending  # key processor reset to normal mode
+    e.feed_keys("x")
+    assert e.text == "bc\n"
+    e.feed_keys("u")
+    assert e.text == "abc\n"
+
+
+async def test_exception_keeps_undo_and_redo_history():
+    """The failing key's save-before undo entry must not survive it."""
+    e = ViEngine("abc\n", _extra_bindings=boom_bindings("Z"))
+    e.feed_keys("xxu")
+    assert e.text == "bc\n"
+    e.feed_keys("Z")
+    e.feed_keys("<C-r>")  # redo stack not cleared by the failed key
+    assert e.text == "c\n"
+    e.feed_keys("uu")
+    assert e.text == "abc\n"
 
 
 async def test_insert_text_is_one_undo_step():
@@ -116,6 +133,52 @@ async def test_reset_text_tracks_final_newline():
     e = ViEngine("ab\n")
     e.reset_text("cd")
     assert e.text == "cd"
+
+
+@pytest.mark.parametrize(("first", "second"), [("ab\n", "ab"), ("ab", "ab\n")])
+async def test_undo_redo_restore_final_newline(first, second):
+    e = ViEngine(first)
+    e.reset_text(second)
+    assert e.text == second
+    e.feed_keys("u")
+    assert e.text == first
+    e.feed_keys("<C-r>")
+    assert e.text == second
+
+
+async def test_command_line_stub():
+    e = ViEngine("abc\n  def\nghi\n")
+    e.feed_keys(":")
+    assert e.mode == "command" and e.status == ":" and e.has_pending
+    e.feed_keys("wq")
+    assert e.status == ":wq"
+    e.feed_keys("<BS>")
+    assert e.status == ":w"
+    e.feed_keys("<CR>")
+    assert e.mode == "normal" and e.status == ""
+    assert [type(x) for x in e.drain_events()] == [SaveRequest]
+    e.feed_keys(":q<CR>:q!<CR>:wq<CR>:x<CR>")
+    assert e.drain_events() == [
+        LeaveRequest(False),
+        LeaveRequest(True),
+        SaveRequest(),
+        LeaveRequest(False),
+        SaveRequest(),
+        LeaveRequest(False),
+    ]
+    e.feed_keys("ll:2<CR>")  # nvim (nostartofline) keeps the column
+    assert e.cursor == (1, 2)
+    e.feed_keys(":99<CR>")
+    assert e.cursor == (2, 2)
+    e.feed_keys(":bogus<CR>")
+    assert e.drain_events() == [Notify("Unknown command: :bogus", "warning")]
+    e.feed_keys(":xy<Esc>")
+    assert e.mode == "normal" and e.drain_events() == []
+    e.feed_keys(":a<BS><BS>")  # Backspace on an empty line cancels
+    assert e.mode == "normal"
+    e.feed_keys(":<CR>")
+    assert e.mode == "normal" and e.drain_events() == []
+    assert e.text == "abc\n  def\nghi\n"
 
 
 async def test_modes_and_selection():

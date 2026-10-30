@@ -30,15 +30,36 @@ class TextEdit:
 
 
 def diff_text(old: str, new: str) -> TextEdit | None:
-    """Single edit turning *old* into *new* (common prefix/suffix); None if equal."""
+    """Single edit turning *old* into *new* (common prefix/suffix); None if equal.
+
+    The common prefix and suffix are found by bisection over slice
+    comparisons (done in C), so one keystroke on a large file stays cheap.
+    """
     if old == new:
         return None
     limit = min(len(old), len(new))
-    prefix = 0
-    while prefix < limit and old[prefix] == new[prefix]:
-        prefix += 1
-    suffix = 0
-    limit -= prefix
-    while suffix < limit and old[-1 - suffix] == new[-1 - suffix]:
-        suffix += 1
-    return TextEdit(prefix, len(old) - suffix, new[prefix : len(new) - suffix])
+    prefix = _common_length(old, new, limit, lambda s, a, b: s[a:b])
+    n_old, n_new = len(old), len(new)
+    suffix = _common_length(
+        old,
+        new,
+        limit - prefix,
+        lambda s, a, b: s[len(s) - b : len(s) - a],
+    )
+    return TextEdit(prefix, n_old - suffix, new[prefix : n_new - suffix])
+
+
+def _common_length(a: str, b: str, limit: int, part) -> int:
+    """Largest ``n <= limit`` with ``part(a, 0, n) == part(b, 0, n)``.
+
+    ``part(s, i, j)`` returns the chunk ``[i, j)`` of *s* measured from
+    whichever end is being compared.
+    """
+    lo, hi = 0, limit  # part(a, 0, lo) == part(b, 0, lo); answer <= hi
+    while lo < hi:
+        mid = (lo + hi + 1) // 2
+        if part(a, lo, mid) == part(b, lo, mid):
+            lo = mid
+        else:
+            hi = mid - 1
+    return lo
