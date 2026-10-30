@@ -1025,12 +1025,13 @@ def _add_counted_commands(kb: KeyBindings) -> None:
         if char == "\r":
             # One line break replaces the characters; the new line keeps the indent.
             indent = line[: len(line) - len(line.lstrip(" \t"))]
+            rest = line[col + count :].lstrip(" \t")
             lines = list(doc.lines)
-            lines[row : row + 1] = [line[:col], indent + line[col + count :]]
-            # vim leaves the cursor one left of the indent (it Esc's out of insert).
-            buff.document = Document(
-                "\n".join(lines), index(lines, (row + 1, max(len(indent) - 1, 0)))
-            )
+            lines[row : row + 1] = [line[:col], indent + rest if rest else ""]
+            # vim leaves the cursor one left of the indent (it Esc's out of
+            # insert); an empty new line loses its autoindent.
+            new_col = max(len(indent) - 1, 0) if rest else 0
+            buff.document = Document("\n".join(lines), index(lines, (row + 1, new_col)))
         elif len(char) == 1 and char.isprintable():
             lines = list(doc.lines)
             lines[row] = line[:col] + char * count + line[col + count :]
@@ -1038,18 +1039,31 @@ def _add_counted_commands(kb: KeyBindings) -> None:
                 "\n".join(lines), index(lines, (row, col + count - 1))
             )
 
-    def find(event: KeyPressEvent, char: str, backwards: bool, till: bool):
-        """Offset and type of the *count*-th *char* on the line, or None."""
+    def find(
+        event: KeyPressEvent,
+        char: str,
+        backwards: bool,
+        till: bool,
+        repeating: bool = False,
+    ):
+        """Offset and type of the *count*-th *char* on the line, or None.
+
+        A repeated till (``;`` / ``,``) with count 1 skips a match right next
+        to the cursor (nvim without ``cpo-;``).
+        """
         doc = event.current_buffer.document
-        if backwards:
-            found = doc.find_backwards(char, in_current_line=True, count=event.arg)
-            if not found:
-                return None
-            return TextObject(found + 1 if till else found)
-        found = doc.find(char, in_current_line=True, count=event.arg)
+        count = event.arg
+        search = doc.find_backwards if backwards else doc.find
+        found = search(char, in_current_line=True, count=count)
+        if found and repeating and till and count == 1 and abs(found) == 1:
+            found = search(char, in_current_line=True, count=2)
         if not found:
             return None
+        if backwards:
+            return TextObject(found + 1 if till else found)
         return TextObject(found - 1 if till else found, type=TextObjectType.INCLUSIVE)
+
+    last_till = [False]
 
     movable = (
         vi_navigation_mode | vi_selection_mode
@@ -1060,6 +1074,7 @@ def _add_counted_commands(kb: KeyBindings) -> None:
             event.app.vi_state.last_character_find = CharacterFind(
                 event.data, backwards
             )
+            last_till[0] = till
             return find(event, event.data, backwards, till)
 
         text_object(key, Keys.Any, no_move_handler=True, no_selection_handler=True)(
@@ -1086,10 +1101,7 @@ def _add_counted_commands(kb: KeyBindings) -> None:
             if last is None:
                 return None
             backwards = last.backwards != reverse
-            obj = find(event, last.character, backwards, False)
-            if obj is None or backwards:
-                return obj
-            return TextObject(obj.start, type=TextObjectType.INCLUSIVE)
+            return find(event, last.character, backwards, last_till[0], True)
 
         text_object(key, no_move_handler=True, no_selection_handler=True)(target)
 

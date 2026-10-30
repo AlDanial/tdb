@@ -4876,5 +4876,113 @@
    3
   ],
   "keys": "vlxu"
+ },
+ {
+  "id": "cnt-t-semi",
+  "text": "a,b,c,d,e\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "t,;"
+ },
+ {
+  "id": "cnt-T-semi",
+  "text": "a,b,c,d,e\n",
+  "cursor": [
+   0,
+   8
+  ],
+  "keys": "T,;"
+ },
+ {
+  "id": "cnt-t-semi-d",
+  "text": "a,b,c,d,e\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "t,d;"
+ },
+ {
+  "id": "cnt-t-semi-2",
+  "text": "a,b,c,d,e\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "t,2;"
+ },
+ {
+  "id": "cnt-t-comma",
+  "text": "a,b,c,d,e\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "t,;;,"
+ },
+ {
+  "id": "cnt-T-comma",
+  "text": "a,b,c,d,e\n",
+  "cursor": [
+   0,
+   8
+  ],
+  "keys": "T,;;,"
+ },
+ {
+  "id": "cnt-t-semi-far",
+  "text": "ab,cd,ef,gh\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "t,;"
+ },
+ {
+  "id": "cnt-T-comma-d",
+  "text": "a,b,c,d,e\n",
+  "cursor": [
+   0,
+   8
+  ],
+  "keys": "T,d,"
+ },
+ {
+  "id": "cnt-r-cr-ws",
+  "text": "ab  cd\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "r<CR>"
+ },
+ {
+  "id": "cnt-r-cr-empty",
+  "text": "    foo\n",
+  "cursor": [
+   0,
+   6
+  ],
+  "keys": "r<CR>"
+ },
+ {
+  "id": "cnt-3i-left",
+  "text": "foo\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3ia<Left>b<Esc>"
+ },
+ {
+  "id": "cnt-3i-end",
+  "text": "foo\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3ia<End>b<Esc>"
  }
 ]

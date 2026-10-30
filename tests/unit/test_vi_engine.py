@@ -597,10 +597,12 @@ async def test_last_visual_after_escape_operator_and_switch():
     assert e.last_visual == ((0, 0), (0, 1), False)  # still selecting
     e.feed_keys("<Esc>")
     assert e.last_visual == ((1, 1), (1, 1), True)
-    e.feed_keys("kvjvd")  # v -> toggles off at the second v, then d is normal
-    assert e.last_visual is not None and e.last_visual[2] is False
-    e.feed_keys("gvd")
+    e.feed_keys("kvjv")  # the second v leaves Visual again
     assert e.mode == "normal"
+    assert e.last_visual is not None and e.last_visual[2] is False
+    e = ViEngine("alpha beta\ngamma delta\n")
+    e.feed_keys("vl<Esc>$gvd")
+    assert (e.text, e.cursor) == ("pha beta\ngamma delta\n", (0, 0))
 
 
 async def test_last_visual_orders_start_and_end():

@@ -110,6 +110,11 @@ _REGISTER_CHAR_KEYS = {v: k for k, v in _REGISTER_CHARS.items()} | {"\n": "ctrl+
 # command fails, which prompt_toolkit does not report).
 _REPLAY_LIMIT = 100_000
 
+# Keys that end the repeat of a counted insert (vim: the insert is broken).
+_CURSOR_KEYS = frozenset(
+    {"up", "down", "left", "right", "home", "end", "pageup", "pagedown"}
+)
+
 # ViKey name -> vim notation, for showing pending keys in the status.
 _DISPLAY: dict[str, str] = {
     "escape": "<Esc>",
@@ -576,7 +581,7 @@ class ViEngine:
                 self.last_visual_raw = visual_before  # the selection just ended
             if self.buffer.text != text_before:
                 self._undo_to_visual_start(visual_before, text_before)
-        self._track_insert_repeat(count_insert)
+        self._track_insert_repeat(count_insert, name)
         if (
             self._change is not None
             and len(name) == 1
@@ -612,10 +617,10 @@ class ViEngine:
             return int(kp.arg)
         return None
 
-    def _track_insert_repeat(self, count: int | None) -> None:
+    def _track_insert_repeat(self, count: int | None, key_name: str = "") -> None:
         """After a key: note a counted insert starting, or one that ended."""
-        if self.mode != "insert":
-            self._insert_repeat = None
+        if self.mode != "insert" or key_name in _CURSOR_KEYS:
+            self._insert_repeat = None  # leaving, or moving the cursor, ends it
         elif count is not None and self._change is not None:
             self._insert_repeat = (self._change[-1].name, count, len(self._change))
 

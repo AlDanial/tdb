@@ -398,12 +398,26 @@
   ],
   "text": "xxfoo xxxxxbar\n"
  },
+ "cnt-3i-end": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "afoob\n"
+ },
  "cnt-3i-esc-esc": {
   "cursor": [
    0,
    2
   ],
   "text": "xxxfoo\n"
+ },
+ "cnt-3i-left": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "bafoo\n"
  },
  "cnt-3i-macro": {
   "cursor": [
@@ -482,6 +496,27 @@
   ],
   "text": "abc\n"
  },
+ "cnt-T-comma": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "a,b,c,d,e\n"
+ },
+ "cnt-T-comma-d": {
+  "cursor": [
+   0,
+   8
+  ],
+  "text": "a,b,c,d,e\n"
+ },
+ "cnt-T-semi": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "a,b,c,d,e\n"
+ },
  "cnt-c3f-few": {
   "cursor": [
    0,
@@ -552,12 +587,61 @@
   ],
   "text": "\nbcdef\n"
  },
+ "cnt-r-cr-empty": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "    fo\n\n"
+ },
+ "cnt-r-cr-ws": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "a\ncd\n"
+ },
  "cnt-semi-few": {
   "cursor": [
    0,
    3
   ],
   "text": "a,b,c\n"
+ },
+ "cnt-t-comma": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "a,b,c,d,e\n"
+ },
+ "cnt-t-semi": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "a,b,c,d,e\n"
+ },
+ "cnt-t-semi-2": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "a,b,c,d,e\n"
+ },
+ "cnt-t-semi-d": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": ",c,d,e\n"
+ },
+ "cnt-t-semi-far": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "ab,cd,ef,gh\n"
  },
  "cnt-v2f": {
   "cursor": [
