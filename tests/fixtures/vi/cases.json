@@ -970,5 +970,1338 @@
    0
   ],
   "keys": "2dj"
+ },
+ {
+  "id": "tobj-nopair-ci-paren",
+  "text": "no pair here at all\nsecond line\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "ci(X<Esc>"
+ },
+ {
+  "id": "tobj-nopair-di-brace",
+  "text": "no pair here at all\nsecond line\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "di{X<Esc>"
+ },
+ {
+  "id": "tobj-nopair-ci-bracket",
+  "text": "no pair here at all\nsecond line\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "ci[X<Esc>"
+ },
+ {
+  "id": "tobj-nopair-ci-angle",
+  "text": "no pair here at all\nsecond line\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "ci<X<Esc>"
+ },
+ {
+  "id": "tobj-nopair-ci-dq",
+  "text": "no pair here at all\nsecond line\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "ci\"X<Esc>"
+ },
+ {
+  "id": "tobj-nopair-ci-sq",
+  "text": "no pair here at all\nsecond line\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "ci'X<Esc>"
+ },
+ {
+  "id": "tobj-nopair-ci-bt",
+  "text": "no pair here at all\nsecond line\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "ci`X<Esc>"
+ },
+ {
+  "id": "tobj-nopair-da-paren",
+  "text": "no pair here at all\nsecond line\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "da("
+ },
+ {
+  "id": "tobj-nopair-yi-paren",
+  "text": "no pair here at all\nsecond line\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "yi(P"
+ },
+ {
+  "id": "tobj-ci-paren-on-open",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   2,
+   11
+  ],
+  "keys": "ci(X<Esc>"
+ },
+ {
+  "id": "tobj-ci-paren-on-close",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   2,
+   17
+  ],
+  "keys": "ci(X<Esc>"
+ },
+ {
+  "id": "tobj-ci-paren-inside",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   2,
+   13
+  ],
+  "keys": "ci(X<Esc>"
+ },
+ {
+  "id": "tobj-da-paren",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   2,
+   13
+  ],
+  "keys": "da("
+ },
+ {
+  "id": "tobj-ci-paren-empty",
+  "text": "f()\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "ci(X<Esc>"
+ },
+ {
+  "id": "tobj-di-paren-empty",
+  "text": "f()\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "di("
+ },
+ {
+  "id": "tobj-ci-dq-inside",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   1,
+   10
+  ],
+  "keys": "ci\"X<Esc>"
+ },
+ {
+  "id": "tobj-ca-dq-inside",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   1,
+   10
+  ],
+  "keys": "ca\"X<Esc>"
+ },
+ {
+  "id": "tobj-ci-dq-before",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "ci\"X<Esc>"
+ },
+ {
+  "id": "tobj-ci-dq-on-quote",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   1,
+   8
+  ],
+  "keys": "di\""
+ },
+ {
+  "id": "tobj-ci-dq-other-line",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "ci\"X<Esc>"
+ },
+ {
+  "id": "tobj-di-brace-multi",
+  "text": "if x {\n    a\n    b\n}\nz\n",
+  "cursor": [
+   1,
+   4
+  ],
+  "keys": "di{"
+ },
+ {
+  "id": "tobj-ci-brace-multi",
+  "text": "if x {\n    a\n    b\n}\nz\n",
+  "cursor": [
+   1,
+   4
+  ],
+  "keys": "ci{X<Esc>"
+ },
+ {
+  "id": "tobj-da-brace-multi",
+  "text": "if x {\n    a\n    b\n}\nz\n",
+  "cursor": [
+   1,
+   4
+  ],
+  "keys": "da{"
+ },
+ {
+  "id": "tobj-ci-nested",
+  "text": "f(a, (b, c), d)\n",
+  "cursor": [
+   0,
+   7
+  ],
+  "keys": "ci(X<Esc>"
+ },
+ {
+  "id": "tobj-ci-nested-outer",
+  "text": "f(a, (b, c), d)\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "ci(X<Esc>"
+ },
+ {
+  "id": "tobj-vi-paren",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   2,
+   13
+  ],
+  "keys": "vi(d"
+ },
+ {
+  "id": "tobj-va-paren",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   2,
+   13
+  ],
+  "keys": "va(d"
+ },
+ {
+  "id": "tobj-vi-paren-nopair",
+  "text": "no pair here at all\nsecond line\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "vi(d"
+ },
+ {
+  "id": "tobj-y-ib",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   2,
+   13
+  ],
+  "keys": "yibP"
+ },
+ {
+  "id": "tobj-gU-i-paren",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   2,
+   13
+  ],
+  "keys": "gUi("
+ },
+ {
+  "id": "tobj-gt-i-paren",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   2,
+   13
+  ],
+  "keys": ">i("
+ },
+ {
+  "id": "tobj-di-bracket",
+  "text": "x[1, 2]\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "di["
+ },
+ {
+  "id": "tobj-ci-angle",
+  "text": "a<b c>d\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "ci<X<Esc>"
+ },
+ {
+  "id": "tobj-dib-B",
+  "text": "{a (b) c}\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "diB"
+ },
+ {
+  "id": "tobj-diw-indent-col0",
+  "text": "foo:\n    bar baz\n  x\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "diw"
+ },
+ {
+  "id": "tobj-diw-indent-col3",
+  "text": "foo:\n    bar baz\n  x\n",
+  "cursor": [
+   1,
+   3
+  ],
+  "keys": "diw"
+ },
+ {
+  "id": "tobj-diw-indent-col2",
+  "text": "foo:\n    bar baz\n  x\n",
+  "cursor": [
+   1,
+   2
+  ],
+  "keys": "diw"
+ },
+ {
+  "id": "tobj-daw-indent-col0",
+  "text": "foo:\n    bar baz\n  x\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "daw"
+ },
+ {
+  "id": "tobj-daw-indent-col2",
+  "text": "foo:\n    bar baz\n  x\n",
+  "cursor": [
+   1,
+   2
+  ],
+  "keys": "daw"
+ },
+ {
+  "id": "tobj-ciw-indent-col0",
+  "text": "foo:\n    bar baz\n  x\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "ciwX<Esc>"
+ },
+ {
+  "id": "tobj-ciw-indent-col2",
+  "text": "foo:\n    bar baz\n  x\n",
+  "cursor": [
+   1,
+   2
+  ],
+  "keys": "ciwX<Esc>"
+ },
+ {
+  "id": "tobj-diw-gap",
+  "text": "one   two\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "diw"
+ },
+ {
+  "id": "tobj-daw-gap",
+  "text": "one   two\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "daw"
+ },
+ {
+  "id": "tobj-daw-gap-end",
+  "text": "one   \n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "daw"
+ },
+ {
+  "id": "tobj-diw-eol",
+  "text": "one two\n",
+  "cursor": [
+   0,
+   6
+  ],
+  "keys": "diw"
+ },
+ {
+  "id": "tobj-daw-eol",
+  "text": "one two\n",
+  "cursor": [
+   0,
+   6
+  ],
+  "keys": "daw"
+ },
+ {
+  "id": "tobj-daw-eol-single",
+  "text": "one\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "daw"
+ },
+ {
+  "id": "tobj-daw-middle",
+  "text": "one two three\n",
+  "cursor": [
+   0,
+   5
+  ],
+  "keys": "daw"
+ },
+ {
+  "id": "tobj-daw-first",
+  "text": "one two three\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "daw"
+ },
+ {
+  "id": "tobj-diw-punct",
+  "text": "a.b(c)\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "diw"
+ },
+ {
+  "id": "tobj-daw-punct",
+  "text": "a.b(c)\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "daw"
+ },
+ {
+  "id": "tobj-d2aw",
+  "text": "one two three four\n",
+  "cursor": [
+   0,
+   5
+  ],
+  "keys": "d2aw"
+ },
+ {
+  "id": "tobj-d2iw",
+  "text": "one two three four\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "d2iw"
+ },
+ {
+  "id": "tobj-d3iw",
+  "text": "one two three four\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "d3iw"
+ },
+ {
+  "id": "tobj-diW",
+  "text": "a.b  c.d e\n",
+  "cursor": [
+   0,
+   5
+  ],
+  "keys": "diW"
+ },
+ {
+  "id": "tobj-daW",
+  "text": "a.b  c.d e\n",
+  "cursor": [
+   0,
+   5
+  ],
+  "keys": "daW"
+ },
+ {
+  "id": "tobj-daW-gap",
+  "text": "a.b   c.d\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "daW"
+ },
+ {
+  "id": "tobj-diw-empty-line",
+  "text": "a\n\nb\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "diw"
+ },
+ {
+  "id": "tobj-yiw-gap",
+  "text": "one   two\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "yiwP"
+ },
+ {
+  "id": "tobj-gUiw-gap",
+  "text": "one   two\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "gUiw"
+ },
+ {
+  "id": "tobj-viw",
+  "text": "one two three\n",
+  "cursor": [
+   0,
+   5
+  ],
+  "keys": "viwd"
+ },
+ {
+  "id": "tobj-vaw",
+  "text": "one two three\n",
+  "cursor": [
+   0,
+   5
+  ],
+  "keys": "vawd"
+ },
+ {
+  "id": "tobj-viw-gap",
+  "text": "one   two\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "viwd"
+ },
+ {
+  "id": "tobj-vaw-gap",
+  "text": "one   two\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "vawd"
+ },
+ {
+  "id": "tobj-viwiw",
+  "text": "one two three\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "viwiwd"
+ },
+ {
+  "id": "tobj-vawaw",
+  "text": "one two three\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "vawawd"
+ },
+ {
+  "id": "tobj-dap-first",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "dap"
+ },
+ {
+  "id": "tobj-dip-first",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "dip"
+ },
+ {
+  "id": "tobj-yap-first",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "yapP"
+ },
+ {
+  "id": "tobj-yip-first",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "yipP"
+ },
+ {
+  "id": "tobj-dap-middle",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   3,
+   0
+  ],
+  "keys": "dap"
+ },
+ {
+  "id": "tobj-dip-middle",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   3,
+   0
+  ],
+  "keys": "dip"
+ },
+ {
+  "id": "tobj-yap-middle",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   3,
+   0
+  ],
+  "keys": "yapP"
+ },
+ {
+  "id": "tobj-yip-middle",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   3,
+   0
+  ],
+  "keys": "yipP"
+ },
+ {
+  "id": "tobj-dap-last",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   6,
+   0
+  ],
+  "keys": "dap"
+ },
+ {
+  "id": "tobj-dip-last",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   6,
+   0
+  ],
+  "keys": "dip"
+ },
+ {
+  "id": "tobj-yap-last",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   6,
+   0
+  ],
+  "keys": "yapP"
+ },
+ {
+  "id": "tobj-yip-last",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   6,
+   0
+  ],
+  "keys": "yipP"
+ },
+ {
+  "id": "tobj-dap-blank",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   2,
+   0
+  ],
+  "keys": "dap"
+ },
+ {
+  "id": "tobj-dip-blank",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   2,
+   0
+  ],
+  "keys": "dip"
+ },
+ {
+  "id": "tobj-yap-blank",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   2,
+   0
+  ],
+  "keys": "yapP"
+ },
+ {
+  "id": "tobj-yip-blank",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   2,
+   0
+  ],
+  "keys": "yipP"
+ },
+ {
+  "id": "tobj-d2ap",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "d2ap"
+ },
+ {
+  "id": "tobj-d2ip",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "d2ip"
+ },
+ {
+  "id": "tobj-dap-last-noblank",
+  "text": "a1\n\nb1\nb2\n",
+  "cursor": [
+   2,
+   0
+  ],
+  "keys": "dap"
+ },
+ {
+  "id": "tobj-cip-middle",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   3,
+   0
+  ],
+  "keys": "cipX<Esc>"
+ },
+ {
+  "id": "tobj-vap",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   3,
+   0
+  ],
+  "keys": "vapd"
+ },
+ {
+  "id": "tobj-vip",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   3,
+   0
+  ],
+  "keys": "vipd"
+ },
+ {
+  "id": "tobj-gt-ip",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   3,
+   0
+  ],
+  "keys": ">ip"
+ },
+ {
+  "id": "join-J",
+  "text": "one\n  two\nthree\nfour\nfive\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "J"
+ },
+ {
+  "id": "join-2J",
+  "text": "one\n  two\nthree\nfour\nfive\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "2J"
+ },
+ {
+  "id": "join-3J",
+  "text": "one\n  two\nthree\nfour\nfive\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3J"
+ },
+ {
+  "id": "join-4J",
+  "text": "one\n  two\nthree\nfour\nfive\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "4J"
+ },
+ {
+  "id": "join-9J",
+  "text": "one\n  two\nthree\nfour\nfive\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "9J"
+ },
+ {
+  "id": "join-1J",
+  "text": "one\n  two\nthree\nfour\nfive\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "1J"
+ },
+ {
+  "id": "join-J-last",
+  "text": "one\n  two\nthree\nfour\nfive\n",
+  "cursor": [
+   4,
+   0
+  ],
+  "keys": "J"
+ },
+ {
+  "id": "join-J-blank",
+  "text": "one\n\ntwo\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "J"
+ },
+ {
+  "id": "join-J-from-blank",
+  "text": "\ntwo\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "J"
+ },
+ {
+  "id": "join-J-paren",
+  "text": "f(a\n  )\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "J"
+ },
+ {
+  "id": "join-J-trailing-ws",
+  "text": "two  \nfour\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "J"
+ },
+ {
+  "id": "join-J-trailing-ws-3J",
+  "text": "a  \nb \nc\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3J"
+ },
+ {
+  "id": "join-J-tab",
+  "text": "a\n\tb\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "J"
+ },
+ {
+  "id": "join-J-next-ws-only",
+  "text": "a\n   \nb\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "J"
+ },
+ {
+  "id": "join-J-dot",
+  "text": "a\n.b\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "J"
+ },
+ {
+  "id": "join-gJ",
+  "text": "one\n  two\nthree\nfour\nfive\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "gJ"
+ },
+ {
+  "id": "join-2gJ",
+  "text": "one\n  two\nthree\nfour\nfive\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "2gJ"
+ },
+ {
+  "id": "join-3gJ",
+  "text": "one\n  two\nthree\nfour\nfive\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3gJ"
+ },
+ {
+  "id": "join-gJ-last",
+  "text": "one\n  two\nthree\nfour\nfive\n",
+  "cursor": [
+   4,
+   0
+  ],
+  "keys": "gJ"
+ },
+ {
+  "id": "join-gJ-trailing-ws",
+  "text": "two  \n  four\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "gJ"
+ },
+ {
+  "id": "join-VjJ",
+  "text": "one\n  two\nthree\nfour\nfive\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "VjJ"
+ },
+ {
+  "id": "join-VjjJ",
+  "text": "one\n  two\nthree\nfour\nfive\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "VjjJ"
+ },
+ {
+  "id": "join-VjgJ",
+  "text": "one\n  two\nthree\nfour\nfive\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "VjgJ"
+ },
+ {
+  "id": "join-J-undo",
+  "text": "one\n  two\nthree\nfour\nfive\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3Ju"
+ },
+ {
+  "id": "join-J-repeat",
+  "text": "one\n  two\nthree\nfour\nfive\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "J.",
+  "difference": "`.` repeat is implemented in Task 6"
+ },
+ {
+  "id": "tobj-dip-col1",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   4,
+   1
+  ],
+  "keys": "dip"
+ },
+ {
+  "id": "tobj-yip-col1",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   4,
+   1
+  ],
+  "keys": "yipP"
+ },
+ {
+  "id": "tobj-yap-col1",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   1,
+   1
+  ],
+  "keys": "yap"
+ },
+ {
+  "id": "tobj-gUip-col1",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   1,
+   1
+  ],
+  "keys": "gUip"
+ },
+ {
+  "id": "tobj-cj-linewise",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   3,
+   1
+  ],
+  "keys": "cjX<Esc>"
+ },
+ {
+  "id": "tobj-cip-indent",
+  "text": "  a\n  b\n\nc\n",
+  "cursor": [
+   1,
+   3
+  ],
+  "keys": "cipX<Esc>"
+ },
+ {
+  "id": "tobj-vi-brace-multi",
+  "text": "if x {\n    a\n    b\n}\nz\n",
+  "cursor": [
+   1,
+   4
+  ],
+  "keys": "vi{d"
+ },
+ {
+  "id": "tobj-va-brace-multi",
+  "text": "if x {\n    a\n    b\n}\nz\n",
+  "cursor": [
+   1,
+   4
+  ],
+  "keys": "va{d"
+ },
+ {
+  "id": "tobj-vi-paren-twice",
+  "text": "f(a, (b, c), d)\n",
+  "cursor": [
+   0,
+   8
+  ],
+  "keys": "vi(i(d"
+ },
+ {
+  "id": "tobj-va-paren-twice",
+  "text": "f(a, (b, c), d)\n",
+  "cursor": [
+   0,
+   8
+  ],
+  "keys": "va(a(d"
+ },
+ {
+  "id": "tobj-vi-paren-onopen",
+  "text": "f(a, (b, c), d)\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "vi(d"
+ },
+ {
+  "id": "tobj-v2i-paren",
+  "text": "f(a, (b, c), d)\n",
+  "cursor": [
+   0,
+   8
+  ],
+  "keys": "v2i(d"
+ },
+ {
+  "id": "tobj-d2i-paren",
+  "text": "f(a, (b, c), d)\n",
+  "cursor": [
+   0,
+   8
+  ],
+  "keys": "d2i("
+ },
+ {
+  "id": "tobj-vi-dq-twice",
+  "text": "x \"a b\" y\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "vi\"i\"d"
+ },
+ {
+  "id": "tobj-va-dq",
+  "text": "x \"a b\" y\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "va\"d"
+ },
+ {
+  "id": "tobj-da-dq-lead",
+  "text": "x \"a b\"\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "da\""
+ },
+ {
+  "id": "tobj-di-dq-escaped",
+  "text": "x \"a \\\" b\" y\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "di\""
+ },
+ {
+  "id": "tobj-ci-dq-between",
+  "text": "\"a\" b \"c\"\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "di\""
+ },
+ {
+  "id": "tobj-vip-twice",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "vipipd"
+ },
+ {
+  "id": "tobj-vap-twice",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "vapapd"
+ },
+ {
+  "id": "tobj-Vip",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   3,
+   0
+  ],
+  "keys": "Vipd"
+ },
+ {
+  "id": "tobj-viw-count",
+  "text": "one two three four\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "v3iwd"
+ },
+ {
+  "id": "tobj-ciw-end-word",
+  "text": "a bc\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "ciwX<Esc>"
+ },
+ {
+  "id": "tobj-daw-single-char",
+  "text": "a b c\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "daw"
+ },
+ {
+  "id": "tobj-diw-multiline-trail",
+  "text": "a  \nb c\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "d2iw"
+ },
+ {
+  "id": "tobj-P-empty",
+  "text": "abc\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "P"
+ },
+ {
+  "id": "tobj-p-empty",
+  "text": "abc\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "p"
+ },
+ {
+  "id": "join-3J-short",
+  "text": "a\nb\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "5J"
+ },
+ {
+  "id": "join-J-paren-trail",
+  "text": "f(\n  )\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "J"
+ },
+ {
+  "id": "join-J-visual-single",
+  "text": "a\nb\nc\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "VJ"
+ },
+ {
+  "id": "join-gJ-visual",
+  "text": "a\n b\nc\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "VjjgJ"
+ },
+ {
+  "id": "join-J-cursor-mid",
+  "text": "ab cd\nef\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "J"
+ },
+ {
+  "id": "join-J-empty-twice",
+  "text": "a\n\n\nb\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3J"
+ },
+ {
+  "id": "join-dJ-undo",
+  "text": "a\nb\nc\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "Ju"
  }
 ]

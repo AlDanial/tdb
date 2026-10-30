@@ -496,6 +496,230 @@
   ],
   "text": "def f(a, b):\nx = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
  },
+ "join-1J": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "one two\nthree\nfour\nfive\n"
+ },
+ "join-2J": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "one two\nthree\nfour\nfive\n"
+ },
+ "join-2gJ": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "one  two\nthree\nfour\nfive\n"
+ },
+ "join-3J": {
+  "cursor": [
+   0,
+   7
+  ],
+  "text": "one two three\nfour\nfive\n"
+ },
+ "join-3J-short": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "a b\n"
+ },
+ "join-3gJ": {
+  "cursor": [
+   0,
+   8
+  ],
+  "text": "one  twothree\nfour\nfive\n"
+ },
+ "join-4J": {
+  "cursor": [
+   0,
+   13
+  ],
+  "text": "one two three four\nfive\n"
+ },
+ "join-9J": {
+  "cursor": [
+   1,
+   16
+  ],
+  "text": "one\n  two three four five\n"
+ },
+ "join-J": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "one two\nthree\nfour\nfive\n"
+ },
+ "join-J-blank": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "one\ntwo\n"
+ },
+ "join-J-cursor-mid": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "ab cd ef\n"
+ },
+ "join-J-dot": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "a .b\n"
+ },
+ "join-J-empty-twice": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "a\nb\n"
+ },
+ "join-J-from-blank": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "two\n"
+ },
+ "join-J-last": {
+  "cursor": [
+   4,
+   0
+  ],
+  "text": "one\n  two\nthree\nfour\nfive\n"
+ },
+ "join-J-next-ws-only": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "a\nb\n"
+ },
+ "join-J-paren": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "f(a)\n"
+ },
+ "join-J-paren-trail": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "f()\n"
+ },
+ "join-J-repeat": {
+  "cursor": [
+   0,
+   7
+  ],
+  "text": "one two three\nfour\nfive\n"
+ },
+ "join-J-tab": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "a b\n"
+ },
+ "join-J-trailing-ws": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "two  four\n"
+ },
+ "join-J-trailing-ws-3J": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "a  b c\n"
+ },
+ "join-J-undo": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "one\n  two\nthree\nfour\nfive\n"
+ },
+ "join-J-visual-single": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "a b\nc\n"
+ },
+ "join-VjJ": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "one two\nthree\nfour\nfive\n"
+ },
+ "join-VjgJ": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "one  two\nthree\nfour\nfive\n"
+ },
+ "join-VjjJ": {
+  "cursor": [
+   0,
+   7
+  ],
+  "text": "one two three\nfour\nfive\n"
+ },
+ "join-dJ-undo": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "a\nb\nc\n"
+ },
+ "join-gJ": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "one  two\nthree\nfour\nfive\n"
+ },
+ "join-gJ-last": {
+  "cursor": [
+   4,
+   0
+  ],
+  "text": "one\n  two\nthree\nfour\nfive\n"
+ },
+ "join-gJ-trailing-ws": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "two    four\n"
+ },
+ "join-gJ-visual": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "a bc\n"
+ },
  "lt-j": {
   "cursor": [
    1,
@@ -677,6 +901,818 @@
    5
   ],
   "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "tobj-P-empty": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "abc\n"
+ },
+ "tobj-Vip": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "a1\na2\n\n\nc1\nc2\n"
+ },
+ "tobj-ca-dq-inside": {
+  "cursor": [
+   1,
+   7
+  ],
+  "text": "def f(a, b):\n    x =X\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "tobj-ci-angle": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "a<X>d\n"
+ },
+ "tobj-ci-brace-multi": {
+  "cursor": [
+   1,
+   4
+  ],
+  "text": "if x {\n    X\n}\nz\n"
+ },
+ "tobj-ci-dq-before": {
+  "cursor": [
+   1,
+   9
+  ],
+  "text": "def f(a, b):\n    x = \"X\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "tobj-ci-dq-between": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "\"a\"\"c\"\n"
+ },
+ "tobj-ci-dq-inside": {
+  "cursor": [
+   1,
+   9
+  ],
+  "text": "def f(a, b):\n    x = \"X\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "tobj-ci-dq-on-quote": {
+  "cursor": [
+   1,
+   9
+  ],
+  "text": "def f(a, b):\n    x = \"\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "tobj-ci-dq-other-line": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "tobj-ci-nested": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "f(a, (X), d)\n"
+ },
+ "tobj-ci-nested-outer": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "f(X)\n"
+ },
+ "tobj-ci-paren-empty": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "f(X)\n"
+ },
+ "tobj-ci-paren-inside": {
+  "cursor": [
+   2,
+   12
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (X) * 2\n\ny = 10\nz = 20\n"
+ },
+ "tobj-ci-paren-on-close": {
+  "cursor": [
+   2,
+   12
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (X) * 2\n\ny = 10\nz = 20\n"
+ },
+ "tobj-ci-paren-on-open": {
+  "cursor": [
+   2,
+   12
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (X) * 2\n\ny = 10\nz = 20\n"
+ },
+ "tobj-cip-indent": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "  X\n\nc\n"
+ },
+ "tobj-cip-middle": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "a1\na2\n\nX\n\nc1\nc2\n"
+ },
+ "tobj-ciw-end-word": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "a X\n"
+ },
+ "tobj-ciw-indent-col0": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "foo:\nXbar baz\n  x\n"
+ },
+ "tobj-ciw-indent-col2": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "foo:\nXbar baz\n  x\n"
+ },
+ "tobj-cj-linewise": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "a1\na2\n\nX\n\nc1\nc2\n"
+ },
+ "tobj-d2ap": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "c1\nc2\n"
+ },
+ "tobj-d2aw": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "one four\n"
+ },
+ "tobj-d2i-paren": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "f()\n"
+ },
+ "tobj-d2ip": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "b1\nb2\n\nc1\nc2\n"
+ },
+ "tobj-d2iw": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "one three four\n"
+ },
+ "tobj-d3iw": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": " three four\n"
+ },
+ "tobj-da-brace-multi": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "if x \nz\n"
+ },
+ "tobj-da-dq-lead": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "x\n"
+ },
+ "tobj-da-paren": {
+  "cursor": [
+   2,
+   11
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return  * 2\n\ny = 10\nz = 20\n"
+ },
+ "tobj-daW": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "a.b  e\n"
+ },
+ "tobj-daW-gap": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "a.b\n"
+ },
+ "tobj-dap-blank": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "a1\na2\n\nc1\nc2\n"
+ },
+ "tobj-dap-first": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "b1\nb2\n\nc1\nc2\n"
+ },
+ "tobj-dap-last": {
+  "cursor": [
+   4,
+   0
+  ],
+  "text": "a1\na2\n\nb1\nb2\n"
+ },
+ "tobj-dap-last-noblank": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "a1\n"
+ },
+ "tobj-dap-middle": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "a1\na2\n\nc1\nc2\n"
+ },
+ "tobj-daw-eol": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "one\n"
+ },
+ "tobj-daw-eol-single": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "\n"
+ },
+ "tobj-daw-first": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "two three\n"
+ },
+ "tobj-daw-gap": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "one\n"
+ },
+ "tobj-daw-gap-end": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "one   \n"
+ },
+ "tobj-daw-indent-col0": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "foo:\n baz\n  x\n"
+ },
+ "tobj-daw-indent-col2": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "foo:\n baz\n  x\n"
+ },
+ "tobj-daw-middle": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "one three\n"
+ },
+ "tobj-daw-punct": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "ab(c)\n"
+ },
+ "tobj-daw-single-char": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "a c\n"
+ },
+ "tobj-di-brace-multi": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "if x {\n}\nz\n"
+ },
+ "tobj-di-bracket": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "x[]\n"
+ },
+ "tobj-di-dq-escaped": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "x \"\" y\n"
+ },
+ "tobj-di-paren-empty": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "f()\n"
+ },
+ "tobj-diW": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "a.b   e\n"
+ },
+ "tobj-dib-B": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "{}\n"
+ },
+ "tobj-dip-blank": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "a1\na2\nb1\nb2\n\nc1\nc2\n"
+ },
+ "tobj-dip-col1": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "a1\na2\n\n\nc1\nc2\n"
+ },
+ "tobj-dip-first": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "\nb1\nb2\n\nc1\nc2\n"
+ },
+ "tobj-dip-last": {
+  "cursor": [
+   5,
+   0
+  ],
+  "text": "a1\na2\n\nb1\nb2\n\n"
+ },
+ "tobj-dip-middle": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "a1\na2\n\n\nc1\nc2\n"
+ },
+ "tobj-diw-empty-line": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "a\n\nb\n"
+ },
+ "tobj-diw-eol": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "one \n"
+ },
+ "tobj-diw-gap": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "onetwo\n"
+ },
+ "tobj-diw-indent-col0": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "foo:\nbar baz\n  x\n"
+ },
+ "tobj-diw-indent-col2": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "foo:\nbar baz\n  x\n"
+ },
+ "tobj-diw-indent-col3": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "foo:\nbar baz\n  x\n"
+ },
+ "tobj-diw-multiline-trail": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "a c\n"
+ },
+ "tobj-diw-punct": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "ab(c)\n"
+ },
+ "tobj-gU-i-paren": {
+  "cursor": [
+   2,
+   12
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (A + B) * 2\n\ny = 10\nz = 20\n"
+ },
+ "tobj-gUip-col1": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "A1\nA2\n\nb1\nb2\n\nc1\nc2\n"
+ },
+ "tobj-gUiw-gap": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "one   two\n"
+ },
+ "tobj-gt-i-paren": {
+  "cursor": [
+   2,
+   13
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n        return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "tobj-gt-ip": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "a1\na2\n\n    b1\n    b2\n\nc1\nc2\n"
+ },
+ "tobj-nopair-ci-angle": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "no air here at all\nsecond line\n"
+ },
+ "tobj-nopair-ci-bracket": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "no air here at all\nsecond line\n"
+ },
+ "tobj-nopair-ci-bt": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "no air here at all\nsecond line\n"
+ },
+ "tobj-nopair-ci-dq": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "no air here at all\nsecond line\n"
+ },
+ "tobj-nopair-ci-paren": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "no air here at all\nsecond line\n"
+ },
+ "tobj-nopair-ci-sq": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "no air here at all\nsecond line\n"
+ },
+ "tobj-nopair-da-paren": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "no pair here at all\nsecond line\n"
+ },
+ "tobj-nopair-di-brace": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "no air here at all\nsecond line\n"
+ },
+ "tobj-nopair-yi-paren": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "no pair here at all\nsecond line\n"
+ },
+ "tobj-p-empty": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "abc\n"
+ },
+ "tobj-v2i-paren": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "f()\n"
+ },
+ "tobj-va-brace-multi": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "if x \nz\n"
+ },
+ "tobj-va-dq": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "x y\n"
+ },
+ "tobj-va-paren": {
+  "cursor": [
+   2,
+   11
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return  * 2\n\ny = 10\nz = 20\n"
+ },
+ "tobj-va-paren-twice": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "f\n"
+ },
+ "tobj-vap": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "a1\na2\n\nc1\nc2\n"
+ },
+ "tobj-vap-twice": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "c1\nc2\n"
+ },
+ "tobj-vaw": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "one three\n"
+ },
+ "tobj-vaw-gap": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "one\n"
+ },
+ "tobj-vawaw": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "three\n"
+ },
+ "tobj-vi-brace-multi": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "if x {\n}\nz\n"
+ },
+ "tobj-vi-dq-twice": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "x  y\n"
+ },
+ "tobj-vi-paren": {
+  "cursor": [
+   2,
+   12
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return () * 2\n\ny = 10\nz = 20\n"
+ },
+ "tobj-vi-paren-nopair": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "no pir here at all\nsecond line\n"
+ },
+ "tobj-vi-paren-onopen": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "f()\n"
+ },
+ "tobj-vi-paren-twice": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "f()\n"
+ },
+ "tobj-vip": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "a1\na2\n\n\nc1\nc2\n"
+ },
+ "tobj-vip-twice": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "b1\nb2\n\nc1\nc2\n"
+ },
+ "tobj-viw": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "one  three\n"
+ },
+ "tobj-viw-count": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": " three four\n"
+ },
+ "tobj-viw-gap": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "onetwo\n"
+ },
+ "tobj-viwiw": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "two three\n"
+ },
+ "tobj-y-ib": {
+  "cursor": [
+   2,
+   16
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + ba + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "tobj-yap-blank": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "a1\na2\n\nb1\nb2\n\nb1\nb2\n\nc1\nc2\n"
+ },
+ "tobj-yap-col1": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n"
+ },
+ "tobj-yap-first": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "a1\na2\n\na1\na2\n\nb1\nb2\n\nc1\nc2\n"
+ },
+ "tobj-yap-last": {
+  "cursor": [
+   5,
+   0
+  ],
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n\nc1\nc2\n"
+ },
+ "tobj-yap-middle": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "a1\na2\n\nb1\nb2\n\nb1\nb2\n\nc1\nc2\n"
+ },
+ "tobj-yip-blank": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "a1\na2\n\n\nb1\nb2\n\nc1\nc2\n"
+ },
+ "tobj-yip-col1": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "a1\na2\n\nb1\nb2\nb1\nb2\n\nc1\nc2\n"
+ },
+ "tobj-yip-first": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "a1\na2\na1\na2\n\nb1\nb2\n\nc1\nc2\n"
+ },
+ "tobj-yip-last": {
+  "cursor": [
+   6,
+   0
+  ],
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\nc1\nc2\n"
+ },
+ "tobj-yip-middle": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "a1\na2\n\nb1\nb2\nb1\nb2\n\nc1\nc2\n"
+ },
+ "tobj-yiw-gap": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "one      two\n"
  },
  "undo": {
   "cursor": [

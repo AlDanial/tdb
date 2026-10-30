@@ -51,6 +51,7 @@ from prompt_toolkit.filters import (
     vi_insert_mode,
     vi_navigation_mode,
     vi_selection_mode,
+    vi_waiting_for_text_object_mode,
 )
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.key_binding.bindings.vi import (
@@ -66,6 +67,8 @@ if TYPE_CHECKING:
     from prompt_toolkit.key_binding import KeyPressEvent
 
     from tdb.vi.engine import ViEngine
+
+Pos = tuple[int, int]  # (row, column); column == len(line) is the line end
 
 
 def load_tdb_vi_bindings(engine: ViEngine) -> KeyBindings:
@@ -88,6 +91,8 @@ def load_tdb_vi_bindings(engine: ViEngine) -> KeyBindings:
 
     _add_change_word(kb)
     _add_nvim_cursor_fixes(kb, engine)
+    _add_text_objects(kb)
+    _add_join(kb)
     _add_viewport_commands(kb, engine)
     _add_insert_tab(kb, engine)
 
@@ -109,10 +114,21 @@ def _add_change_word(kb: KeyBindings) -> None:
     def change(event: KeyPressEvent, text_obj: TextObject) -> None:
         """``c{motion}`` (same as prompt_toolkit's, minus registers)."""
         buff = event.current_buffer
-        new_document, clipboard_data = text_obj.cut(buff)
-        buff.document = new_document
-        if clipboard_data.text:
-            event.app.clipboard.set_data(clipboard_data)
+        if text_obj.type == TextObjectType.LINEWISE:
+            # Like ``cc``: the lines become one empty line keeping the indent.
+            first, last = text_obj.get_line_numbers(buff)
+            lines = buff.document.lines
+            indent = lines[first][: len(lines[first]) - len(lines[first].lstrip(" \t"))]
+            event.app.clipboard.set_data(
+                ClipboardData("\n".join(lines[first : last + 1]), SelectionType.LINES)
+            )
+            text = "\n".join(lines[:first] + [indent] + lines[last + 1 :])
+            buff.document = Document(text, _index(lines, (first, len(indent))))
+        else:
+            new_document, clipboard_data = text_obj.cut(buff)
+            buff.document = new_document
+            if clipboard_data.text:
+                event.app.clipboard.set_data(clipboard_data)
         event.app.vi_state.input_mode = InputMode.INSERT
 
     changing = Condition(lambda: get_app().vi_state.operator_func is change)
@@ -171,6 +187,8 @@ def _add_nvim_cursor_fixes(kb: KeyBindings, engine: ViEngine) -> None:
     def paste(event: KeyPressEvent, mode: PasteMode) -> None:
         buff = event.current_buffer
         data = event.app.clipboard.get_data()
+        if not data.text and data.type != SelectionType.LINES:
+            return  # empty register: nothing to put
         row = buff.document.cursor_position_row
         buff.paste_clipboard_data(data, count=event.arg, paste_mode=mode)
         if data.type == SelectionType.LINES and data.text:
@@ -248,7 +266,7 @@ def _add_nvim_cursor_fixes(kb: KeyBindings, engine: ViEngine) -> None:
         """``y{motion}``: the cursor moves to the start of the yanked text."""
         buff = event.current_buffer
         _, data = text_obj.cut(buff)
-        if data.text:
+        if data.text or data.type == SelectionType.LINES:
             event.app.clipboard.set_data(data)
         buff.cursor_position += min(text_obj.sorted()[0], 0)
 
@@ -344,6 +362,703 @@ def _add_nvim_cursor_fixes(kb: KeyBindings, engine: ViEngine) -> None:
             return None
         offset = doc.get_cursor_up_position(count=event.arg)
         return TextObject(offset, type=TextObjectType.LINEWISE)
+
+
+# ---------------------------------------------------------------------------
+# Text objects (iw aw iW aW ip ap, brackets, quotes) and J / gJ
+#
+# prompt_toolkit's versions differ from vim on whitespace runs, paragraphs and
+# "no enclosing pair" (it returns ``TextObject(0)``, after which ``c``
+# duplicates buffer text).  These are ports of vim's ``current_word``,
+# ``current_par``, ``current_block``, ``current_quote`` and ``do_join``.
+# A handler returning ``None`` cancels the pending operator untouched.
+# ---------------------------------------------------------------------------
+
+
+class _Cursor:
+    """vim's cursor primitives (``inc``/``dec``/``cls`` ...) over *lines*."""
+
+    def __init__(self, lines: list[str], pos: Pos, bigword: bool = False) -> None:
+        self.lines = lines
+        self.row, self.col = pos
+        self.bigword = bigword
+
+    @property
+    def pos(self) -> Pos:
+        return self.row, self.col
+
+    def set(self, pos: Pos) -> None:
+        self.row, self.col = pos
+
+    def char(self) -> str:
+        line = self.lines[self.row]
+        return line[self.col] if self.col < len(line) else ""
+
+    def cls(self) -> int:
+        """Character class: 0 blank (or line end), 1 punctuation, 2 word."""
+        c = self.char()
+        if c in ("", " ", "\t"):
+            return 0
+        if self.bigword:
+            return 1
+        return 2 if c.isalnum() or c == "_" else 1
+
+    def inc(self) -> int:
+        """vim ``inc()``: 0 normal, 2 onto the line end, 1 next line, -1 at EOF."""
+        line = self.lines[self.row]
+        if self.col < len(line):
+            self.col += 1
+            return 0 if self.col < len(line) else 2
+        if self.row < len(self.lines) - 1:
+            self.row += 1
+            self.col = 0
+            return 1
+        return -1
+
+    def dec(self) -> int:
+        if self.col > 0:
+            self.col -= 1
+            return 0
+        if self.row > 0:
+            self.row -= 1
+            self.col = len(self.lines[self.row])
+            return 1
+        return -1
+
+    def incl(self) -> int:
+        r = self.inc()
+        if r >= 1 and self.col:
+            r = self.inc()
+        return r
+
+    def decl(self) -> int:
+        r = self.dec()
+        if r == 1 and self.col:
+            r = self.dec()
+        return r
+
+    def in_indent(self, extra: int) -> bool:
+        """Whether the cursor is within the leading white space of its line."""
+        line = self.lines[self.row]
+        return len(line) - len(line.lstrip(" \t")) >= self.col + extra
+
+    def back_in_line(self) -> None:
+        sclass = self.cls()
+        while self.col > 0:
+            self.dec()
+            if self.cls() != sclass:
+                self.inc()
+                break
+
+    def skip_chars(self, cclass: int) -> bool:
+        """Move forward over *cclass*; True when the buffer end was hit."""
+        while self.cls() == cclass:
+            if self.inc() == -1:
+                return True
+        return False
+
+    def end_word(self) -> bool:
+        sclass = self.cls()
+        if self.inc() == -1:
+            return False
+        if self.cls() == sclass and sclass != 0:
+            if self.skip_chars(sclass):
+                return False
+        elif sclass == 0:
+            while self.cls() == 0:
+                if self.col == 0 and not self.lines[self.row]:
+                    return True  # stop at an empty line
+                if self.inc() == -1:
+                    return False
+            if self.skip_chars(self.cls()):
+                return False
+        self.dec()
+        return True
+
+    def fwd_word(self) -> bool:
+        """Start of the next word, stopping at a line end (vim ``fwd_word``)."""
+        sclass = self.cls()
+        last_line = self.row == len(self.lines) - 1
+        i = self.inc()
+        if i == -1 or (i >= 1 and last_line):
+            return False
+        if i >= 1:
+            return True
+        if sclass != 0:
+            while self.cls() == sclass:
+                if self.inc() != 0:
+                    return True
+        while self.cls() == 0:
+            if self.col == 0 and not self.lines[self.row]:
+                break
+            i = self.inc()
+            if i == -1 or (i >= 1 and last_line):
+                return True
+        return True
+
+
+class _NoObject(Exception):
+    """No such text object; ``pos`` is where vim's failed search left the cursor."""
+
+    def __init__(self, pos: Pos) -> None:
+        super().__init__(pos)
+        self.pos = pos
+
+
+class _EmptyTextObject(TextObject):
+    """A found-but-empty object (``di(`` on ``()``): operators change nothing."""
+
+    def operator_range(self, document: Document) -> tuple[int, int]:
+        return self.start, self.start
+
+    def cut(self, buffer: Buffer) -> tuple[Document, ClipboardData]:
+        pos = buffer.cursor_position + self.start
+        return Document(buffer.text, pos), ClipboardData()
+
+
+def _index(lines: list[str], pos: Pos) -> int:
+    row, col = pos
+    return sum(len(line) + 1 for line in lines[:row]) + col
+
+
+def _linewise(lines: list[str], cur: int, first: int, last: int) -> TextObject:
+    return TextObject(
+        _index(lines, (first, 0)) - cur,
+        _index(lines, (last, 0)) - cur,
+        type=TextObjectType.LINEWISE,
+    )
+
+
+def _charwise(
+    lines: list[str], cur: int, start: Pos, end: Pos, inclusive: bool
+) -> TextObject:
+    """Operator object for *start*..*end*, with vim's exclusive-at-column-0 rule."""
+    if not inclusive and end[1] == 0 and end[0] > start[0]:
+        # "o_v" rule: the end moves to the end of the previous line, and the
+        # motion becomes linewise when it starts in the indent.
+        row = end[0] - 1
+        first = lines[start[0]]
+        if len(first) - len(first.lstrip(" \t")) >= start[1]:
+            return _linewise(lines, cur, start[0], row)
+        end = (row, len(lines[row]))
+        if end[1]:
+            end = (row, end[1] - 1)
+            inclusive = True
+    if inclusive and end[1] >= len(lines[end[0]]):
+        inclusive = False  # inclusive of the line end: the break is not taken
+    s, e = _index(lines, start), _index(lines, end) + (1 if inclusive else 0)
+    if e <= s:
+        return _EmptyTextObject(s - cur, s - cur)
+    return TextObject(s - cur, e - 1 - cur, type=TextObjectType.INCLUSIVE)
+
+
+def _current_word(
+    lines: list[str],
+    pos: Pos,
+    count: int,
+    include: bool,
+    bigword: bool,
+    visual_start: Pos | None,
+) -> tuple[Pos, Pos, bool]:
+    """Port of vim's ``current_word``: ``(start, end, inclusive)``.
+
+    Raises ``_NoObject`` (carrying vim's final cursor) when there is none.
+    """
+    c = _Cursor(lines, pos, bigword)
+    inclusive = True
+    include_white = False
+    if visual_start is None or visual_start == pos:
+        c.back_in_line()
+        start = c.pos
+        if (c.cls() == 0) == include:
+            if not c.end_word():
+                raise _NoObject(c.pos)
+        else:
+            c.fwd_word()
+            if c.col == 0:
+                c.decl()
+            else:
+                c.col -= 1
+            include_white = include
+        count -= 1
+    elif visual_start < pos:
+        start = visual_start
+    else:
+        raise _NoObject(c.pos)
+    while count > 0:
+        inclusive = True
+        if c.incl() == -1:
+            raise _NoObject(c.pos)
+        if include != (c.cls() == 0):
+            if not c.fwd_word() and count > 1:
+                raise _NoObject(c.pos)
+            if c.col == 0:
+                inclusive = False
+            else:
+                c.col -= 1
+        elif not c.end_word():
+            raise _NoObject(c.pos)
+        count -= 1
+    if include_white and (c.cls() != 0 or (c.col == 0 and not inclusive)):
+        end = c.pos
+        c.set(start)
+        if c.col > 0:
+            c.col -= 1
+            c.back_in_line()
+            if c.cls() == 0 and c.col > 0:
+                start = c.pos
+        c.set(end)
+    return start, c.pos, inclusive
+
+
+def _current_par(
+    lines: list[str], row: int, count: int, include: bool, visual_row: int | None
+) -> tuple[int, int] | None:
+    """Port of vim's ``current_par``: ``(first_row, last_row)`` or None."""
+    last = len(lines) - 1
+
+    def white(r: int) -> bool:
+        return not lines[r].strip(" \t")
+
+    if visual_row is not None and visual_row != row:
+        step = -1 if row < visual_row else 1
+        edge = 0 if step < 0 else last
+        for _ in range(count):
+            if row == edge:
+                return None
+            prev_white = None
+            for _t in range(2):
+                row += step
+                now_white = white(row)
+                if prev_white == now_white:
+                    row -= step
+                    break
+                while row != edge and now_white == white(row + step):
+                    row += step
+                if not include or row == edge:
+                    break
+                prev_white = now_white
+        return visual_row, row
+    start = row
+    white_in_front = white(start)
+    while start > 0 and white(start - 1) == white_in_front:
+        start -= 1
+    end = start
+    while end <= last and white(end):
+        end += 1
+    end -= 1
+    i = count
+    if not include and white_in_front:
+        i -= 1
+    do_white = False
+    while i > 0:
+        i -= 1
+        if end == last:
+            return None
+        if not include:
+            do_white = white(end + 1)
+        if include or not do_white:
+            end += 1
+            while end < last and not white(end + 1):
+                end += 1
+        if i == 0 and white_in_front and include:
+            break
+        if include or do_white:
+            while end < last and white(end + 1):
+                end += 1
+    if not white_in_front and not white(end) and include:
+        while start > 0 and white(start - 1):
+            start -= 1
+    return start, end
+
+
+_PAIRS = {
+    "(": ("(", ")"), ")": ("(", ")"), "b": ("(", ")"),
+    "{": ("{", "}"), "}": ("{", "}"), "B": ("{", "}"),
+    "[": ("[", "]"), "]": ("[", "]"),
+    "<": ("<", ">"), ">": ("<", ">"),
+}  # fmt: skip
+
+
+def _find_open(text: str, idx: int, open_: str, close: str) -> int | None:
+    """Index of the unmatched *open_* before *idx* (``text[idx]`` is not examined)."""
+    depth = 0
+    for i in range(idx - 1, -1, -1):
+        ch = text[i]
+        if ch == close:
+            depth += 1
+        elif ch == open_:
+            if depth == 0:
+                return i
+            depth -= 1
+    return None
+
+
+def _find_close(text: str, idx: int, open_: str, close: str) -> int | None:
+    """Index of the *close* matching the *open_* at *idx*."""
+    depth = 0
+    for i in range(idx + 1, len(text)):
+        ch = text[i]
+        if ch == open_:
+            depth += 1
+        elif ch == close:
+            if depth == 0:
+                return i
+            depth -= 1
+    return None
+
+
+def _block_span(
+    lines: list[str],
+    pos: Pos,
+    key: str,
+    count: int,
+    inner: bool,
+    selection: tuple[Pos, Pos] | None,
+) -> tuple[Pos, Pos, bool] | None:
+    """Port of vim's ``current_block``: ``(start, end, sol)`` or None.
+
+    *end* is inclusive.  For an inner object *start* may lie after *end*
+    (nothing between the brackets).  ``sol`` is vim's flag for a closing
+    bracket that starts its line.  *selection* is the Visual range, if any.
+    """
+    open_, close = _PAIRS[key]
+    text = "\n".join(lines)
+    cursor = _index(lines, pos)
+    old_start = old_end = pos
+    if selection is not None and selection[0] != selection[1]:
+        old_start, old_end = selection
+        cursor = _index(lines, old_start)
+    elif open_ == "{":
+        c = _Cursor(lines, pos)
+        while c.in_indent(1):
+            if c.inc() != 0:
+                break
+        cursor = _index(lines, c.pos)
+    if cursor < len(text) and text[cursor] == open_:
+        cursor += 1
+    open_idx = cursor
+    for _ in range(count):
+        found = _find_open(text, open_idx, open_, close)
+        if found is None:
+            return None
+        open_idx = found
+
+    def locate(i: int) -> Pos:
+        before = text[:i]
+        return before.count("\n"), i - (before.rfind("\n") + 1)
+
+    while True:
+        close_idx = _find_close(text, open_idx, open_, close)
+        if close_idx is None:
+            return None
+        start, end, sol = locate(open_idx), locate(close_idx), False
+        if inner:
+            c = _Cursor(lines, start)
+            c.incl()
+            start = c.pos
+            c.set(end)
+            sol = c.col == 0
+            c.decl()
+            while c.in_indent(1):
+                sol = True
+                if c.decl() != 0:
+                    break
+            end = c.pos
+        if selection is None or start < old_start or end > old_end or start == end:
+            return start, end, sol
+        # Not bigger than the current selection: take the enclosing block.
+        found = _find_open(text, open_idx, open_, close)
+        if found is None:
+            return None
+        open_idx = found
+
+
+def _quote_span(
+    line: str, col: int, quote: str, include: bool
+) -> tuple[int, int] | None:
+    """Port of vim's ``current_quote``: the ``[start, end)`` columns in *line*."""
+
+    def next_quote(i: int) -> int:
+        while i < len(line):
+            if line[i] == "\\":
+                i += 1
+            elif line[i] == quote:
+                return i
+            i += 1
+        return -1
+
+    def prev_quote(i: int) -> int:
+        while i > 0:
+            i -= 1
+            n = 0
+            while i - n > 0 and line[i - n - 1] == "\\":
+                n += 1
+            if n & 1:
+                i -= n
+            elif line[i] == quote:
+                break
+        return i
+
+    if col < len(line) and line[col] == quote:
+        start = 0
+        while True:
+            start = next_quote(start)
+            if start < 0 or start > col:
+                return None
+            end = next_quote(start + 1)
+            if end < 0:
+                return None
+            if start <= col <= end:
+                break
+            start = end + 1
+    else:
+        start = prev_quote(col)
+        if start >= len(line) or line[start] != quote:
+            start = next_quote(start)
+            if start < 0:
+                return None
+        end = next_quote(start + 1)
+        if end < 0:
+            return None
+    if include:
+        if end + 1 < len(line) and line[end + 1] in " \t":
+            while end + 1 < len(line) and line[end + 1] in " \t":
+                end += 1
+        else:
+            while start > 0 and line[start - 1] in " \t":
+                start -= 1
+        return start, end + 1
+    return start + 1, end
+
+
+def _add_text_objects(kb: KeyBindings) -> None:
+    """vim-accurate ``iw aw iW aW ip ap`` and bracket / quote objects.
+
+    Each object is registered twice: through ``create_text_object_decorator``
+    for operator-pending mode (overriding prompt_toolkit's for the same keys,
+    and a ``None`` result cancels the operator), and as a Visual-mode
+    selection.  The decorator's own selection handler is disabled because it
+    selects one character too many.
+    """
+    text_object = create_text_object_decorator(kb)
+    visual = ~vi_waiting_for_text_object_mode & vi_selection_mode
+
+    def register(keys: tuple[str, ...], pending, selecting) -> None:
+        text_object(*keys, no_move_handler=True, no_selection_handler=True)(pending)
+        kb.add(*keys, filter=visual)(selecting)
+
+    def where(event: KeyPressEvent):
+        """(lines, cursor index, cursor pos, Visual start pos or None)."""
+        buff = event.current_buffer
+        doc = buff.document
+        pos = (doc.cursor_position_row, doc.cursor_position_col)
+        sel = buff.selection_state
+        vstart = None
+        if sel is not None:
+            vstart = doc.translate_index_to_position(sel.original_cursor_position)
+        return doc.lines, doc.cursor_position, pos, vstart
+
+    def select(
+        event: KeyPressEvent, lines: list[str], start: Pos, end: Pos, linewise: bool
+    ) -> None:
+        """Select *start*..*end* (inclusive) in Visual mode."""
+        buff = event.current_buffer
+        sel = buff.selection_state
+        if sel is None:
+            return
+        sel.original_cursor_position = _index(lines, start)
+        sel.type = SelectionType.LINES if linewise else SelectionType.CHARACTERS
+        buff.cursor_position = _index(lines, end)
+
+    def word_object(include: bool, bigword: bool):
+        def pending(event: KeyPressEvent) -> TextObject | None:
+            lines, cur, pos, _ = where(event)
+            try:
+                found = _current_word(lines, pos, event.arg, include, bigword, None)
+            except _NoObject as fail:
+                _set_cursor(event.current_buffer, *fail.pos)
+                return None
+            return _charwise(lines, cur, *found)
+
+        def selecting(event: KeyPressEvent) -> None:
+            lines, _cur, pos, vstart = where(event)
+            try:
+                found = _current_word(lines, pos, event.arg, include, bigword, vstart)
+            except _NoObject:
+                return
+            start, end, inclusive = found
+            if not inclusive:
+                c = _Cursor(lines, end)
+                c.dec()
+                end = c.pos
+            select(event, lines, start, end, False)
+
+        return pending, selecting
+
+    for keys, include, bigword in [
+        (("i", "w"), False, False),
+        (("a", "w"), True, False),
+        (("i", "W"), False, True),
+        (("a", "W"), True, True),
+    ]:
+        register(keys, *word_object(include, bigword))
+
+    def para_object(include: bool):
+        def pending(event: KeyPressEvent) -> TextObject | None:
+            lines, cur, pos, _ = where(event)
+            found = _current_par(lines, pos[0], event.arg, include, None)
+            return None if found is None else _linewise(lines, cur, *found)
+
+        def selecting(event: KeyPressEvent) -> None:
+            lines, _cur, pos, vstart = where(event)
+            vrow = vstart[0] if vstart else None
+            found = _current_par(lines, pos[0], event.arg, include, vrow)
+            if found is not None:
+                select(event, lines, (found[0], 0), (found[1], 0), True)
+
+        return pending, selecting
+
+    register(("i", "p"), *para_object(False))
+    register(("a", "p"), *para_object(True))
+
+    def block_object(key: str, inner: bool):
+        def pending(event: KeyPressEvent) -> TextObject | None:
+            lines, cur, pos, _ = where(event)
+            span = _block_span(lines, pos, key, event.arg, inner, None)
+            if span is None:
+                return None
+            start, end, sol = span
+            if not inner:
+                return _charwise(lines, cur, start, end, True)
+            if sol:
+                # vim steps over the line break when the closer starts its line.
+                c = _Cursor(lines, end)
+                c.incl()
+                return _charwise(lines, cur, start, c.pos, False)
+            if start <= end:
+                return _charwise(lines, cur, start, end, True)
+            return _EmptyTextObject(
+                _index(lines, start) - cur, _index(lines, start) - cur
+            )
+
+        def selecting(event: KeyPressEvent) -> None:
+            lines, _cur, pos, vstart = where(event)
+            selection = None if vstart is None else (min(vstart, pos), max(vstart, pos))
+            span = _block_span(lines, pos, key, event.arg, inner, selection)
+            if span is None:
+                return
+            start, end, sol = span
+            if sol and end[1] < len(lines[end[0]]):
+                end = (end[0], end[1] + 1)  # include the line break
+            elif start > end:
+                return
+            select(event, lines, start, end, False)
+
+        return pending, selecting
+
+    for inner in (False, True):
+        for key in _PAIRS:
+            register(("ai"[inner], key), *block_object(key, inner))
+
+    def quote_object(quote: str, inner: bool):
+        def pending(event: KeyPressEvent) -> TextObject | None:
+            lines, cur, pos, _ = where(event)
+            row, col = pos
+            span = _quote_span(lines[row], col, quote, not inner)
+            if span is None:
+                return None
+            return _charwise(lines, cur, (row, span[0]), (row, span[1]), False)
+
+        def selecting(event: KeyPressEvent) -> None:
+            lines, _cur, pos, vstart = where(event)
+            row, col = pos
+            span = _quote_span(lines[row], col, quote, not inner)
+            if span is None:
+                return
+            start, end = span
+            if inner and vstart is not None and vstart != pos:
+                # Repeating i" on the selected inner text takes the quotes too.
+                lo, hi = sorted((vstart[1], col))
+                if (lo, hi + 1) == (start, end) and start > 0:
+                    start, end = start - 1, end + 1
+            if end > start:
+                select(event, lines, (row, start), (row, end - 1), False)
+
+        return pending, selecting
+
+    for inner in (False, True):
+        for quote in ('"', "'", "`"):
+            register(("ai"[inner], quote), *quote_object(quote, inner))
+
+
+def _join_lines(
+    lines: list[str], row: int, count: int, space: bool
+) -> tuple[list[str], int]:
+    """vim ``do_join``: join *count* lines from *row*; returns (lines, cursor col)."""
+    count = min(count, len(lines) - row)
+    joined = lines[row]
+    col = len(joined)
+    prev = joined  # previous (white-space trimmed) piece
+    for nxt in lines[row + 1 : row + count]:
+        sep = ""
+        if space:
+            nxt = nxt.lstrip(" \t")
+            # No space before ")", after a trailing blank, or onto/from nothing.
+            if nxt and nxt[0] != ")" and joined and prev[-1:] not in (" ", "\t"):
+                sep = " "
+        col = len(joined)
+        joined += sep + nxt
+        prev = nxt
+    return lines[:row] + [joined] + lines[row + count :], col
+
+
+def _add_join(kb: KeyBindings) -> None:
+    """``J`` / ``gJ``: ``{count}J`` joins *count* lines (minimum two)."""
+
+    def join(buff: Buffer, row: int, count: int, space: bool) -> None:
+        doc = buff.document
+        if row >= doc.line_count - 1:
+            return
+        lines, col = _join_lines(doc.lines, row, max(count, 2), space)
+        buff.document = Document("\n".join(lines), 0)
+        _set_cursor(buff, row, col)
+
+    def join_selected(event: KeyPressEvent, space: bool) -> None:
+        buff = event.current_buffer
+        doc = buff.document
+        sel = buff.selection_state
+        assert sel is not None
+        other = doc.translate_index_to_position(sel.original_cursor_position)[0]
+        first, last = sorted((doc.cursor_position_row, other))
+        buff.exit_selection()
+        join(buff, first, last - first + 1, space)
+
+    @kb.add("J", filter=vi_navigation_mode & ~is_read_only)
+    def _join(event: KeyPressEvent) -> None:
+        join(
+            event.current_buffer,
+            event.current_buffer.document.cursor_position_row,
+            event.arg,
+            True,
+        )
+
+    @kb.add("g", "J", filter=vi_navigation_mode & ~is_read_only)
+    def _join_nospace(event: KeyPressEvent) -> None:
+        join(
+            event.current_buffer,
+            event.current_buffer.document.cursor_position_row,
+            event.arg,
+            False,
+        )
+
+    @kb.add("J", filter=vi_selection_mode & ~is_read_only)
+    def _join_selection(event: KeyPressEvent) -> None:
+        join_selected(event, True)
+
+    @kb.add("g", "J", filter=vi_selection_mode & ~is_read_only)
+    def _join_selection_nospace(event: KeyPressEvent) -> None:
+        join_selected(event, False)
 
 
 def _add_insert_tab(kb: KeyBindings, engine: ViEngine) -> None:
