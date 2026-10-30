@@ -56,6 +56,14 @@ class DebugpyAdapter(AdapterSpec):
             # Frozen stdlib modules break debugpy's tracing.
             "pythonArgs": ["-Xfrozen_modules=off"],
         }
+        if arguments["justMyCode"]:
+            # A program installed under site-packages (e.g. tdb's packaged
+            # examples) is library code to debugpy, so justMyCode would
+            # skip its entry stop and every breakpoint. Mark the program's
+            # own directory as user code; real libraries stay filtered.
+            arguments["rules"] = [
+                {"path": os.path.dirname(os.path.abspath(program)), "include": True}
+            ]
         if env:
             arguments["env"] = env
         if opts.get("python"):

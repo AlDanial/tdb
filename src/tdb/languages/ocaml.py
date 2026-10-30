@@ -458,6 +458,7 @@ def build_ocaml_profile(
             frame_name=demangle_frame_name if native else None,
         ),
         capabilities=ProfileCapabilities(
+            compiled=True,  # bytecode (ocamlc -g) needs debug info too
             # lldb-dap/gdb pause verified for cpp (test_cpp_pause.py);
             # earlybird per probe Q4 (default False until verified True).
             pause_while_running=native,

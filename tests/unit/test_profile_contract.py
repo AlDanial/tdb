@@ -58,3 +58,14 @@ def test_profile_modules_never_import_ui(profile):
     source = open(mod.__file__).read()
     for forbidden in ("tdb.app", "tdb.widgets", "session.controller"):
         assert forbidden not in source, f"{mod.__name__} imports {forbidden}"
+
+
+# Languages whose breakpoints depend on the build emitting debug info (-g).
+# Fortran binaries currently debug under the native "cpp" profile; listing
+# it here holds a future dedicated Fortran profile to the same rule.
+COMPILED_LANGUAGES = {"cpp", "rust", "go", "ocaml", "fortran"}
+
+
+def test_compiled_flag_matches_language(profile):
+    # Drives the "compiled with debug info (-g)?" hint on unbound breakpoints.
+    assert profile.capabilities.compiled is (profile.id in COMPILED_LANGUAGES)
