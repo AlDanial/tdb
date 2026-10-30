@@ -507,3 +507,14 @@ async def test_typing_latency_on_large_file():
         elapsed = time.perf_counter() - start
         assert ed.text == layer.engine.text
         assert elapsed < 1.0, f"{len(events)} keys took {elapsed:.2f}s"
+
+
+async def test_ctrl_z_leaves_text_unchanged_in_normal_and_insert():
+    app = _EdApp()
+    async with app.run_test() as pilot:
+        ed = app.query_one("#ed", CodeEditor)
+        await pilot.press("l", "ctrl+z")
+        assert ed.text == TEXT and ed.submode == "normal"
+        await pilot.press("i", "ctrl+z")
+        assert ed.text == TEXT and ed.submode == "insert"
+        assert ed._layer.engine.text == TEXT

@@ -81,6 +81,10 @@ def load_tdb_vi_bindings(engine: ViEngine) -> KeyBindings:
     def _no_block_visual(event: KeyPressEvent) -> None:
         """Block visual mode is unsupported: Ctrl+V does nothing."""
 
+    @kb.add("c-z")
+    def _no_ctrl_z(event: KeyPressEvent) -> None:
+        """Ctrl+Z does nothing (prompt_toolkit would insert a literal ``\\x1a``)."""
+
     _add_change_word(kb)
     _add_nvim_cursor_fixes(kb, engine)
 

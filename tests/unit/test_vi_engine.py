@@ -251,3 +251,13 @@ async def test_recording_status():
 )
 def test_vikey_parse(notation, names):
     assert ViKey.parse(notation) == [ViKey(n) for n in names]
+
+
+@pytest.mark.parametrize("prefix", ["", "i", "v", "R"])
+async def test_ctrl_z_never_edits(prefix):
+    """prompt_toolkit's basic bindings insert a literal \\x1a for Ctrl+Z."""
+    e = ViEngine("abc\ndef\n", cursor=(0, 1))
+    e.feed_keys(prefix)
+    mode = e.mode
+    e.feed(ViKey("ctrl+z"))
+    assert e.text == "abc\ndef\n" and e.mode == mode
