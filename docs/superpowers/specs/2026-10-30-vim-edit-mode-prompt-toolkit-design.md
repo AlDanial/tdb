@@ -191,9 +191,10 @@ keys are never used in the vim scheme (all keys go through the engine).
 `TextArea.edit()` works on a `read_only` TextArea, so the builder may
 set `read_only` as a safety net if it doesn't interfere with the cursor.
 
-Line endings: the engine works on `\n` text. CRLF files must round-trip
-unchanged on save (verify with a test; `source_edit.py` writes with
-`newline=""`).
+Line endings: the engine works on `\n` text built from the TextArea's
+lines, never on raw `\r\n`. Edit mode already saves CRLF files with LF
+endings (a documented v1 limitation); this work must not make that
+worse, and fixing it is out of scope.
 
 Selection rendering: character and line visual map onto TextArea's
 selection (line visual = whole lines). Block visual is not offered in
@@ -350,8 +351,8 @@ Rules:
   and through `CodeView`/App Edit mode: key routing (pane keys still
   switch panes, `Ctrl+S` saves), Esc layering, mirroring, cursor and
   selection rendering, mode label, mouse click
-  and paste, marks surviving leave/re-enter and file switches, CRLF
-  round trip.
+  and paste, marks surviving leave/re-enter and file switches, a CRLF
+  file edits without stray `\r` characters.
 - **Exception safety:** a test that injects a failing binding and checks
   the buffer is restored and a warning shown.
 - Existing `tests/unit/test_code_editor_vim.py` tests: keep the ones
