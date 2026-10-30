@@ -14,13 +14,15 @@ is part of the undo history.
 from __future__ import annotations
 
 import logging
+from collections import deque
 from dataclasses import dataclass, field
+from string import ascii_letters
 from typing import TYPE_CHECKING, Literal, Protocol
 
 from prompt_toolkit.application import Application
 from prompt_toolkit.application.current import set_app
 from prompt_toolkit.buffer import Buffer
-from prompt_toolkit.clipboard import InMemoryClipboard
+from prompt_toolkit.clipboard import Clipboard, ClipboardData, InMemoryClipboard
 from prompt_toolkit.document import Document
 from prompt_toolkit.enums import EditingMode
 from prompt_toolkit.input import DummyInput
@@ -78,6 +80,35 @@ _NOTATION: dict[str, str] = {
     "lt": "<",
     "space": " ",
 }
+
+# Special ViKey name -> its code in a register's text, as vim stores it
+# (K_SPECIAL byte 0x80 + two-character key code), so a recorded macro is
+# plain text in its register and still round-trips.
+_REGISTER_CODES: dict[str, str] = {
+    "delete": "\x80kD",
+    "up": "\x80ku",
+    "down": "\x80kd",
+    "left": "\x80kl",
+    "right": "\x80kr",
+    "home": "\x80kh",
+    "end": "\x80@7",
+    "pageup": "\x80kP",
+    "pagedown": "\x80kN",
+}
+_REGISTER_CHARS: dict[str, str] = {
+    "escape": "\x1b",
+    "enter": "\r",
+    "tab": "\t",
+    "backspace": "\x7f",
+}
+_REGISTER_CODE_KEYS = {v: k for k, v in _REGISTER_CODES.items()}
+# A line break in register text is <NL> (Ctrl+J), as in vim.
+_REGISTER_CHAR_KEYS = {v: k for k, v in _REGISTER_CHARS.items()} | {"\n": "ctrl+j"}
+
+# Keys replayed by `.` / macros in one feed before the replay is cut off
+# (a recursive macro would otherwise never stop: vim ends it when a
+# command fails, which prompt_toolkit does not report).
+_REPLAY_LIMIT = 100_000
 
 # ViKey name -> vim notation, for showing pending keys in the status.
 _DISPLAY: dict[str, str] = {
@@ -160,6 +191,44 @@ class ViKey:
         return KeyPress(n, n)
 
 
+def keys_to_register_text(keys: list[ViKey]) -> str:
+    """Encode *keys* as register text (how ``q`` stores a macro)."""
+    out = []
+    for key in keys:
+        n = key.name
+        if n in _REGISTER_CODES:
+            out.append(_REGISTER_CODES[n])
+        elif n in _REGISTER_CHARS:
+            out.append(_REGISTER_CHARS[n])
+        elif n.startswith("ctrl+"):
+            out.append(chr(ord(n[5]) - ord("a") + 1))
+        else:
+            out.append(n)
+    return "".join(out)
+
+
+def register_text_to_keys(text: str) -> list[ViKey]:
+    """Decode register *text* into keys (how ``@`` executes a register)."""
+    codes = _REGISTER_CODE_KEYS
+    chars = _REGISTER_CHAR_KEYS
+    keys: list[ViKey] = []
+    i = 0
+    while i < len(text):
+        ch = text[i]
+        if ch == "\x80" and text[i : i + 3] in codes:
+            keys.append(ViKey(codes[text[i : i + 3]]))
+            i += 3
+            continue
+        if ch in chars:
+            keys.append(ViKey(chars[ch]))
+        elif "\x01" <= ch <= "\x1a":
+            keys.append(ViKey("ctrl+" + chr(ord(ch) + ord("a") - 1)))
+        elif ch.isprintable():
+            keys.append(ViKey(ch))
+        i += 1
+    return keys
+
+
 def _parse_bracketed(inner: str) -> str | None:
     """ViKey name for the text between ``<`` and ``>``, or None."""
     low = inner.lower()
@@ -216,6 +285,58 @@ class ViSession:
     ex_history: list[str] = field(default_factory=list)
     search_history: list[str] = field(default_factory=list)
     last_change: list[ViKey] | None = None
+    # Register of the last executed macro, for ``@@``.
+    last_macro: str | None = None
+
+
+def _append_register(old: ClipboardData | None, new: ClipboardData) -> ClipboardData:
+    """``"A``: *new* appended to *old*; linewise if either one is."""
+    if old is None:
+        return new
+    if SelectionType.LINES in (old.type, new.type):
+        return ClipboardData(old.text + "\n" + new.text, SelectionType.LINES)
+    return ClipboardData(old.text + new.text, old.type)
+
+
+class _Registers(Clipboard):
+    """The engine's clipboard: routes reads and writes to the register prefix.
+
+    Every prompt_toolkit and tdb binding goes through ``app.clipboard``, so
+    ``"x`` works with all of them.  The unnamed register is the session's
+    ``clipboard``; named ones and ``0`` live in ``vi_state.named_registers``.
+    """
+
+    def __init__(self, engine: ViEngine) -> None:
+        self._engine = engine
+
+    def set_data(self, data: ClipboardData) -> None:
+        e = self._engine
+        reg = e._register
+        if reg == "_":
+            return
+        named = e.session.vi_state.named_registers  # type: ignore[attr-defined]
+        if reg is not None and reg in ascii_letters:
+            low = reg.lower()
+            if reg.isupper():
+                data = _append_register(named.get(low), data)
+            named[low] = data
+        elif reg == "0" or e.buffer.text == e._key_text:
+            named["0"] = data  # a yank (the text is unchanged)
+        e.session.clipboard.set_data(data)  # type: ignore[attr-defined]
+
+    def get_data(self) -> ClipboardData:
+        e = self._engine
+        reg = e._register
+        if reg is None or reg == '"':
+            return e.session.clipboard.get_data()  # type: ignore[attr-defined]
+        if reg == "_":
+            return ClipboardData()
+        named = e.session.vi_state.named_registers  # type: ignore[attr-defined]
+        return named.get(reg.lower()) or ClipboardData()
+
+    def rotate(self) -> None:
+        e = self._engine
+        e.session.clipboard.rotate()  # type: ignore[attr-defined]
 
 
 class _ViBuffer(Buffer):
@@ -280,6 +401,25 @@ class ViEngine:
         self.indent_unit = indent_unit
         self._events: list[EngineEvent] = []
         self._pending_keys: list[ViKey] = []
+        # True while keys from `.` or a macro are being processed.
+        self.is_replaying = False
+        self._queue: deque[tuple[ViKey, bool]] = deque()
+        # Selected register ("x prefix) for the next command, or None.
+        self._register: str | None = None
+        # A key that waits for a register name: '"', "q" or "@".
+        self._wait: str | None = None
+        self._wait_count: int | None = None
+        # Macro recording (q): register and keys so far.
+        self._recording: str | None = None
+        self._recorded: list[ViKey] = []
+        # The change being recorded for `.`, and the text when it began.
+        self._change: list[ViKey] | None = None
+        self._change_from: tuple[str, bool] = ("", False)
+        # Buffer text before the current key reached prompt_toolkit.
+        self._key_text = ""
+        # State before a command with an unsupported register, which is
+        # rolled back when that command ends.
+        self._rejected: tuple[Document, bool, list, list] | None = None
         # Text of the ':' line while in the stub command mode, else None.
         self._cmdline: str | None = None
 
@@ -298,7 +438,7 @@ class ViEngine:
             full_screen=True,
         )
         self.app.timeoutlen = None
-        self.app.clipboard = self.session.clipboard  # type: ignore[assignment]
+        self.app.clipboard = _Registers(self)
         self.app.vi_state = self.session.vi_state  # type: ignore[assignment]
         vs = self.app.vi_state
         vs.input_mode = InputMode.NAVIGATION  # also clears operator state
@@ -313,24 +453,13 @@ class ViEngine:
 
     def feed(self, key: ViKey) -> None:
         """Process one key; on an exception restore the pre-key state."""
-        if self._cmdline is not None:
-            self._feed_cmdline(key)
-            return
-        if key.name == ":" and self.mode == "normal" and not self._key_pending():
-            self._cmdline = ""
-            return
-        buff = self.buffer
-        before = (
-            buff.document,
-            buff.eol,
-            list(buff._undo_stack),
-            list(buff._redo_stack),
-        )
+        if self._recording is not None:
+            self._recorded.append(key)
+        before = self._snapshot()
         self._pending_keys.append(key)
+        self._queue.append((key, False))
         try:
-            with set_app(self.app):
-                self.app.key_processor.feed(key.to_key_press())
-                self.app.key_processor.process_keys()
+            self._run_queue()
         except Exception as exc:  # a stray key must never crash tdb
             log.exception("vi engine error on key %r", key.name)
             self._recover(*before)
@@ -339,13 +468,189 @@ class ViEngine:
         if not self._key_pending():
             self._pending_keys.clear()
 
+    def _run_queue(self) -> None:
+        """Process queued keys; `.` and ``@`` push their keys to the front."""
+        replayed = 0
+        try:
+            while self._queue:
+                key, replay = self._queue.popleft()
+                if replay:
+                    replayed += 1
+                    if replayed > _REPLAY_LIMIT:
+                        self._queue.clear()
+                        self._events.append(
+                            Notify(
+                                f"vi: replay stopped after {_REPLAY_LIMIT} keys",
+                                "warning",
+                            )
+                        )
+                        break
+                self.is_replaying = replay
+                self._dispatch(key)
+        finally:
+            self.is_replaying = False
+
+    def _replay(self, keys: list[ViKey]) -> None:
+        """Run *keys* next, before anything already queued."""
+        self._queue.extendleft((k, True) for k in reversed(keys))
+
+    def _dispatch(self, key: ViKey) -> None:
+        """One key: engine-level commands, else prompt_toolkit."""
+        if self._cmdline is not None:
+            self._feed_cmdline(key)
+            return
+        if self._wait is not None:
+            self._finish_wait(key)
+            return
+        name = key.name
+        idle = self.mode == "normal" and not self._ptk_busy()
+        if idle and name == ":" and not self._key_pending():
+            self._cmdline = ""
+            return
+        if idle and name in ("q", "@", "."):
+            # Not part of a change; an abandoned count belongs to them.
+            self._change = None
+            count = self._take_count()
+            if name == ".":
+                self._repeat_change(count)
+            elif name == "q" and self._recording is not None:
+                self._stop_recording()
+            else:
+                self._wait, self._wait_count = name, count
+            return
+        if self._change is None and self.mode == "normal" and not self._key_pending():
+            self._change = []
+            self._change_from = (self.buffer.text, self.buffer.eol)
+        if self._change is not None:
+            self._change.append(key)
+        if (
+            name == '"'
+            and self.mode in ("normal", "visual", "visual-line")
+            and not self._ptk_busy()
+        ):
+            self._wait = '"'
+            return
+        self._key_text = self.buffer.text
+        with set_app(self.app):
+            self.app.key_processor.feed(key.to_key_press())
+            self.app.key_processor.process_keys()
+        if not self._ptk_pending() and self._rejected is None:
+            self._register = None
+        self._end_command()
+
+    def _finish_wait(self, key: ViKey) -> None:
+        """The register name after ``"``, ``q`` or ``@``."""
+        kind, self._wait = self._wait, None
+        name = key.name
+        if kind == '"':
+            if self._change is not None:
+                self._change.append(key)
+            self._select_register(name)
+            if name == "escape":
+                self._end_command()
+        elif kind == "q":
+            if len(name) == 1 and name in ascii_letters:
+                self._recording, self._recorded = name, []
+        elif kind == "@":
+            self._run_macro(name, self._wait_count or 1)
+
+    def _select_register(self, name: str) -> None:
+        if len(name) == 1 and (name in ascii_letters or name in '"0_'):
+            self._register = name
+        elif name == "escape":
+            self.app.key_processor.arg = None  # cancels the whole command
+        else:
+            if name in ("+", "*"):
+                text = "Clipboard registers are not supported"
+            else:
+                text = f"Register {ViKey(name).notation} is not supported"
+            self._events.append(Notify(text, "warning"))
+            # The command still runs, then its changes are rolled back.
+            self._register = "_"
+            self._rejected = self._snapshot()
+
+    def _take_count(self) -> int | None:
+        """The typed count (and clear it), or None."""
+        kp = self.app.key_processor
+        arg, kp.arg = kp.arg, None
+        return int(arg) if arg and arg.isdigit() else None
+
+    def _end_command(self) -> None:
+        """Once back in normal mode: undo a rejected command, keep the `.` change."""
+        if (
+            self._cmdline is not None
+            or self.mode != "normal"
+            or self._ptk_pending()
+            or self._wait is not None
+            or (self._register is not None and self._rejected is None)
+        ):
+            return
+        if self._rejected is not None:
+            self._restore(*self._rejected)
+            self._rejected = self._register = None
+        if self._change is None:
+            return
+        keys, self._change = self._change, None
+        if (self.buffer.text, self.buffer.eol) == self._change_from:
+            return
+        _, rest = _split_count(keys)
+        if rest and rest[0].name in ("u", "ctrl+r"):
+            return
+        self.session.last_change = keys
+
+    def _repeat_change(self, count: int | None) -> None:
+        """``.``: replay the last change, a *count* replacing its own."""
+        keys = self.session.last_change
+        if not keys:
+            return
+        if count is not None:
+            register, rest = _split_count(keys)
+            keys = register + ViKey.parse(str(count)) + rest
+        self._replay(keys)
+
+    def _run_macro(self, name: str, count: int) -> None:
+        """``{count}@x``: replay register *x* (``@@``: the last one run)."""
+        if name == "@":
+            if self.session.last_macro is None:
+                return
+            name = self.session.last_macro
+        if len(name) != 1 or not (name in ascii_letters or name in '"0'):
+            return
+        name = name.lower()
+        if name == '"':
+            data = self.session.clipboard.get_data()  # type: ignore[attr-defined]
+        else:
+            data = self.session.vi_state.named_registers.get(name)  # type: ignore[attr-defined]
+        if data is None:
+            return
+        self.session.last_macro = name
+        text = data.text + ("\n" if data.type == SelectionType.LINES else "")
+        self._replay(register_text_to_keys(text) * count)
+
+    def _stop_recording(self) -> None:
+        """``q`` while recording: store the keys (without this ``q``)."""
+        reg, self._recording = self._recording, None
+        keys = self._recorded if self.is_replaying else self._recorded[:-1]
+        self._recorded = []
+        assert reg is not None
+        named = self.session.vi_state.named_registers  # type: ignore[attr-defined]
+        text = keys_to_register_text(keys)
+        if reg.isupper() and reg.lower() in named:
+            text = named[reg.lower()].text + text
+        named[reg.lower()] = ClipboardData(text)
+
     def feed_keys(self, notation: str) -> None:
         """Parse vim *notation* and feed each key."""
         for key in ViKey.parse(notation):
             self.feed(key)
 
-    def _recover(self, document: Document, eol: bool, undo: list, redo: list) -> None:
-        """Put back the pre-key buffer, undo/redo history and normal mode."""
+    def _snapshot(self) -> tuple[Document, bool, list, list]:
+        """Buffer, final-newline flag and undo/redo history, for ``_restore``."""
+        buff = self.buffer
+        return buff.document, buff.eol, list(buff._undo_stack), list(buff._redo_stack)
+
+    def _restore(self, document: Document, eol: bool, undo: list, redo: list) -> None:
+        """Put back a ``_snapshot`` and normal mode."""
         self.app.key_processor.reset()
         vs = self.app.vi_state
         vs.input_mode = InputMode.NAVIGATION
@@ -357,7 +662,13 @@ class ViEngine:
         buff.eol = eol
         buff._undo_stack = undo
         buff._redo_stack = redo
+
+    def _recover(self, *snapshot) -> None:
+        """After an error: the pre-key state, nothing pending or queued."""
+        self._restore(*snapshot)
         self._pending_keys.clear()
+        self._queue.clear()
+        self._wait = self._register = self._change = self._rejected = None
 
     # ------------------------------------------------------------------
     # ':' command line (minimal stub; Task 10 replaces it with real ex)
@@ -449,18 +760,26 @@ class ViEngine:
             return ":" + self._cmdline
         if self._pending_keys and self._key_pending():
             return "".join(k.notation for k in self._pending_keys)
-        reg = self.app.vi_state.recording_register
-        if reg:
-            return f"recording @{reg}"
+        if self._recording:
+            return f"recording @{self._recording}"
         return ""
 
     def _key_pending(self) -> bool:
         """Unprocessed keys, a register prefix, a count or an operator."""
+        return (
+            self._ptk_pending() or self._wait is not None or self._register is not None
+        )
+
+    def _ptk_pending(self) -> bool:
+        """prompt_toolkit holds keys, a count or an operator."""
+        return self._ptk_busy() or self.app.key_processor.arg is not None
+
+    def _ptk_busy(self) -> bool:
+        """prompt_toolkit holds keys or an operator (a count alone is not busy)."""
         kp = self.app.key_processor
         return bool(
             kp.key_buffer
             or kp.input_queue
-            or kp.arg is not None
             or self.app.vi_state.operator_func is not None
         )
 
@@ -506,6 +825,24 @@ class ViEngine:
         )
         col = max(0, min(col, last))
         self.buffer.cursor_position = doc.translate_row_col_to_index(row, col)
+
+
+def _split_count(keys: list[ViKey]) -> tuple[list[ViKey], list[ViKey]]:
+    """Split ``[count]["x][count]rest`` into (the ``"x`` keys, rest)."""
+    register: list[ViKey] = []
+    i = 0
+
+    def skip_count() -> None:
+        nonlocal i
+        if i < len(keys) and keys[i].name in tuple("123456789"):
+            while i < len(keys) and keys[i].name in tuple("0123456789"):
+                i += 1
+
+    skip_count()
+    if i + 1 < len(keys) and keys[i].name == '"':
+        register, i = keys[i : i + 2], i + 2
+        skip_count()
+    return register, keys[i:]
 
 
 def _split_eol(text: str) -> tuple[str, bool]:

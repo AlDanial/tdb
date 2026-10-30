@@ -126,17 +126,21 @@ def _add_change_word(kb: KeyBindings) -> None:
         """``c{motion}`` (same as prompt_toolkit's, minus registers)."""
         buff = event.current_buffer
         if text_obj.type == TextObjectType.LINEWISE:
-            # Like ``cc``: the lines become one empty line keeping the indent.
-            first, last = text_obj.get_line_numbers(buff)
-            lines = buff.document.lines
-            indent = lines[first][: len(lines[first]) - len(lines[first].lstrip(" \t"))]
-            _delete_rows(event, first, last, 0, indent)
-            buff.cursor_position = index(buff.document.lines, (first, len(indent)))
+            _change_rows(event, *text_obj.get_line_numbers(buff))
         else:
             new_document, clipboard_data = text_obj.cut(buff)
             buff.document = new_document
             if clipboard_data.text:
                 event.app.clipboard.set_data(clipboard_data)
+        event.app.vi_state.input_mode = InputMode.INSERT
+
+    @kb.add("c", "c", filter=vi_navigation_mode & ~is_read_only)
+    @kb.add("S", filter=vi_navigation_mode & ~is_read_only)
+    def _change_line(event: KeyPressEvent) -> None:
+        """``{count}cc`` / ``{count}S`` (prompt_toolkit ignores the count)."""
+        doc = event.current_buffer.document
+        row = doc.cursor_position_row
+        _change_rows(event, row, min(row + event.arg, doc.line_count) - 1)
         event.app.vi_state.input_mode = InputMode.INSERT
 
     changing = Condition(lambda: get_app().vi_state.operator_func is change)
@@ -183,12 +187,23 @@ def _delete_rows(
     With *replacement* the rows become that single line instead (``cc``).
     """
     buff = event.current_buffer
+    if not buff.text and not getattr(buff, "eol", True):
+        return  # an empty buffer has no line to delete (vim fails)
     lines = buff.document.lines
     deleted = "\n".join(lines[first : last + 1])
     keep = [] if replacement is None else [replacement]
     buff.document = Document("\n".join(lines[:first] + keep + lines[last + 1 :]), 0)
     event.app.clipboard.set_data(ClipboardData(deleted, SelectionType.LINES))
     _set_cursor(buff, first, col)
+
+
+def _change_rows(event: KeyPressEvent, first: int, last: int) -> None:
+    """Linewise change: rows ``first..last`` become one line keeping the indent."""
+    buff = event.current_buffer
+    lines = buff.document.lines
+    indent = lines[first][: len(lines[first]) - len(lines[first].lstrip(" \t"))]
+    _delete_rows(event, first, last, 0, indent)
+    buff.cursor_position = index(buff.document.lines, (first, len(indent)))
 
 
 def _add_nvim_cursor_fixes(kb: KeyBindings, engine: ViEngine) -> None:

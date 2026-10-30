@@ -418,10 +418,122 @@ async def test_viewport_commands_without_viewport_are_noops():
     assert e.cursor == (0, 0) and e.text == "a\nb\nc\n" and not e.has_pending
 
 
-@pytest.mark.parametrize(
-    ("unit", "expected"), [("    ", "    x\n"), ("\t", "\tx\n")]
-)
+@pytest.mark.parametrize(("unit", "expected"), [("    ", "    x\n"), ("\t", "\tx\n")])
 async def test_insert_tab_inserts_the_indent_unit(unit, expected):
     e = ViEngine("x\n", indent_unit=unit)
     e.feed_keys("i<Tab><Esc>")
     assert e.text == expected
+
+
+# ----------------------------------------------------------------------
+# Registers, `.` repeat, macros (Task 6)
+
+
+@pytest.mark.parametrize(
+    ("keys", "expected"),
+    [
+        ('"+yy', "abc\ndef\n"),
+        ('"*p', "abc\ndef\n"),
+        ('"+dd', "abc\ndef\n"),
+        ('"*yyjp', "abc\ndef\nabc\n"),  # "*yy went nowhere: p puts "abc"
+    ],
+)
+async def test_clipboard_registers_rejected(keys, expected):
+    e = ViEngine("abc\ndef\n")
+    e.feed_keys("yy")
+    e.feed_keys(keys)
+    assert e.text == expected
+    assert Notify("Clipboard registers are not supported", "warning") in (
+        e.drain_events()
+    )
+    assert e.session.clipboard.get_data().text == "abc"
+    assert not e.has_pending
+
+
+async def test_registers_shared_across_engines():
+    s = ViSession()
+    e1 = ViEngine("abc\ndef\n", session=s)
+    e1.feed_keys('"ayyjyy')
+    e2 = ViEngine("xyz\n", session=s)
+    e2.feed_keys('"ap')
+    assert e2.text == "xyz\nabc\n"
+    e2.feed_keys("p")
+    assert e2.text == "xyz\nabc\ndef\n"
+
+
+async def test_dot_repeat_shared_across_engines():
+    s = ViSession()
+    ViEngine("abc\n", session=s).feed_keys("x")
+    e2 = ViEngine("xyz\n", session=s)
+    e2.feed_keys(".")
+    assert e2.text == "yz\n"
+
+
+async def test_last_change_kept_only_for_changes():
+    e = ViEngine("abc def\nxyz\n")
+    e.feed_keys("dw")
+    assert e.session.last_change == ViKey.parse("dw")
+    for keys in ("j", "yy", "u", "<C-r>", "v<Esc>", "qaq", "@a", "3l"):
+        e.feed_keys(keys)
+        assert e.session.last_change == ViKey.parse("dw"), keys
+
+
+def watch_replaying(engine_box: list, seen: list):
+    """Extra binding: Z records ``engine.is_replaying``."""
+    from prompt_toolkit.key_binding import KeyBindings
+
+    kb = KeyBindings()
+
+    @kb.add("Z")
+    def _(event):
+        seen.append(engine_box[0].is_replaying)
+        event.app.current_buffer.insert_text("Z")
+
+    return kb
+
+
+async def test_is_replaying_during_dot_and_macro():
+    box: list = []
+    seen: list[bool] = []
+    e = ViEngine("abc\n", _extra_bindings=watch_replaying(box, seen))
+    box.append(e)
+    assert not e.is_replaying
+    e.feed_keys("Z.qaZq@a")
+    assert seen == [False, True, False, True]
+    assert not e.is_replaying
+
+
+async def test_error_during_replay_restores_buffer():
+    e = ViEngine("abc\n", _extra_bindings=boom_bindings("Z"))
+    e.feed_keys("x")
+    e.session.last_change = ViKey.parse("xZ")
+    e.feed_keys(".")
+    assert e.text == "bc\n" and e.mode == "normal" and not e.is_replaying
+    assert [type(x) for x in e.drain_events()] == [Notify]
+    e.feed_keys("x")
+    assert e.text == "c\n"
+
+
+async def test_runaway_macro_is_stopped():
+    e = ViEngine("abc\n")
+    e.feed_keys("qa@aq")  # a was empty, so this records "@a" into a
+    e.feed_keys("@a")
+    assert any(
+        isinstance(x, Notify) and x.severity == "warning" for x in e.drain_events()
+    )
+    assert not e.has_pending and not e.is_replaying
+    e.feed_keys("x")
+    assert e.text == "bc\n"
+
+
+async def test_recording_includes_register_and_dot_keys():
+    e = ViEngine("abc\n")
+    e.feed_keys('xqa"byy.q')
+    assert e.session.vi_state.named_registers["a"].text == '"byy.'
+
+
+async def test_macro_with_special_keys_round_trips():
+    e = ViEngine("abc\n")
+    e.feed_keys("qaA<Left>X<Esc>q")
+    e.feed_keys("@a")
+    assert e.text == "abXXc\n"

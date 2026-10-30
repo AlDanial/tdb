@@ -167,6 +167,20 @@
   ],
   "text": "def f(a, b):\n    X\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
  },
+ "cc-count": {
+  "cursor": [
+   2,
+   4
+  ],
+  "text": "one two three\n    X\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "cc-count-past-end": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "one two three\n    four five\nsix seven\nX\n"
+ },
  "ci\"": {
   "cursor": [
    1,
@@ -278,6 +292,195 @@
    2
   ],
   "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "dot-2dd-count": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "ten\n"
+ },
+ "dot-3x": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "o three\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "dot-3x-2dot": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "three\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "dot-A": {
+  "cursor": [
+   1,
+   13
+  ],
+  "text": "one two three;\n    four five;\nsix seven\neight nine\nten\n"
+ },
+ "dot-J": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "a b\nc d\ne\n"
+ },
+ "dot-after-macro": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "ne two three\n   four five\nsix seven\night nine\nten\n"
+ },
+ "dot-after-undo": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "ne two three\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "dot-c-op": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "X X three\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "dot-cc": {
+  "cursor": [
+   1,
+   4
+  ],
+  "text": "X\n    X\nsix seven\neight nine\nten\n"
+ },
+ "dot-cc-count": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "X\nX\nten\n"
+ },
+ "dot-ciw": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "foo foo three\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "dot-count-sticks": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": " three\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "dot-dd": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "six seven\neight nine\nten\n"
+ },
+ "dot-dw": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "three\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "dot-gU": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "ONE TWO three\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "dot-indent": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "    one two three\n        four five\nsix seven\neight nine\nten\n"
+ },
+ "dot-o": {
+  "cursor": [
+   2,
+   3
+  ],
+  "text": "one two three\nline\nline\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "dot-p": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "one two three\none two three\none two three\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "dot-p-char": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "oneone  one two three\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "dot-r": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "XXe two three\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "dot-register": {
+  "cursor": [
+   0,
+   8
+  ],
+  "text": "threetwo \n    four five\nsix seven\neight nine\nten\n"
+ },
+ "dot-skips-motion": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "ne two three\n   four five\nsix seven\neight nine\nten\n"
+ },
+ "dot-skips-yank": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "three\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "dot-tilde": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "ONe two three\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "dot-visual-d": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "two three\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "dot-visual-line-d": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "ten\n"
+ },
+ "dot-x": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "e two three\n    four five\nsix seven\neight nine\nten\n"
  },
  "dt=": {
   "cursor": [
@@ -727,6 +930,104 @@
   ],
   "text": "def f(a, b):\nx = \"hi there\"\nreturn (a + b) * 2\n\ny = 10\nz = 20\n"
  },
+ "mac-append": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "ne two three\n   four five\nsix seven\neight nine\nten\n"
+ },
+ "mac-at-at-count": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "two three\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "mac-at-in-recording": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "e two three\n   four five\nsix seven\neight nine\nten\n"
+ },
+ "mac-at-recorded-as-keys": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "e two three\neight nine\nten\n"
+ },
+ "mac-count": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "two three\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "mac-dot-inside": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "e two three\n   four five\nsix seven\neight nine\nten\n"
+ },
+ "mac-empty": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": ""
+ },
+ "mac-enter": {
+  "cursor": [
+   4,
+   2
+  ],
+  "text": "one two three\nfoo\nbar\nfoo\nbar\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "mac-exec-yanked": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "dd\nline3\n"
+ },
+ "mac-insert-esc": {
+  "cursor": [
+   3,
+   9
+  ],
+  "text": "one two three!\n    four five!\nsix seven!\neight nine\nten\n"
+ },
+ "mac-paste-register": {
+  "cursor": [
+   0,
+   12
+  ],
+  "text": "ne two threex\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "mac-register-inside": {
+  "cursor": [
+   3,
+   4
+  ],
+  "text": "one two three\n    four five\nsix seven\n    four five\neight nine\nten\n"
+ },
+ "mac-repeat": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "ne two three\n   four five\nix seven\neight nine\nten\n"
+ },
+ "mac-unset": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n"
+ },
  "macro": {
   "cursor": [
    0,
@@ -859,6 +1160,307 @@
    0
   ],
   "text": "Xef f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "reg-C": {
+  "cursor": [
+   1,
+   13
+  ],
+  "text": "one X\n    ftwo threeour five\nsix seven\neight nine\nten\n"
+ },
+ "reg-D": {
+  "cursor": [
+   1,
+   12
+  ],
+  "text": "one \n    two threefour five\nsix seven\neight nine\nten\n"
+ },
+ "reg-J": {
+  "cursor": [
+   0,
+   13
+  ],
+  "text": "one two three four five\nsix seven\neight nine\nten\n"
+ },
+ "reg-S": {
+  "cursor": [
+   3,
+   4
+  ],
+  "text": "one two three\n    X\nsix seven\n    four five\neight nine\nten\n"
+ },
+ "reg-S-zero": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "one two three\n    X\none two three\nsix seven\neight nine\nten\n"
+ },
+ "reg-X": {
+  "cursor": [
+   1,
+   6
+  ],
+  "text": "one o three\n    ftwour five\nsix seven\neight nine\nten\n"
+ },
+ "reg-acc-count": {
+  "cursor": [
+   4,
+   0
+  ],
+  "text": "X\nsix seven\neight nine\nten\none two three\n    four five\n"
+ },
+ "reg-add-last-line": {
+  "cursor": [
+   3,
+   1
+  ],
+  "text": "one two three\n    four five\nsix seven\neight nine\n"
+ },
+ "reg-add-last-line-put": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "ten\none two three\n    four five\nsix seven\neight nine\n"
+ },
+ "reg-append-char-line": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "one two three\none \none two three\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "reg-append-chars": {
+  "cursor": [
+   0,
+   20
+  ],
+  "text": "one two threeone one \n    four five\nsix seven\neight nine\nten\n"
+ },
+ "reg-append-line-char": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "one two three\none two three\none \n    four five\nsix seven\neight nine\nten\n"
+ },
+ "reg-append-lines": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "one two three\n    four five\none two three\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "reg-append-unnamed": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "one two three\n    four five\none two three\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "reg-blackhole-dd": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "one two three\nsix seven\none two three\neight nine\nten\n"
+ },
+ "reg-blackhole-p": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "reg-c-dollar": {
+  "cursor": [
+   1,
+   13
+  ],
+  "text": "one X\n    ftwo threeour five\nsix seven\neight nine\nten\n"
+ },
+ "reg-cc": {
+  "cursor": [
+   2,
+   4
+  ],
+  "text": "one two three\n    new\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "reg-cc-zero": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "one two three\n    X\none two three\nsix seven\neight nine\nten\n"
+ },
+ "reg-count-after": {
+  "cursor": [
+   5,
+   0
+  ],
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\none two three\n    four five\nsix seven\n"
+ },
+ "reg-count-before": {
+  "cursor": [
+   5,
+   0
+  ],
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\none two three\n    four five\nsix seven\n"
+ },
+ "reg-count-paste": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "one two three\none two three\none two three\none two three\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "reg-cw": {
+  "cursor": [
+   0,
+   13
+  ],
+  "text": "X two threeone\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "reg-d2j": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "eight nine\none two three\n    four five\nsix seven\nten\n"
+ },
+ "reg-ddp-named-untouched": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "one two three\none two three\nsix seven\neight nine\nten\n"
+ },
+ "reg-del-put": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "    four five\none two three\nsix seven\neight nine\nten\n"
+ },
+ "reg-dw-P": {
+  "cursor": [
+   0,
+   7
+  ],
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "reg-empty-add": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": ""
+ },
+ "reg-esc-cancels": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "reg-explicit-unnamed": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "one two three\n    four five\none two three\nsix seven\neight nine\nten\n"
+ },
+ "reg-gU": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "ONE two three\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "reg-indent": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "    one two three\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "reg-s": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "Xe two three\n on   four five\nsix seven\neight nine\nten\n"
+ },
+ "reg-unnamed-follows-named": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "one two three\n    four five\none two three\nsix seven\neight nine\nten\n"
+ },
+ "reg-unsupported": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "one two three\none two three\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "reg-visual-prefix-d": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "   four five\nsix seven\neight nine\nten\n"
+ },
+ "reg-visual-y": {
+  "cursor": [
+   1,
+   3
+  ],
+  "text": "one two three\n one   four five\nsix seven\neight nine\nten\n"
+ },
+ "reg-x": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": " two three\none    four five\nsix seven\neight nine\nten\n"
+ },
+ "reg-y-motion": {
+  "cursor": [
+   1,
+   12
+  ],
+  "text": "one two three\n    two threefour five\nsix seven\neight nine\nten\n"
+ },
+ "reg-yank-put": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "one two three\n    four five\none two three\nsix seven\neight nine\nten\n"
+ },
+ "reg-zero-after-dd": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "one two three\nsix seven\none two three\neight nine\nten\n"
+ },
+ "reg-zero-explicit": {
+  "cursor": [
+   1,
+   4
+  ],
+  "text": "one two three\n    four five\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "reg-zero-not-named": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "one two three\n    four five\none two three\nsix seven\neight nine\nten\n"
  },
  "s": {
   "cursor": [

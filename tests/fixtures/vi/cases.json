@@ -1995,8 +1995,7 @@
    0,
    0
   ],
-  "keys": "J.",
-  "difference": "`.` repeat is implemented in Task 6"
+  "keys": "J."
  },
  {
   "id": "tobj-dip-col1",
@@ -2303,5 +2302,779 @@
    0
   ],
   "keys": "Ju"
+ },
+ {
+  "id": "reg-yank-put",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"ayyj\"ap"
+ },
+ {
+  "id": "reg-del-put",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"add\"ap"
+ },
+ {
+  "id": "reg-cc",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "\"accnew<Esc>\"ap"
+ },
+ {
+  "id": "reg-append-lines",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"ayyj\"Ayy\"ap"
+ },
+ {
+  "id": "reg-append-chars",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"ayw\"Ayw$\"ap"
+ },
+ {
+  "id": "reg-append-line-char",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"ayy\"Ayw\"ap"
+ },
+ {
+  "id": "reg-append-char-line",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"ayw\"Ayy\"ap"
+ },
+ {
+  "id": "reg-append-unnamed",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"ayyj\"Ayyp"
+ },
+ {
+  "id": "reg-dw-P",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "\"adw\"aP"
+ },
+ {
+  "id": "reg-d2j",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"ad2j\"ap"
+ },
+ {
+  "id": "reg-blackhole-dd",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "yyj\"_ddp"
+ },
+ {
+  "id": "reg-blackhole-p",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "yy\"_p"
+ },
+ {
+  "id": "reg-zero-after-dd",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "yyjdd\"0p"
+ },
+ {
+  "id": "reg-zero-not-named",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "yyj\"ayy\"0p"
+ },
+ {
+  "id": "reg-zero-explicit",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "yyj\"0yy\"0P"
+ },
+ {
+  "id": "reg-explicit-unnamed",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"\"yyjp"
+ },
+ {
+  "id": "reg-unnamed-follows-named",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"ayyjp"
+ },
+ {
+  "id": "reg-count-before",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3\"ayyG\"ap"
+ },
+ {
+  "id": "reg-count-after",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"a3yyG\"ap"
+ },
+ {
+  "id": "reg-count-paste",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"ayy3\"ap"
+ },
+ {
+  "id": "reg-add-last-line",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   4,
+   1
+  ],
+  "keys": "\"add"
+ },
+ {
+  "id": "reg-add-last-line-put",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   4,
+   1
+  ],
+  "keys": "\"addgg\"aP"
+ },
+ {
+  "id": "reg-cw",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"acwX<Esc>$\"ap"
+ },
+ {
+  "id": "reg-c-dollar",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "\"ac$X<Esc>j\"ap"
+ },
+ {
+  "id": "reg-x",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"a3xj\"aP"
+ },
+ {
+  "id": "reg-X",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   6
+  ],
+  "keys": "\"a2Xj\"ap"
+ },
+ {
+  "id": "reg-D",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "\"aDj\"ap"
+ },
+ {
+  "id": "reg-C",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "\"aCX<Esc>j\"ap"
+ },
+ {
+  "id": "reg-s",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"a2sX<Esc>j\"ap"
+ },
+ {
+  "id": "reg-S",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "\"aSX<Esc>j\"ap"
+ },
+ {
+  "id": "reg-y-motion",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "\"ay$j\"aP"
+ },
+ {
+  "id": "reg-visual-y",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "vll\"ayj\"ap"
+ },
+ {
+  "id": "reg-visual-prefix-d",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"avjd\"ap"
+ },
+ {
+  "id": "reg-gU",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"agUiw"
+ },
+ {
+  "id": "reg-indent",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"a>>"
+ },
+ {
+  "id": "reg-J",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"aJ"
+ },
+ {
+  "id": "reg-ddp-named-untouched",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"ayyjddk\"ap"
+ },
+ {
+  "id": "reg-empty-add",
+  "text": "",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"add\"ap"
+ },
+ {
+  "id": "reg-esc-cancels",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "yy\"<Esc>j\"ap"
+ },
+ {
+  "id": "dot-dw",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "dw."
+ },
+ {
+  "id": "dot-x",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "x."
+ },
+ {
+  "id": "dot-3x",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3x."
+ },
+ {
+  "id": "dot-3x-2dot",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3x.2."
+ },
+ {
+  "id": "dot-count-sticks",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3x2.."
+ },
+ {
+  "id": "dot-ciw",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "ciwfoo<Esc>w."
+ },
+ {
+  "id": "dot-A",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "A;<Esc>j."
+ },
+ {
+  "id": "dot-indent",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ">>j."
+ },
+ {
+  "id": "dot-r",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "rXl."
+ },
+ {
+  "id": "dot-J",
+  "text": "a\nb\nc\nd\ne\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "Jj."
+ },
+ {
+  "id": "dot-p",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "yyp."
+ },
+ {
+  "id": "dot-p-char",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "ywP."
+ },
+ {
+  "id": "dot-o",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "oline<Esc>."
+ },
+ {
+  "id": "dot-dd",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "dd."
+ },
+ {
+  "id": "dot-2dd-count",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "2dd."
+ },
+ {
+  "id": "dot-cc",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "ccX<Esc>j."
+ },
+ {
+  "id": "dot-after-undo",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "xu."
+ },
+ {
+  "id": "dot-skips-yank",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "dwyw."
+ },
+ {
+  "id": "dot-skips-motion",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "xjl."
+ },
+ {
+  "id": "dot-register",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"adw.$\"ap"
+ },
+ {
+  "id": "dot-gU",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "gUiww."
+ },
+ {
+  "id": "dot-tilde",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "~."
+ },
+ {
+  "id": "dot-c-op",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "cwX<Esc>w."
+ },
+ {
+  "id": "dot-visual-d",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "vld."
+ },
+ {
+  "id": "dot-visual-line-d",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "Vjd."
+ },
+ {
+  "id": "dot-after-macro",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qaxjq@aj."
+ },
+ {
+  "id": "mac-repeat",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qaxjq@a@@"
+ },
+ {
+  "id": "mac-count",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qaxq3@a"
+ },
+ {
+  "id": "mac-at-in-recording",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qaxqqb@ajq@b"
+ },
+ {
+  "id": "mac-at-recorded-as-keys",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qaxqqb@ajqqaddq@b"
+ },
+ {
+  "id": "mac-append",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qaxqqAjq@a"
+ },
+ {
+  "id": "mac-insert-esc",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qaA!<Esc>jq2@a"
+ },
+ {
+  "id": "mac-enter",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qaofoo<CR>bar<Esc>q@a"
+ },
+ {
+  "id": "mac-register-inside",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qa\"byyjq@a\"bp"
+ },
+ {
+  "id": "mac-paste-register",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qaxq$\"ap"
+ },
+ {
+  "id": "mac-exec-yanked",
+  "text": "dd\nline2\nline3\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"ay$j@a"
+ },
+ {
+  "id": "mac-at-at-count",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qaxq@a2@@"
+ },
+ {
+  "id": "mac-dot-inside",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "xqa.jq@a"
+ },
+ {
+  "id": "mac-empty",
+  "text": "",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qaxq@a"
+ },
+ {
+  "id": "mac-unset",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "@z"
+ },
+ {
+  "id": "reg-cc-zero",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "yyjccX<Esc>\"0p"
+ },
+ {
+  "id": "reg-S-zero",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "yyjSX<Esc>\"0p"
+ },
+ {
+  "id": "cc-count",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "2ccX<Esc>p"
+ },
+ {
+  "id": "cc-count-past-end",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   3,
+   0
+  ],
+  "keys": "5ccX<Esc>"
+ },
+ {
+  "id": "reg-acc-count",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"a2ccX<Esc>G\"ap"
+ },
+ {
+  "id": "dot-cc-count",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "2ccX<Esc>j."
+ },
+ {
+  "id": "reg-unsupported",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "yy\"%ddp"
  }
 ]
