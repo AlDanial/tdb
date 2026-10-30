@@ -235,19 +235,20 @@ class CodeEditor(TextArea):
     # ---- paste / mouse: the vi engine owns the buffer ----
 
     async def _on_paste(self, event: events.Paste) -> None:
+        # Textual dispatches every class's _on_paste in MRO order until
+        # prevent_default: when the layer declines, return and let
+        # TextArea._on_paste run (once) by itself.
         layer = self._layer
         if hasattr(layer, "handle_paste") and not self.read_only:
             if layer.handle_paste(event.text):
                 event.stop()
                 event.prevent_default()
-                return
-        await super()._on_paste(event)
 
     async def _on_mouse_up(self, event: events.MouseUp) -> None:
-        selecting = self._selecting
-        await super()._on_mouse_up(event)
+        # Runs before TextArea._on_mouse_up (same MRO dispatch), which
+        # still finalizes the selection afterwards; do not call it here.
         layer = self._layer
-        if selecting and hasattr(layer, "on_mouse_selection"):
+        if self._selecting and hasattr(layer, "on_mouse_selection"):
             start, end = self.selection
             layer.on_mouse_selection(start, end)
 

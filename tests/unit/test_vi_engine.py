@@ -338,14 +338,24 @@ async def test_ctrl_y_scrolls_without_moving_the_cursor_unless_it_must():
     assert (vp.top, e.cursor[0]) == (4, 23)  # bottom row of the new view
 
 
-async def test_h_m_l_land_on_first_non_blank():
-    e, _ = _vp_engine(top=30, cursor=(35, 0))
+async def test_h_m_l_keep_the_column():
+    e, _ = _vp_engine(top=30, cursor=(35, 5))
     e.feed_keys("H")
-    assert e.cursor == (30, 2)
+    assert e.cursor == (30, 5)
     e.feed_keys("L")
-    assert e.cursor == (49, 2)
+    assert e.cursor == (49, 5)
     e.feed_keys("M")
-    assert e.cursor == (39, 2)  # vim: row 10 of a 20-row window
+    assert e.cursor == (39, 5)  # vim: row 10 of a 20-row window
+    e.feed_keys("20|")
+    e.feed_keys("H")
+    assert e.cursor == (30, 8)  # clamped to the last character
+
+
+async def test_scroll_commands_keep_the_column():
+    for keys in ("<C-d>", "<C-u>", "<C-f>", "<C-b>", "<PageDown>", "<PageUp>", "<C-y>"):
+        e, _ = _vp_engine(top=30, cursor=(40, 5))
+        e.feed_keys(keys)
+        assert e.cursor[1] == 5, keys
 
 
 async def test_h_and_l_counts():

@@ -618,3 +618,21 @@ async def test_h_l_use_the_real_window():
         assert ed.cursor_location[0] == last
         await pilot.press("z", "t")
         assert ed.scroll_offset.y == last
+
+
+async def test_mouse_up_finalizes_selection_once(monkeypatch):
+    from textual.widgets import TextArea
+
+    calls = []
+    real = TextArea._on_mouse_up
+
+    async def counting(self, event):
+        calls.append(1)
+        await real(self, event)
+
+    monkeypatch.setattr(TextArea, "_on_mouse_up", counting)
+    app = _EdApp()
+    async with app.run_test() as pilot:
+        ed = app.query_one("#ed", CodeEditor)
+        await pilot.click(CodeEditor, offset=_cell(ed, 0, 2))
+        assert len(calls) == 1 and not ed._selecting

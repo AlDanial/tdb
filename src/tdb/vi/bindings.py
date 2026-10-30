@@ -408,7 +408,8 @@ def _add_viewport_commands(kb: KeyBindings, engine: ViEngine) -> None:
             offset = (shown + 1) // 2 - 1
         doc = buff.document
         row = max(0, min(top + max(0, min(offset, shown - 1)), last))
-        target = doc.translate_row_col_to_index(row, first_nonblank(doc, row))
+        col = min(doc.cursor_position_col, len(doc.lines[row]))
+        target = doc.translate_row_col_to_index(row, col)
         return TextObject(target - doc.cursor_position, type=TextObjectType.LINEWISE)
 
     for name in "HML":

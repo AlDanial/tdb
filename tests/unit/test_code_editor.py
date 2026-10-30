@@ -153,3 +153,68 @@ async def test_unsaved_modal_keys():
             await pilot.press(key)
             await pilot.pause()
             assert app.result == expected
+
+
+# ---------------------------------------------------------------------------
+# Paste and mouse are handled once in non-vim schemes
+
+
+def _scheme_app(scheme: str):
+    from textual import events  # noqa: F401
+    from textual.app import App
+
+    from tdb.widgets.code_editor import CodeEditor, EmacsLayer
+
+    class _App(App):
+        def compose(self):
+            yield CodeEditor("abcdef\nxyz\n", scheme=scheme, id="ed")
+
+        def on_mount(self):
+            ed = self.query_one("#ed", CodeEditor)
+            if scheme == "emacs":
+                ed._set_layer(EmacsLayer(ed))
+            ed.focus()
+
+    return _App()
+
+
+import pytest  # noqa: E402
+
+
+@pytest.mark.parametrize("scheme", ["default", "emacs"])
+async def test_paste_inserts_once(scheme):
+    from textual import events
+
+    from tdb.widgets.code_editor import CodeEditor
+
+    app = _scheme_app(scheme)
+    async with app.run_test() as pilot:
+        ed = app.query_one("#ed", CodeEditor)
+        app.post_message(events.Paste("XY"))
+        await pilot.pause()
+        assert ed.text == "XYabcdef\nxyz\n"
+
+
+@pytest.mark.parametrize("scheme", ["default", "emacs"])
+async def test_mouse_selection_unchanged_and_mouse_up_runs_once(scheme, monkeypatch):
+    from textual.widgets import TextArea
+
+    from tdb.widgets.code_editor import CodeEditor
+
+    calls = []
+    real = TextArea._on_mouse_up
+
+    async def counting(self, event):
+        calls.append(1)
+        await real(self, event)
+
+    monkeypatch.setattr(TextArea, "_on_mouse_up", counting)
+    app = _scheme_app(scheme)
+    async with app.run_test() as pilot:
+        ed = app.query_one("#ed", CodeEditor)
+        x = ed.gutter_width + 1
+        await pilot.mouse_down(CodeEditor, offset=(x + 1, 1))
+        await pilot.hover(CodeEditor, offset=(x + 4, 1))
+        await pilot.mouse_up(CodeEditor, offset=(x + 4, 1))
+        assert ed.selected_text == "bcd"
+        assert len(calls) == 1
