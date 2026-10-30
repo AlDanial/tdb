@@ -1,0 +1,758 @@
+{
+ "2dd": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "def f(a, b):\n\ny = 10\nz = 20\n"
+ },
+ "2dj": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "\ny = 10\nz = 20\n"
+ },
+ "2p-lines": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "def f(a, b):\ndef f(a, b):\n    x = \"hi there\"\ndef f(a, b):\n    x = \"hi there\"\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "3G": {
+  "cursor": [
+   2,
+   5
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "3dd-near-end": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\n"
+ },
+ "9j": {
+  "cursor": [
+   5,
+   3
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "A": {
+  "cursor": [
+   0,
+   12
+  ],
+  "text": "def f(a, b):X\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "C": {
+  "cursor": [
+   1,
+   6
+  ],
+  "text": "def f(a, b):\n    x X\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "D": {
+  "cursor": [
+   1,
+   5
+  ],
+  "text": "def f(a, b):\n    x \n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "F": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "G-col": {
+  "cursor": [
+   5,
+   5
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "G-short": {
+  "cursor": [
+   5,
+   5
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "I": {
+  "cursor": [
+   1,
+   4
+  ],
+  "text": "def f(a, b):\n    Xx = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "O": {
+  "cursor": [
+   1,
+   4
+  ],
+  "text": "def f(a, b):\n    X\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "R": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "XYf f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "S": {
+  "cursor": [
+   1,
+   4
+  ],
+  "text": "def f(a, b):\n    X\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "T": {
+  "cursor": [
+   0,
+   7
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "Vj<": {
+  "cursor": [
+   1,
+   6
+  ],
+  "text": "def f(a, b):\nx = \"hi there\"\nreturn (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "Vj>": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "    def f(a, b):\n        x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "Vk>": {
+  "cursor": [
+   2,
+   6
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n        return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "a": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "def Xf(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "brace-close": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "brace-open": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "cc": {
+  "cursor": [
+   1,
+   4
+  ],
+  "text": "def f(a, b):\n    X\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "ci\"": {
+  "cursor": [
+   1,
+   9
+  ],
+  "text": "def f(a, b):\n    x = \"X\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "comma": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "ct)": {
+  "cursor": [
+   2,
+   12
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (X) * 2\n\ny = 10\nz = 20\n"
+ },
+ "cw": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "foo f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "d2j": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "\ny = 10\nz = 20\n"
+ },
+ "d9j": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n"
+ },
+ "d9k": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "\ny = 10\nz = 20\n"
+ },
+ "dG": {
+  "cursor": [
+   1,
+   3
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n"
+ },
+ "dG-col": {
+  "cursor": [
+   1,
+   3
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n"
+ },
+ "dd": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "def f(a, b):\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "dd-last": {
+  "cursor": [
+   4,
+   3
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\n"
+ },
+ "dd-then-p": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "    x = \"hi there\"\ndef f(a, b):\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "dgg": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "\ny = 10\nz = 20\n"
+ },
+ "di(": {
+  "cursor": [
+   2,
+   12
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return () * 2\n\ny = 10\nz = 20\n"
+ },
+ "dj-last": {
+  "cursor": [
+   5,
+   0
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "dk-first": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "dt=": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "def f(a, b):\n= \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "dw-end": {
+  "cursor": [
+   5,
+   3
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = \n"
+ },
+ "empty-J": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": ""
+ },
+ "empty-dd": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": ""
+ },
+ "empty-dot": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": ""
+ },
+ "empty-p": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": ""
+ },
+ "empty-x": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": ""
+ },
+ "eol-G-dd": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "a\nb\n"
+ },
+ "eol-p-last": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "a\nb\nc\na\n"
+ },
+ "f": {
+  "cursor": [
+   0,
+   9
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "gUU": {
+  "cursor": [
+   1,
+   4
+  ],
+  "text": "def f(a, b):\n    X = \"HI THERE\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "gUU-ind0": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    RETURN (A + B) * 2\n\ny = 10\nz = 20\n"
+ },
+ "gUap": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "DEF F(A, B):\n    X = \"HI THERE\"\n    RETURN (A + B) * 2\n\ny = 10\nz = 20\n"
+ },
+ "gUb": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "gUiw": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "DEF f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "gUj-0": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "def f(a, b):\n    X = \"HI THERE\"\n    RETURN (A + B) * 2\n\ny = 10\nz = 20\n"
+ },
+ "gg-col": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "goto-col-24": {
+  "cursor": [
+   2,
+   21
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "gt-j": {
+  "cursor": [
+   1,
+   6
+  ],
+  "text": "def f(a, b):\n        x = \"hi there\"\n        return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "gt-k": {
+  "cursor": [
+   1,
+   6
+  ],
+  "text": "def f(a, b):\n        x = \"hi there\"\n        return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "guu": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "g~2j": {
+  "cursor": [
+   1,
+   6
+  ],
+  "text": "def f(a, b):\n    X = \"HI THERE\"\n    RETURN (A + B) * 2\n\ny = 10\nz = 20\n"
+ },
+ "g~j": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "DEF F(A, B):\n    X = \"HI THERE\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "g~j-b": {
+  "cursor": [
+   1,
+   6
+  ],
+  "text": "def f(a, b):\n    X = \"HI THERE\"\n    RETURN (A + B) * 2\n\ny = 10\nz = 20\n"
+ },
+ "g~k": {
+  "cursor": [
+   1,
+   6
+  ],
+  "text": "def f(a, b):\n    X = \"HI THERE\"\n    RETURN (A + B) * 2\n\ny = 10\nz = 20\n"
+ },
+ "g~w": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "DEF f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "g~~": {
+  "cursor": [
+   1,
+   4
+  ],
+  "text": "def f(a, b):\n    X = \"HI THERE\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "g~~-0": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "DEF F(A, B):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "i": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "defX f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "indent-gt": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "    def f(a, b):\n        x = \"hi there\"\n        return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "indent-lt": {
+  "cursor": [
+   1,
+   4
+  ],
+  "text": "def f(a, b):\nx = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "lt-j": {
+  "cursor": [
+   1,
+   6
+  ],
+  "text": "def f(a, b):\nx = \"hi there\"\nreturn (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "macro": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "f f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "motion-B": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "motion-B-count": {
+  "cursor": [
+   1,
+   12
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "motion-W": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "motion-W-count": {
+  "cursor": [
+   1,
+   12
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "motion-b": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "motion-b-count": {
+  "cursor": [
+   1,
+   17
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "motion-e": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "motion-e-count": {
+  "cursor": [
+   1,
+   10
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "motion-ge": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "motion-ge-count": {
+  "cursor": [
+   1,
+   17
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "motion-w": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "motion-w-count": {
+  "cursor": [
+   1,
+   9
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "noeol-yyp": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "a\nb\nc\nc"
+ },
+ "o": {
+  "cursor": [
+   2,
+   4
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    X\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "p-char": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "ddef ef f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "percent": {
+  "cursor": [
+   0,
+   10
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "percent-close": {
+  "cursor": [
+   2,
+   18
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "r": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "Xef f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "s": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "Xef f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "semicolon": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "t": {
+  "cursor": [
+   0,
+   8
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "tilde": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "DEF f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "tilde-count": {
+  "cursor": [
+   1,
+   5
+  ],
+  "text": "def f(a, b):\n    X = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "tilde-end": {
+  "cursor": [
+   4,
+   5
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "undo": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "undo-x": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "f f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "xp": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "edf f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "y$": {
+  "cursor": [
+   0,
+   11
+  ],
+  "text": "def f(a, b):f f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "yb": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "def f((a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "yiw": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "defdef f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "yj": {
+  "cursor": [
+   1,
+   4
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "yk": {
+  "cursor": [
+   1,
+   4
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "yw": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "def def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "yyP": {
+  "cursor": [
+   1,
+   4
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "yyp": {
+  "cursor": [
+   2,
+   4
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ }
+}
