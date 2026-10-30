@@ -188,6 +188,398 @@
   ],
   "text": "def f(a, b):\n    x = \"X\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
  },
+ "cnt-1i": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "xfoo\n"
+ },
+ "cnt-2Fz": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "a,b,c\n"
+ },
+ "cnt-2Fz-few": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "a,b,c\n"
+ },
+ "cnt-2I-undo": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "  foo\n"
+ },
+ "cnt-2Ihi": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "  hihifoo\n"
+ },
+ "cnt-2Tz": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "a,b,c\n"
+ },
+ "cnt-2Tz-few": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "a,b,c\n"
+ },
+ "cnt-2a-reg": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "fbboo\n"
+ },
+ "cnt-2fz": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "a,b,c\n"
+ },
+ "cnt-2fz-few": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "a,b,c\n"
+ },
+ "cnt-2i-bs": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "acacfoo\n"
+ },
+ "cnt-2i-empty": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "foo\n"
+ },
+ "cnt-2i-esc-cursor": {
+  "cursor": [
+   0,
+   7
+  ],
+  "text": "foo ababbar\n"
+ },
+ "cnt-2i-multiline": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "a\nba\nbfoo\n"
+ },
+ "cnt-2o-dot": {
+  "cursor": [
+   5,
+   0
+  ],
+  "text": "foo\nX\nX\nbar\nX\nX\n"
+ },
+ "cnt-2oX": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "foo\nX\nX\nbar\n"
+ },
+ "cnt-2oX-undo": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "foo\nbar\n"
+ },
+ "cnt-2r-dot-count": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "xxxxefgh\n"
+ },
+ "cnt-2r-then-dot": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "xxxxxfgh\n"
+ },
+ "cnt-2s": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "Xcdef\n"
+ },
+ "cnt-2tz": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "a,b,c\n"
+ },
+ "cnt-2tz-few": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "a,b,c\n"
+ },
+ "cnt-3Ahi": {
+  "cursor": [
+   0,
+   8
+  ],
+  "text": "foohihihi\nbar\n"
+ },
+ "cnt-3Ox": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "foo\nx\nx\nx\nbar\n"
+ },
+ "cnt-3a-end": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "foobbb\n"
+ },
+ "cnt-3a-undo": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "foo\n"
+ },
+ "cnt-3ab": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "fbbboo\n"
+ },
+ "cnt-3comma-few": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "a,b,c\n"
+ },
+ "cnt-3i-dot": {
+  "cursor": [
+   0,
+   7
+  ],
+  "text": "xxfoo xxbar\n"
+ },
+ "cnt-3i-dot-count": {
+  "cursor": [
+   0,
+   10
+  ],
+  "text": "xxfoo xxxxxbar\n"
+ },
+ "cnt-3i-esc-esc": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "xxxfoo\n"
+ },
+ "cnt-3i-macro": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "xxxxfoo\n"
+ },
+ "cnt-3i-undo": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "foo\n"
+ },
+ "cnt-3i-undo-redo": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "xxxfoo\n"
+ },
+ "cnt-3r-undo": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abcdef\n"
+ },
+ "cnt-3rx": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "xxxdef\n"
+ },
+ "cnt-3rx-exact": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "abcxxx\n"
+ },
+ "cnt-3rx-fewer": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "abcdef\n"
+ },
+ "cnt-3semi": {
+  "cursor": [
+   0,
+   7
+  ],
+  "text": "a,b,c,d,e\n"
+ },
+ "cnt-3semi-few": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "a,b,c\n"
+ },
+ "cnt-5i": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "-----foo\n"
+ },
+ "cnt-5rx-fewer": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "abc\n"
+ },
+ "cnt-c3f-few": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "a,b,c\n"
+ },
+ "cnt-d2f": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "c\n"
+ },
+ "cnt-d3F-few": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "a,b,c\n"
+ },
+ "cnt-d3T-few": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "a,b,c\n"
+ },
+ "cnt-d3f-few": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "a,b,c\n"
+ },
+ "cnt-d3f-few-then-x": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": ",b,c\n"
+ },
+ "cnt-d3f-nomatch": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\n"
+ },
+ "cnt-d3t-few": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "a,b,c\n"
+ },
+ "cnt-dsemi-few": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "a,b,c\n"
+ },
+ "cnt-r-cr": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "\nbcdef\n"
+ },
+ "cnt-semi-few": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "a,b,c\n"
+ },
+ "cnt-v2f": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "c\n"
+ },
+ "cnt-v3f-few": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": ",b,c\n"
+ },
+ "cnt-y3f-few": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "a,b,c\n"
+ },
  "comma": {
   "cursor": [
    0,
@@ -1167,6 +1559,377 @@
    0
   ],
   "text": "a\nb\nc\nc"
+ },
+ "num-after-op": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "= 11\n"
+ },
+ "num-big": {
+  "cursor": [
+   0,
+   15
+  ],
+  "text": "n = 100000000000\n"
+ },
+ "num-bin-dec": {
+  "cursor": [
+   0,
+   8
+  ],
+  "text": "a = 0b011\n"
+ },
+ "num-bin-grow": {
+  "cursor": [
+   0,
+   9
+  ],
+  "text": "a = 0b1000\n"
+ },
+ "num-bin-inc": {
+  "cursor": [
+   0,
+   8
+  ],
+  "text": "a = 0b110\n"
+ },
+ "num-count-0": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "y = 11\n"
+ },
+ "num-cursor-end": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "x = 124\n"
+ },
+ "num-cursor-mid": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "x = 124\n"
+ },
+ "num-cursor-on-minus": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "x = -2\n"
+ },
+ "num-dec": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "y = 9\n"
+ },
+ "num-dec15": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "y = -5\n"
+ },
+ "num-dot": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "y = 16\n"
+ },
+ "num-dot-count": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "y = 18\n"
+ },
+ "num-dot-dec": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "y = 4\n"
+ },
+ "num-dot-other-line": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "a4\nb5\n"
+ },
+ "num-dot-twice": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "y = 19\n"
+ },
+ "num-first-after-cursor": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "a2 b22 c3\n"
+ },
+ "num-grow": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "x = 10\n"
+ },
+ "num-hex-cursor-on-x": {
+  "cursor": [
+   0,
+   7
+  ],
+  "text": "a = 0x10\n"
+ },
+ "num-hex-dec": {
+  "cursor": [
+   0,
+   7
+  ],
+  "text": "a = 0x0e\n"
+ },
+ "num-hex-grow": {
+  "cursor": [
+   0,
+   8
+  ],
+  "text": "a = 0x100\n"
+ },
+ "num-hex-inc": {
+  "cursor": [
+   0,
+   7
+  ],
+  "text": "a = 0x10\n"
+ },
+ "num-hex-lower-letters": {
+  "cursor": [
+   0,
+   7
+  ],
+  "text": "a = 0xb0\n"
+ },
+ "num-hex-upper": {
+  "cursor": [
+   0,
+   7
+  ],
+  "text": "a = 0x10\n"
+ },
+ "num-hex-upper-letters": {
+  "cursor": [
+   0,
+   7
+  ],
+  "text": "a = 0xB0\n"
+ },
+ "num-hex-upper-to-letters": {
+  "cursor": [
+   0,
+   7
+  ],
+  "text": "a = 0X0A\n"
+ },
+ "num-inc": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "y = 11\n"
+ },
+ "num-inc5": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "y = 15\n"
+ },
+ "num-last-line": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "x1\nx3\n"
+ },
+ "num-lead-zero-dec": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "a = 009\n"
+ },
+ "num-lead-zero-dec-to-zero": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "a = 000\n"
+ },
+ "num-lead-zero-grow": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "a = 100\n"
+ },
+ "num-lead-zero-neg": {
+  "cursor": [
+   0,
+   7
+  ],
+  "text": "a = -001\n"
+ },
+ "num-macro": {
+  "cursor": [
+   2,
+   4
+  ],
+  "text": "y = 2\ny = 2\ny = 2\n"
+ },
+ "num-neg-5": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "x = 2\n"
+ },
+ "num-neg-dec": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "x = -4\n"
+ },
+ "num-neg-inc": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "x = -2\n"
+ },
+ "num-neg-to-pos": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "x = 0\n"
+ },
+ "num-none": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "hello world\n"
+ },
+ "num-none-dec": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "hello world\n"
+ },
+ "num-number-before-cursor": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "10 abc\n"
+ },
+ "num-octalish": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "a = 008\n"
+ },
+ "num-octalish-9": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "a = 010\n"
+ },
+ "num-reg": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "y = 15y\n"
+ },
+ "num-second": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "a1 b23 c3\n"
+ },
+ "num-shrink": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "x = 9\n"
+ },
+ "num-space-minus": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "a - 4\n"
+ },
+ "num-two-lines": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "x2\nx3\n"
+ },
+ "num-undo": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "y = 10\n"
+ },
+ "num-undo-redo": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "y = 13\n"
+ },
+ "num-word-minus": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "foo-2\n"
+ },
+ "num-word-minus-2": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "a = b-2\n"
+ },
+ "num-zero-dec": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "x = -1\n"
  },
  "o": {
   "cursor": [
@@ -2504,6 +3267,468 @@
    0
   ],
   "text": "oo bar\n"
+ },
+ "vis-3r-cr": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "a\nef\n"
+ },
+ "vis-3r-esc": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "acdef\n"
+ },
+ "vis-V-U-indent": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "  ABC\n  DEF\n"
+ },
+ "vis-V-to-v": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "alpha beta\ngammpha beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-VU": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "ALPHA BETA\nGAMMA DELTA\nzeta eta\n"
+ },
+ "vis-Vj<": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "alpha\n    beta\ngamma\n"
+ },
+ "vis-Vj>": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "    alpha beta\n    gamma delta\nzeta eta\n"
+ },
+ "vis-Vj>-undo": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "alpha beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-VjJ-undo": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "alpha beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-VjU-undo": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "alpha beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-Vjd-undo": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "alpha beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-Vjd-undo2": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "alpha beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-Vjy-cursor": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "alpha beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-Vjy-gv": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "zeta eta\n"
+ },
+ "vis-Vkd-undo": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "alpha beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-VrX": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "XXXXXXXXXX\ngamma delta\nzeta eta\n"
+ },
+ "vis-Vu": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ALPHA BETA\ngamma delta\nZETA\n"
+ },
+ "vis-Vy-single": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "alpha beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-V~": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "ALPHA BETA\ngamma delta\nzeta eta\n"
+ },
+ "vis-ctrl-v-noop": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "alha beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-gv-after-V": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "zeta eta\n"
+ },
+ "vis-gv-after-V-cursor": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "alpha beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-gv-after-d": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-gv-esc-cursor": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "alpha beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-gv-in-visual": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "ala beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-gv-none": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "alpha beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-gv-swap": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "zeta eta\n"
+ },
+ "vis-gv-swap-ends": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "alma delta\nzeta eta\n"
+ },
+ "vis-gv-twice": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "ala beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-j-last": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "a\nbc\n"
+ },
+ "vis-k-first": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "abd\nb\n"
+ },
+ "vis-o-V": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "ALPHA BETA\nGAMMA DELTA\nzeta eta\n"
+ },
+ "vis-r-cr-indent": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "  ab\n  def\n"
+ },
+ "vis-r-esc": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "acdef\n"
+ },
+ "vis-reg-yank": {
+  "cursor": [
+   1,
+   3
+  ],
+  "text": "alpha beta\ngappmma delta\nzeta eta\n"
+ },
+ "vis-v-Esc-gv-V": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "gamma delta\nzeta eta\n"
+ },
+ "vis-v-j-last": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "a\nbc\n"
+ },
+ "vis-v-o-r": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "alXXa beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-v-to-V": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "gamma delta\nzeta eta\n"
+ },
+ "vis-v>": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "    alpha beta\n    gamma delta\nzeta eta\n"
+ },
+ "vis-vc-gv": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "al beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-vjJ": {
+  "cursor": [
+   0,
+   10
+  ],
+  "text": "alpha beta gamma delta\nzeta eta\n"
+ },
+ "vis-vjJ-undo": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "alpha beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-vjU": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "alPHA BETA\nGAMma delta\nzeta eta\n"
+ },
+ "vis-vjU-dot": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "alPHa beta\ngaMMa delta\nzeta eta\n"
+ },
+ "vis-vjU-undo": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "alpha beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-vjc-undo": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "alpha beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-vjd-undo": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "alpha beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-vjgJ": {
+  "cursor": [
+   0,
+   10
+  ],
+  "text": "alpha betagamma delta\nzeta eta\n"
+ },
+ "vis-vjgU": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "alPHA BETA\nGAMma delta\nzeta eta\n"
+ },
+ "vis-vjo-h": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "ala delta\nzeta eta\n"
+ },
+ "vis-vjo-o-d": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "alpa delta\nzeta eta\n"
+ },
+ "vis-vjrX": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "alXXXXXXXX\nXXXma delta\nzeta eta\n"
+ },
+ "vis-vjrX-undo": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "alpha beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-vju": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "ALpha beta\ngamMA DELTA\n"
+ },
+ "vis-vjy-P-multiline": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "alpha beta\ngampha beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-vjy-cursor": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "alpha beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-vj~": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "alPHA BETA\nGAMma delta\nzeta eta\n"
+ },
+ "vis-vj~-back": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "alPHA BETA\nGAMMa delta\nzeta eta\n"
+ },
+ "vis-vj~-undo-redo": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "alpHA BETA\nGAMMa delta\nzeta eta\n"
+ },
+ "vis-vkU-undo": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "alpha beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-vlx-gv": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "albeta\ngamma delta\nzeta eta\n"
+ },
+ "vis-vlx-undo": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "alpha beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-vlyjgvd": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "pha beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-vr-esc": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "ala beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-yy-P-multiline": {
+  "cursor": [
+   0,
+   10
+  ],
+  "text": "alpha betapha beta\ngam\ngamma delta\nzeta eta\n"
  },
  "xp": {
   "cursor": [

@@ -442,6 +442,13 @@ class ViEngine:
         self._rejected: tuple[Document, bool, list, list] | None = None
         # Text of the ':' line while in the stub command mode, else None.
         self._cmdline: str | None = None
+        # The last Visual selection as (anchor, cursor, linewise), for `gv`.
+        self.last_visual_raw: tuple[tuple[int, int], tuple[int, int], bool] | None = (
+            None
+        )
+        # A `{count}i/a/I/A/o/O` insert waiting for its Esc: the command key,
+        # the count, and the index in ``_change`` where the typed keys begin.
+        self._insert_repeat: tuple[str, int, int | None] | None = None
 
         body, eol = _split_eol(text)
         self.buffer = _ViBuffer(document=Document(body, 0), multiline=True)
@@ -545,6 +552,9 @@ class ViEngine:
                 self._wait, self._wait_count = name, count
             return
         kp = self.app.key_processor
+        if name == "escape" and self._insert_repeat is not None:
+            self._repeat_insert()
+        count_insert = self._count_insert_key(name)
         if self._change is None and self.mode == "normal" and not self._key_pending():
             self._change, self._change_counts = [], set()
             self._change_from = (self.buffer.text, self.buffer.eol)
@@ -558,9 +568,15 @@ class ViEngine:
         ):
             self._wait = '"'
             return
-        with set_app(self.app):
-            kp.feed(key.to_key_press())
-            kp.process_keys()
+        visual_before = self._visual_state()
+        text_before = self.buffer.text
+        self._feed_ptk(key)
+        if visual_before is not None:
+            if self.buffer.selection_state is None:
+                self.last_visual_raw = visual_before  # the selection just ended
+            if self.buffer.text != text_before:
+                self._undo_to_visual_start(visual_before, text_before)
+        self._track_insert_repeat(count_insert)
         if (
             self._change is not None
             and len(name) == 1
@@ -574,6 +590,92 @@ class ViEngine:
         if not self._ptk_pending() and self._rejected is None:
             self._register = None
         self._end_command()
+
+    def _feed_ptk(self, key: ViKey) -> None:
+        """Hand *key* to prompt_toolkit (not recorded for `.`)."""
+        kp = self.app.key_processor
+        with set_app(self.app):
+            kp.feed(key.to_key_press())
+            kp.process_keys()
+
+    def _count_insert_key(self, name: str) -> int | None:
+        """The count if *name* starts a repeated ``i a I A o O`` insert."""
+        kp = self.app.key_processor
+        if (
+            name in ("i", "a", "I", "A", "o", "O")
+            and self.mode == "normal"
+            and not self._ptk_busy()
+            and kp.arg is not None
+            and kp.arg.isdigit()
+            and int(kp.arg) > 1
+        ):
+            return int(kp.arg)
+        return None
+
+    def _track_insert_repeat(self, count: int | None) -> None:
+        """After a key: note a counted insert starting, or one that ended."""
+        if self.mode != "insert":
+            self._insert_repeat = None
+        elif count is not None and self._change is not None:
+            self._insert_repeat = (self._change[-1].name, count, len(self._change))
+
+    def _repeat_insert(self) -> None:
+        """Esc ending a ``{count}i`` insert: type the text again first.
+
+        The typed keys are replayed through prompt_toolkit (as vim replays
+        its redo buffer), ``o``/``O`` opening a new line before each copy.
+        """
+        rep, self._insert_repeat = self._insert_repeat, None
+        if rep is None or self.mode != "insert" or self._change is None:
+            return
+        cmd, count, start = rep
+        typed = self._change[start:]
+        if not typed:
+            return
+        for _ in range(count - 1):
+            if cmd in ("o", "O"):
+                self._feed_ptk(ViKey("enter"))
+            for k in typed:
+                self._feed_ptk(k)
+
+    def _visual_state(self) -> tuple[tuple[int, int], tuple[int, int], bool] | None:
+        """``(anchor, cursor, linewise)`` of the Visual selection, or None."""
+        sel = self.buffer.selection_state
+        if sel is None:
+            return None
+        doc = self.buffer.document
+        return (
+            doc.translate_index_to_position(sel.original_cursor_position),
+            (doc.cursor_position_row, doc.cursor_position_col),
+            sel.type == SelectionType.LINES,
+        )
+
+    def _undo_to_visual_start(
+        self,
+        visual: tuple[tuple[int, int], tuple[int, int], bool],
+        text_before: str,
+    ) -> None:
+        """After a Visual command: ``u`` puts the cursor where the area began."""
+        undo: list = self.buffer._undo_stack
+        if not undo or undo[-1][0] != text_before:
+            return
+        anchor, cursor, linewise = visual
+        row, col = min(anchor, cursor)
+        if linewise and anchor <= cursor:
+            col = 0
+        doc = Document(text_before, 0)
+        row = min(row, doc.line_count - 1)
+        col = min(col, len(doc.lines[row]))
+        undo[-1] = (text_before, doc.translate_row_col_to_index(row, col), undo[-1][2])
+
+    @property
+    def last_visual(self) -> tuple[tuple[int, int], tuple[int, int], bool] | None:
+        """The last Visual area as ``(start, end, linewise)``, start <= end."""
+        raw = self.last_visual_raw
+        if raw is None:
+            return None
+        anchor, cursor, linewise = raw
+        return min(anchor, cursor), max(anchor, cursor), linewise
 
     def _finish_wait(self, key: ViKey) -> None:
         """The register name after ``"``, ``q`` or ``@``."""
@@ -848,6 +950,8 @@ class ViEngine:
 
     def set_cursor(self, row: int, col: int) -> None:
         """Move the cursor (clamped), leaving visual mode."""
+        if self.buffer.selection_state is not None:
+            self.last_visual_raw = self._visual_state()
         self.buffer.exit_selection()
         self._move_to(row, col)
 

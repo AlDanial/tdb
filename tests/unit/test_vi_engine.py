@@ -586,3 +586,68 @@ async def test_yank_sets_zero_but_delete_does_not():
     e = ViEngine("abc def\n")
     e.feed_keys('yw"0P')
     assert e.text == "abc abc def\n"
+
+
+async def test_last_visual_after_escape_operator_and_switch():
+    e = ViEngine("alpha beta\ngamma delta\n")
+    assert e.last_visual is None
+    e.feed_keys("vl<Esc>")
+    assert e.last_visual == ((0, 0), (0, 1), False)
+    e.feed_keys("jVj")
+    assert e.last_visual == ((0, 0), (0, 1), False)  # still selecting
+    e.feed_keys("<Esc>")
+    assert e.last_visual == ((1, 1), (1, 1), True)
+    e.feed_keys("kvjvd")  # v -> toggles off at the second v, then d is normal
+    assert e.last_visual is not None and e.last_visual[2] is False
+    e.feed_keys("gvd")
+    assert e.mode == "normal"
+
+
+async def test_last_visual_orders_start_and_end():
+    e = ViEngine("alpha beta\ngamma delta\n", cursor=(1, 3))
+    e.feed_keys("vkh<Esc>")
+    assert e.last_visual == ((0, 2), (1, 3), False)
+
+
+async def test_ctrl_v_stays_unreachable_with_visual_additions():
+    e = ViEngine("abc\n")
+    e.feed_keys("<C-v>")
+    assert e.mode == "normal"
+    e.feed_keys("v<C-v>")
+    assert e.mode == "visual"
+
+
+async def test_counted_insert_is_one_undo_step_and_dot_repeats():
+    e = ViEngine("foo\nbar\n")
+    e.feed_keys("3ix<Esc>")
+    assert e.text == "xxxfoo\nbar\n"
+    e.feed_keys("j0.")
+    assert e.text == "xxxfoo\nxxxbar\n"
+    e.feed_keys("u")
+    assert e.text == "xxxfoo\nbar\n"
+    e.feed_keys("u")
+    assert e.text == "foo\nbar\n"
+
+
+async def test_counted_insert_cancelled_by_other_exit_is_not_repeated():
+    e = ViEngine("foo\n")
+    e.feed_keys("3ix<Esc>")
+    e.feed_keys("ay<Esc>")  # a later uncounted insert stays single
+    assert e.text == "xxxyfoo\n"
+
+
+async def test_increment_number_with_dot_and_count():
+    e = ViEngine("y = 10\n")
+    e.feed_keys("3<C-a>")
+    assert e.text == "y = 13\n"
+    e.feed_keys("5.")
+    assert e.text == "y = 18\n"
+    e.feed_keys("u")
+    assert e.text == "y = 13\n"
+
+
+async def test_increment_without_number_changes_nothing():
+    e = ViEngine("hello\n")
+    e.feed_keys("<C-a><C-x>")
+    assert e.text == "hello\n"
+    assert e.session.last_change is None

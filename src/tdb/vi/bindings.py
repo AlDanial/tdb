@@ -53,6 +53,7 @@ from prompt_toolkit.filters import (
     vi_selection_mode,
     vi_waiting_for_text_object_mode,
 )
+from prompt_toolkit.filters.app import vi_replace_single_mode
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.key_binding.bindings.vi import (
     TextObject,
@@ -60,8 +61,9 @@ from prompt_toolkit.key_binding.bindings.vi import (
     create_operator_decorator,
     create_text_object_decorator,
 )
-from prompt_toolkit.key_binding.vi_state import InputMode
-from prompt_toolkit.selection import PasteMode, SelectionType
+from prompt_toolkit.key_binding.vi_state import CharacterFind, InputMode
+from prompt_toolkit.keys import Keys
+from prompt_toolkit.selection import PasteMode, SelectionState, SelectionType
 
 from tdb.vi.textobjects import (
     PAIRS,
@@ -71,6 +73,7 @@ from tdb.vi.textobjects import (
     block_span,
     current_par,
     current_word,
+    increment_number,
     index,
     join_lines,
     quote_span,
@@ -106,6 +109,9 @@ def load_tdb_vi_bindings(engine: ViEngine) -> KeyBindings:
     _add_join(kb)
     _add_viewport_commands(kb, engine)
     _add_insert_tab(kb, engine)
+    _add_visual_commands(kb, engine)
+    _add_increment(kb)
+    _add_counted_commands(kb)
 
     return kb
 
@@ -227,7 +233,12 @@ def _add_nvim_cursor_fixes(kb: KeyBindings, engine: ViEngine) -> None:
         if not data.text and data.type != SelectionType.LINES:
             return  # empty register: nothing to put
         row = buff.document.cursor_position_row
+        at = buff.cursor_position
+        if mode == PasteMode.VI_AFTER and buff.document.current_line:
+            at += 1
         buff.paste_clipboard_data(data, count=event.arg, paste_mode=mode)
+        if data.type == SelectionType.CHARACTERS and "\n" in data.text:
+            buff.cursor_position = at  # a multi-line put leaves the cursor at its start
         if data.type == SelectionType.LINES and data.text:
             first = row + 1 if mode == PasteMode.VI_AFTER else row
             line = buff.document.lines[first]
@@ -314,7 +325,11 @@ def _add_nvim_cursor_fixes(kb: KeyBindings, engine: ViEngine) -> None:
         _, data = text_obj.cut(buff)
         if data.text or data.type == SelectionType.LINES:
             event.app.clipboard.yank(data)  # type: ignore[attr-defined]
+        sel = buff.selection_state
+        down = sel is not None and sel.original_cursor_position <= buff.cursor_position
         buff.cursor_position += min(text_obj.sorted()[0], 0)
+        if down and sel.type == SelectionType.LINES:  # type: ignore[union-attr]
+            _set_cursor(buff, buff.document.cursor_position_row, 0)  # `Vjy`
 
     def transform(keys: tuple[str, ...], func) -> None:
         @operator(*keys, filter=~is_read_only)
@@ -385,6 +400,20 @@ def _add_nvim_cursor_fixes(kb: KeyBindings, engine: ViEngine) -> None:
             return
         first, last = text_obj.get_line_numbers(buff)
         _delete_rows(event, first, last, buff.document.cursor_position_col)
+
+    @kb.add("j", filter=vi_navigation_mode | vi_selection_mode)
+    def _move_down(event: KeyPressEvent) -> None:
+        """``j``: nothing happens on the last line (prompt_toolkit goes to column 0)."""
+        buff = event.current_buffer
+        if buff.document.cursor_position_row < buff.document.line_count - 1:
+            buff.cursor_down(count=event.arg)
+
+    @kb.add("k", filter=vi_navigation_mode | vi_selection_mode)
+    def _move_up(event: KeyPressEvent) -> None:
+        """``k``: nothing happens on the first line."""
+        buff = event.current_buffer
+        if buff.document.cursor_position_row > 0:
+            buff.cursor_up(count=event.arg)
 
     @text_object("j", no_move_handler=True, no_selection_handler=True)
     def _down(event: KeyPressEvent) -> TextObject | None:
@@ -833,3 +862,242 @@ def _add_viewport_commands(kb: KeyBindings, engine: ViEngine) -> None:
         @kb.add(*keys, filter=scroll_mode)
         def _(event: KeyPressEvent, where=where, bol=bol) -> None:
             place(event, where, bol)
+
+
+def _add_visual_commands(kb: KeyBindings, engine: ViEngine) -> None:
+    """Visual mode: ``o O``, ``gv``, ``u U ~`` and ``r{char}``."""
+    visual = vi_selection_mode & ~vi_waiting_for_text_object_mode
+
+    @kb.add("o", filter=visual)
+    @kb.add("O", filter=visual)
+    def _other_end(event: KeyPressEvent) -> None:
+        """Move the cursor to the other end of the selection."""
+        buff = event.current_buffer
+        sel = buff.selection_state
+        if sel is not None:
+            sel.original_cursor_position, buff.cursor_position = (
+                buff.cursor_position,
+                sel.original_cursor_position,
+            )
+
+    @kb.add("g", "v", filter=vi_navigation_mode | visual)
+    def _reselect(event: KeyPressEvent) -> None:
+        """``gv``: select the previous Visual area (in Visual: swap with it)."""
+        raw = engine.last_visual_raw
+        if raw is None:
+            return
+        buff = event.current_buffer
+        current = engine._visual_state()
+        lines = buff.document.lines
+
+        def clamp(pos: tuple[int, int]) -> int:
+            row = max(0, min(pos[0], len(lines) - 1))
+            return index(lines, (row, max(0, min(pos[1], len(lines[row])))))
+
+        anchor, cursor, linewise = raw
+        kind = SelectionType.LINES if linewise else SelectionType.CHARACTERS
+        buff.selection_state = SelectionState(clamp(anchor), kind)
+        buff.cursor_position = clamp(cursor)
+        if current is not None:
+            engine.last_visual_raw = current
+
+    def selected_span(buff: Buffer) -> tuple[int, int, int] | None:
+        """``(start, end, cursor index)`` of the selected text, end exclusive.
+
+        The cursor index is where vim leaves the cursor afterwards: the first
+        selected character, or for a linewise area started at its first line
+        the start of that line.
+        """
+        sel = buff.selection_state
+        if sel is None:
+            return None
+        doc = buff.document
+        first, last = sorted((buff.cursor_position, sel.original_cursor_position))
+        if sel.type == SelectionType.LINES:
+            row1 = doc.translate_index_to_position(first)[0]
+            row2 = doc.translate_index_to_position(last)[0]
+            start = doc.translate_row_col_to_index(row1, 0)
+            end = doc.translate_row_col_to_index(row2, len(doc.lines[row2]))
+        else:
+            start, end = first, min(last + 1, len(doc.text))
+        if sel.type == SelectionType.LINES and sel.original_cursor_position <= (
+            buff.cursor_position
+        ):
+            first = start
+        return start, end, first
+
+    def finish(buff: Buffer, first: int) -> None:
+        """Leave Visual mode with the cursor at *first*."""
+        buff.exit_selection()
+        _set_cursor(buff, *buff.document.translate_index_to_position(first))
+
+    def change_case(keys: tuple[str, ...], func) -> None:
+        @kb.add(*keys, filter=visual & ~is_read_only)
+        def _(event: KeyPressEvent) -> None:
+            buff = event.current_buffer
+            span = selected_span(buff)
+            if span is None:
+                return
+            start, end, first = span
+            if start < end:
+                buff.transform_region(start, end, func)
+            finish(buff, first)
+
+    change_case(("U",), str.upper)
+    change_case(("u",), str.lower)
+    change_case(("~",), str.swapcase)
+
+    @kb.add("r", Keys.Any, filter=visual & ~is_read_only)
+    def _replace_selected(event: KeyPressEvent) -> None:
+        """``r{char}``: every selected character becomes *char*."""
+        char = event.data
+        if len(char) != 1 or not char.isprintable():
+            return  # Esc and other keys cancel the r
+        buff = event.current_buffer
+        span = selected_span(buff)
+        if span is None:
+            return
+        start, end, first = span
+        if start < end:
+            buff.transform_region(
+                start,
+                end,
+                lambda text: "".join(c if c == "\n" else char for c in text),
+            )
+        finish(buff, first)
+
+
+def _add_increment(kb: KeyBindings) -> None:
+    """``{count}Ctrl+A`` / ``{count}Ctrl+X``: add to the number at or after the cursor."""
+
+    def bump(event: KeyPressEvent, sign: int) -> None:
+        buff = event.current_buffer
+        doc = buff.document
+        found = increment_number(
+            doc.current_line, doc.cursor_position_col, sign * event.arg
+        )
+        if found is None:
+            return
+        line, col = found
+        lines = list(doc.lines)
+        lines[doc.cursor_position_row] = line
+        buff.document = Document(
+            "\n".join(lines), index(lines, (doc.cursor_position_row, col))
+        )
+
+    @kb.add("c-a", filter=vi_navigation_mode & ~is_read_only)
+    def _increment(event: KeyPressEvent) -> None:
+        bump(event, 1)
+
+    @kb.add("c-x", filter=vi_navigation_mode & ~is_read_only)
+    def _decrement(event: KeyPressEvent) -> None:
+        bump(event, -1)
+
+
+def _add_counted_commands(kb: KeyBindings) -> None:
+    """``{count}r`` and ``{count}f/t/F/T`` (``;`` ``,``), which fail like vim's.
+
+    prompt_toolkit ignores the count of ``r`` and, when a ``f``/``t`` has too
+    few matches, still lets an operator run.  Here a command that cannot be
+    done leaves the text and the cursor alone and cancels a pending operator.
+    """
+    text_object = create_text_object_decorator(kb)
+    count_of_r = [1]
+
+    @kb.add("r", filter=vi_navigation_mode)
+    def _replace(event: KeyPressEvent) -> None:
+        count_of_r[0] = event.arg
+        event.app.vi_state.input_mode = InputMode.REPLACE_SINGLE
+
+    @kb.add(Keys.Any, filter=vi_replace_single_mode)
+    @kb.add("enter", filter=vi_replace_single_mode)
+    def _replace_chars(event: KeyPressEvent) -> None:
+        """The character after ``r``: replace *count* characters with it."""
+        count, count_of_r[0] = count_of_r[0], 1
+        event.app.vi_state.input_mode = InputMode.NAVIGATION
+        char = event.data
+        buff = event.current_buffer
+        doc = buff.document
+        row, col = doc.cursor_position_row, doc.cursor_position_col
+        line = doc.current_line
+        if col + count > len(line):
+            return
+        if char == "\r":
+            # One line break replaces the characters; the new line keeps the indent.
+            indent = line[: len(line) - len(line.lstrip(" \t"))]
+            lines = list(doc.lines)
+            lines[row : row + 1] = [line[:col], indent + line[col + count :]]
+            # vim leaves the cursor one left of the indent (it Esc's out of insert).
+            buff.document = Document(
+                "\n".join(lines), index(lines, (row + 1, max(len(indent) - 1, 0)))
+            )
+        elif len(char) == 1 and char.isprintable():
+            lines = list(doc.lines)
+            lines[row] = line[:col] + char * count + line[col + count :]
+            buff.document = Document(
+                "\n".join(lines), index(lines, (row, col + count - 1))
+            )
+
+    def find(event: KeyPressEvent, char: str, backwards: bool, till: bool):
+        """Offset and type of the *count*-th *char* on the line, or None."""
+        doc = event.current_buffer.document
+        if backwards:
+            found = doc.find_backwards(char, in_current_line=True, count=event.arg)
+            if not found:
+                return None
+            return TextObject(found + 1 if till else found)
+        found = doc.find(char, in_current_line=True, count=event.arg)
+        if not found:
+            return None
+        return TextObject(found - 1 if till else found, type=TextObjectType.INCLUSIVE)
+
+    movable = (
+        vi_navigation_mode | vi_selection_mode
+    ) & ~vi_waiting_for_text_object_mode
+
+    def register(key: str, backwards: bool, till: bool) -> None:
+        def target(event: KeyPressEvent) -> TextObject | None:
+            event.app.vi_state.last_character_find = CharacterFind(
+                event.data, backwards
+            )
+            return find(event, event.data, backwards, till)
+
+        text_object(key, Keys.Any, no_move_handler=True, no_selection_handler=True)(
+            target
+        )
+
+        @kb.add(key, Keys.Any, filter=movable)
+        def _move(event: KeyPressEvent) -> None:
+            obj = target(event)
+            if obj is not None:
+                event.current_buffer.cursor_position += obj.start
+
+    for key, backwards, till in (
+        ("f", False, False),
+        ("F", True, False),
+        ("t", False, True),
+        ("T", True, True),
+    ):
+        register(key, backwards, till)
+
+    def repeat(key: str, reverse: bool) -> None:
+        def target(event: KeyPressEvent) -> TextObject | None:
+            last = event.app.vi_state.last_character_find
+            if last is None:
+                return None
+            backwards = last.backwards != reverse
+            obj = find(event, last.character, backwards, False)
+            if obj is None or backwards:
+                return obj
+            return TextObject(obj.start, type=TextObjectType.INCLUSIVE)
+
+        text_object(key, no_move_handler=True, no_selection_handler=True)(target)
+
+        @kb.add(key, filter=movable)
+        def _move(event: KeyPressEvent) -> None:
+            obj = target(event)
+            if obj is not None:
+                event.current_buffer.cursor_position += obj.start
+
+    repeat(";", False)
+    repeat(",", True)

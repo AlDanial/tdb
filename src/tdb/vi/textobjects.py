@@ -445,3 +445,101 @@ def join_lines(
         joined += sep + nxt
         prev = nxt
     return lines[:row] + [joined] + lines[row + count :], col
+
+
+_DIGITS = "0123456789"
+_HEX = "0123456789abcdefABCDEF"
+
+
+def increment_number(line: str, col: int, delta: int) -> tuple[str, int] | None:
+    """vim ``Ctrl+A`` / ``Ctrl+X`` (``nrformats=bin,hex``) on one *line*.
+
+    Finds the number at or after *col*, adds *delta* and returns
+    ``(new line, cursor column on the number's last character)``, or None
+    when the rest of the line holds no number.  Hex keeps the case of its
+    letters and the width of leading zeros; a ``-`` directly before a
+    decimal number makes it negative.
+    """
+    n = len(line)
+
+    def at(i: int) -> str:
+        return line[i] if 0 <= i < n else ""
+
+    def isbin(c: str) -> bool:
+        return c != "" and c in "01"
+
+    def ishex(c: str) -> bool:
+        return c != "" and c in _HEX
+
+    def isdig(c: str) -> bool:
+        return c != "" and c in _DIGITS
+
+    def hex_prefix(i: int) -> bool:
+        return i > 0 and at(i) in ("x", "X") and at(i - 1) == "0" and ishex(at(i + 1))
+
+    c = min(col, n)
+    while c > 0 and isbin(at(c)):
+        c -= 1
+    while c > 0 and ishex(at(c)):
+        c -= 1
+    if not hex_prefix(c):  # binary/hex patterns overlap: rescan
+        c = min(col, n)
+        while c > 0 and isdig(at(c)):
+            c -= 1
+    if hex_prefix(c) or (
+        c > 0 and at(c) in ("b", "B") and at(c - 1) == "0" and isbin(at(c + 1))
+    ):
+        c -= 1
+    else:
+        c = min(col, n)
+        while c < n and not isdig(at(c)):
+            c += 1
+        while c > 0 and isdig(at(c - 1)):
+            c -= 1
+    if not isdig(at(c)):
+        return None
+
+    negative = c > 0 and at(c - 1) == "-"
+    # The number: an optional 0x / 0b prefix, then its digits.
+    pre = ""
+    digits_at = c
+    if at(c) == "0" and at(c + 1) in ("x", "X") and ishex(at(c + 2)):
+        pre, digits_at = line[c : c + 2], c + 2
+        end = digits_at
+        while ishex(at(end)):
+            end += 1
+    elif at(c) == "0" and at(c + 1) in ("b", "B") and isbin(at(c + 2)):
+        pre, digits_at = line[c : c + 2], c + 2
+        end = digits_at
+        while isbin(at(end)):
+            end += 1
+    else:
+        end = c
+        while isdig(at(end)):
+            end += 1
+    if pre:
+        negative = False  # the '-' before 0x.. / 0b.. is not a sign
+    text = line[digits_at:end]
+    base = 16 if pre[1:] in ("x", "X") else 2 if pre else 10
+
+    if pre:
+        value = (int(text, base) + delta) % (1 << 64)
+        if base == 16:
+            upper = False
+            for ch in pre + text:
+                if ch.isalpha():
+                    upper = ch.isupper()
+            new = format(value, "X" if upper else "x")
+        else:
+            new = format(value, "b")
+        sign = ""
+    else:
+        value = -int(text) if negative else int(text)
+        value += delta
+        sign = "-" if value < 0 else ""
+        new = str(abs(value))
+    if at(c) == "0":
+        new = new.rjust(len(text), "0")
+    start = c - 1 if negative else c
+    out = line[:start] + sign + pre + new + line[end:]
+    return out, start + len(sign) + len(pre) + len(new) - 1

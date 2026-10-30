@@ -9,6 +9,7 @@ from tdb.vi.textobjects import (
     block_span,
     current_par,
     current_word,
+    increment_number,
     join_lines,
     quote_span,
 )
@@ -60,3 +61,25 @@ def test_join_three_lines():
         7,
     )
     assert join_lines(["a", " b"], 0, 2, False) == (["a b"], 1)
+
+
+@pytest.mark.parametrize(
+    ("line", "col", "delta", "want"),
+    [
+        ("y = 10", 0, 1, ("y = 11", 5)),
+        ("x = -3", 0, 5, ("x = 2", 4)),
+        ("x = -3", 0, -1, ("x = -4", 5)),
+        ("a = 0x0f", 0, 1, ("a = 0x10", 7)),
+        ("a = 0xAF", 0, 1, ("a = 0xB0", 7)),
+        ("a = 0b11", 0, 1, ("a = 0b100", 8)),
+        ("a = 007", 0, 1, ("a = 008", 6)),
+        ("a = 099", 0, 1, ("a = 100", 6)),
+        ("a = 000", 0, -1, ("a = -001", 7)),
+        ("a1 b22", 3, 1, ("a1 b23", 5)),
+        ("10 abc", 4, 1, None),
+        ("hello", 0, 1, None),
+        ("", 0, 1, None),
+    ],
+)
+def test_increment_number(line, col, delta, want):
+    assert increment_number(line, col, delta) == want

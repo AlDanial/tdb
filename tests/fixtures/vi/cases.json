@@ -3111,8 +3111,7 @@
    0,
    0
   ],
-  "keys": "r3l2.",
-  "difference": "{count}r is not implemented (prompt_toolkit replaces one character)"
+  "keys": "r3l2."
  },
  {
   "id": "dot-count-f-digit",
@@ -3121,8 +3120,7 @@
    0,
    0
   ],
-  "keys": "df32.",
-  "difference": "a {count}f/t with too few matches does not fail (prompt_toolkit)"
+  "keys": "df32."
  },
  {
   "id": "dot-count-insert-digit",
@@ -3131,8 +3129,7 @@
    0,
    0
   ],
-  "keys": "i3<Esc>2.",
-  "difference": "{count}i is not implemented (prompt_toolkit inserts once)"
+  "keys": "i3<Esc>2."
  },
  {
   "id": "undo-insert",
@@ -3304,5 +3301,1580 @@
    0
   ],
   "keys": "dd\"0p"
+ },
+ {
+  "id": "vis-vlyjgvd",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "vlyjgvd"
+ },
+ {
+  "id": "vis-gv-after-V",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "Vj<Esc>Ggvd"
+ },
+ {
+  "id": "vis-gv-after-V-cursor",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "Vj<Esc>Ggv<Esc>"
+ },
+ {
+  "id": "vis-gv-twice",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "vl<Esc>jgv<Esc>gvd"
+ },
+ {
+  "id": "vis-gv-swap-ends",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "vjo<Esc>Ggvd"
+ },
+ {
+  "id": "vis-gv-none",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   1,
+   2
+  ],
+  "keys": "gvd"
+ },
+ {
+  "id": "vis-gv-in-visual",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "vl<Esc>jvgvd"
+ },
+ {
+  "id": "vis-gv-after-d",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "vlld<Esc>gvd"
+ },
+ {
+  "id": "vis-vjU",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "vjU"
+ },
+ {
+  "id": "vis-vju",
+  "text": "ALPHA BETA\nGAMMA DELTA\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "vju"
+ },
+ {
+  "id": "vis-vj~",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "vj~"
+ },
+ {
+  "id": "vis-vj~-back",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   1,
+   3
+  ],
+  "keys": "vkh~"
+ },
+ {
+  "id": "vis-VU",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "VjU"
+ },
+ {
+  "id": "vis-Vu",
+  "text": "ALPHA BETA\nGAMMA DELTA\nZETA\n",
+  "cursor": [
+   1,
+   2
+  ],
+  "keys": "Vu"
+ },
+ {
+  "id": "vis-V~",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "V~"
+ },
+ {
+  "id": "vis-vjgU",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "vjgU"
+ },
+ {
+  "id": "vis-vjJ",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "vjJ"
+ },
+ {
+  "id": "vis-vjgJ",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "vjgJ"
+ },
+ {
+  "id": "vis-vjo-h",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "vjohd"
+ },
+ {
+  "id": "vis-vjo-o-d",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "vjoood"
+ },
+ {
+  "id": "vis-Vj>",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "Vj>"
+ },
+ {
+  "id": "vis-Vj<",
+  "text": "    alpha\n        beta\ngamma\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "Vj<"
+ },
+ {
+  "id": "vis-v>",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "vj>"
+ },
+ {
+  "id": "vis-vjrX",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "vjrX"
+ },
+ {
+  "id": "vis-VrX",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "VrX"
+ },
+ {
+  "id": "vis-v-to-V",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "vlVd"
+ },
+ {
+  "id": "vis-V-to-v",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "VjvlyP"
+ },
+ {
+  "id": "vis-v-Esc-gv-V",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "vl<Esc>gvVd"
+ },
+ {
+  "id": "vis-vjU-undo",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "vjUu"
+ },
+ {
+  "id": "vis-vjU-dot",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "vlUj."
+ },
+ {
+  "id": "vis-vlx-gv",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "vlxgvd"
+ },
+ {
+  "id": "vis-Vjy-gv",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "VjyGgvd"
+ },
+ {
+  "id": "vis-vc-gv",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "vlcX<Esc>gvd"
+ },
+ {
+  "id": "vis-reg-yank",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "v\"ayjP\"ap"
+ },
+ {
+  "id": "num-inc",
+  "text": "y = 10\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-a>"
+ },
+ {
+  "id": "num-dec",
+  "text": "y = 10\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-x>"
+ },
+ {
+  "id": "num-inc5",
+  "text": "y = 10\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "5<C-a>"
+ },
+ {
+  "id": "num-dec15",
+  "text": "y = 10\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "15<C-x>"
+ },
+ {
+  "id": "num-neg-inc",
+  "text": "x = -3\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-a>"
+ },
+ {
+  "id": "num-neg-dec",
+  "text": "x = -3\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-x>"
+ },
+ {
+  "id": "num-neg-5",
+  "text": "x = -3\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "5<C-a>"
+ },
+ {
+  "id": "num-neg-to-pos",
+  "text": "x = -3\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3<C-a>"
+ },
+ {
+  "id": "num-zero-dec",
+  "text": "x = 0\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-x>"
+ },
+ {
+  "id": "num-hex-inc",
+  "text": "a = 0x0f\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-a>"
+ },
+ {
+  "id": "num-hex-dec",
+  "text": "a = 0x0f\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-x>"
+ },
+ {
+  "id": "num-hex-upper",
+  "text": "a = 0x0F\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-a>"
+ },
+ {
+  "id": "num-hex-upper-letters",
+  "text": "a = 0xAF\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-a>"
+ },
+ {
+  "id": "num-hex-lower-letters",
+  "text": "a = 0xaf\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-a>"
+ },
+ {
+  "id": "num-hex-grow",
+  "text": "a = 0xff\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-a>"
+ },
+ {
+  "id": "num-hex-upper-to-letters",
+  "text": "a = 0X09\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-a>"
+ },
+ {
+  "id": "num-hex-cursor-on-x",
+  "text": "a = 0x0f\n",
+  "cursor": [
+   0,
+   5
+  ],
+  "keys": "<C-a>"
+ },
+ {
+  "id": "num-bin-inc",
+  "text": "a = 0b101\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-a>"
+ },
+ {
+  "id": "num-bin-dec",
+  "text": "a = 0b100\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-x>"
+ },
+ {
+  "id": "num-bin-grow",
+  "text": "a = 0b111\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-a>"
+ },
+ {
+  "id": "num-octalish",
+  "text": "a = 007\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-a>"
+ },
+ {
+  "id": "num-octalish-9",
+  "text": "a = 009\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-a>"
+ },
+ {
+  "id": "num-lead-zero-grow",
+  "text": "a = 099\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-a>"
+ },
+ {
+  "id": "num-lead-zero-dec",
+  "text": "a = 010\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-x>"
+ },
+ {
+  "id": "num-lead-zero-dec-to-zero",
+  "text": "a = 001\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-x>"
+ },
+ {
+  "id": "num-lead-zero-neg",
+  "text": "a = 000\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-x>"
+ },
+ {
+  "id": "num-none",
+  "text": "hello world\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-a>"
+ },
+ {
+  "id": "num-none-dec",
+  "text": "hello world\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-x>"
+ },
+ {
+  "id": "num-number-before-cursor",
+  "text": "10 abc\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "<C-a>"
+ },
+ {
+  "id": "num-cursor-mid",
+  "text": "x = 123\n",
+  "cursor": [
+   0,
+   5
+  ],
+  "keys": "<C-a>"
+ },
+ {
+  "id": "num-cursor-end",
+  "text": "x = 123\n",
+  "cursor": [
+   0,
+   6
+  ],
+  "keys": "<C-a>"
+ },
+ {
+  "id": "num-cursor-on-minus",
+  "text": "x = -3\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "<C-a>"
+ },
+ {
+  "id": "num-grow",
+  "text": "x = 9\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-a>"
+ },
+ {
+  "id": "num-shrink",
+  "text": "x = 10\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-x>"
+ },
+ {
+  "id": "num-second",
+  "text": "a1 b22 c3\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "<C-a>"
+ },
+ {
+  "id": "num-first-after-cursor",
+  "text": "a1 b22 c3\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "<C-a>"
+ },
+ {
+  "id": "num-word-minus",
+  "text": "foo-3\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-a>"
+ },
+ {
+  "id": "num-word-minus-2",
+  "text": "a = b-3\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-a>"
+ },
+ {
+  "id": "num-space-minus",
+  "text": "a - 3\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-a>"
+ },
+ {
+  "id": "num-two-lines",
+  "text": "x1\nx2\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-a>j<C-a>"
+ },
+ {
+  "id": "num-last-line",
+  "text": "x1\nx2\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "<C-a>"
+ },
+ {
+  "id": "num-dot",
+  "text": "y = 10\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3<C-a>."
+ },
+ {
+  "id": "num-dot-dec",
+  "text": "y = 10\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3<C-x>."
+ },
+ {
+  "id": "num-dot-count",
+  "text": "y = 10\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3<C-a>5."
+ },
+ {
+  "id": "num-dot-twice",
+  "text": "y = 10\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3<C-a>.."
+ },
+ {
+  "id": "num-dot-other-line",
+  "text": "a1\nb2\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3<C-a>j."
+ },
+ {
+  "id": "num-undo",
+  "text": "y = 10\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3<C-a>u"
+ },
+ {
+  "id": "num-undo-redo",
+  "text": "y = 10\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3<C-a>u<C-r>"
+ },
+ {
+  "id": "num-big",
+  "text": "n = 99999999999\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-a>"
+ },
+ {
+  "id": "num-reg",
+  "text": "y = 10\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"ayiw5<C-a>\"ap"
+ },
+ {
+  "id": "num-macro",
+  "text": "y = 1\ny = 1\ny = 1\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qa<C-a>jq2@a"
+ },
+ {
+  "id": "num-after-op",
+  "text": "y = 10\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "dw<C-a>"
+ },
+ {
+  "id": "num-count-0",
+  "text": "y = 10\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-a><C-a>u"
+ },
+ {
+  "id": "cnt-3rx",
+  "text": "abcdef\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3rx"
+ },
+ {
+  "id": "cnt-3rx-exact",
+  "text": "abcdef\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "3rx"
+ },
+ {
+  "id": "cnt-3rx-fewer",
+  "text": "abcdef\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "3rx"
+ },
+ {
+  "id": "cnt-5rx-fewer",
+  "text": "abc\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "5rx"
+ },
+ {
+  "id": "cnt-2r-then-dot",
+  "text": "abcdefgh\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "2rx.l."
+ },
+ {
+  "id": "cnt-2r-dot-count",
+  "text": "abcdefgh\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "2rx3."
+ },
+ {
+  "id": "cnt-3r-undo",
+  "text": "abcdef\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3rxu"
+ },
+ {
+  "id": "cnt-r-cr",
+  "text": "abcdef\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "1r<CR>"
+ },
+ {
+  "id": "cnt-5i",
+  "text": "foo\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "5i-<Esc>"
+ },
+ {
+  "id": "cnt-3ab",
+  "text": "foo\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3ab<Esc>"
+ },
+ {
+  "id": "cnt-3a-end",
+  "text": "foo\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "3ab<Esc>"
+ },
+ {
+  "id": "cnt-2oX",
+  "text": "foo\nbar\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "2oX<Esc>"
+ },
+ {
+  "id": "cnt-3Ox",
+  "text": "foo\nbar\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "3Ox<Esc>"
+ },
+ {
+  "id": "cnt-2Ihi",
+  "text": "  foo\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "2Ihi<Esc>"
+ },
+ {
+  "id": "cnt-3Ahi",
+  "text": "foo\nbar\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3Ahi<Esc>"
+ },
+ {
+  "id": "cnt-3i-undo",
+  "text": "foo\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3ix<Esc>u"
+ },
+ {
+  "id": "cnt-3i-undo-redo",
+  "text": "foo\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3ix<Esc>u<C-r>"
+ },
+ {
+  "id": "cnt-3a-undo",
+  "text": "foo\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3ab<Esc>u"
+ },
+ {
+  "id": "cnt-2oX-undo",
+  "text": "foo\nbar\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "2oX<Esc>u"
+ },
+ {
+  "id": "cnt-3i-dot",
+  "text": "foo bar\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "2ix<Esc>w."
+ },
+ {
+  "id": "cnt-3i-dot-count",
+  "text": "foo bar\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "2ix<Esc>w5."
+ },
+ {
+  "id": "cnt-2i-multiline",
+  "text": "foo\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "2ia<CR>b<Esc>"
+ },
+ {
+  "id": "cnt-2o-dot",
+  "text": "foo\nbar\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "2oX<Esc>j."
+ },
+ {
+  "id": "cnt-1i",
+  "text": "foo\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "1ix<Esc>"
+ },
+ {
+  "id": "cnt-2i-bs",
+  "text": "foo\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "2iab<BS>c<Esc>"
+ },
+ {
+  "id": "cnt-2i-empty",
+  "text": "foo\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "2i<Esc>"
+ },
+ {
+  "id": "cnt-2i-esc-cursor",
+  "text": "foo bar\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "2iab<Esc>"
+ },
+ {
+  "id": "cnt-2a-reg",
+  "text": "foo\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "2ab<Esc>p"
+ },
+ {
+  "id": "cnt-2s",
+  "text": "abcdef\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "2sX<Esc>"
+ },
+ {
+  "id": "cnt-3i-macro",
+  "text": "foo\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qa2ix<Esc>q@a"
+ },
+ {
+  "id": "cnt-3i-esc-esc",
+  "text": "foo\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3ix<Esc><Esc>"
+ },
+ {
+  "id": "cnt-2I-undo",
+  "text": "  foo\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "2Ix<Esc>u"
+ },
+ {
+  "id": "cnt-2fz",
+  "text": "a,b,c\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "2f,"
+ },
+ {
+  "id": "cnt-2fz-few",
+  "text": "a,b,c\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3f,"
+ },
+ {
+  "id": "cnt-2tz-few",
+  "text": "a,b,c\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3t,"
+ },
+ {
+  "id": "cnt-2Fz-few",
+  "text": "a,b,c\n",
+  "cursor": [
+   0,
+   5
+  ],
+  "keys": "3F,"
+ },
+ {
+  "id": "cnt-2Tz-few",
+  "text": "a,b,c\n",
+  "cursor": [
+   0,
+   5
+  ],
+  "keys": "3T,"
+ },
+ {
+  "id": "cnt-2Fz",
+  "text": "a,b,c\n",
+  "cursor": [
+   0,
+   5
+  ],
+  "keys": "2F,"
+ },
+ {
+  "id": "cnt-2Tz",
+  "text": "a,b,c\n",
+  "cursor": [
+   0,
+   5
+  ],
+  "keys": "2T,"
+ },
+ {
+  "id": "cnt-2tz",
+  "text": "a,b,c\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "2t,"
+ },
+ {
+  "id": "cnt-d3f-few",
+  "text": "a,b,c\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "d3f,"
+ },
+ {
+  "id": "cnt-d3t-few",
+  "text": "a,b,c\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "d3t,"
+ },
+ {
+  "id": "cnt-d3F-few",
+  "text": "a,b,c\n",
+  "cursor": [
+   0,
+   5
+  ],
+  "keys": "d3F,"
+ },
+ {
+  "id": "cnt-d3T-few",
+  "text": "a,b,c\n",
+  "cursor": [
+   0,
+   5
+  ],
+  "keys": "d3T,"
+ },
+ {
+  "id": "cnt-d2f",
+  "text": "a,b,c\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "d2f,"
+ },
+ {
+  "id": "cnt-c3f-few",
+  "text": "a,b,c\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "c3f,X<Esc>"
+ },
+ {
+  "id": "cnt-y3f-few",
+  "text": "a,b,c\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "y3f,P"
+ },
+ {
+  "id": "cnt-d3f-few-then-x",
+  "text": "a,b,c\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "d3f,x"
+ },
+ {
+  "id": "cnt-v3f-few",
+  "text": "a,b,c\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "v3f,d"
+ },
+ {
+  "id": "cnt-v2f",
+  "text": "a,b,c\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "v2f,d"
+ },
+ {
+  "id": "cnt-semi-few",
+  "text": "a,b,c\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "f,;;"
+ },
+ {
+  "id": "cnt-3semi",
+  "text": "a,b,c,d,e\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "f,3;"
+ },
+ {
+  "id": "cnt-3semi-few",
+  "text": "a,b,c\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "f,3;"
+ },
+ {
+  "id": "cnt-dsemi-few",
+  "text": "a,b,c\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "f,d5;"
+ },
+ {
+  "id": "cnt-3comma-few",
+  "text": "a,b,c\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "$F,5,"
+ },
+ {
+  "id": "cnt-d3f-nomatch",
+  "text": "abc\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "d3fz"
+ },
+ {
+  "id": "vis-gv-swap",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "Vjyggvgvd"
+ },
+ {
+  "id": "vis-vr-esc",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "vlr<Esc>d"
+ },
+ {
+  "id": "vis-vjd-undo",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "vjdu"
+ },
+ {
+  "id": "vis-Vjd-undo",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   1,
+   2
+  ],
+  "keys": "Vkdu"
+ },
+ {
+  "id": "vis-vjc-undo",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "vjcX<Esc>u"
+ },
+ {
+  "id": "vis-vjrX-undo",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "vjrXu"
+ },
+ {
+  "id": "vis-Vjy-cursor",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   1,
+   3
+  ],
+  "keys": "Vky"
+ },
+ {
+  "id": "vis-vjy-cursor",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   1,
+   3
+  ],
+  "keys": "vky"
+ },
+ {
+  "id": "vis-vjy-P-multiline",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "vjyP"
+ },
+ {
+  "id": "vis-yy-P-multiline",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "vjy$p"
+ },
+ {
+  "id": "vis-j-last",
+  "text": "a\nbcd\n",
+  "cursor": [
+   1,
+   2
+  ],
+  "keys": "jx"
+ },
+ {
+  "id": "vis-k-first",
+  "text": "abcd\nb\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "kx"
+ },
+ {
+  "id": "vis-v-j-last",
+  "text": "a\nbcd\n",
+  "cursor": [
+   1,
+   2
+  ],
+  "keys": "vjd"
+ },
+ {
+  "id": "vis-r-cr-indent",
+  "text": "  abcdef\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "r<CR>"
+ },
+ {
+  "id": "vis-3r-cr",
+  "text": "abcdef\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "3r<CR>"
+ },
+ {
+  "id": "vis-r-esc",
+  "text": "abcdef\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "r<Esc>x"
+ },
+ {
+  "id": "vis-3r-esc",
+  "text": "abcdef\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "3r<Esc>x"
+ },
+ {
+  "id": "vis-V-U-indent",
+  "text": "  abc\n  def\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "VjU"
+ },
+ {
+  "id": "vis-gv-esc-cursor",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "vjo<Esc>gv<Esc>"
+ },
+ {
+  "id": "vis-o-V",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "VjoU"
+ },
+ {
+  "id": "vis-v-o-r",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "vlorX"
+ },
+ {
+  "id": "vis-ctrl-v-noop",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "<C-v>x"
+ },
+ {
+  "id": "vis-Vy-single",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "Vy"
+ },
+ {
+  "id": "vis-VjU-undo",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "VjUu"
+ },
+ {
+  "id": "vis-Vkd-undo",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   1,
+   3
+  ],
+  "keys": "Vkdu"
+ },
+ {
+  "id": "vis-VjJ-undo",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "VjJu"
+ },
+ {
+  "id": "vis-Vj>-undo",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "Vj>u"
+ },
+ {
+  "id": "vis-vjJ-undo",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "vjJu"
+ },
+ {
+  "id": "vis-vkU-undo",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   1,
+   3
+  ],
+  "keys": "vkUu"
+ },
+ {
+  "id": "vis-Vjd-undo2",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "Vjdu"
+ },
+ {
+  "id": "vis-vj~-undo-redo",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "vj~u<C-r>"
+ },
+ {
+  "id": "vis-vlx-undo",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "vlxu"
  }
 ]
