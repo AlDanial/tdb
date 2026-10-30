@@ -241,6 +241,15 @@ def _add_nvim_cursor_fixes(kb: KeyBindings, engine: ViEngine) -> None:
     def _paste_before(event: KeyPressEvent) -> None:
         paste(event, PasteMode.VI_BEFORE)
 
+    @kb.add("y", "y", filter=vi_navigation_mode)
+    @kb.add("Y", filter=vi_navigation_mode)
+    def _yank_line(event: KeyPressEvent) -> None:
+        """``{count}yy`` / ``{count}Y``: a yank, so it also sets ``"0``."""
+        doc = event.current_buffer.document
+        text = "\n".join(doc.lines_from_current[: event.arg])
+        data = ClipboardData(text, SelectionType.LINES)
+        event.app.clipboard.yank(data)  # type: ignore[attr-defined]
+
     @kb.add("~", filter=vi_navigation_mode & ~is_read_only)
     def _tilde(event: KeyPressEvent) -> None:
         """``{count}~``: swap case of *count* characters, cursor after them."""
@@ -304,7 +313,7 @@ def _add_nvim_cursor_fixes(kb: KeyBindings, engine: ViEngine) -> None:
         buff = event.current_buffer
         _, data = text_obj.cut(buff)
         if data.text or data.type == SelectionType.LINES:
-            event.app.clipboard.set_data(data)
+            event.app.clipboard.yank(data)  # type: ignore[attr-defined]
         buff.cursor_position += min(text_obj.sorted()[0], 0)
 
     def transform(keys: tuple[str, ...], func) -> None:

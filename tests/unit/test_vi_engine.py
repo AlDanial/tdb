@@ -537,3 +537,52 @@ async def test_macro_with_special_keys_round_trips():
     e.feed_keys("qaA<Left>X<Esc>q")
     e.feed_keys("@a")
     assert e.text == "abXXc\n"
+
+
+@pytest.mark.parametrize(
+    ("keys", "counts"),
+    [
+        ("d3w", {1}),
+        ("2d3w", {0, 2}),
+        ("d10w", {1, 2}),
+        ('3"a2dd', {0, 3}),
+        ("r3", set()),
+        ("df3", set()),
+        ("i3<Esc>", set()),
+        ("d0", set()),
+    ],
+)
+async def test_dot_marks_count_digits(keys, counts):
+    e = ViEngine("a b c d e f g h i j k l 3\nx\ny\nz\n", cursor=(0, 2))
+    e.feed_keys(keys)
+    assert e.session.last_change == ViKey.parse(keys)
+    assert e.session.last_change_counts == counts
+
+
+async def test_register_dropped_by_q_at_and_dot():
+    e = ViEngine("a\nb\n")
+    e.feed_keys('"a@b')
+    assert not e.has_pending and e.status == ""
+    e.feed_keys('"+.')
+    assert not e.has_pending
+    e.feed_keys("dd")
+    assert e.text == "b\n"  # not rolled back by the dropped "+
+
+
+async def test_error_after_grouped_change_keeps_undo_history():
+    e = ViEngine("abc\n", _extra_bindings=boom_bindings("Z"))
+    e.feed_keys("ixy<Esc>")
+    stack = list(e.buffer._undo_stack)
+    e.feed_keys("Z")
+    assert e.buffer._undo_stack == stack
+    e.feed_keys("u")
+    assert e.text == "abc\n"
+
+
+async def test_yank_sets_zero_but_delete_does_not():
+    e = ViEngine("\n")
+    e.feed_keys('dd"0p')  # a delete that leaves the text unchanged
+    assert e.text == "\n"
+    e = ViEngine("abc def\n")
+    e.feed_keys('yw"0P')
+    assert e.text == "abc abc def\n"

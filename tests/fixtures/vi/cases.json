@@ -3076,5 +3076,233 @@
    0
   ],
   "keys": "yy\"%ddp"
+ },
+ {
+  "id": "dot-count-after-op",
+  "text": "a b c d e f g h\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "d3w2."
+ },
+ {
+  "id": "dot-count-before-op",
+  "text": "a b c d e f g h\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "2d3w."
+ },
+ {
+  "id": "dot-count-both",
+  "text": "a b c d e f g h\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "2d3w3."
+ },
+ {
+  "id": "dot-count-r-digit",
+  "text": "r3r3r3r3\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "r3l2.",
+  "difference": "{count}r is not implemented (prompt_toolkit replaces one character)"
+ },
+ {
+  "id": "dot-count-f-digit",
+  "text": "a1b2c3a1b2c3\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "df32.",
+  "difference": "a {count}f/t with too few matches does not fail (prompt_toolkit)"
+ },
+ {
+  "id": "dot-count-insert-digit",
+  "text": "foo bar\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "i3<Esc>2.",
+  "difference": "{count}i is not implemented (prompt_toolkit inserts once)"
+ },
+ {
+  "id": "undo-insert",
+  "text": "foo bar\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "ihello<Esc>u"
+ },
+ {
+  "id": "undo-insert-redo",
+  "text": "foo bar\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "ihello<Esc>u<C-r>"
+ },
+ {
+  "id": "undo-cw",
+  "text": "foo bar\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "cwX<Esc>u"
+ },
+ {
+  "id": "undo-cw-redo",
+  "text": "foo bar\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "cwX<Esc>u<C-r>"
+ },
+ {
+  "id": "undo-dot-ciw",
+  "text": "foo bar baz\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "ciwX<Esc>w.u"
+ },
+ {
+  "id": "undo-dot-ciw-redo",
+  "text": "foo bar baz\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "ciwX<Esc>w.u<C-r>"
+ },
+ {
+  "id": "undo-R",
+  "text": "foo bar\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "Rab<Esc>u"
+ },
+ {
+  "id": "undo-R-redo",
+  "text": "foo bar\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "Rab<Esc>u<C-r>"
+ },
+ {
+  "id": "undo-dot-o",
+  "text": "foo bar\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "oline<Esc>.u"
+ },
+ {
+  "id": "undo-dot-o-redo",
+  "text": "foo bar\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "oline<Esc>.u<C-r>"
+ },
+ {
+  "id": "undo-insert-twice",
+  "text": "foo bar\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "iab<Esc>Acd<Esc>u"
+ },
+ {
+  "id": "undo-A-mid",
+  "text": "foo bar baz\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "wAxy<Esc>u"
+ },
+ {
+  "id": "undo-macro-count",
+  "text": "a\nb\nc\nd\ne\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qaddq3@au"
+ },
+ {
+  "id": "undo-macro-two-changes",
+  "text": "a\nb\nc\nd\ne\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qaddjq@au"
+ },
+ {
+  "id": "undo-x-dot",
+  "text": "foo bar\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "x.u"
+ },
+ {
+  "id": "reg-before-q",
+  "text": "a\nb\nc\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"aqbddq\"ap"
+ },
+ {
+  "id": "reg-before-dot",
+  "text": "a\nb\nc\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"a.ddj\"ap"
+ },
+ {
+  "id": "reg-rejected-before-q",
+  "text": "a\nb\nc\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"+qaddq"
+ },
+ {
+  "id": "reg-zero-dd-empty-line",
+  "text": "\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "dd\"0p"
  }
 ]

@@ -370,6 +370,48 @@
   ],
   "text": "foo foo three\n    four five\nsix seven\neight nine\nten\n"
  },
+ "dot-count-after-op": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "f g h\n"
+ },
+ "dot-count-before-op": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "\n"
+ },
+ "dot-count-both": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "\n"
+ },
+ "dot-count-f-digit": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "a1b2c3\n"
+ },
+ "dot-count-insert-digit": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "333foo bar\n"
+ },
+ "dot-count-r-digit": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "3333r3r3\n"
+ },
  "dot-count-sticks": {
   "cursor": [
    0,
@@ -1259,6 +1301,20 @@
   ],
   "text": "one two three\n    four five\none two three\n    four five\nsix seven\neight nine\nten\n"
  },
+ "reg-before-dot": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "b\nc\n"
+ },
+ "reg-before-q": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "b\nc\n"
+ },
  "reg-blackhole-dd": {
   "cursor": [
    2,
@@ -1385,6 +1441,13 @@
   ],
   "text": "    one two three\n    four five\nsix seven\neight nine\nten\n"
  },
+ "reg-rejected-before-q": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "b\nc\n"
+ },
  "reg-s": {
   "cursor": [
    1,
@@ -1447,6 +1510,13 @@
    0
   ],
   "text": "one two three\nsix seven\none two three\neight nine\nten\n"
+ },
+ "reg-zero-dd-empty-line": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "\n"
  },
  "reg-zero-explicit": {
   "cursor": [
@@ -2323,12 +2393,117 @@
   ],
   "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
  },
+ "undo-A-mid": {
+  "cursor": [
+   0,
+   10
+  ],
+  "text": "foo bar baz\n"
+ },
+ "undo-R": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "foo bar\n"
+ },
+ "undo-R-redo": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abo bar\n"
+ },
+ "undo-cw": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "foo bar\n"
+ },
+ "undo-cw-redo": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "X bar\n"
+ },
+ "undo-dot-ciw": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "X bar baz\n"
+ },
+ "undo-dot-ciw-redo": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "X X baz\n"
+ },
+ "undo-dot-o": {
+  "cursor": [
+   1,
+   3
+  ],
+  "text": "foo bar\nline\n"
+ },
+ "undo-dot-o-redo": {
+  "cursor": [
+   1,
+   3
+  ],
+  "text": "foo bar\nline\nline\n"
+ },
+ "undo-insert": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "foo bar\n"
+ },
+ "undo-insert-redo": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "hellofoo bar\n"
+ },
+ "undo-insert-twice": {
+  "cursor": [
+   0,
+   8
+  ],
+  "text": "abfoo bar\n"
+ },
+ "undo-macro-count": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "b\nc\nd\ne\n"
+ },
+ "undo-macro-two-changes": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "b\nc\nd\ne\n"
+ },
  "undo-x": {
   "cursor": [
    0,
    0
   ],
   "text": "f f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "undo-x-dot": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "oo bar\n"
  },
  "xp": {
   "cursor": [

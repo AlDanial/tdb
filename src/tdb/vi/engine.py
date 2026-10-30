@@ -285,6 +285,9 @@ class ViSession:
     ex_history: list[str] = field(default_factory=list)
     search_history: list[str] = field(default_factory=list)
     last_change: list[ViKey] | None = None
+    # Indexes of the count digits in ``last_change`` (a count given to `.`
+    # replaces all of them).
+    last_change_counts: frozenset[int] = frozenset()
     # Register of the last executed macro, for ``@@``.
     last_macro: str | None = None
 
@@ -310,6 +313,14 @@ class _Registers(Clipboard):
         self._engine = engine
 
     def set_data(self, data: ClipboardData) -> None:
+        """A delete or change: the selected register, or the unnamed one."""
+        self.store(data, yank=False)
+
+    def yank(self, data: ClipboardData) -> None:
+        """A yank: like ``set_data``, and also ``"0`` when no register is named."""
+        self.store(data, yank=True)
+
+    def store(self, data: ClipboardData, *, yank: bool) -> None:
         e = self._engine
         reg = e._register
         if reg == "_":
@@ -320,8 +331,8 @@ class _Registers(Clipboard):
             if reg.isupper():
                 data = _append_register(named.get(low), data)
             named[low] = data
-        elif reg == "0" or e.buffer.text == e._key_text:
-            named["0"] = data  # a yank (the text is unchanged)
+        elif reg == "0" or yank:
+            named["0"] = data
         e.session.clipboard.set_data(data)  # type: ignore[attr-defined]
 
     def get_data(self) -> ClipboardData:
@@ -366,7 +377,8 @@ class _ViBuffer(Buffer):
         while undo:
             text, pos, eol = undo.pop()
             if text != self.text or eol != self.eol:
-                redo.append(self._state())
+                # Undo and redo both put the cursor where the change began.
+                redo.append((self.text, pos, self.eol))
                 self._restore(text, pos, eol)
                 break
 
@@ -377,8 +389,12 @@ class _ViBuffer(Buffer):
             self._restore(*redo.pop())
 
     def _restore(self, text: str, pos: int, eol: bool) -> None:
+        """Put back *text* with the cursor at *pos*, on a character."""
+        doc = Document(text, 0)
+        row, col = doc.translate_index_to_position(min(pos, len(text)))
+        col = max(0, min(col, len(doc.lines[row]) - 1))
         self.eol = eol
-        self.document = Document(text, cursor_position=pos)
+        self.document = Document(text, doc.translate_row_col_to_index(row, col))
 
 
 class ViEngine:
@@ -415,8 +431,12 @@ class ViEngine:
         # The change being recorded for `.`, and the text when it began.
         self._change: list[ViKey] | None = None
         self._change_from: tuple[str, bool] = ("", False)
-        # Buffer text before the current key reached prompt_toolkit.
-        self._key_text = ""
+        self._ran_macro = False
+        # Indexes of count digits in ``_change``.
+        self._change_counts: set[int] = set()
+        # Undo-stack length when ``_change`` began, and the state then.
+        self._undo_mark = 0
+        self._change_cursor = 0
         # State before a command with an unsupported register, which is
         # rolled back when that command ends.
         self._rejected: tuple[Document, bool, list, list] | None = None
@@ -438,7 +458,8 @@ class ViEngine:
             full_screen=True,
         )
         self.app.timeoutlen = None
-        self.app.clipboard = _Registers(self)
+        self.registers = _Registers(self)
+        self.app.clipboard = self.registers
         self.app.vi_state = self.session.vi_state  # type: ignore[assignment]
         vs = self.app.vi_state
         vs.input_mode = InputMode.NAVIGATION  # also clears operator state
@@ -458,8 +479,11 @@ class ViEngine:
         before = self._snapshot()
         self._pending_keys.append(key)
         self._queue.append((key, False))
+        self._ran_macro = False
         try:
             self._run_queue()
+            if self._ran_macro:  # vim: undo takes back a whole macro run
+                self._group_undo(len(before[2]), before[0].text, before[1])
         except Exception as exc:  # a stray key must never crash tdb
             log.exception("vi engine error on key %r", key.name)
             self._recover(*before)
@@ -508,8 +532,10 @@ class ViEngine:
             self._cmdline = ""
             return
         if idle and name in ("q", "@", "."):
-            # Not part of a change; an abandoned count belongs to them.
+            # Not part of a change; an abandoned count belongs to them, and
+            # a register prefix is dropped (vim ignores it here).
             self._change = None
+            self._register = self._rejected = None
             count = self._take_count()
             if name == ".":
                 self._repeat_change(count)
@@ -518,9 +544,11 @@ class ViEngine:
             else:
                 self._wait, self._wait_count = name, count
             return
+        kp = self.app.key_processor
         if self._change is None and self.mode == "normal" and not self._key_pending():
-            self._change = []
+            self._change, self._change_counts = [], set()
             self._change_from = (self.buffer.text, self.buffer.eol)
+            self._undo_mark = len(self.buffer._undo_stack)
         if self._change is not None:
             self._change.append(key)
         if (
@@ -530,10 +558,19 @@ class ViEngine:
         ):
             self._wait = '"'
             return
-        self._key_text = self.buffer.text
         with set_app(self.app):
-            self.app.key_processor.feed(key.to_key_press())
-            self.app.key_processor.process_keys()
+            kp.feed(key.to_key_press())
+            kp.process_keys()
+        if (
+            self._change is not None
+            and len(name) == 1
+            and name.isdigit()
+            and kp.arg is not None
+            and kp.arg.endswith(name)
+        ):
+            # prompt_toolkit took the digit as (part of) a count, not as
+            # the argument of r/f/t/m... or as inserted text.
+            self._change_counts.add(len(self._change) - 1)
         if not self._ptk_pending() and self._rejected is None:
             self._register = None
         self._end_command()
@@ -593,10 +630,30 @@ class ViEngine:
         keys, self._change = self._change, None
         if (self.buffer.text, self.buffer.eol) == self._change_from:
             return
-        _, rest = _split_count(keys)
-        if rest and rest[0].name in ("u", "ctrl+r"):
+        counts = frozenset(self._change_counts)
+        command = _command_key(keys, counts)
+        if command is not None and command.name in ("u", "ctrl+r"):
             return
+        self._group_undo(self._undo_mark, *self._change_from)
         self.session.last_change = keys
+        self.session.last_change_counts = counts
+
+    def _group_undo(self, mark: int, text: str, eol: bool) -> None:
+        """Make everything pushed on the undo stack since *mark* one step.
+
+        The single entry left is the state before the change, so ``u``
+        takes the whole change back (an insert session, a `.`, a macro).
+        """
+        undo: list = self.buffer._undo_stack
+        if len(undo) < mark:
+            return
+        pre = undo[mark] if len(undo) > mark else None
+        del undo[mark:]
+        if undo and undo[-1][0] == text and undo[-1][2] == eol:
+            return  # the pre-change state was merged into the entry below
+        if pre is None or pre[0] != text or pre[2] != eol:
+            pre = (text, 0, eol)
+        undo.append(pre)
 
     def _repeat_change(self, count: int | None) -> None:
         """``.``: replay the last change, a *count* replacing its own."""
@@ -604,8 +661,10 @@ class ViEngine:
         if not keys:
             return
         if count is not None:
-            register, rest = _split_count(keys)
-            keys = register + ViKey.parse(str(count)) + rest
+            counts = self.session.last_change_counts
+            keys = [k for i, k in enumerate(keys) if i not in counts]
+            at = 2 if len(keys) > 1 and keys[0].name == '"' else 0
+            keys = keys[:at] + ViKey.parse(str(count)) + keys[at:]
         self._replay(keys)
 
     def _run_macro(self, name: str, count: int) -> None:
@@ -624,6 +683,7 @@ class ViEngine:
         if data is None:
             return
         self.session.last_macro = name
+        self._ran_macro = True
         text = data.text + ("\n" if data.type == SelectionType.LINES else "")
         self._replay(register_text_to_keys(text) * count)
 
@@ -827,22 +887,17 @@ class ViEngine:
         self.buffer.cursor_position = doc.translate_row_col_to_index(row, col)
 
 
-def _split_count(keys: list[ViKey]) -> tuple[list[ViKey], list[ViKey]]:
-    """Split ``[count]["x][count]rest`` into (the ``"x`` keys, rest)."""
-    register: list[ViKey] = []
+def _command_key(keys: list[ViKey], counts: frozenset[int]) -> ViKey | None:
+    """The first key of *keys* that is not a count digit or a ``"x`` prefix."""
     i = 0
-
-    def skip_count() -> None:
-        nonlocal i
-        if i < len(keys) and keys[i].name in tuple("123456789"):
-            while i < len(keys) and keys[i].name in tuple("0123456789"):
-                i += 1
-
-    skip_count()
-    if i + 1 < len(keys) and keys[i].name == '"':
-        register, i = keys[i : i + 2], i + 2
-        skip_count()
-    return register, keys[i:]
+    while i < len(keys):
+        if i in counts:
+            i += 1
+        elif keys[i].name == '"':
+            i += 2
+        else:
+            return keys[i]
+    return None
 
 
 def _split_eol(text: str) -> tuple[str, bool]:
