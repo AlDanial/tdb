@@ -48,6 +48,7 @@ from prompt_toolkit.document import Document
 from prompt_toolkit.filters import (
     Condition,
     is_read_only,
+    vi_insert_mode,
     vi_navigation_mode,
     vi_selection_mode,
 )
@@ -87,6 +88,8 @@ def load_tdb_vi_bindings(engine: ViEngine) -> KeyBindings:
 
     _add_change_word(kb)
     _add_nvim_cursor_fixes(kb, engine)
+    _add_viewport_commands(kb, engine)
+    _add_insert_tab(kb, engine)
 
     return kb
 
@@ -341,3 +344,181 @@ def _add_nvim_cursor_fixes(kb: KeyBindings, engine: ViEngine) -> None:
             return None
         offset = doc.get_cursor_up_position(count=event.arg)
         return TextObject(offset, type=TextObjectType.LINEWISE)
+
+
+def _add_insert_tab(kb: KeyBindings, engine: ViEngine) -> None:
+    """Insert-mode Tab inserts one ``indent_unit`` (prompt_toolkit: a bare tab)."""
+
+    @kb.add("c-i", filter=vi_insert_mode & ~is_read_only)
+    def _tab(event: KeyPressEvent) -> None:
+        event.current_buffer.insert_text(engine.indent_unit * event.arg)
+
+
+def _add_viewport_commands(kb: KeyBindings, engine: ViEngine) -> None:
+    """``H M L``, ``^D ^U ^F ^B ^Y``, ``PageUp/PageDown`` and the ``z`` family.
+
+    prompt_toolkit's own versions need a rendered window; the engine is
+    headless, so these work from ``engine.viewport`` instead.  Without a
+    viewport they do nothing.  Numbers follow vim: ``^D``/``^U`` scroll
+    half the window (a count sets and keeps that amount, vim's 'scroll'),
+    ``^F``/``^B`` a page minus two lines, ``zz`` puts the cursor row at
+    ``(height - 1) // 2``.  ``^D`` ``^U`` ``^F`` ``^B`` ``^Y`` and the
+    ``zt zz zb`` family keep the cursor column (nvim ``nostartofline``);
+    ``H M L`` and ``z<CR> z. z-`` go to the first non-blank (documented vim).
+    """
+    text_object = create_text_object_decorator(kb)
+    scroll_mode = vi_navigation_mode | vi_selection_mode
+    # vim's 'scroll' option: None means "half the window".
+    scroll_option: list[int | None] = [None]
+
+    def geometry(buff: Buffer) -> tuple[int, int, int] | None:
+        """``(top, height, last_row)`` of the window, or None without one."""
+        vp = engine.viewport
+        if vp is None:
+            return None
+        top, bottom = vp.visible_rows()
+        return top, max(bottom - top + 1, 1), buff.document.line_count - 1
+
+    def first_nonblank(doc: Document, row: int) -> int:
+        line = doc.lines[row]
+        return len(line) - len(line.lstrip())
+
+    def put_cursor(buff: Buffer, row: int, col: int) -> None:
+        doc = buff.document
+        row = max(0, min(row, doc.line_count - 1))
+        limit = len(doc.lines[row])
+        if get_app().vi_state.input_mode != InputMode.INSERT:
+            limit -= 1
+        buff.cursor_position = doc.translate_row_col_to_index(
+            row, max(0, min(col, limit))
+        )
+
+    def screen_row(event: KeyPressEvent, which: str) -> TextObject | None:
+        buff = event.current_buffer
+        geo = geometry(buff)
+        if geo is None:
+            return None
+        top, height, last = geo
+        shown = min(top + height - 1, last) - top + 1  # rows with text
+        if which == "H":
+            offset = event.arg - 1
+        elif which == "L":
+            offset = shown - event.arg
+        else:
+            offset = (shown + 1) // 2 - 1
+        doc = buff.document
+        row = max(0, min(top + max(0, min(offset, shown - 1)), last))
+        target = doc.translate_row_col_to_index(row, first_nonblank(doc, row))
+        return TextObject(target - doc.cursor_position, type=TextObjectType.LINEWISE)
+
+    for name in "HML":
+
+        @text_object(name)
+        def _(event: KeyPressEvent, name: str = name) -> TextObject | None:
+            return screen_row(event, name)
+
+    def scroll_half(event: KeyPressEvent, down: bool) -> None:
+        buff = event.current_buffer
+        geo = geometry(buff)
+        if geo is None:
+            return
+        top, height, last = geo
+        if event._arg:
+            scroll_option[0] = event.arg
+        amount = scroll_option[0] or max(height // 2, 1)
+        doc = buff.document
+        row, col = doc.cursor_position_row, doc.cursor_position_col
+        if down:
+            new_top = min(top + amount, max(top, last - height + 1))
+            new_row = min(row + amount, last)
+        else:
+            new_top = max(top - amount, 0)
+            new_row = max(row - amount, 0)
+        if new_top != top:
+            engine.viewport.scroll_to_top_row(new_top)  # type: ignore[union-attr]
+        put_cursor(buff, new_row, col)
+
+    def scroll_page(event: KeyPressEvent, down: bool) -> None:
+        buff = event.current_buffer
+        geo = geometry(buff)
+        if geo is None:
+            return
+        top, height, last = geo
+        step = max(height - 2, 1) * event.arg
+        new_top = min(top + step, last) if down else max(top - step, 0)
+        if new_top != top:
+            engine.viewport.scroll_to_top_row(new_top)  # type: ignore[union-attr]
+        doc = buff.document
+        row, col = doc.cursor_position_row, doc.cursor_position_col
+        if down:
+            row = max(row, new_top)
+        else:
+            row = min(row, new_top + height - 1)
+        put_cursor(buff, row, col)
+
+    @kb.add("c-d", filter=scroll_mode)
+    def _ctrl_d(event: KeyPressEvent) -> None:
+        scroll_half(event, True)
+
+    @kb.add("c-u", filter=scroll_mode)
+    def _ctrl_u(event: KeyPressEvent) -> None:
+        scroll_half(event, False)
+
+    page_mode = scroll_mode | vi_insert_mode
+
+    @kb.add("c-f", filter=scroll_mode)
+    @kb.add("pagedown", filter=page_mode)
+    def _page_down(event: KeyPressEvent) -> None:
+        scroll_page(event, True)
+
+    @kb.add("c-b", filter=scroll_mode)
+    @kb.add("pageup", filter=page_mode)
+    def _page_up(event: KeyPressEvent) -> None:
+        scroll_page(event, False)
+
+    @kb.add("c-y", filter=scroll_mode)
+    def _ctrl_y(event: KeyPressEvent) -> None:
+        buff = event.current_buffer
+        geo = geometry(buff)
+        if geo is None:
+            return
+        top, height, _ = geo
+        new_top = max(top - event.arg, 0)
+        if new_top != top:
+            engine.viewport.scroll_to_top_row(new_top)  # type: ignore[union-attr]
+        doc = buff.document
+        row, col = doc.cursor_position_row, doc.cursor_position_col
+        put_cursor(buff, min(row, new_top + height - 1), col)
+
+    def place(event: KeyPressEvent, where: str, bol: bool) -> None:
+        """``zt``/``zz``/``zb`` (and ``z<CR>`` ``z.`` ``z-``) for the cursor row."""
+        buff = event.current_buffer
+        geo = geometry(buff)
+        if geo is None:
+            return
+        _, height, last = geo
+        doc = buff.document
+        row, col = doc.cursor_position_row, doc.cursor_position_col
+        if event._arg:  # {count}zt: that line becomes the target
+            row = max(0, min(event.arg - 1, last))
+        if where == "t":
+            new_top = row
+        elif where == "z":
+            new_top = row - (height - 1) // 2
+        else:
+            new_top = row - (height - 1)
+        engine.viewport.scroll_to_top_row(max(new_top, 0))  # type: ignore[union-attr]
+        put_cursor(buff, row, first_nonblank(doc, row) if bol else col)
+
+    for keys, where, bol in (
+        (("z", "t"), "t", False),
+        (("z", "enter"), "t", True),
+        (("z", "z"), "z", False),
+        (("z", "."), "z", True),
+        (("z", "b"), "b", False),
+        (("z", "-"), "b", True),
+    ):
+
+        @kb.add(*keys, filter=scroll_mode)
+        def _(event: KeyPressEvent, where=where, bol=bol) -> None:
+            place(event, where, bol)

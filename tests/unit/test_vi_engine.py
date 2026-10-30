@@ -261,3 +261,157 @@ async def test_ctrl_z_never_edits(prefix):
     mode = e.mode
     e.feed(ViKey("ctrl+z"))
     assert e.text == "abc\ndef\n" and e.mode == mode
+
+
+# ---------------------------------------------------------------------------
+# Viewport commands (fake 20-row window over a 100-line buffer)
+
+
+class FakeViewport:
+    def __init__(self, top: int = 0, height: int = 20) -> None:
+        self.top = top
+        self.height = height
+        self.calls: list[int] = []
+
+    def visible_rows(self) -> tuple[int, int]:
+        return self.top, self.top + self.height - 1
+
+    def scroll_to_top_row(self, row: int) -> None:
+        self.calls.append(row)
+        self.top = row
+
+
+def _vp_engine(top: int = 0, cursor: tuple[int, int] = (0, 0), height: int = 20):
+    text = "".join(f"  line {i}\n" for i in range(100))
+    vp = FakeViewport(top, height)
+    return ViEngine(text, cursor=cursor, viewport=vp), vp
+
+
+async def test_ctrl_d_and_ctrl_u_scroll_half_a_window():
+    e, vp = _vp_engine()
+    e.feed_keys("<C-d>")
+    assert (e.cursor[0], vp.top) == (10, 10)
+    e.feed_keys("<C-d>")
+    assert (e.cursor[0], vp.top) == (20, 20)
+    e.feed_keys("<C-u>")
+    assert (e.cursor[0], vp.top) == (10, 10)
+    e.feed_keys("<C-u><C-u>")
+    assert (e.cursor[0], vp.top) == (0, 0)
+
+
+async def test_ctrl_d_count_sets_the_scroll_amount():
+    e, vp = _vp_engine()
+    e.feed_keys("5<C-d>")
+    assert (e.cursor[0], vp.top) == (5, 5)
+    e.feed_keys("<C-d>")  # the count is sticky, like vim's 'scroll'
+    assert (e.cursor[0], vp.top) == (10, 10)
+
+
+async def test_ctrl_d_keeps_the_column_and_stops_at_buffer_end():
+    e, vp = _vp_engine(top=75, cursor=(90, 3))
+    e.feed_keys("<C-d>")
+    assert e.cursor == (99, 3) and vp.top == 80  # last line at the window bottom
+
+
+async def test_ctrl_f_moves_a_page_minus_two_lines():
+    e, vp = _vp_engine()
+    e.feed_keys("<C-f>")
+    assert vp.top == 18 and e.cursor[0] == 18
+    e.feed_keys("2<C-f>")
+    assert vp.top == 54 and e.cursor[0] == 54
+
+
+async def test_page_keys_use_the_ctrl_f_ctrl_b_code():
+    e, vp = _vp_engine()
+    e.feed_keys("<PageDown>")
+    assert vp.top == 18 and e.cursor[0] == 18
+    e.feed_keys("<PageUp>")
+    assert vp.top == 0 and e.cursor[0] == 18  # cursor still in view
+
+
+async def test_ctrl_y_scrolls_without_moving_the_cursor_unless_it_must():
+    e, vp = _vp_engine(top=5, cursor=(10, 0))
+    e.feed_keys("<C-y>")
+    assert (vp.top, e.cursor[0]) == (4, 10)
+    e, vp = _vp_engine(top=5, cursor=(24, 0))
+    e.feed_keys("<C-y>")
+    assert (vp.top, e.cursor[0]) == (4, 23)  # bottom row of the new view
+
+
+async def test_h_m_l_land_on_first_non_blank():
+    e, _ = _vp_engine(top=30, cursor=(35, 0))
+    e.feed_keys("H")
+    assert e.cursor == (30, 2)
+    e.feed_keys("L")
+    assert e.cursor == (49, 2)
+    e.feed_keys("M")
+    assert e.cursor == (39, 2)  # vim: row 10 of a 20-row window
+
+
+async def test_h_and_l_counts():
+    e, _ = _vp_engine(top=30, cursor=(35, 0))
+    e.feed_keys("3H")
+    assert e.cursor[0] == 32
+    e.feed_keys("3L")
+    assert e.cursor[0] == 47
+
+
+async def test_l_clamps_to_the_last_line_of_a_short_buffer():
+    e = ViEngine("a\nb\nc\n", viewport=FakeViewport())
+    e.feed_keys("L")
+    assert e.cursor[0] == 2
+    e.feed_keys("M")
+    assert e.cursor[0] == 1
+
+
+async def test_dL_deletes_to_window_bottom_linewise():
+    text = "".join(f"l{i}\n" for i in range(30))
+    e = ViEngine(text, cursor=(5, 0), viewport=FakeViewport(0, 10))
+    e.feed_keys("dL")
+    assert e.text == "".join(f"l{i}\n" for i in [*range(5), *range(10, 30)])
+    e.feed_keys("dH")
+    assert e.text == "".join(f"l{i}\n" for i in range(11, 30))
+
+
+async def test_zt_zz_zb_place_the_cursor_row():
+    e, vp = _vp_engine(cursor=(50, 4))
+    e.feed_keys("zt")
+    assert vp.top == 50 and e.cursor == (50, 4)
+    e.feed_keys("zz")
+    assert vp.top == 41  # vim centers a 20-row window on row +9
+    e.feed_keys("zb")
+    assert vp.top == 31
+
+
+async def test_z_cr_dot_minus_also_go_to_first_non_blank():
+    for keys, top in (("z<CR>", 50), ("z.", 41), ("z-", 31)):
+        e, vp = _vp_engine(cursor=(50, 6))
+        e.feed_keys(keys)
+        assert (vp.top, e.cursor) == (top, (50, 2)), keys
+
+
+async def test_z_with_count_goes_to_that_line():
+    e, vp = _vp_engine()
+    e.feed_keys("61zt")
+    assert (vp.top, e.cursor[0]) == (60, 60)
+
+
+async def test_zz_near_top_clamps_at_row_zero():
+    e, vp = _vp_engine(cursor=(3, 0))
+    e.feed_keys("zz")
+    assert vp.top == 0
+
+
+async def test_viewport_commands_without_viewport_are_noops():
+    e = ViEngine("a\nb\nc\n")
+    e.feed_keys("<C-d><C-f>HLMzzzt<C-y>")
+    assert e.cursor == (0, 0) and e.text == "a\nb\nc\n" and not e.has_pending
+
+
+@pytest.mark.parametrize(
+    ("unit", "expected"), [("    ", "    x\n"), ("\t", "\tx\n")]
+)
+async def test_insert_tab_inserts_the_indent_unit(unit, expected):
+    e = ViEngine("x\n", indent_unit=unit)
+    e.feed_keys("i<Tab><Esc>")
+    assert e.text == expected

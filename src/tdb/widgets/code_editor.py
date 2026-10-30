@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, ClassVar, Protocol
 
+from textual import events
 from textual.binding import Binding, BindingType
 from textual.containers import Vertical
 from textual.events import Key
@@ -220,6 +221,36 @@ class CodeEditor(TextArea):
             return
         await super()._on_key(event)
 
+    # ---- Viewport (what the vi engine needs for H/M/L, ^D/^F, zt ...) ----
+
+    def visible_rows(self) -> tuple[int, int]:
+        """First and last (inclusive) document rows currently on screen."""
+        top = int(self.scroll_offset.y)
+        height = max(self.scrollable_content_region.height, 1)
+        return top, top + height - 1
+
+    def scroll_to_top_row(self, row: int) -> None:
+        self.scroll_to(y=row, animate=False)
+
+    # ---- paste / mouse: the vi engine owns the buffer ----
+
+    async def _on_paste(self, event: events.Paste) -> None:
+        layer = self._layer
+        if hasattr(layer, "handle_paste") and not self.read_only:
+            if layer.handle_paste(event.text):
+                event.stop()
+                event.prevent_default()
+                return
+        await super()._on_paste(event)
+
+    async def _on_mouse_up(self, event: events.MouseUp) -> None:
+        selecting = self._selecting
+        await super()._on_mouse_up(event)
+        layer = self._layer
+        if selecting and hasattr(layer, "on_mouse_selection"):
+            start, end = self.selection
+            layer.on_mouse_selection(start, end)
+
     # ---- search (used by all schemes via CodeView's search modal) ----
 
     def find(self, term: str, backward: bool, *, from_cursor: bool = True) -> bool:
@@ -420,6 +451,7 @@ class ViLayer:
             cursor=editor.cursor_location,
             session=session,
             marks=marks,
+            viewport=editor,
             indent_unit=indent,
         )
         self._text = text  # engine text as last mirrored into the TextArea

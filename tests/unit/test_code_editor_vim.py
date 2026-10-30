@@ -8,6 +8,7 @@ from __future__ import annotations
 import time
 from typing import ClassVar
 
+from textual import events
 from textual.app import App
 from textual.binding import Binding, BindingType
 from textual.events import Key
@@ -518,3 +519,102 @@ async def test_ctrl_z_leaves_text_unchanged_in_normal_and_insert():
         await pilot.press("i", "ctrl+z")
         assert ed.text == TEXT and ed.submode == "insert"
         assert ed._layer.engine.text == TEXT
+
+
+# ---------------------------------------------------------------------------
+# Mouse, paste, PageUp/PageDown
+
+
+def _cell(ed: CodeEditor, row: int, col: int) -> tuple[int, int]:
+    """Pilot offset that lands on document (row, col) (Pilot is 1-based here)."""
+    return ed.gutter_width + 1 + col, row + 1
+
+
+async def test_click_moves_cursor_and_leaves_visual():
+    app = _EdApp()
+    async with app.run_test() as pilot:
+        ed = app.query_one("#ed", CodeEditor)
+        engine = ed._layer.engine
+        await pilot.press("v", "l", "l")
+        assert engine.mode == "visual"
+        await pilot.click(CodeEditor, offset=_cell(ed, 3, 4))
+        assert engine.mode == "normal" and ed.submode == "normal"
+        assert engine.cursor == ed.cursor_location == (3, 4)
+        assert ed.selected_text == ""
+        await pilot.press("x")  # the engine, not just the widget, moved
+        assert ed.text.splitlines()[3] == "seve eight"
+
+
+async def test_click_past_line_end_clamps_in_normal_mode():
+    app = _EdApp()
+    async with app.run_test() as pilot:
+        ed = app.query_one("#ed", CodeEditor)
+        await pilot.click(CodeEditor, offset=_cell(ed, 2, 30))
+        assert ed._layer.engine.cursor == ed.cursor_location == (2, 2)
+
+
+async def test_drag_starts_visual():
+    app = _EdApp()
+    async with app.run_test() as pilot:
+        ed = app.query_one("#ed", CodeEditor)
+        await pilot.mouse_down(CodeEditor, offset=_cell(ed, 0, 4))
+        await pilot.hover(CodeEditor, offset=_cell(ed, 0, 6))
+        await pilot.mouse_up(CodeEditor, offset=_cell(ed, 0, 6))
+        engine = ed._layer.engine
+        assert engine.mode == "visual" and ed.submode == "visual"
+        assert engine.selection == ((0, 4), (0, 6))
+        assert ed.selected_text == "two"  # vim includes the end character
+        await pilot.press("d")
+        assert ed.text.startswith("one  three\n") and ed.text == engine.text
+
+
+async def test_paste_is_one_undo_step_any_mode():
+    app = _EdApp(text="ab\ncd\n")
+    async with app.run_test() as pilot:
+        ed = app.query_one("#ed", CodeEditor)
+        engine = ed._layer.engine
+        ed.focus()
+        # Normal mode: inserted at the cursor, mode stays normal.
+        app.post_message(events.Paste("X\nY\r\nZ"))
+        await pilot.pause()
+        assert ed.text == engine.text == "X\nY\nZab\ncd\n"
+        assert ed.submode == "normal"
+        await pilot.press("u")
+        assert ed.text == engine.text == "ab\ncd\n"
+        # Insert mode: mode stays insert, still a single step.
+        await pilot.press("A")
+        app.post_message(events.Paste("123"))
+        await pilot.pause()
+        assert ed.submode == "insert" and ed.text == "ab123\ncd\n"
+        await pilot.press("escape")
+        assert engine.cursor == ed.cursor_location
+
+
+async def test_pageup_pagedown_keys():
+    text = "".join(f"line {i}\n" for i in range(200))
+    app = _EdApp(text=text)
+    async with app.run_test(size=(80, 24)) as pilot:
+        ed = app.query_one("#ed", CodeEditor)
+        first, last = ed.visible_rows()
+        page = last - first + 1
+        await pilot.press("pagedown")
+        assert ed.scroll_offset.y == page - 2
+        assert ed.cursor_location[0] == page - 2 == ed._layer.engine.cursor[0]
+        await pilot.press("pagedown")
+        assert ed.scroll_offset.y == 2 * (page - 2)
+        await pilot.press("pageup")
+        assert ed.scroll_offset.y == page - 2
+        await pilot.press("ctrl+d")
+        assert ed.visible_rows()[0] == page - 2 + page // 2
+
+
+async def test_h_l_use_the_real_window():
+    text = "".join(f"line {i}\n" for i in range(200))
+    app = _EdApp(text=text)
+    async with app.run_test(size=(80, 24)) as pilot:
+        ed = app.query_one("#ed", CodeEditor)
+        first, last = ed.visible_rows()
+        await pilot.press("L")
+        assert ed.cursor_location[0] == last
+        await pilot.press("z", "t")
+        assert ed.scroll_offset.y == last
