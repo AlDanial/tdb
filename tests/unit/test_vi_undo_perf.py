@@ -1,0 +1,158 @@
+"""Undo history inside undo groups stays small (no per-change full-text copies).
+
+While a group is open (a `.` change or insert session, a macro run, an ex
+command such as ``:normal`` or ``:g``) only the state before the group is
+kept, as vim does: ``u`` inside a macro or ``:normal`` undoes the whole
+block so far (checked against nvim with typed input).
+"""
+
+from __future__ import annotations
+
+import time
+import tracemalloc
+
+import pytest
+
+from tdb.vi import ViEngine, ViKey
+
+
+def _numbered(n: int) -> str:
+    return "".join(f"line {i} = value_{i}\n" for i in range(n))
+
+
+def _timed(keys: str, text: str, limit: float, mem_limit: int | None = None):
+    """Run *keys* on *text* (one retry, as test_global_performance)."""
+    for attempt in range(2):
+        e = ViEngine(text)
+        if mem_limit is not None:
+            tracemalloc.start()
+        start = time.perf_counter()
+        try:
+            e.feed_keys(keys)
+            took = time.perf_counter() - start
+            peak = tracemalloc.get_traced_memory()[1] if mem_limit is not None else 0
+        finally:
+            if mem_limit is not None:
+                tracemalloc.stop()
+        if took < limit and (mem_limit is None or peak < mem_limit):
+            break
+    assert took < limit, f"{keys!r} took {took:.2f}s"
+    if mem_limit is not None:
+        assert peak < mem_limit, f"{keys!r} peaked at {peak / 2**20:.0f} MB"
+    return e
+
+
+def test_percent_normal_on_10k_lines_memory():
+    text = _numbered(10_000)
+    e = ViEngine(text)
+    tracemalloc.start()
+    try:
+        e.feed_keys(":%normal Ax<CR>")
+        peak = tracemalloc.get_traced_memory()[1]
+    finally:
+        tracemalloc.stop()
+    assert peak < 300 * 2**20, f"peaked at {peak / 2**20:.0f} MB"
+    assert e.text == text.replace("\n", "x\n")
+    e.feed_keys("u")
+    assert e.text == text
+
+
+def test_derived_document_cache_matches_a_fresh_one():
+    # The engine's buffer derives each new text's lines and line starts
+    # from the previous text's; they must equal prompt_toolkit's own.
+    import random
+
+    from prompt_toolkit.document import Document, _text_to_document_cache
+
+    rng = random.Random(7)
+    e = ViEngine("ab\n\ncd\nef\n")
+    buff = e.buffer
+    buff.text = buff.text + "z"  # the first change has nothing to derive from
+    for _ in range(3000):
+        text = buff.text
+        a = rng.randint(0, len(text))
+        b = rng.randint(a, min(len(text), a + rng.choice((0, 1, 3, 12))))
+        piece = "".join(rng.choice("x\n\n y") for _ in range(rng.randint(0, 4)))
+        buff.document  # the old text's cache is filled, as when the engine runs
+        Document(text).cursor_position_row
+        buff.text = text[:a] + piece + text[b:]
+        new = buff.text
+        cache = _text_to_document_cache[new]
+        assert cache.lines is not None
+        assert list(cache.lines) == new.split("\n")
+        want, pos = [], 0
+        for line in new.split("\n"):
+            want.append(pos)
+            pos += len(line) + 1
+        assert cache.line_indexes == want
+
+
+def test_global_normal_is_one_step():
+    text = _numbered(3_000)
+    e = ViEngine(text)
+    e.feed_keys(":g/7/normal Ax<CR>")
+    assert len(e.buffer._undo_stack) == 1
+    want = "".join(
+        line + ("x" if "7" in line else "") + "\n" for line in text.splitlines()
+    )
+    assert e.text == want
+    e.feed_keys("u")
+    assert e.text == text
+
+
+def test_macro_run_keeps_one_undo_entry():
+    text = _numbered(2_000)
+    e = ViEngine(text)
+    e.feed_keys("qaA;<Esc>jq")
+    before = len(e.buffer._undo_stack)
+    e.feed_keys("1500@a")
+    assert len(e.buffer._undo_stack) <= before + 1
+    e.feed_keys("u")
+    assert e.text == text.replace("line 0 = value_0", "line 0 = value_0;")
+
+
+def test_insert_session_keeps_one_undo_entry():
+    text = _numbered(1_000)
+    e = ViEngine(text, cursor=(500, 0))
+    e.feed(ViKey("i"))
+    for i in range(500):
+        e.feed(ViKey("abcdefgh"[i % 8]))
+        assert len(e.buffer._undo_stack) <= 1
+    e.feed_keys("<Esc>u")
+    assert e.text == text
+
+
+def _with_register(text: str, reg: str) -> ViEngine:
+    from prompt_toolkit.clipboard import ClipboardData
+
+    e = ViEngine(text)
+    e.session.vi_state.named_registers["m"] = ClipboardData(reg)  # type: ignore[attr-defined]
+    return e
+
+
+@pytest.mark.parametrize(
+    ("reg", "typed", "expected"),
+    [
+        # nvim (typed input): u inside a macro or :normal undoes the whole
+        # unsynced block so far; a typed change before it is its own step.
+        ("xxu", "@m", "abcd\n"),
+        ("xxuu", "@m", "abcd\n"),
+        ("xxu\x12", "@m", "cd\n"),
+        ("xiZ\x1bu", "@m", "abcd\n"),
+        ("xu", "x@m", "bcd\n"),
+        ("", ":normal xxu<CR>", "abcd\n"),
+        ("", "x:normal xxuu<CR>", "abcd\n"),
+    ],
+)
+async def test_undo_inside_a_replay_undoes_the_block(reg, typed, expected):
+    e = _with_register("abcd\n", reg)
+    e.feed_keys(typed)
+    assert e.text == expected
+
+
+async def test_counted_redo_stays_per_step():
+    # Redo pushes a step even inside a group; motions and counts keep the
+    # redo history (prompt_toolkit cleared it before every key).
+    e = ViEngine("abcd\n")
+    e.feed_keys("xxxuuu3<C-r>u")
+    assert e.text == "cd\n"

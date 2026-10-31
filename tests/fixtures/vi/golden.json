@@ -3751,6 +3751,48 @@
   ],
   "text": "Xef f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
  },
+ "redo-after-count": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "cd\n"
+ },
+ "redo-after-motion": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "bcd\nefgh\n"
+ },
+ "redo-count": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "d\n"
+ },
+ "redo-count-then-u": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "cd\n"
+ },
+ "redo-gone-after-change": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "abd\nefgh\n"
+ },
+ "redo-three-then-u": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "cd\n"
+ },
  "reg-C": {
   "cursor": [
    1,
@@ -6081,6 +6123,34 @@
    0
   ],
   "text": "abo bar\n"
+ },
+ "undo-block-macro-redo": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "ef\n"
+ },
+ "undo-block-macro-xxu": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "bcdef\n"
+ },
+ "undo-block-normal-xxu": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abcd\n"
+ },
+ "undo-block-normal-xxuu": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abcd\n"
  },
  "undo-cw": {
   "cursor": [

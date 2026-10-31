@@ -8731,5 +8731,95 @@
    0
   ],
   "keys": "!jx"
+ },
+ {
+  "id": "undo-block-normal-xxu",
+  "text": "abcd\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":normal xxu<CR>"
+ },
+ {
+  "id": "undo-block-normal-xxuu",
+  "text": "abcd\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "x:normal xxuu<CR>"
+ },
+ {
+  "id": "undo-block-macro-xxu",
+  "text": "abcdef\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qaxxuq@a"
+ },
+ {
+  "id": "undo-block-macro-redo",
+  "text": "abcdef\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qaxxu<C-r>q@a"
+ },
+ {
+  "id": "redo-count",
+  "text": "abcd\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "xxxuuu3<C-r>"
+ },
+ {
+  "id": "redo-count-then-u",
+  "text": "abcd\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "xxxuuu3<C-r>u"
+ },
+ {
+  "id": "redo-three-then-u",
+  "text": "abcd\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "xxxuuu<C-r><C-r><C-r>u"
+ },
+ {
+  "id": "redo-after-motion",
+  "text": "abcd\nefgh\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "xuj<C-r>"
+ },
+ {
+  "id": "redo-after-count",
+  "text": "abcd\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "xxuu2<C-r>"
+ },
+ {
+  "id": "redo-gone-after-change",
+  "text": "abcd\nefgh\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "lxulx<C-r>"
  }
 ]

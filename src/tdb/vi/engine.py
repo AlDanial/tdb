@@ -14,10 +14,12 @@ is part of the undo history.
 from __future__ import annotations
 
 import logging
+from bisect import bisect_right
 from collections import deque
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from itertools import accumulate
 from string import ascii_letters
 from typing import Literal, Protocol
 
@@ -25,7 +27,12 @@ from prompt_toolkit.application import Application
 from prompt_toolkit.application.current import set_app
 from prompt_toolkit.buffer import Buffer
 from prompt_toolkit.clipboard import Clipboard, ClipboardData, InMemoryClipboard
-from prompt_toolkit.document import Document
+from prompt_toolkit.document import (
+    Document,
+    _DocumentCache,
+    _ImmutableLineList,
+    _text_to_document_cache,
+)
 from prompt_toolkit.enums import EditingMode
 from prompt_toolkit.input import DummyInput
 from prompt_toolkit.key_binding import KeyBindings, merge_key_bindings
@@ -409,6 +416,53 @@ class _Registers(Clipboard):
         e.session.clipboard.rotate()  # type: ignore[attr-defined]
 
 
+def _line_start_indexes(self: Document) -> list[int]:
+    """``Document._line_start_indexes`` without a Python loop.
+
+    prompt_toolkit builds this table (the offset each line starts at) with
+    a Python ``for`` loop for every new text, so an edit costs a loop over
+    every line, and ``:%normal`` on 10,000 lines spent most of its seconds
+    here.  ``accumulate`` gives the same list at C speed.
+    """
+    cache = self._cache
+    if cache.line_indexes is None:
+        indexes = list(accumulate(map((1).__add__, map(len, self.lines)), initial=0))
+        if len(indexes) > 1:
+            indexes.pop()  # the last one is not the start of a line
+        cache.line_indexes = indexes
+    return cache.line_indexes
+
+
+Document._line_start_indexes = property(_line_start_indexes)  # type: ignore[method-assign,assignment]
+
+
+def _derive_cache(old: str, known: _DocumentCache, new: str, cache: _DocumentCache) -> None:
+    """Fill *cache* (lines, line starts of *new*) from *known* (those of
+    *old*) by the one edit between the texts: list slicing in C instead
+    of prompt_toolkit's split and scan of the whole new text."""
+    lines, starts = known.lines, known.line_indexes
+    edit = diff_text(old, new)
+    if lines is None or starts is None or edit is None:
+        return
+    first = bisect_right(starts, edit.start) - 1
+    last = bisect_right(starts, edit.old_end) - 1
+    mid = (
+        lines[first][: edit.start - starts[first]]
+        + edit.new_text
+        + lines[last][edit.old_end - starts[last] :]
+    ).split("\n")
+    new_starts = starts[: first + 1]
+    pos = starts[first]
+    for line in mid[:-1]:
+        pos += len(line) + 1
+        new_starts.append(pos)
+    tail = starts[last + 1 :]
+    delta = len(new) - len(old)
+    new_starts += map(delta.__add__, tail) if delta else tail
+    cache.lines = _ImmutableLineList(lines[:first] + mid + lines[last + 1 :])
+    cache.line_indexes = new_starts
+
+
 class _ViBuffer(Buffer):
     """A Buffer whose undo/redo history also covers the final-newline flag.
 
@@ -420,6 +474,31 @@ class _ViBuffer(Buffer):
     # While a ``:normal`` inside ``:g`` runs: the line changes of the key
     # (see ``LineRecord``), or None for one nobody recorded.
     line_record: list[LineRecord | None] | None = None
+    # The undo-stack length when the outermost open undo group began (a
+    # `.` change or insert session, a macro run, an ex command), or None.
+    undo_floor: Callable[[], int | None] = staticmethod(lambda: None)
+    # True while prompt_toolkit handles a key: its save before every key
+    # must not clear the redo history (the engine clears it on a change).
+    keep_redo = False
+    # The text the last undo or redo put back.
+    restored: str | None = None
+    # Inside a group: a change since the group's entry was saved.
+    _grouped_change = False
+    # The text and its shared Document cache as of the last change.
+    _known: tuple[str, _DocumentCache] | None = None
+
+    def _text_changed(self) -> None:
+        """Before prompt_toolkit's handling: the new text's lines and line
+        starts come from the previous text's (see ``_derive_cache``)."""
+        new = self.text
+        cache = _text_to_document_cache.get(new)
+        if cache is None:
+            cache = _text_to_document_cache[new] = _DocumentCache()
+        known = self._known
+        if cache.lines is None and known is not None:
+            _derive_cache(known[0], known[1], new, cache)
+        self._known = new, cache
+        super()._text_changed()
 
     def record_rows(self, first: int, deleted: int, inserted: int) -> None:
         """Note a linewise change: at row *first*, *deleted* lines went
@@ -457,12 +536,26 @@ class _ViBuffer(Buffer):
         return self.text, self.cursor_position, self.eol
 
     def save_to_undo_stack(self, clear_redo_stack: bool = True) -> None:
+        """Save the state before a change (prompt_toolkit: before every key).
+
+        Inside an undo group whose state before is saved nothing more is
+        added: the group becomes that one step anyway, and as in vim a
+        ``u`` inside it (``:normal xxu``) undoes the block so far.  Without
+        this every key of a ``:%normal`` kept a copy of the whole text.
+        """
         undo: list = self._undo_stack
-        if undo and undo[-1][0] == self.text and undo[-1][2] == self.eol:
+        floor = self.undo_floor()
+        grouped = floor is not None and len(undo) > floor
+        if grouped and self._grouped_change:
+            pass
+        elif undo and undo[-1][0] == self.text and undo[-1][2] == self.eol:
             undo[-1] = self._state()
+        elif grouped:
+            self._grouped_change = True
         else:
             undo.append(self._state())
-        if clear_redo_stack:
+            self._grouped_change = False
+        if clear_redo_stack and not self.keep_redo:
             self._redo_stack = []
 
     def undo(self) -> bool:  # type: ignore[override]
@@ -479,9 +572,14 @@ class _ViBuffer(Buffer):
         return False
 
     def redo(self) -> None:
+        """Each redo is an undo step of its own, even inside a group."""
+        undo: list = self._undo_stack
         redo: list = self._redo_stack
         if redo:
-            self.save_to_undo_stack(clear_redo_stack=False)
+            if undo and undo[-1][0] == self.text and undo[-1][2] == self.eol:
+                undo[-1] = self._state()
+            else:
+                undo.append(self._state())
             self._restore(*redo.pop())
 
     def _restore(self, text: str, pos: int, eol: bool) -> None:
@@ -491,6 +589,7 @@ class _ViBuffer(Buffer):
         col = max(0, min(col, len(doc.lines[row]) - 1))
         self.eol = eol
         self.document = Document(text, doc.translate_row_col_to_index(row, col))
+        self.restored = self.text  # (not document.text: a cache by value)
 
 
 class ViEngine:
@@ -575,10 +674,17 @@ class ViEngine:
         self._confirm: _Confirm | None = None
         # Set by ``fail()`` while a key is processed.
         self._failed = False
+        # Open undo groups (ex commands), innermost last; the undo-stack
+        # length when the key being fed began; and that length while it
+        # runs a macro (the run is one undo step).
+        self._open_groups: list[_UndoGroup] = []
+        self._feed_undo_len = 0
+        self._macro_floor: int | None = None
 
         body, eol = _split_eol(text)
         self.buffer = _ViBuffer(document=Document(body, 0), multiline=True)
         self.buffer.eol = eol
+        self.buffer.undo_floor = self._undo_floor  # type: ignore[method-assign]
         kb = load_tdb_vi_bindings(self)
         if _extra_bindings is not None:
             kb = merge_key_bindings([kb, _extra_bindings])
@@ -614,8 +720,10 @@ class ViEngine:
         self._pending_keys.append(key)
         self._queue.append((key, False))
         self._ran_macro = False
+        self._feed_undo_len = len(before[2])
         try:
             self._run_queue()
+            self._macro_floor = None
             if self._ran_macro:  # vim: undo takes back a whole macro run
                 doc, eol, undo, redo = before
                 if self._confirm is not None:
@@ -626,6 +734,7 @@ class ViEngine:
                     self._group_undo(len(undo), doc.text, eol)
         except Exception as exc:  # a stray key must never crash tdb
             log.exception("vi engine error on key %r", key.name)
+            self._macro_floor = None
             self._recover(*before)
             self.marks.restore(marks_before[0])
             self._last_visual_raw = marks_before[1]
@@ -852,10 +961,38 @@ class ViEngine:
 
     def _feed_ptk(self, key: ViKey) -> None:
         """Hand *key* to prompt_toolkit (not recorded for `.`)."""
-        kp = self.app.key_processor
-        with set_app(self.app):
-            kp.feed(key.to_key_press())
-            kp.process_keys()
+        self._process(key.to_key_press())
+
+    def _process(self, press: KeyPress) -> None:
+        """prompt_toolkit handles *press*.
+
+        Its handlers save the undo state before every key, which also
+        cleared the redo history, even for a motion or a count (``uj<C-r>``,
+        ``3<C-r>``).  Here only a change that is not an undo or redo clears it.
+        """
+        buff, kp = self.buffer, self.app.key_processor
+        before = buff.text, buff.eol
+        buff.keep_redo = True
+        try:
+            with set_app(self.app):
+                kp.feed(press)
+                kp.process_keys()
+        finally:
+            buff.keep_redo = False
+        if buff.text is not buff.restored and (buff.text, buff.eol) != before:
+            buff._redo_stack = []
+
+    def _undo_floor(self) -> int | None:
+        """The undo-stack length when the outermost open undo group began:
+        a `.` change (and insert session), a macro run or an ex command."""
+        marks = [group[0] for group in self._open_groups]
+        if self._change is not None:
+            marks.append(self._undo_mark)
+        if self._macro_floor is not None:
+            marks.append(self._macro_floor)
+        if self._confirm is not None:
+            marks.append(self._confirm.undo[0])
+        return min(marks) if marks else None
 
     def _count_insert_key(self, name: str) -> int | None:
         """The count if *name* starts a repeated ``i a I A o O`` insert."""
@@ -1038,6 +1175,9 @@ class ViEngine:
         del undo[mark:]
         if undo and undo[-1][0] == text and undo[-1][2] == eol:
             return  # the pre-change state was merged into the entry below
+        floor = self._undo_floor()
+        if pre is None and floor is not None and floor < mark:
+            return  # inside a group that saved the state before it: one step
         if pre is None or pre[0] != text or pre[2] != eol:
             pre = (text, 0, eol)
         undo.append(pre)
@@ -1078,6 +1218,8 @@ class ViEngine:
             return
         self.session.last_macro = name
         self._ran_macro = True
+        if self._macro_floor is None:
+            self._macro_floor = self._feed_undo_len
         text = data.text + ("\n" if data.type == SelectionType.LINES else "")
         self._replay(register_text_to_keys(text) * count)
 
@@ -1116,6 +1258,7 @@ class ViEngine:
         buff.eol = eol
         buff._undo_stack = undo
         buff._redo_stack = redo
+        buff._grouped_change = False
 
     def _recover(self, *snapshot) -> None:
         """After an error: the pre-key state, nothing pending or queued."""
@@ -1127,6 +1270,7 @@ class ViEngine:
         self._queue.clear()
         self._wait = self._register = self._change = self._rejected = None
         self._cmdline = None
+        self._open_groups.clear()
 
     # ------------------------------------------------------------------
     # The ':' command line (ex commands, see tdb.vi.ex) and the '/' '?'
@@ -1327,11 +1471,8 @@ class ViEngine:
             return
         self.session.last_search = (pattern, backward)
         start, text = self.cursor, self.buffer.text
-        kp = self.app.key_processor
-        kp.arg = self._search_arg
-        with set_app(self.app):  # the motion is SEARCH_KEY's binding: `n`
-            kp.feed(KeyPress(SEARCH_KEY, ""))
-            kp.process_keys()
+        self.app.key_processor.arg = self._search_arg
+        self._process(KeyPress(SEARCH_KEY, ""))  # SEARCH_KEY's binding: `n`
         if self.cursor != start or self.buffer.text != text:
             self.marks.set(JUMP, start)
 
@@ -1811,11 +1952,14 @@ class _ExHost:
     @contextmanager
     def undo_group(self) -> Iterator[None]:
         """Everything the command changes is one undo step (redo cleared)."""
-        group = self._e._open_undo_group()
+        e = self._e
+        group = e._open_undo_group()
+        e._open_groups.append(group)
         try:
             yield
         finally:
-            self._e._close_undo_group(group)
+            e._open_groups.pop()  # groups nest
+            e._close_undo_group(group)
 
 
 def _rows_after(row_map: Sequence[int], count: int) -> list[int]:
