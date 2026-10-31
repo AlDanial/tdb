@@ -1481,3 +1481,37 @@ async def test_bang_operator_opens_the_filter_line():
     assert e.text == "a\nb\nc\n"
     events = e.drain_events()
     assert [x.severity for x in events if isinstance(x, Notify)] == ["error"]
+
+
+# ---------------------------------------------------------------------------
+# A paste while the ':', '/' or '?' line is open goes into that line (its
+# first line only, as vim); otherwise a pending command is cancelled first.
+
+
+@pytest.mark.parametrize("kind", ["/", "?"])
+async def test_paste_into_search_line(kind):
+    e = ViEngine("abc\nfoo bar\n")
+    e.feed_keys(kind)
+    e.insert_text("bar\nignored")
+    assert (e.mode, e.status, e.text) == ("search", kind + "bar", "abc\nfoo bar\n")
+    assert e.cursor == (1, 4)  # incsearch follows the pasted pattern
+    e.feed_keys("<CR>")
+    assert (e.mode, e.cursor) == ("normal", (1, 4))
+
+
+async def test_paste_into_command_line():
+    e = ViEngine("a a\nb\n")
+    e.feed_keys(":")
+    e.insert_text("%s/a/x/g\n")
+    assert (e.status, e.text) == (":%s/a/x/g", "a a\nb\n")
+    e.feed_keys("<CR>")
+    assert e.text == "x x\nb\n"
+
+
+async def test_paste_cancels_a_pending_operator():
+    e = ViEngine("one two\n")
+    e.feed_keys('"a2d')
+    e.insert_text("XY")
+    assert not e.has_pending
+    e.feed_keys("w")
+    assert e.text == "XYone two\n"

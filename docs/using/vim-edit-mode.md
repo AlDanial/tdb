@@ -50,6 +50,11 @@ visual-area marks and `''` / ` `` ` return to the previous position.
 **Search.** `/` and `?` with `n N`, and `* #` for the word under the
 cursor. Up / Down on the `/` and `:` lines recall history.
 
+**Paste.** A terminal paste goes in at the cursor as one undo step, in any
+mode; an unfinished command (`d`, a count, `"a`) is dropped first. While
+the `:`, `/` or `?` line is open the paste goes into that line instead
+(its first line only), as in vim.
+
 **Ex commands.**
 
 | Command | Meaning |

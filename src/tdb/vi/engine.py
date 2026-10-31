@@ -436,7 +436,9 @@ def _line_start_indexes(self: Document) -> list[int]:
 Document._line_start_indexes = property(_line_start_indexes)  # type: ignore[method-assign,assignment]
 
 
-def _derive_cache(old: str, known: _DocumentCache, new: str, cache: _DocumentCache) -> None:
+def _derive_cache(
+    old: str, known: _DocumentCache, new: str, cache: _DocumentCache
+) -> None:
     """Fill *cache* (lines, line starts of *new*) from *known* (those of
     *old*) by the one edit between the texts: list slicing in C instead
     of prompt_toolkit's split and scan of the whole new text."""
@@ -1778,14 +1780,38 @@ class ViEngine:
         self._move_to(*end)
 
     def insert_text(self, text: str) -> None:
-        """Insert *text* at the cursor as one undo step; mode is unchanged."""
+        """Insert *text* (a paste) at the cursor as one undo step; mode is
+        unchanged.
+
+        With the ``:``, ``/`` or ``?`` line open, its first line goes into
+        that line instead (vim's paste into the command line).  A pending
+        command (count, operator, register, ``r``) is cancelled first.
+        """
+        if self._cmdline is not None:
+            self._edit_line(self._cmdline + text.split("\n", 1)[0])
+            return
         self._end_confirm_outside()
+        self._cancel_pending()
         old, at = self.buffer.text, self.buffer.cursor_position
         self.buffer.save_to_undo_stack()
         self.buffer.insert_text(text)
         if self.mode == "normal":
             self._move_to(*self.cursor)  # keep the cursor on a character
         self._adjust_marks(old, at)  # a paste is typed text
+
+    def _cancel_pending(self) -> None:
+        """Drop an unfinished normal/Visual command, as Esc would."""
+        vs = self.app.vi_state
+        if vs.input_mode == InputMode.REPLACE_SINGLE:
+            vs.input_mode = InputMode.NAVIGATION  # a pending r
+        if self.mode in ("insert", "replace") or not self._key_pending():
+            return
+        self.app.key_processor.reset()
+        vs.operator_func = None
+        vs.operator_arg = None
+        self._wait = self._register = self._rejected = self._change = None
+        self._pending_keys.clear()
+        self._cmd_keys = []
 
     def reset_text(self, text: str) -> None:
         """Replace the whole buffer (undoable), keeping the cursor row/col."""

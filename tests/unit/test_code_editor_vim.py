@@ -652,3 +652,16 @@ async def test_mouse_up_finalizes_selection_once(monkeypatch):
         ed = app.query_one("#ed", CodeEditor)
         await pilot.click(CodeEditor, offset=_cell(ed, 0, 2))
         assert len(calls) == 1 and not ed._selecting
+
+
+async def test_paste_while_search_line_is_open_goes_to_the_line():
+    app = _EdApp()
+    async with app.run_test() as pilot:
+        ed = app.ed
+        await _send(pilot, "slash", "/")
+        ed.post_message(events.Paste("five"))
+        await pilot.pause()
+        assert ed.text == TEXT
+        assert ed.command_text == "/five"
+        await _send(pilot, "enter", "\r")
+        assert ed.cursor_location == (1, 7)
