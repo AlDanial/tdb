@@ -60,8 +60,8 @@ def parse_substitute(
     delim = args[0]
     if delim in ' \t\\"|':
         raise SubstituteError("Regular expressions can't be delimited by letters")
-    pattern, i = _field(args, 1, delim, keep_escape=True)
-    replacement, i = _field(args, i, delim, keep_escape=False)
+    pattern, i = delimited_field(args, 1, delim, keep_escape=True)
+    replacement, i = delimited_field(args, i, delim, keep_escape=False)
     if not pattern:
         if not last_search:
             raise SubstituteError("No previous regular expression")
@@ -70,7 +70,9 @@ def parse_substitute(
     return SubstituteSpec(pattern, replacement, flags)
 
 
-def _field(args: str, i: int, delim: str, *, keep_escape: bool) -> tuple[str, int]:
+def delimited_field(
+    args: str, i: int, delim: str, *, keep_escape: bool
+) -> tuple[str, int]:
     """The text from *i* to the next unescaped *delim*, and the index after it.
 
     ``\\<delim>`` is the delimiter itself: kept escaped in a pattern (where
@@ -212,10 +214,10 @@ def rebuild(
     positions: dict[tuple[int, int, int], tuple[int, int]] = {}
     subs = changed = 0
     last_row = -1
-    for row in range(first, len(lines)):
+    for row in range(first, last + 1):
         line = lines[row]
         row_map.append(len(out))
-        matches = _line_matches(rx, line, every) if row <= last else []
+        matches = _line_matches(rx, line, every)
         if not matches:
             out.append(line)
             continue
@@ -242,6 +244,9 @@ def rebuild(
             subs += hits
             changed += 1
             last_row = len(out) - 1
+    shift = len(out) - (last + 1)  # rows after the range only move down
+    row_map.extend(range(last + 1 + shift, len(lines) + shift))
+    out.extend(lines[last + 1 :])
     return Rebuilt(out, row_map, subs, changed, last_row, positions)
 
 

@@ -7803,5 +7803,294 @@
    0
   ],
   "keys": ":s/a/b/g<CR>j:s/x/y/&&<CR>"
+ },
+ {
+  "id": "global-d",
+  "text": "  ax\nb\n  cx\ndx\n  e\n",
+  "cursor": [
+   4,
+   1
+  ],
+  "keys": ":g/x/d<CR>"
+ },
+ {
+  "id": "global-d-undo",
+  "text": "  ax\nb\n  cx\ndx\n  e\n",
+  "cursor": [
+   4,
+   1
+  ],
+  "keys": ":g/x/d<CR>u"
+ },
+ {
+  "id": "global-d-jump",
+  "text": "  ax\nb\n  cx\ndx\n  e\n",
+  "cursor": [
+   4,
+   1
+  ],
+  "keys": ":g/x/d<CR>``"
+ },
+ {
+  "id": "global-v-d",
+  "text": "  ax\nb\n  cx\ndx\n  e\n",
+  "cursor": [
+   4,
+   1
+  ],
+  "keys": ":v/x/d<CR>"
+ },
+ {
+  "id": "global-bang-d",
+  "text": "  ax\nb\n  cx\ndx\n  e\n",
+  "cursor": [
+   4,
+   1
+  ],
+  "keys": ":g!/x/d<CR>"
+ },
+ {
+  "id": "global-s",
+  "text": "  ax\nb\n  cx\ndx\n  e\n",
+  "cursor": [
+   4,
+   1
+  ],
+  "keys": ":g/x/s/x/y/<CR>"
+ },
+ {
+  "id": "global-s-undo",
+  "text": "  ax\nb\n  cx\ndx\n  e\n",
+  "cursor": [
+   4,
+   1
+  ],
+  "keys": ":g/x/s/x/y/<CR>u"
+ },
+ {
+  "id": "global-s-redo",
+  "text": "  ax\nb\n  cx\ndx\n  e\n",
+  "cursor": [
+   4,
+   1
+  ],
+  "keys": ":g/x/s/x/y/<CR>u<C-r>"
+ },
+ {
+  "id": "global-s-g",
+  "text": "ax aa\nb a\nxa\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/x/s/a/b/g<CR>"
+ },
+ {
+  "id": "global-s-some-lines",
+  "text": "  ax\nb\n  cx\n  dx\n  e\n",
+  "cursor": [
+   4,
+   1
+  ],
+  "keys": ":g/x/s/a/b/<CR>"
+ },
+ {
+  "id": "global-s-no-line",
+  "text": "  ax\nb\n  cx\ndx\n  e\n",
+  "cursor": [
+   4,
+   1
+  ],
+  "keys": ":g/x/s/zz/y/<CR>"
+ },
+ {
+  "id": "global-s-split",
+  "text": "ax\nbx\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/x/s/x/\\r/<CR>"
+ },
+ {
+  "id": "global-normal-append",
+  "text": "def f():\n  pass\ndef g()\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/def/normal A:<CR>"
+ },
+ {
+  "id": "global-normal-append-undo",
+  "text": "def f()\nx\ndef g()\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":g/def/normal A:<CR>u"
+ },
+ {
+  "id": "global-normal-open",
+  "text": "x\ny\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/x/normal oxx<CR>"
+ },
+ {
+  "id": "global-m0",
+  "text": "  ax\nb\n  cx\ndx\n  e\n",
+  "cursor": [
+   4,
+   1
+  ],
+  "keys": ":g/x/m0<CR>"
+ },
+ {
+  "id": "global-m-end",
+  "text": "  ax\nb\n  cx\ndx\n  e\n",
+  "cursor": [
+   4,
+   1
+  ],
+  "keys": ":g/x/m$<CR>"
+ },
+ {
+  "id": "global-m-end-each",
+  "text": "x1\nx2\nx3\ny\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/x/m$<CR>"
+ },
+ {
+  "id": "global-t-end",
+  "text": "  ax\nb\n  cx\ndx\n  e\n",
+  "cursor": [
+   4,
+   1
+  ],
+  "keys": ":g/x/t$<CR>"
+ },
+ {
+  "id": "global-t-end-undo",
+  "text": "  ax\nb\n  cx\ndx\n  e\n",
+  "cursor": [
+   4,
+   1
+  ],
+  "keys": ":g/x/t$<CR>u"
+ },
+ {
+  "id": "global-y-a",
+  "text": "  ax\nb\n  cx\ndx\n  e\n",
+  "cursor": [
+   4,
+   1
+  ],
+  "keys": ":g/x/y a<CR>\"ap"
+ },
+ {
+  "id": "global-y-append",
+  "text": "  ax\nb\n  cx\ndx\n  e\n",
+  "cursor": [
+   4,
+   1
+  ],
+  "keys": "qaq:g/x/y A<CR>G\"ap"
+ },
+ {
+  "id": "global-range",
+  "text": "  ax\nb\n  cx\ndx\n  e\n",
+  "cursor": [
+   4,
+   1
+  ],
+  "keys": ":1,3g/x/d<CR>"
+ },
+ {
+  "id": "global-range-2",
+  "text": "  ax\nb\n  cx\ndx\n  e\n",
+  "cursor": [
+   4,
+   1
+  ],
+  "keys": ":2,3g/x/d<CR>"
+ },
+ {
+  "id": "global-adjacent",
+  "text": "x\nx\nx\ny\nx\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/x/d<CR>"
+ },
+ {
+  "id": "global-deleted-not-visited",
+  "text": "  ax\nb\n  cx\ndx\n  e\n",
+  "cursor": [
+   4,
+   1
+  ],
+  "keys": ":g/x/.,+1d<CR>"
+ },
+ {
+  "id": "global-empty-pattern",
+  "text": "  ax\nb\n  cx\ndx\n  e\n",
+  "cursor": [
+   4,
+   1
+  ],
+  "keys": "/c<CR>:g//d<CR>"
+ },
+ {
+  "id": "global-nested",
+  "text": "  ax\nb\n  cx\ndx\n  e\n",
+  "cursor": [
+   4,
+   1
+  ],
+  "keys": ":g/x/g/a/d<CR>"
+ },
+ {
+  "id": "global-nested-range-error",
+  "text": "  ax\nb\n  cx\ndx\n  e\n",
+  "cursor": [
+   4,
+   1
+  ],
+  "keys": ":g/x/1,2g/a/d<CR>",
+  "difference": "vim stops :g at the first error, with the cursor on that line; the headless golden run turns errors into exceptions, so nvim goes on to the other lines"
+ },
+ {
+  "id": "global-empty-buffer",
+  "text": "",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/x/d<CR>"
+ },
+ {
+  "id": "global-empty-buffer-v",
+  "text": "",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":v/x/d<CR>"
+ },
+ {
+  "id": "global-empty-buffer-s",
+  "text": "",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/^/s/^/a/<CR>"
  }
 ]

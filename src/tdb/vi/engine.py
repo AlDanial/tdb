@@ -1545,6 +1545,9 @@ class _ExHost:
     def cursor_col(self) -> int:
         return self._e.cursor[1]
 
+    def set_cursor(self, row: int, col: int) -> None:
+        self._e._move_to(row, col)
+
     def mark(self, name: str) -> tuple[int, int] | None:
         return self._e.marks.get(name)
 
@@ -1580,20 +1583,22 @@ class _ExHost:
         if row_map is None:
             e._adjust_marks(old)
             return
-        marks = e.marks
-        marks.restore(
-            {
-                name: (row_map[r], c) if 0 <= r < len(row_map) else (r, c)
-                for name, (r, c) in marks.snapshot().items()
-            }
-        )
+        to = _rows_after(row_map, len(lines))
+        marks = {}
+        for name, (r, c) in e.marks.snapshot().items():
+            if 0 <= r < len(to):
+                if row_map[r] < 0 and name not in (JUMP, "<", ">"):
+                    continue  # its line was deleted
+                r = to[r]
+            marks[name] = r, c
+        e.marks.restore(marks)
         raw = e._last_visual_raw
         if raw is not None:
             (ar, ac), (cr, cc), linewise = raw
-            last = len(row_map) - 1
+            last = len(to) - 1
             e._last_visual_raw = (
-                (row_map[min(ar, last)], ac),
-                (row_map[min(cr, last)], cc),
+                (to[min(ar, last)], ac),
+                (to[min(cr, last)], cc),
                 linewise,
             )
 
@@ -1631,6 +1636,9 @@ class _ExHost:
     def confirm_substitute(self, spec: SubstituteSpec, first: int, last: int) -> None:
         self._e._start_confirm(spec, first, last)
 
+    def substitute_tally(self) -> None:
+        return None
+
     def save(self) -> None:
         self._e._events.append(SaveRequest())
 
@@ -1651,6 +1659,18 @@ class _ExHost:
             yield
         finally:
             self._e._close_undo_group(group)
+
+
+def _rows_after(row_map: Sequence[int], count: int) -> list[int]:
+    """Each old row's new row; a deleted one's (``-1``) is where it was:
+    the row after the new row of the last line above it that is kept."""
+    out: list[int] = []
+    prev = -1
+    for to in row_map:
+        if to >= 0:
+            prev = to
+        out.append(to if to >= 0 else max(0, min(prev + 1, count - 1)))
+    return out
 
 
 def _first_changed_row(

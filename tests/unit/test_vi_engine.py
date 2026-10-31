@@ -1039,11 +1039,11 @@ async def test_ex_errors_notify_and_change_nothing():
     e = ViEngine("a\nb\n")
     e.feed_keys(":'zd<CR>")
     assert e.drain_events() == [Notify("Mark not set: z", "error")]
-    e.feed_keys(":9d<CR>:1,2m1<CR>:g/a/d<CR>")
+    e.feed_keys(":9d<CR>:1,2m1<CR>:g/a/<CR>")
     assert e.drain_events() == [
         Notify("Invalid range", "error"),
         Notify("Cannot move a range of lines into itself", "error"),
-        Notify("Not an editor command: g/a/d", "error"),
+        Notify(":global without a command is not supported", "error"),
     ]
     assert e.text == "a\nb\n" and e.mode == "normal"
 

@@ -79,6 +79,12 @@ class FakeHost:
     def notify(self, text, severity="information"):
         self.events.append((text, severity))
 
+    def set_cursor(self, row, col):
+        self.row, self.col = row, col
+
+    def substitute_tally(self):
+        return None
+
     def goto_line(self, row):
         self.events.append(("goto", row))
         self.row = row
@@ -303,14 +309,6 @@ def test_write_and_quit(line, events):
     host = FakeHost()
     run_ex(line, host)
     assert host.events == events
-
-
-@pytest.mark.parametrize("line", ["g/x/d", "g!/x/d", "v/x/d"])
-def test_later_commands_are_not_yet_editor_commands(line):
-    host = FakeHost()
-    with pytest.raises(ExError, match=f"^Not an editor command: {line}$"):
-        run_ex(line, host)
-    assert host.groups == 0
 
 
 def test_unknown_command():

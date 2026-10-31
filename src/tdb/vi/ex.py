@@ -6,8 +6,8 @@ registers.  Rows are 0-based; the line numbers typed in an address are
 1-based, as in vim.
 
 Supported here: ``:w :q :q! :wq :x :N :d :y :m :t :co :normal :s :&``
-(``:s`` itself is in ``tdb.vi.substitute``).  ``:g :g! :v`` have
-dispatch slots that a later task fills in.
+(``:s`` itself is in ``tdb.vi.substitute``) and ``:g :g! :v`` (in
+``tdb.vi.global_cmd``).
 """
 
 from __future__ import annotations
@@ -57,6 +57,14 @@ class ExCommand:
     args: str
 
 
+@dataclass
+class SubstituteTally:
+    """The ``:s`` counts of a whole ``:g``, reported once when it ends."""
+
+    substitutions: int = 0
+    lines: int = 0
+
+
 class ExHost(Protocol):
     """What ex commands need from the editor."""
 
@@ -67,6 +75,10 @@ class ExHost(Protocol):
     def cursor_row(self) -> int: ...
 
     def cursor_col(self) -> int: ...
+
+    def set_cursor(self, row: int, col: int) -> None:
+        """Put the cursor at *row*, *col* (clamped), setting no mark."""
+        ...
 
     def mark(self, name: str) -> tuple[int, int] | None:
         """Mark *name* (``a``-``z``, ``<``, ``>``, ``'``), or None if unset."""
@@ -84,8 +96,9 @@ class ExHost(Protocol):
     ) -> None:
         """Make *lines* the buffer (``[]`` leaves one empty line), cursor
         at *cursor* (clamped).  *row_map* gives every old row's new row
-        (a move or copy, which keeps all lines) so marks follow their
-        lines; without it the marks follow a diff of the text.
+        (``-1``: the line was deleted) so marks follow their lines; a
+        deleted line's marks are deleted, but ``'`` ``<`` ``>`` go to
+        where it was.  Without it the marks follow a diff of the text.
         *undo_cursor* is where ``u`` puts the cursor (default: the first
         changed line, keeping the column)."""
         ...
@@ -112,6 +125,11 @@ class ExHost(Protocol):
     def confirm_substitute(self, spec: SubstituteSpec, first: int, last: int) -> None:
         """Start asking about each match of *spec* in rows *first*..*last*
         (there is at least one); the answers are keys typed later."""
+        ...
+
+    def substitute_tally(self) -> SubstituteTally | None:
+        """Inside ``:g``: where ``:s`` adds its counts instead of reporting
+        them (and finding nothing is no error); None elsewhere."""
         ...
 
     def save(self) -> None: ...
@@ -465,8 +483,9 @@ def run_substitute(spec: SubstituteSpec, first: int, last: int, host: ExHost) ->
         raise ExError(str(exc)) from None
     host.set_last_substitute(spec)
     host.set_last_search(spec.pattern)
+    tally = host.substitute_tally()
     if not done.substitutions:
-        if not quiet_flag(spec):
+        if not quiet_flag(spec) and tally is None:
             host.notify(f"Pattern not found: {spec.pattern}", "warning")
         return
     if confirm_flag(spec):
@@ -481,13 +500,27 @@ def run_substitute(spec: SubstituteSpec, first: int, last: int, host: ExHost) ->
         row_map=done.row_map,
         undo_cursor=(first_changed, 0),
     )
-    if done.substitutions > 2:
+    if tally is not None:
+        tally.substitutions += done.substitutions
+        tally.lines += done.lines_changed
+    elif done.substitutions > 2:
         host.notify(count_message(done.substitutions, done.lines_changed))
 
 
-def _not_yet(cmd: ExCommand, host: ExHost) -> None:
-    """A command a later task implements (run_ex reports it as unknown)."""
-    raise NotImplementedError
+def _global(cmd: ExCommand, host: ExHost) -> None:
+    """``:[range]g[!]/pat/cmd``; ``!`` is ``:v``."""
+    from tdb.vi.global_cmd import run_global  # it imports this module
+
+    run_global(cmd, host, invert=cmd.bang)
+
+
+def _vglobal(cmd: ExCommand, host: ExHost) -> None:
+    """``:[range]v/pat/cmd``: *cmd* on the lines that do not match."""
+    from tdb.vi.global_cmd import run_global
+
+    if cmd.bang:
+        raise ExError("No ! allowed")
+    run_global(cmd, host, invert=True)
 
 
 # Commands that change the text (run as one undo step).
@@ -498,9 +531,8 @@ COMMANDS: dict[str, Callable[[ExCommand, ExHost], None]] = {
     "normal": _normal,
     "substitute": _substitute,
     "&": _repeat_substitute,
-    # Task 12: global / vglobal.
-    "global": _not_yet,
-    "vglobal": _not_yet,
+    "global": _global,
+    "vglobal": _vglobal,
 }
 # Commands that do not.
 _OTHER_COMMANDS: dict[str, Callable[[ExCommand, ExHost], None]] = {
@@ -527,7 +559,7 @@ def run_ex(line: str, host: ExHost) -> None:
         _OTHER_COMMANDS[cmd.name](cmd, host)
         return
     handler = COMMANDS.get(cmd.name)
-    if handler is None or handler is _not_yet:
+    if handler is None:
         raise unknown
     with host.undo_group():
         handler(cmd, host)

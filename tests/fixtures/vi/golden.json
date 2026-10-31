@@ -1791,6 +1791,230 @@
   ],
   "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
  },
+ "global-adjacent": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "y\n"
+ },
+ "global-bang-d": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "  ax\n  cx\ndx\n"
+ },
+ "global-d": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "b\n  e\n"
+ },
+ "global-d-jump": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "b\n  e\n"
+ },
+ "global-d-undo": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "  ax\nb\n  cx\ndx\n  e\n"
+ },
+ "global-deleted-not-visited": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "  e\n"
+ },
+ "global-empty-buffer": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": ""
+ },
+ "global-empty-buffer-s": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "a\n"
+ },
+ "global-empty-buffer-v": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": ""
+ },
+ "global-empty-pattern": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "  ax\nb\ndx\n  e\n"
+ },
+ "global-m-end": {
+  "cursor": [
+   4,
+   1
+  ],
+  "text": "b\n  e\n  ax\n  cx\ndx\n"
+ },
+ "global-m-end-each": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "y\nx1\nx2\nx3\n"
+ },
+ "global-m0": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "dx\n  cx\n  ax\nb\n  e\n"
+ },
+ "global-nested": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "b\n  cx\ndx\n  e\n"
+ },
+ "global-nested-range-error": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "  ax\nb\n  cx\ndx\n  e\n"
+ },
+ "global-normal-append": {
+  "cursor": [
+   2,
+   7
+  ],
+  "text": "def f()::\n  pass\ndef g():\n"
+ },
+ "global-normal-append-undo": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "def f()\nx\ndef g()\n"
+ },
+ "global-normal-open": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "x\nxx\ny\n"
+ },
+ "global-range": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "b\ndx\n  e\n"
+ },
+ "global-range-2": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "  ax\nb\ndx\n  e\n"
+ },
+ "global-s": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "  ay\nb\n  cy\ndy\n  e\n"
+ },
+ "global-s-g": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "bx bb\nb a\nxb\n"
+ },
+ "global-s-no-line": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "  ax\nb\n  cx\ndx\n  e\n"
+ },
+ "global-s-redo": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "  ay\nb\n  cy\ndy\n  e\n"
+ },
+ "global-s-some-lines": {
+  "cursor": [
+   3,
+   2
+  ],
+  "text": "  bx\nb\n  cx\n  dx\n  e\n"
+ },
+ "global-s-split": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "a\n\nb\n\n"
+ },
+ "global-s-undo": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "  ax\nb\n  cx\ndx\n  e\n"
+ },
+ "global-t-end": {
+  "cursor": [
+   7,
+   1
+  ],
+  "text": "  ax\nb\n  cx\ndx\n  e\n  ax\n  cx\ndx\n"
+ },
+ "global-t-end-undo": {
+  "cursor": [
+   4,
+   1
+  ],
+  "text": "  ax\nb\n  cx\ndx\n  e\n"
+ },
+ "global-v-d": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "  ax\n  cx\ndx\n"
+ },
+ "global-y-a": {
+  "cursor": [
+   4,
+   0
+  ],
+  "text": "  ax\nb\n  cx\ndx\ndx\n  e\n"
+ },
+ "global-y-append": {
+  "cursor": [
+   5,
+   0
+  ],
+  "text": "  ax\nb\n  cx\ndx\n  e\n\n  ax\n  cx\ndx\n"
+ },
  "goto-col-24": {
   "cursor": [
    2,
