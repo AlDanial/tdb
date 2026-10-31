@@ -64,6 +64,13 @@ cursor. Up / Down on the `/` and `:` lines recall history.
 Ranges: `N`, `.`, `$`, `%`, `.+N`, `.-N`, `$-N`, `'a`, `'<`, `'>`, and
 `a,b` pairs of these. One `:s`, `:g` or `:v` is a single undo step.
 
+**Line ends.** Only `\n` ends a line, as in vim. A CRLF file (every line
+ending in `\r\n`) is edited as plain lines and saved as CRLF. Form feed,
+vertical tab, the `\x1c` to `\x1e` separators, NEL, U+2028 and U+2029
+are characters of their line, as is a `\r` in a file that is not all
+CRLF. They are shown as `␌ ␋ ␜ ␝ ␞ ␤ ¶ ␍` and saved unchanged, whether
+they were in the file, pasted, or put there by `:s`.
+
 ## Differences from vim
 
 tdb tries to match vim (the engine is checked against real nvim by a

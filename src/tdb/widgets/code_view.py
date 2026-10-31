@@ -488,6 +488,9 @@ class CodeView(ScrollableContainer, can_focus=True):
         # cannot be edited; the App replaces them freely.
         self._source_is_placeholder: bool = False
         self._had_trailing_newline: bool = True
+        # The source text as read (line ends and separators intact), for
+        # the vim scheme's editor, which saves exactly what it edits.
+        self._source_text = ""
         # A load_file/load_content that arrived while editing another
         # file. Applied when the editor closes.
         self._deferred_source: tuple[str, str] | None = None
@@ -730,7 +733,14 @@ class CodeView(ScrollableContainer, can_focus=True):
             if self.source_path is not None:
                 key = str(Path(self.source_path).resolve())
                 marks = self._vi_marks.setdefault(key, MarkTable())
-            editor._set_layer(ViLayer(editor, session=self._vi_session, marks=marks))
+            editor._set_layer(
+                ViLayer(
+                    editor,
+                    session=self._vi_session,
+                    marks=marks,
+                    text=self._source_text,
+                )
+            )
 
     def leave_edit_mode(self, discard: bool = False) -> None:
         """The one exit from Edit mode. Prompts when there are unsaved
@@ -765,16 +775,17 @@ class CodeView(ScrollableContainer, can_focus=True):
         if self._editor is None or self.source_path is None:
             return False
         try:
-            text = Path(self.source_path).read_text(encoding="utf-8", errors="replace")
+            # Bytes, not read_text: universal newlines would turn CRLF and a
+            # lone \r into \n, which the vim scheme keeps as they are.
+            raw = Path(self.source_path).read_bytes()
+            text = raw.decode("utf-8", errors="replace")
         except OSError as exc:
             self.app.notify(
                 f"Cannot read {self.source_path}: {exc}", title="Edit", severity="error"
             )
             return False
-        self._editor.replace(text, (0, 0), self._editor.document.end)
+        self._editor.load_file_text(text)  # the vi engine's revert is undoable
         self._editor.mark_clean()
-        self._editor.move_cursor((0, 0))
-        self._editor.sync_layer_from_widget()  # the vi engine is undoable too
         self._announce_mode()
         return True
 
@@ -783,7 +794,7 @@ class CodeView(ScrollableContainer, can_focus=True):
         notify and keep the buffer dirty. Posts FileSaved on success."""
         if self._editor is None or self.source_path is None:
             return False
-        text = self._editor.text
+        text = self._editor.file_text
         try:
             atomic_write_text(self.source_path, text)
         except OSError as exc:
@@ -806,7 +817,7 @@ class CodeView(ScrollableContainer, can_focus=True):
         editor = self._editor
         if editor is None:
             return
-        text = editor.text
+        text = editor.file_text
         row = editor.cursor_location[0]
         self._editor = None
         editor.remove()
@@ -831,7 +842,10 @@ class CodeView(ScrollableContainer, can_focus=True):
                 self.goto_line(self.current_line)
         elif reload_from_disk and self.source_path is not None:
             self.load_file(self.source_path)
-        elif self.source_path is not None and text != self._editor_text():
+        elif self.source_path is not None and text not in (
+            self._editor_text(),
+            self._source_text,
+        ):
             # Saved text (save_file already updated _lines) or an edit
             # the user chose to keep: re-highlight and recompute step units.
             self._install_source(text, self.source_path)
@@ -1113,6 +1127,7 @@ class CodeView(ScrollableContainer, can_focus=True):
         self._source_lossy = is_lossy
         self._source_is_placeholder = is_placeholder
         self._had_trailing_newline = text.endswith("\n")
+        self._source_text = text
         self._lines = text.splitlines()
         if is_placeholder:
             # A message, not code: no statement analysis, no syntax

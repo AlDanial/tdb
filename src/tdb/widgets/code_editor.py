@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, ClassVar, Protocol
 
 from textual import events
@@ -41,6 +42,8 @@ from tdb.vi import (
 
 if TYPE_CHECKING:
     from tdb.vi.marks import MarkTable
+
+log = logging.getLogger(__name__)
 
 # Lexer names (LanguageProfile.presentation.lexer) that Textual's
 # bundled tree-sitter grammars can highlight.
@@ -137,10 +140,31 @@ class CodeEditor(TextArea):
 
     @property
     def is_dirty(self) -> bool:
-        return self.text != self._clean_text
+        dirty = getattr(self._layer, "is_dirty", None)
+        return self.text != self._clean_text if dirty is None else dirty
 
     def mark_clean(self) -> None:
         self._clean_text = self.text
+        mark = getattr(self._layer, "mark_clean", None)
+        if mark is not None:
+            mark()
+
+    @property
+    def file_text(self) -> str:
+        """The text to save: in the vim scheme the vi engine's, with the
+        file's line ends and line separators; else the TextArea's."""
+        text = getattr(self._layer, "file_text", None)
+        return self.text if text is None else text
+
+    def load_file_text(self, text: str) -> None:
+        """Replace the whole buffer with *text* read from the file, cursor
+        at the top (undoable in the vim scheme)."""
+        load = getattr(self._layer, "load_file_text", None)
+        if load is not None:
+            load(text)
+            return
+        self.replace(text, (0, 0), self.document.end)
+        self.move_cursor((0, 0))
 
     @property
     def submode(self) -> str | None:
@@ -421,6 +445,40 @@ def _widget_text(editor: TextArea) -> str:
     return "\n".join(editor.document.lines)
 
 
+# What Textual (``str.splitlines``) breaks lines at besides "\n".  To the vi
+# engine, as to vim, they are characters of a line: the TextArea shows each
+# as a one-character stand-in, so the two agree on rows and columns.
+_SEPARATOR_GLYPHS = {
+    "\r": "\u240d",  # ␍
+    "\x0b": "\u240b",  # ␋
+    "\x0c": "\u240c",  # ␌
+    "\x1c": "\u241c",  # ␜
+    "\x1d": "\u241d",  # ␝
+    "\x1e": "\u241e",  # ␞
+    "\x85": "\u2424",  # ␤
+    "\u2028": "\u2424",  # ␤
+    "\u2029": "\u00b6",  # ¶
+}
+_TO_GLYPHS = str.maketrans(_SEPARATOR_GLYPHS)
+
+
+def _shown(text: str) -> str:
+    """Engine *text* as the TextArea shows it (only ``\n`` breaks lines)."""
+    if any(sep in text for sep in _SEPARATOR_GLYPHS):
+        return text.translate(_TO_GLYPHS)
+    return text
+
+
+def _split_newline(text: str) -> tuple[str, str]:
+    """``(text with \n line ends, the file's line end)``.  A file is CRLF
+    only when every line end is ``\r\n``; in any other file a ``\r`` is a
+    character (vim's fileformat=unix), so the bytes still round-trip."""
+    crlf = text.count("\r\n")
+    if crlf and crlf == text.count("\n"):
+        return text.replace("\r\n", "\n"), "\r\n"
+    return text, "\n"
+
+
 def _location(text: str, offset: int) -> tuple[int, int]:
     """``(row, column)`` of character *offset* in *text*."""
     row = text.count("\n", 0, offset)
@@ -443,20 +501,50 @@ class ViLayer:
         *,
         session: ViSession,
         marks: MarkTable | None = None,
+        text: str | None = None,
     ) -> None:
+        """*text* is the file's text as read (the TextArea's when None):
+        the engine edits it with its line separators and CRLF intact."""
         self.ed = editor
-        text = _widget_text(editor)
+        body, self._newline = _split_newline(
+            _widget_text(editor) if text is None else text
+        )
+        shown = _shown(body)
+        if shown != _widget_text(editor):
+            editor.load_text(shown)
         indent = "\t" if editor.indent_type == "tabs" else " " * editor.indent_width
         self.engine = ViEngine(
-            text,
+            body,
             cursor=editor.cursor_location,
             session=session,
             marks=marks,
             viewport=editor,
             indent_unit=indent,
         )
-        self._text = text  # engine text as last mirrored into the TextArea
+        self._text = body  # engine text as last mirrored into the TextArea
+        self._clean = body  # engine text when last loaded or saved
         self._label = (self.engine.mode, self.engine.status)
+
+    # ---- the file's text (CodeEditor.file_text / is_dirty / revert) ----
+
+    @property
+    def file_text(self) -> str:
+        text = self.engine.text
+        return text if self._newline == "\n" else text.replace("\n", self._newline)
+
+    @property
+    def is_dirty(self) -> bool:
+        return self.engine.text != self._clean
+
+    def mark_clean(self) -> None:
+        self._clean = self.engine.text
+
+    def load_file_text(self, text: str) -> None:
+        """Revert to *text* from disk: one undoable change, cursor at the top."""
+        body, self._newline = _split_newline(text)
+        self.engine.reset_text(body)
+        self.engine.set_cursor(0, 0)
+        self._mirror()
 
     # ---- state exposed to CodeEditor / CodeView ----
 
@@ -515,10 +603,10 @@ class ViLayer:
     def resync_from_widget(self) -> None:
         """Adopt TextArea text/cursor changed outside the engine (undoable)."""
         text = _widget_text(self.ed)
-        if text != self.engine.text:
+        if text != _shown(self._text):
             self.engine.reset_text(text)
+            self._text = self.engine.text
         self.engine.set_cursor(*self.ed.cursor_location)
-        self._text = text
         self._mirror()
 
     # ---- engine -> TextArea ----
@@ -530,8 +618,18 @@ class ViLayer:
         if edit is not None:
             start = _location(self._text, edit.start)
             end = _location(self._text, edit.old_end)
-            ed.replace(edit.new_text, start, end)
+            ed.replace(_shown(edit.new_text), start, end)
             self._text = new
+            if ed.document.line_count != new.count("\n") + 1:
+                # Never expected (both break lines only at \n): rather than
+                # edit the wrong lines from now on, show the engine's text.
+                log.warning("vi: TextArea out of step with the engine; resynced")
+                ed.load_text(_shown(new))
+                ed.app.notify(
+                    "The editor view was resynced with the vi engine",
+                    title="Edit",
+                    severity="warning",
+                )
         ed.selection = self._selection()
         for event in engine.drain_events():
             if isinstance(event, SaveRequest):

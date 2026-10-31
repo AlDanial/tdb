@@ -92,8 +92,12 @@ extra: `uv pip install "textual-debugger[edit]"` (highlights Python, Bash,
 Go, and Rust; other languages edit as plain text). Highlighting in the
 normal Code View is unaffected.
 
-CRLF source files are written back with LF line endings after a save in
-Edit mode (a v1 limitation — no CRLF round-trip yet).
+With the vim scheme, Edit mode saves exactly the line ends the file had:
+a CRLF file stays CRLF, and characters that some tools treat as line
+breaks (form feed, vertical tab, U+2028, U+2029, NEL) stay characters of
+their line, shown as stand-ins such as `␌` and `␤`. The Notepad and emacs
+schemes still write CRLF files back with LF line endings and turn those
+characters into line breaks (a v1 limitation).
 
 > **Note:** Many terminals send the byte sequence `ESC+f` for `Alt+F`, which Textual's
 ANSI parser rewrites to `Ctrl+Right` (the readline "forward-word" convention).
