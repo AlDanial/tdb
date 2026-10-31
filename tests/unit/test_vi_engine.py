@@ -88,9 +88,9 @@ async def test_ctrl_v_in_visual_is_noop():
 
 
 async def test_exception_restores_buffer():
-    kb = boom_bindings("Z")
+    kb = boom_bindings("Q")
     e = ViEngine("abc\n", _extra_bindings=kb)
-    e.feed_keys("Z")
+    e.feed_keys("Q")
     assert e.text == "abc\n" and e.mode == "normal"
     assert [type(x) for x in e.drain_events()] == [Notify]
     assert e.drain_events() == []
@@ -103,10 +103,10 @@ async def test_exception_restores_buffer():
 
 async def test_exception_keeps_undo_and_redo_history():
     """The failing key's save-before undo entry must not survive it."""
-    e = ViEngine("abc\n", _extra_bindings=boom_bindings("Z"))
+    e = ViEngine("abc\n", _extra_bindings=boom_bindings("Q"))
     e.feed_keys("xxu")
     assert e.text == "bc\n"
-    e.feed_keys("Z")
+    e.feed_keys("Q")
     e.feed_keys("<C-r>")  # redo stack not cleared by the failed key
     assert e.text == "c\n"
     e.feed_keys("uu")
@@ -484,7 +484,7 @@ def watch_replaying(engine_box: list, seen: list):
 
     kb = KeyBindings()
 
-    @kb.add("Z")
+    @kb.add("Q")
     def _(event):
         seen.append(engine_box[0].is_replaying)
         event.app.current_buffer.insert_text("Z")
@@ -498,15 +498,15 @@ async def test_is_replaying_during_dot_and_macro():
     e = ViEngine("abc\n", _extra_bindings=watch_replaying(box, seen))
     box.append(e)
     assert not e.is_replaying
-    e.feed_keys("Z.qaZq@a")
+    e.feed_keys("Q.qaQq@a")
     assert seen == [False, True, False, True]
     assert not e.is_replaying
 
 
 async def test_error_during_replay_restores_buffer():
-    e = ViEngine("abc\n", _extra_bindings=boom_bindings("Z"))
+    e = ViEngine("abc\n", _extra_bindings=boom_bindings("Q"))
     e.feed_keys("x")
-    e.session.last_change = ViKey.parse("xZ")
+    e.session.last_change = ViKey.parse("xQ")
     e.feed_keys(".")
     assert e.text == "bc\n" and e.mode == "normal" and not e.is_replaying
     assert [type(x) for x in e.drain_events()] == [Notify]
@@ -570,10 +570,10 @@ async def test_register_dropped_by_q_at_and_dot():
 
 
 async def test_error_after_grouped_change_keeps_undo_history():
-    e = ViEngine("abc\n", _extra_bindings=boom_bindings("Z"))
+    e = ViEngine("abc\n", _extra_bindings=boom_bindings("Q"))
     e.feed_keys("ixy<Esc>")
     stack = list(e.buffer._undo_stack)
-    e.feed_keys("Z")
+    e.feed_keys("Q")
     assert e.buffer._undo_stack == stack
     e.feed_keys("u")
     assert e.text == "abc\n"
@@ -1343,3 +1343,141 @@ async def test_ex_args_arrive_left_stripped():
     e = ViEngine("xx\nxx\n")
     e.feed_keys(":s/x/y/<CR>j:s   g<CR>")
     assert e.text == "yx\nyy\n"
+
+
+# ---------------------------------------------------------------------------
+# A failing command aborts the rest of a macro, `.` or :normal (vim's
+# beep_flush).  Error-message failures cannot be goldened: the nvim harness
+# runs keys under pcall, which turns errors into exceptions.  These were
+# checked against nvim with typed input (-s).
+
+
+def _macro(e: ViEngine, keys: str, reg: str = "m") -> None:
+    """Put *keys* in register *reg* (as if recorded)."""
+    from prompt_toolkit.clipboard import ClipboardData
+
+    from tdb.vi.engine import keys_to_register_text
+
+    named = e.session.vi_state.named_registers  # type: ignore[attr-defined]
+    named[reg] = ClipboardData(keys_to_register_text(ViKey.parse(keys)))
+
+
+@pytest.mark.parametrize(
+    ("text", "cursor", "macro"),
+    [
+        ("a1\nb2\n", (0, 0), "/zz<CR>AZ<Esc>"),  # pattern not found
+        ("a1\nb2\n", (0, 0), "nAZ<Esc>"),  # no previous pattern
+        ("a1\nb2\n", (0, 0), "/(<CR>AZ<Esc>"),  # invalid pattern
+        ("a1\nb2\n", (0, 0), "'zAZ<Esc>"),  # mark not set
+        ("a1\nb2\n", (0, 0), "d'zAZ<Esc>"),
+        ("a1\nb2\n", (0, 0), ":bogus<CR>AZ<Esc>"),  # ex error
+        ("a1\nb2\n", (0, 0), ":s/q/r/<CR>AZ<Esc>"),
+        ("a1\nb2\n", (0, 0), '"zpAZ<Esc>'),  # empty register
+        ("a1\nb2\n", (0, 0), "uAZ<Esc>"),  # nothing to undo
+        ("a1\nb2\n", (0, 0), "<C-r>AZ<Esc>"),  # nothing to redo
+        ("a1\nb2\n", (0, 0), "@zAZ<Esc>"),  # empty macro register
+        ("a1\nb2\n", (0, 0), "gvAZ<Esc>"),  # no previous Visual area
+        ("a1\nb2\n", (0, 0), "q1AZ<Esc>"),  # unsupported recording register
+        ("a1\nb2\n", (0, 0), "m1AZ<Esc>"),  # invalid mark name
+    ],
+)
+async def test_error_aborts_macro(text, cursor, macro):
+    e = ViEngine(text, cursor=cursor)
+    _macro(e, macro)
+    e.feed_keys("@m")
+    assert "Z" not in e.text
+
+
+async def test_failure_does_not_stop_typed_keys():
+    # Interactive typing is never queued: a failed j does not drop the x.
+    e = ViEngine("ab\ncd\n", cursor=(1, 0))
+    e.feed_keys("jx")
+    assert e.text == "ab\nd\n"
+
+
+async def test_failure_stops_only_the_normal_keys():
+    # vim: a :normal saves the typeahead, so its failure flushes only its
+    # own keys.
+    e = ViEngine("a\nb\n", cursor=(1, 0))
+    e.feed_keys(":normal jx<CR>")
+    assert e.text == "a\nb\n"
+    e.feed_keys("x")
+    assert e.text == "a\n\n"
+
+
+async def test_dot_with_no_previous_change_aborts_macro():
+    e = ViEngine("ab\n")
+    _macro(e, ".AZ<Esc>")
+    e.feed_keys("@m")
+    assert e.text == "ab\n"
+
+
+# ---------------------------------------------------------------------------
+# Unknown or unsupported keys cancel the pending command and count, notify,
+# and are a failure; the keys after them never run as a new command.
+
+
+@pytest.mark.parametrize(
+    ("keys", "expected"),
+    [
+        ("g?wx", "bc def\n"),  # rot13 operator: unsupported
+        ("g?g?x", "bc def\n"),
+        ("gqapx", "bc def\n"),  # formatting: unsupported (was reachable)
+        ("gwwx", "bc def\n"),
+        ("g@wx", "bc def\n"),
+        ("zfjx", "bc def\n"),  # fold operator
+        ("zqx", "bc def\n"),
+        ("Zqx", "bc def\n"),
+        ("[{x", "bc def\n"),
+        ("]}x", "bc def\n"),
+        ("<C-w>jx", "bc def\n"),  # window commands
+        ("==x", "bc def\n"),
+        ("3Kx", "bc def\n"),  # count cleared by the unknown key
+        ("vzqd", "bc def\n"),  # Visual: the unknown keys are swallowed, d works
+    ],
+)
+async def test_unknown_key_cancels_command(keys, expected):
+    e = ViEngine("abc def\n")
+    e.feed_keys(keys)
+    assert (e.text, e.mode) == (expected, "normal")
+    assert not e.has_pending
+
+
+async def test_unknown_key_notifies():
+    e = ViEngine("abc\n")
+    e.feed_keys("zq")
+    events = e.drain_events()
+    assert len(events) == 1 and isinstance(events[0], Notify)
+    assert "zq" in events[0].text
+    e.feed_keys("g?w")  # an unsupported operator, once it has its motion
+    assert [x.text for x in e.drain_events()] == ["Not supported: g?"]
+
+
+async def test_unknown_key_aborts_macro():
+    e = ViEngine("abc\n")
+    _macro(e, "zqAZ<Esc>")
+    e.feed_keys("@m")
+    assert e.text == "abc\n"
+
+
+async def test_unsupported_operator_changes_nothing_in_visual_mode():
+    e = ViEngine("a\nb\n")
+    e.feed_keys("Vj=")
+    assert (e.text, e.mode) == ("a\nb\n", "normal")
+
+
+async def test_q_colon_is_swallowed_with_a_notice():
+    e = ViEngine("abc\n")
+    e.feed_keys("q:")
+    assert (e.mode, e.has_pending) == ("normal", False)
+    assert any("q:" in x.text for x in e.drain_events() if isinstance(x, Notify))
+
+
+async def test_bang_operator_opens_the_filter_line():
+    e = ViEngine("a\nb\nc\n")
+    e.feed_keys("!j")
+    assert (e.mode, e.status) == ("command", ":.,.+1!")
+    e.feed_keys("sort<CR>")
+    assert e.text == "a\nb\nc\n"
+    events = e.drain_events()
+    assert [x.severity for x in events if isinstance(x, Notify)] == ["error"]

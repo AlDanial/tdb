@@ -146,6 +146,181 @@
   ],
   "text": "def Xf(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
  },
+ "abort-2cc-last": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "a\nb\n\n"
+ },
+ "abort-2dd-last": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "a\nb\nc\n"
+ },
+ "abort-2dd-last-then-x": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "a\nb\n\n"
+ },
+ "abort-2indent-last": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "a\nb\nc\n"
+ },
+ "abort-2yy-last": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "a\nb\nc\n"
+ },
+ "abort-3at-second-run": {
+  "cursor": [
+   2,
+   1
+  ],
+  "text": "aZ\nbZ\ncZ\n"
+ },
+ "abort-J-last": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "a\nb c\n"
+ },
+ "abort-dot-after-failed-j": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "x\nx\nx\n"
+ },
+ "abort-dot-replay-fails": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "b\nc\nd\ne\n"
+ },
+ "abort-global-normal-continues": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "x1\naZ\nx2\n"
+ },
+ "abort-global-normal-jdd": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "x\nx\n"
+ },
+ "abort-macro-3rx": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "xxx\nab\n"
+ },
+ "abort-macro-ci-paren": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "(X)\nb\nc\n"
+ },
+ "abort-macro-comma": {
+  "cursor": [
+   3,
+   1
+  ],
+  "text": "a,\nb,\nc,\nd,\n"
+ },
+ "abort-macro-ctrl-a": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "2\n3\nx\n3\n"
+ },
+ "abort-macro-dk-top": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "aZ\n"
+ },
+ "abort-macro-fz": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "ab\nc,d\n"
+ },
+ "abort-macro-jdd": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "1\n3\n5\n"
+ },
+ "abort-macro-l-end": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "a\nab\n"
+ },
+ "abort-macro-percent": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "(a\nb\n(c)\n"
+ },
+ "abort-macro-tilde-empty": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "A\n\nb\n"
+ },
+ "abort-macro-vjd": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "e\n"
+ },
+ "abort-macro-w-end": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "a  \n"
+ },
+ "abort-normal-jdd-last": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "a\nb\nc\n"
+ },
+ "abort-x-empty-line-continues": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "a\n\n\n\n"
+ },
  "brace-close": {
   "cursor": [
    3,
@@ -5997,6 +6172,97 @@
    0
   ],
   "text": "oo bar\n"
+ },
+ "unknown-bang-op": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "a\nb\nc\n"
+ },
+ "unknown-bracket-q": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "bc\ndef\n"
+ },
+ "unknown-close-bracket-q": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "bc\ndef\n"
+ },
+ "unknown-count-cleared": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "bcdef\n"
+ },
+ "unknown-eq-i-brace": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "\nb\n"
+ },
+ "unknown-eq-ip": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "\nb\n\nc\n"
+ },
+ "unknown-g8": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "bcdefghij\n"
+ },
+ "unknown-ga": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "bc\n"
+ },
+ "unknown-gw": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n"
+ },
+ "unknown-op-pending-g": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": " b\nc\n"
+ },
+ "unknown-op-pending-i": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": " b\nc\n"
+ },
+ "unknown-op-pending-key": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": " b\nc\n"
+ },
+ "unknown-zj": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "bc\ndef\n"
  },
  "vis-3r-cr": {
   "cursor": [

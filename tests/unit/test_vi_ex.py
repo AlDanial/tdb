@@ -79,6 +79,9 @@ class FakeHost:
     def notify(self, text, severity="information"):
         self.events.append((text, severity))
 
+    def fail(self):
+        self.events.append("fail")
+
     def set_cursor(self, row, col):
         self.row, self.col = row, col
 

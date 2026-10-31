@@ -8389,5 +8389,347 @@
    0
   ],
   "keys": "d1G"
+ },
+ {
+  "id": "abort-macro-jdd",
+  "text": "1\n2\n3\n4\n5\n6\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qajddq99@a"
+ },
+ {
+  "id": "abort-macro-comma",
+  "text": "a\nb\nc\nd\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qaA,<Esc>jq99@a"
+ },
+ {
+  "id": "abort-normal-jdd-last",
+  "text": "a\nb\nc\n",
+  "cursor": [
+   2,
+   0
+  ],
+  "keys": ":normal jdd<CR>"
+ },
+ {
+  "id": "abort-2dd-last",
+  "text": "a\nb\nc\n",
+  "cursor": [
+   2,
+   0
+  ],
+  "keys": "2dd"
+ },
+ {
+  "id": "abort-2dd-last-then-x",
+  "text": "a\nb\nc\n",
+  "cursor": [
+   2,
+   0
+  ],
+  "keys": "2ddx"
+ },
+ {
+  "id": "abort-2yy-last",
+  "text": "a\nb\nc\n",
+  "cursor": [
+   2,
+   0
+  ],
+  "keys": "2yyP"
+ },
+ {
+  "id": "abort-2cc-last",
+  "text": "a\nb\nc\n",
+  "cursor": [
+   2,
+   0
+  ],
+  "keys": "2ccx<Esc>"
+ },
+ {
+  "id": "abort-2indent-last",
+  "text": "a\nb\nc\n",
+  "cursor": [
+   2,
+   0
+  ],
+  "keys": "2>>"
+ },
+ {
+  "id": "abort-J-last",
+  "text": "a\nb\nc\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "qaJjq@a"
+ },
+ {
+  "id": "abort-dot-after-failed-j",
+  "text": "1x\n2x\n3x\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "xqaj.q5@a"
+ },
+ {
+  "id": "abort-dot-replay-fails",
+  "text": "a,b\nc\nd\ne\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "df,jqa.jq@a"
+ },
+ {
+  "id": "abort-3at-second-run",
+  "text": "a\nb\nc\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qaAZ<Esc>jq3@a"
+ },
+ {
+  "id": "abort-global-normal-jdd",
+  "text": "x\nx\nx\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/x/normal jdd<CR>"
+ },
+ {
+  "id": "abort-global-normal-continues",
+  "text": "x1\na\nx2\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/x/normal kAZ<CR>"
+ },
+ {
+  "id": "abort-macro-fz",
+  "text": "a,b\nc,d\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qaf,xjq5@a"
+ },
+ {
+  "id": "abort-macro-l-end",
+  "text": "ab\nab\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qalxq5@a"
+ },
+ {
+  "id": "abort-macro-w-end",
+  "text": "a b c\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qawxq9@a"
+ },
+ {
+  "id": "abort-macro-dk-top",
+  "text": "a\nb\nc\n",
+  "cursor": [
+   2,
+   0
+  ],
+  "keys": "qadkAZ<Esc>q3@a"
+ },
+ {
+  "id": "abort-macro-ci-paren",
+  "text": "(a)\nb\nc\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qaci(X<Esc>jq3@a"
+ },
+ {
+  "id": "abort-macro-3rx",
+  "text": "abc\nab\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qa3rxjq3@a"
+ },
+ {
+  "id": "abort-macro-ctrl-a",
+  "text": "1\n2\nx\n3\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qa<C-a>jq9@a"
+ },
+ {
+  "id": "abort-macro-tilde-empty",
+  "text": "a\n\nb\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qa~jq3@a"
+ },
+ {
+  "id": "abort-macro-percent",
+  "text": "(a)\nb\n(c)\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qa%xjq3@a"
+ },
+ {
+  "id": "abort-macro-vjd",
+  "text": "a\nb\nc\nd\ne\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qaVjdq3@a"
+ },
+ {
+  "id": "abort-x-empty-line-continues",
+  "text": "a\n\n\nb\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "qaxjq3@a"
+ },
+ {
+  "id": "unknown-eq-ip",
+  "text": "a\nb\n\nc\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "=ipx"
+ },
+ {
+  "id": "unknown-eq-i-brace",
+  "text": "a\nb\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "=i{x"
+ },
+ {
+  "id": "unknown-g8",
+  "text": "abcdefghij\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "g8x"
+ },
+ {
+  "id": "unknown-ga",
+  "text": "abc\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "gax"
+ },
+ {
+  "id": "unknown-gw",
+  "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "gwjx"
+ },
+ {
+  "id": "unknown-zj",
+  "text": "abc\ndef\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "zjx"
+ },
+ {
+  "id": "unknown-bracket-q",
+  "text": "abc\ndef\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "[qx"
+ },
+ {
+  "id": "unknown-close-bracket-q",
+  "text": "abc\ndef\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "]qx"
+ },
+ {
+  "id": "unknown-count-cleared",
+  "text": "abcdef\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3<C-g>x"
+ },
+ {
+  "id": "unknown-op-pending-key",
+  "text": "a b\nc\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "dQx"
+ },
+ {
+  "id": "unknown-op-pending-g",
+  "text": "a b\nc\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "dg8x"
+ },
+ {
+  "id": "unknown-op-pending-i",
+  "text": "a b\nc\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "diqx"
+ },
+ {
+  "id": "unknown-bang-op",
+  "text": "a\nb\nc\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "!jx"
  }
 ]

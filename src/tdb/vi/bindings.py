@@ -99,9 +99,13 @@ def load_tdb_vi_bindings(engine: ViEngine) -> KeyBindings:
 
     @kb.add("c-r", filter=vi_navigation_mode, save_before=lambda e: False)
     def _redo(event: KeyPressEvent) -> None:
-        """Redo (pyvim)."""
+        """Redo (pyvim); fails when there is nothing (more) to redo."""
+        buff = event.app.current_buffer
         for _ in range(event.arg):
-            event.app.current_buffer.redo()
+            if not buff._redo_stack:
+                engine.fail()
+                break
+            buff.redo()
 
     @kb.add("c-v", filter=vi_navigation_mode | vi_selection_mode)
     def _no_block_visual(event: KeyPressEvent) -> None:
@@ -111,20 +115,104 @@ def load_tdb_vi_bindings(engine: ViEngine) -> KeyBindings:
     def _no_ctrl_z(event: KeyPressEvent) -> None:
         """Ctrl+Z does nothing (prompt_toolkit would insert a literal ``\\x1a``)."""
 
-    _add_change_word(kb)
+    _add_change_word(kb, engine)
     _add_nvim_cursor_fixes(kb, engine)
-    _add_text_objects(kb)
-    _add_join(kb)
+    _add_text_objects(kb, engine)
+    _add_join(kb, engine)
     _add_viewport_commands(kb, engine)
     _add_insert_tab(kb, engine)
     _add_visual_commands(kb, engine)
-    _add_increment(kb)
-    _add_counted_commands(kb)
+    _add_increment(kb, engine)
+    _add_counted_commands(kb, engine)
     _add_marks(kb, engine)
     _add_search(kb, engine)
     _add_substitute_repeat(kb, engine)
+    _add_unknown_keys(kb, engine)
 
     return kb
+
+
+def _text_objects(kb: KeyBindings, engine: ViEngine):
+    """``create_text_object_decorator`` whose objects report ``None`` (no
+    object or no match, which cancels the operator) as a failed command.
+
+    The decorated function is returned wrapped, so a tdb move handler that
+    calls it reports the failure too.
+    """
+    register = create_text_object_decorator(kb)
+
+    def text_object(*keys, **kwargs):
+        def decorator(func):
+            def target(event: KeyPressEvent) -> TextObject | None:
+                obj = func(event)
+                if obj is None:
+                    engine.fail()
+                return obj
+
+            register(*keys, **kwargs)(target)
+            return target
+
+        return decorator
+
+    return text_object
+
+
+def _add_unknown_keys(kb: KeyBindings, engine: ViEngine) -> None:
+    """Unknown or unsupported keys: cancel the command, notify, fail.
+
+    Without these prompt_toolkit drops the first key of an unmatched
+    sequence and runs the rest as a new command (``g8x`` deleted 8
+    characters, ``=ip`` entered insert mode).  The catch-alls hold
+    ``Keys.Any``, so every specific binding for the same keys wins (see
+    ``KeyBindings.get_bindings_for_keys``).  Unsupported operators take
+    their motion and change nothing; ``!{motion}`` opens the ``:`` line
+    with the range, as vim does, where ``!`` is refused.
+    """
+    operator = create_operator_decorator(kb)
+    pending = vi_waiting_for_text_object_mode
+    visual = vi_selection_mode & ~pending
+    command = vi_navigation_mode | visual
+
+    def unknown(event: KeyPressEvent) -> None:
+        vs = event.app.vi_state
+        vs.operator_func = None
+        vs.operator_arg = None
+        engine.unsupported(engine.command_notation())
+
+    for keys, active in (
+        ((Keys.Any,), command | pending),
+        (("g", Keys.Any), command | pending),
+        (("i", Keys.Any), visual | pending),
+        (("a", Keys.Any), visual | pending),
+        (("z", Keys.Any), command),
+        (("Z", Keys.Any), command),
+        (("[", Keys.Any), command),
+        (("]", Keys.Any), command),
+        (("c-w", Keys.Any), command),
+    ):
+        kb.add(*keys, filter=active)(unknown)
+
+    for keys in (("=",), ("g", "?"), ("g", "q"), ("g", "w"), ("g", "@"), ("z", "f")):
+
+        @operator(*keys, filter=~is_read_only)
+        def _(event: KeyPressEvent, text_obj: TextObject, keys=keys) -> None:
+            engine.unsupported("".join(keys))
+
+    @operator("!", filter=~is_read_only)
+    def _filter(event: KeyPressEvent, text_obj: TextObject) -> None:
+        first, last = text_obj.get_line_numbers(event.current_buffer)
+        engine.open_filter_line(first, last)
+
+    # Supported only as their plain forms (documented).
+    @kb.add("g", "i", filter=vi_navigation_mode & ~is_read_only)
+    def _gi(event: KeyPressEvent) -> None:
+        event.app.vi_state.input_mode = InputMode.INSERT
+
+    @kb.add("g", "I", filter=vi_navigation_mode & ~is_read_only)
+    def _gI(event: KeyPressEvent) -> None:
+        buff = event.current_buffer
+        buff.cursor_position += buff.document.get_start_of_line_position()
+        event.app.vi_state.input_mode = InputMode.INSERT
 
 
 def _add_substitute_repeat(kb: KeyBindings, engine: ViEngine) -> None:
@@ -143,7 +231,7 @@ def _add_substitute_repeat(kb: KeyBindings, engine: ViEngine) -> None:
         engine.substitute_again(None, every_line=True)
 
 
-def _add_change_word(kb: KeyBindings) -> None:
+def _add_change_word(kb: KeyBindings, engine: ViEngine) -> None:
     """vim's ``cw``/``cW`` special case, missing from prompt_toolkit.
 
     With the cursor on a non-blank, ``cw`` changes to the end of the word
@@ -171,6 +259,8 @@ def _add_change_word(kb: KeyBindings) -> None:
     @kb.add("S", filter=vi_navigation_mode & ~is_read_only)
     def _change_line(event: KeyPressEvent) -> None:
         """``{count}cc`` / ``{count}S`` (prompt_toolkit ignores the count)."""
+        if _count_past_end(event, engine):
+            return
         doc = event.current_buffer.document
         row = doc.cursor_position_row
         _change_rows(event, row, min(row + event.arg, doc.line_count) - 1)
@@ -198,6 +288,16 @@ def _add_change_word(kb: KeyBindings) -> None:
     @text_object("W", filter=changing, no_move_handler=True, no_selection_handler=True)
     def _change_WORD(event: KeyPressEvent) -> TextObject:
         return change_word(event, WORD=True)
+
+
+def _count_past_end(event: KeyPressEvent, engine: ViEngine) -> bool:
+    """vim's rule for ``{count}dd`` and the other doubled operators: a
+    count on the last line fails (elsewhere it is clamped to the end)."""
+    doc = event.current_buffer.document
+    if event.arg > 1 and doc.cursor_position_row >= doc.line_count - 1:
+        engine.fail()
+        return True
+    return False
 
 
 def _record_rows(buff: Buffer, first: int, deleted: int, inserted: int) -> None:
@@ -266,6 +366,8 @@ def _add_nvim_cursor_fixes(kb: KeyBindings, engine: ViEngine) -> None:
     @kb.add("d", "d", filter=vi_navigation_mode & ~is_read_only)
     def _delete_line(event: KeyPressEvent) -> None:
         """``dd``: linewise delete, cursor keeps its column."""
+        if _count_past_end(event, engine):
+            return
         doc = event.current_buffer.document
         row = doc.cursor_position_row
         _delete_rows(event, row, row + event.arg - 1, doc.cursor_position_col)
@@ -274,7 +376,8 @@ def _add_nvim_cursor_fixes(kb: KeyBindings, engine: ViEngine) -> None:
         buff = event.current_buffer
         data = event.app.clipboard.get_data()
         if not data.text and data.type != SelectionType.LINES:
-            return  # empty register: nothing to put
+            engine.fail()  # empty register: nothing to put (vim's E353)
+            return
         row = buff.document.cursor_position_row
         at = buff.cursor_position
         if mode == PasteMode.VI_AFTER and buff.document.current_line:
@@ -292,10 +395,12 @@ def _add_nvim_cursor_fixes(kb: KeyBindings, engine: ViEngine) -> None:
             _set_cursor(buff, first, len(line) - len(line.lstrip()))
 
     @kb.add("p", filter=vi_navigation_mode)
+    @kb.add("g", "p", filter=vi_navigation_mode)  # documented: as p
     def _paste(event: KeyPressEvent) -> None:
         paste(event, PasteMode.VI_AFTER)
 
     @kb.add("P", filter=vi_navigation_mode)
+    @kb.add("g", "P", filter=vi_navigation_mode)  # documented: as P
     def _paste_before(event: KeyPressEvent) -> None:
         paste(event, PasteMode.VI_BEFORE)
 
@@ -303,6 +408,8 @@ def _add_nvim_cursor_fixes(kb: KeyBindings, engine: ViEngine) -> None:
     @kb.add("Y", filter=vi_navigation_mode)
     def _yank_line(event: KeyPressEvent) -> None:
         """``{count}yy`` / ``{count}Y``: a yank, so it also sets ``"0``."""
+        if _count_past_end(event, engine):
+            return
         doc = event.current_buffer.document
         text = "\n".join(doc.lines_from_current[: event.arg])
         data = ClipboardData(text, SelectionType.LINES)
@@ -317,6 +424,7 @@ def _add_nvim_cursor_fixes(kb: KeyBindings, engine: ViEngine) -> None:
         col = doc.cursor_position_col
         n = min(event.arg, len(line) - col)
         if n <= 0:
+            engine.fail()  # an empty line
             return
         start = buff.cursor_position
         new = doc.text[:start] + line[col : col + n].swapcase() + doc.text[start + n :]
@@ -347,11 +455,15 @@ def _add_nvim_cursor_fixes(kb: KeyBindings, engine: ViEngine) -> None:
 
     @kb.add(">", ">", filter=vi_navigation_mode & ~is_read_only)
     def _indent(event: KeyPressEvent) -> None:
+        if _count_past_end(event, engine):
+            return
         row = event.current_buffer.document.cursor_position_row
         shift(event, (row, row + event.arg), False)
 
     @kb.add("<", "<", filter=vi_navigation_mode & ~is_read_only)
     def _unindent(event: KeyPressEvent) -> None:
+        if _count_past_end(event, engine):
+            return
         row = event.current_buffer.document.cursor_position_row
         shift(event, (row, row + event.arg), True)
 
@@ -397,6 +509,8 @@ def _add_nvim_cursor_fixes(kb: KeyBindings, engine: ViEngine) -> None:
         @kb.add("g", name, name, filter=vi_navigation_mode & ~is_read_only)
         def _(event: KeyPressEvent) -> None:
             """``gUU``/``guu``/``g~~``: like ``gU_``; the cursor never moves right."""
+            if _count_past_end(event, engine):
+                return
             buff = event.current_buffer
             doc = buff.document
             row, col = doc.cursor_position_row, doc.cursor_position_col
@@ -409,7 +523,7 @@ def _add_nvim_cursor_fixes(kb: KeyBindings, engine: ViEngine) -> None:
     transform_line("u", str.lower)
     transform_line("~", str.swapcase)
 
-    text_object = create_text_object_decorator(kb)
+    text_object = _text_objects(kb, engine)
 
     def has_count(event: KeyPressEvent) -> bool:
         """Whether a count was typed.  Under an operator prompt_toolkit always
@@ -451,18 +565,32 @@ def _add_nvim_cursor_fixes(kb: KeyBindings, engine: ViEngine) -> None:
         _delete_rows(event, first, last, buff.document.cursor_position_col)
 
     @kb.add("j", filter=vi_navigation_mode | vi_selection_mode)
+    @kb.add("g", "j", filter=vi_navigation_mode | vi_selection_mode)  # no wrap
     def _move_down(event: KeyPressEvent) -> None:
-        """``j``: nothing happens on the last line (prompt_toolkit goes to column 0)."""
+        """``j``: fails on the last line (prompt_toolkit goes to column 0)."""
         buff = event.current_buffer
         if buff.document.cursor_position_row < buff.document.line_count - 1:
             buff.cursor_down(count=event.arg)
+        else:
+            engine.fail()
 
     @kb.add("k", filter=vi_navigation_mode | vi_selection_mode)
+    @kb.add("g", "k", filter=vi_navigation_mode | vi_selection_mode)
     def _move_up(event: KeyPressEvent) -> None:
-        """``k``: nothing happens on the first line."""
+        """``k``: fails on the first line."""
         buff = event.current_buffer
         if buff.document.cursor_position_row > 0:
             buff.cursor_up(count=event.arg)
+        else:
+            engine.fail()
+
+    @kb.add("u", filter=vi_navigation_mode, save_before=lambda e: False)
+    def _undo(event: KeyPressEvent) -> None:
+        """``{count}u``; fails when there is nothing (more) to undo."""
+        for _ in range(event.arg):
+            if not event.current_buffer.undo():
+                engine.fail()
+                break
 
     @text_object("j", no_move_handler=True, no_selection_handler=True)
     def _down(event: KeyPressEvent) -> TextObject | None:
@@ -525,16 +653,17 @@ def _charwise(
     return TextObject(s - cur, e - 1 - cur, type=TextObjectType.INCLUSIVE)
 
 
-def _add_text_objects(kb: KeyBindings) -> None:
+def _add_text_objects(kb: KeyBindings, engine: ViEngine) -> None:
     """vim-accurate ``iw aw iW aW ip ap`` and bracket / quote objects.
 
     Each object is registered twice: through ``create_text_object_decorator``
     for operator-pending mode (overriding prompt_toolkit's for the same keys,
     and a ``None`` result cancels the operator), and as a Visual-mode
     selection.  The decorator's own selection handler is disabled because it
-    selects one character too many.
+    selects one character too many.  No object is a failed command, in
+    both modes.
     """
-    text_object = create_text_object_decorator(kb)
+    text_object = _text_objects(kb, engine)
     visual = ~vi_waiting_for_text_object_mode & vi_selection_mode
 
     def register(keys: tuple[str, ...], pending, selecting) -> None:
@@ -579,6 +708,7 @@ def _add_text_objects(kb: KeyBindings) -> None:
             try:
                 found = current_word(lines, pos, event.arg, include, bigword, vstart)
             except NoObject:
+                engine.fail()
                 return
             start, end, inclusive = found
             if not inclusive:
@@ -607,7 +737,9 @@ def _add_text_objects(kb: KeyBindings) -> None:
             lines, _cur, pos, vstart = where(event)
             vrow = vstart[0] if vstart else None
             found = current_par(lines, pos[0], event.arg, include, vrow)
-            if found is not None:
+            if found is None:
+                engine.fail()
+            else:
                 select(event, lines, (found[0], 0), (found[1], 0), True)
 
         return pending, selecting
@@ -640,6 +772,7 @@ def _add_text_objects(kb: KeyBindings) -> None:
             selection = None if vstart is None else (min(vstart, pos), max(vstart, pos))
             span = block_span(lines, pos, key, event.arg, inner, selection)
             if span is None:
+                engine.fail()
                 return
             start, end, sol = span
             if sol and end[1] < len(lines[end[0]]):
@@ -668,6 +801,7 @@ def _add_text_objects(kb: KeyBindings) -> None:
             row, col = pos
             span = quote_span(lines[row], col, quote, not inner)
             if span is None:
+                engine.fail()
                 return
             start, end = span
             if inner and vstart is not None and vstart != pos:
@@ -685,12 +819,13 @@ def _add_text_objects(kb: KeyBindings) -> None:
             register(("ai"[inner], quote), *quote_object(quote, inner))
 
 
-def _add_join(kb: KeyBindings) -> None:
+def _add_join(kb: KeyBindings, engine: ViEngine) -> None:
     """``J`` / ``gJ``: ``{count}J`` joins *count* lines (minimum two)."""
 
     def join(buff: Buffer, row: int, count: int, space: bool) -> None:
         doc = buff.document
         if row >= doc.line_count - 1:
+            engine.fail()  # no line below
             return
         lines, col = join_lines(doc.lines, row, max(count, 2), space)
         _record_rows(buff, row + 1, doc.line_count - len(lines), 0)
@@ -755,7 +890,7 @@ def _add_viewport_commands(kb: KeyBindings, engine: ViEngine) -> None:
     ``zt zz zb`` family keep the cursor column (nvim ``nostartofline``);
     ``H M L`` and ``z<CR> z. z-`` go to the first non-blank (documented vim).
     """
-    text_object = create_text_object_decorator(kb)
+    text_object = _text_objects(kb, engine)
     scroll_mode = vi_navigation_mode | vi_selection_mode
     # vim's 'scroll' option: None means "half the window".
     scroll_option: list[int | None] = [None]
@@ -935,6 +1070,7 @@ def _add_visual_commands(kb: KeyBindings, engine: ViEngine) -> None:
         """``gv``: select the previous Visual area (in Visual: swap with it)."""
         raw = engine.last_visual_raw
         if raw is None:
+            engine.fail()
             return
         buff = event.current_buffer
         current = engine._visual_state()
@@ -1017,7 +1153,7 @@ def _add_visual_commands(kb: KeyBindings, engine: ViEngine) -> None:
         finish(buff, first)
 
 
-def _add_increment(kb: KeyBindings) -> None:
+def _add_increment(kb: KeyBindings, engine: ViEngine) -> None:
     """``{count}Ctrl+A`` / ``{count}Ctrl+X``: add to the number at or after the cursor."""
 
     def bump(event: KeyPressEvent, sign: int) -> None:
@@ -1027,6 +1163,7 @@ def _add_increment(kb: KeyBindings) -> None:
             doc.current_line, doc.cursor_position_col, sign * event.arg
         )
         if found is None:
+            engine.fail()  # no number at or after the cursor
             return
         line, col = found
         lines = list(doc.lines)
@@ -1044,14 +1181,15 @@ def _add_increment(kb: KeyBindings) -> None:
         bump(event, -1)
 
 
-def _add_counted_commands(kb: KeyBindings) -> None:
+def _add_counted_commands(kb: KeyBindings, engine: ViEngine) -> None:
     """``{count}r`` and ``{count}f/t/F/T`` (``;`` ``,``), which fail like vim's.
 
     prompt_toolkit ignores the count of ``r`` and, when a ``f``/``t`` has too
     few matches, still lets an operator run.  Here a command that cannot be
-    done leaves the text and the cursor alone and cancels a pending operator.
+    done leaves the text and the cursor alone, cancels a pending operator
+    and fails.
     """
-    text_object = create_text_object_decorator(kb)
+    text_object = _text_objects(kb, engine)
     count_of_r = [1]
 
     @kb.add("r", filter=vi_navigation_mode)
@@ -1071,6 +1209,7 @@ def _add_counted_commands(kb: KeyBindings) -> None:
         row, col = doc.cursor_position_row, doc.cursor_position_col
         line = doc.current_line
         if col + count > len(line):
+            engine.fail()  # not that many characters
             return
         if char == "\r":
             # One line break replaces the characters; the new line keeps the indent.
@@ -1127,9 +1266,9 @@ def _add_counted_commands(kb: KeyBindings) -> None:
             last_till[0] = till
             return find(event, event.data, backwards, till)
 
-        text_object(key, Keys.Any, no_move_handler=True, no_selection_handler=True)(
-            target
-        )
+        target = text_object(
+            key, Keys.Any, no_move_handler=True, no_selection_handler=True
+        )(target)
 
         @kb.add(key, Keys.Any, filter=movable)
         def _move(event: KeyPressEvent) -> None:
@@ -1153,7 +1292,9 @@ def _add_counted_commands(kb: KeyBindings) -> None:
             backwards = last.backwards != reverse
             return find(event, last.character, backwards, last_till[0], True)
 
-        text_object(key, no_move_handler=True, no_selection_handler=True)(target)
+        target = text_object(key, no_move_handler=True, no_selection_handler=True)(
+            target
+        )
 
         @kb.add(key, filter=movable)
         def _move(event: KeyPressEvent) -> None:
@@ -1174,7 +1315,7 @@ def _add_marks(kb: KeyBindings, engine: ViEngine) -> None:
     """
     from tdb.vi.engine import Notify
 
-    text_object = create_text_object_decorator(kb)
+    text_object = _text_objects(kb, engine)
     movable = (
         vi_navigation_mode | vi_selection_mode
     ) & ~vi_waiting_for_text_object_mode
@@ -1185,6 +1326,11 @@ def _add_marks(kb: KeyBindings, engine: ViEngine) -> None:
         if len(name) == 1 and "a" <= name <= "z":
             doc = event.current_buffer.document
             engine.marks.set(name, (doc.cursor_position_row, doc.cursor_position_col))
+        elif len(name) == 1 and name.isprintable():
+            engine._events.append(Notify(f"Mark {name} is not supported", "warning"))
+            engine.fail()
+        else:
+            engine.fail()  # m<Esc>
 
     def mark(event: KeyPressEvent) -> tuple[int, int] | None:
         """The mark named by the key, clamped to the text, or None."""
@@ -1223,9 +1369,9 @@ def _add_marks(kb: KeyBindings, engine: ViEngine) -> None:
         return _charwise(doc.lines, doc.cursor_position, start, end, False)
 
     for key, target in (("'", line_target), ("`", char_target)):
-        text_object(key, Keys.Any, no_move_handler=True, no_selection_handler=True)(
-            target
-        )
+        target = text_object(
+            key, Keys.Any, no_move_handler=True, no_selection_handler=True
+        )(target)
 
         @kb.add(key, Keys.Any, filter=movable)
         def _jump(event: KeyPressEvent, target=target) -> None:
@@ -1244,7 +1390,7 @@ def _add_search(kb: KeyBindings, engine: ViEngine) -> None:
     """
     from tdb.vi.engine import Notify
 
-    text_object = create_text_object_decorator(kb)
+    text_object = _text_objects(kb, engine)
     movable = (
         vi_navigation_mode | vi_selection_mode
     ) & ~vi_waiting_for_text_object_mode
@@ -1336,7 +1482,9 @@ def _add_search(kb: KeyBindings, engine: ViEngine) -> None:
         ("*", word(False)),
         ("#", word(True)),
     ):
-        text_object(key, no_move_handler=True, no_selection_handler=True)(target)
+        target = text_object(key, no_move_handler=True, no_selection_handler=True)(
+            target
+        )
 
         @kb.add(key, filter=movable)
         def _move(event: KeyPressEvent, target=target) -> None:

@@ -153,6 +153,11 @@ class ExHost(Protocol):
 
     def notify(self, text: str, severity: str = "information") -> None: ...
 
+    def fail(self) -> None:
+        """The command failed without an ``ExError`` (vim's error message
+        shown as a warning): a running macro stops."""
+        ...
+
     def goto_line(self, row: int) -> None:
         """Jump to *row* (sets the previous-jump mark), keeping the column."""
         ...
@@ -505,6 +510,7 @@ def run_substitute(spec: SubstituteSpec, first: int, last: int, host: ExHost) ->
     if not done.substitutions:
         if not quiet_flag(spec) and tally is None:
             host.notify(f"Pattern not found: {spec.pattern}", "warning")
+            host.fail()  # vim's E486
         return
     if confirm_flag(spec):
         host.confirm_substitute(spec, first, last)
@@ -568,6 +574,8 @@ def run_ex(line: str, host: ExHost) -> None:
     typed = line.strip(" \t:")
     unknown = ExError(f"Not an editor command: {typed}")
     if not cmd.name:
+        if cmd.bang:
+            raise ExError("Shell commands and filters (:!) are not supported")
         if cmd.args:
             raise unknown
         if cmd.range is not None:

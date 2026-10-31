@@ -134,6 +134,13 @@ _JUMPS = frozenset(
     {("G",), ("g", "g"), ("%",), ("(",), (")",), ("{",), ("}",), ("H",), ("M",)}
     | {("L",), ("n",), ("N",), ("*",), ("#",)}
 )
+# prompt_toolkit's own motions, which fail (vim's beep) when they cannot
+# move the cursor at all: at a line or buffer edge, or no bracket for ``%``.
+_MUST_MOVE = frozenset(
+    {(k,) for k in ("h", "l", "left", "right", "backspace", " ", "w", "W", "b")}
+    | {(k,) for k in ("B", "e", "E", "+", "-", "enter", "up", "down", "ctrl+n")}
+    | {("g", "e"), ("g", "E"), ("%",)}
+)
 _OPERATORS = frozenset("dcy<>=!")
 _G_OPERATORS = frozenset("~uU?q")
 
@@ -458,7 +465,8 @@ class _ViBuffer(Buffer):
         if clear_redo_stack:
             self._redo_stack = []
 
-    def undo(self) -> None:
+    def undo(self) -> bool:  # type: ignore[override]
+        """Take back one change; False when there is none."""
         undo: list = self._undo_stack
         redo: list = self._redo_stack
         while undo:
@@ -467,7 +475,8 @@ class _ViBuffer(Buffer):
                 # Undo and redo both put the cursor where the change began.
                 redo.append((self.text, pos, self.eol))
                 self._restore(text, pos, eol)
-                break
+                return True
+        return False
 
     def redo(self) -> None:
         redo: list = self._redo_stack
@@ -564,6 +573,8 @@ class ViEngine:
         self._normal_depth = 0
         # The ``:s///c`` session being answered, or None.
         self._confirm: _Confirm | None = None
+        # Set by ``fail()`` while a key is processed.
+        self._failed = False
 
         body, eol = _split_eol(text)
         self.buffer = _ViBuffer(document=Document(body, 0), multiline=True)
@@ -648,11 +659,17 @@ class ViEngine:
                 self._marks_adjusted = False
                 row = self.cursor[0]
                 watch = self._watch_key()
+                self._failed = False
                 self._dispatch(key)
                 if not self._marks_adjusted:
                     self._adjust_marks(text, at)
                 self._marks_adjusted = False
                 self._watched_key(watch, text, row)
+                if self._failed:
+                    self._failed = False
+                    # vim's beep_flush: the rest of the macro, `.` or
+                    # :normal is dropped.  Typed keys are never queued.
+                    self._queue = deque(item for item in self._queue if not item[1])
         finally:
             self.is_replaying = False
             self._queue_depth -= 1
@@ -687,6 +704,24 @@ class ViEngine:
         self.buffer.line_record = None
         if self.buffer.text != text:
             report(text.split("\n"), row, self.cursor[0], record)
+
+    def fail(self) -> None:
+        """The command being run failed (vim's beep): an unmatched motion or
+        object, an edge of the buffer, an error.  The remaining keys of a
+        macro, `.`, count run or ``:normal`` are dropped once the key ends;
+        ``:normal`` keeps its own keys, so ``:g`` goes on to the next line."""
+        self._failed = True
+
+    def unsupported(self, keys: str) -> None:
+        """An unknown or unsupported command *keys*: notify, and fail."""
+        self._events.append(Notify(f"Not supported: {keys}", "warning"))
+        self.fail()
+
+    def command_notation(self) -> str:
+        """The keys of the normal/Visual command being run, without its
+        count, in vim notation (``g?``, ``dQ``)."""
+        keys = self._cmd_keys
+        return "".join(ViKey(k).notation for k in keys[_skip_count(keys, 0) :])
 
     def _replay(self, keys: list[ViKey]) -> None:
         """Run *keys* next, before anything already queued."""
@@ -786,10 +821,13 @@ class ViEngine:
         if not self._cmd_keys or self._ptk_pending():
             return
         keys, self._cmd_keys = self._cmd_keys, []
-        if _is_jump(keys) and (
-            self.cursor != self._cmd_start or self.buffer.text != text_before
-        ):
+        moved = self.cursor != self._cmd_start or self.buffer.text != text_before
+        if _is_jump(keys) and moved:
             self.marks.set(JUMP, self._cmd_start)
+        start = _skip_count(keys, 0)
+        motion = tuple(keys[start:])
+        if not moved and motion in _MUST_MOVE and not (motion == ("%",) and start):
+            self.fail()  # (``N%`` goes to a line: never a failure)
 
     def _adjust_marks(self, old: str, typed_at: int | None = None) -> None:
         """After a text change from *old*: move the marks and the ``gv`` area.
@@ -933,6 +971,10 @@ class ViEngine:
         elif kind == "q":
             if len(name) == 1 and name in ascii_letters:
                 self._recording, self._recorded = name, []
+            elif name == "escape":
+                self.fail()
+            else:
+                self.unsupported("q" + key.notation)
         elif kind == "@":
             self._run_macro(name, self._wait_count or 1)
 
@@ -1004,6 +1046,7 @@ class ViEngine:
         """``.``: replay the last change, a *count* replacing its own."""
         keys = self.session.last_change
         if not keys:
+            self.fail()
             return
         if count is not None:
             counts = self.session.last_change_counts
@@ -1016,9 +1059,14 @@ class ViEngine:
         """``{count}@x``: replay register *x* (``@@``: the last one run)."""
         if name == "@":
             if self.session.last_macro is None:
+                self.fail()
                 return
             name = self.session.last_macro
         if len(name) != 1 or not (name in ascii_letters or name in '"0'):
+            if name == "escape":
+                self.fail()
+            else:
+                self.unsupported("@" + ViKey(name).notation)
             return
         name = name.lower()
         if name == '"':
@@ -1026,6 +1074,7 @@ class ViEngine:
         else:
             data = self.session.vi_state.named_registers.get(name)  # type: ignore[attr-defined]
         if data is None:
+            self.fail()
             return
         self.session.last_macro = name
         self._ran_macro = True
@@ -1135,6 +1184,14 @@ class ViEngine:
         self._open_line(":")
         self._cmdline = prefill
         return True
+
+    def open_filter_line(self, first: int, last: int) -> None:
+        """``!{motion}``: the ``:`` line holding the motion's lines, as vim
+        (``!j`` gives ``:.,.+1!``); ex refuses the filter."""
+        self._change = None
+        self._move_to(first, self.cursor[1])
+        self._open_line(":")
+        self._cmdline = ("." if last == first else f".,.+{last - first}") + "!"
 
     def _history(self) -> list[str]:
         if self._line_kind == ":":
@@ -1266,6 +1323,7 @@ class ViEngine:
         if error is not None:
             self._events.append(Notify(error, "error"))
             self._cancel_operator()
+            self.fail()
             return
         self.session.last_search = (pattern, backward)
         start, text = self.cursor, self.buffer.text
@@ -1289,6 +1347,7 @@ class ViEngine:
             run_ex(line, _ExHost(self))
         except ExError as exc:
             self._events.append(Notify(str(exc), "error"))
+            self.fail()
         finally:
             # The marks already followed each change the command made.
             self._marks_adjusted = True
@@ -1463,6 +1522,7 @@ class ViEngine:
                 run_substitute(spec, 0, len(host.lines()) - 1, host)
         except ExError as exc:
             self._events.append(Notify(str(exc), "error"))
+            self.fail()
         finally:
             self._marks_adjusted = True
 
@@ -1742,6 +1802,9 @@ class _ExHost:
     def notify(self, text: str, severity: str = "information") -> None:
         self._e._events.append(Notify(text, severity))  # type: ignore[arg-type]
 
+    def fail(self) -> None:
+        self._e.fail()
+
     def goto_line(self, row: int) -> None:
         self._e._goto_row(row)
 
@@ -1778,22 +1841,23 @@ def _first_changed_row(
     return min(next(moved, len(new)), len(old) - 1)
 
 
+def _skip_count(keys: list[str], i: int) -> int:
+    """The index after the count (if any) that starts at ``keys[i]``."""
+    if i < len(keys) and keys[i] in "123456789":
+        i += 1
+        while i < len(keys) and keys[i].isdigit():
+            i += 1
+    return i
+
+
 def _is_jump(keys: list[str]) -> bool:
     """Whether the command *keys* (count, operator, count, motion) is a jump."""
-
-    def skip_count(i: int) -> int:
-        if i < len(keys) and keys[i] in "123456789":
-            i += 1
-            while i < len(keys) and keys[i].isdigit():
-                i += 1
-        return i
-
-    i = skip_count(0)
+    i = _skip_count(keys, 0)
     if i < len(keys) - 1 and keys[i] in _OPERATORS:
         i += 1
     elif i < len(keys) - 2 and keys[i] == "g" and keys[i + 1] in _G_OPERATORS:
         i += 2
-    rest = tuple(keys[skip_count(i) :])
+    rest = tuple(keys[_skip_count(keys, i) :])
     return rest in _JUMPS or (len(rest) == 2 and rest[0] in ("'", "`"))
 
 

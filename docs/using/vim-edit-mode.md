@@ -37,7 +37,12 @@ brackets `i( a( ib ab i[ a[ i{ a{ iB aB i< a<`: `ciw`, `ci(`, `dap`,
 last change, with a new count if you give one.
 
 **Macros.** `qa ... q` records, `@a` plays, `@@` repeats the last macro,
-counts work (`5@a`).
+counts work (`5@a`). As in vim, a command that fails stops the rest of a
+macro, of a `.` repeat and of a `:normal` (a motion at the edge of the
+buffer, `f` or a search that finds nothing, `2dd` on the last line, an
+unknown key), so `qajddq99@a` stops at the end of the file. In `:g`, a
+`:normal` that fails on one line stops only that line. When you type keys
+yourself a failure does not stop the keys after it, and tdb does not beep.
 
 **Marks.** `ma` to `mz` set, `'a` and `` `a `` jump. `'<` and `'>` are the
 visual-area marks and `''` / ` `` ` return to the previous position.
@@ -94,19 +99,21 @@ text. A `:normal` that changes nothing leaves no undo step. There is no
 lines are not run as ex commands by `@a`, and there is no `Ctrl+V` on the
 command line.
 
-**Failed motions do not abort.** A failed motion does not stop the rest of
-a `:normal`, a macro or `.`: `:normal jdd` on the last line deletes it.
-`2dd` past the end of the file deletes the last line (vim leaves the text
-alone). `d}` does not apply vim's exclusive-to-linewise rule, and `VjX`
-does nothing.
-
-**Not implemented.** The `=` operator (`3G=ip` swallows the `=`, then `i`
-enters insert mode), `U` (undo line), sentence motions `( )` and sentence
-objects `is as`, tag objects `it at`, `[{ ]}`-style unmatched-bracket
-motions, `gi` and `gI` (they behave like `i` and `I`), `gp` and `gP` (like
-`p` and `P`), and `p` in visual mode (it does nothing). `_` with a count
-or an operator does nothing. `~` toggles a single character (there is no
-`tildeop`).
+**Not implemented.** The operators `=` (reindent), `gq` and `gw`
+(format), `g?` (rot13), `g@` and `zf` (fold): they take their motion,
+change nothing and show "Not supported". `!{motion}` opens the `:` line
+with the range, as vim does, but shell commands and filters (`:!`) are
+refused. Any other key or key pair tdb does not know (`g8`, `ga`, `zj`,
+`[q`, `ZZ`, `q:`, `Ctrl+W j`, `K`) shows "Not supported", cancels the
+command and its count, and is a failure (it stops a macro); the keys after
+it are never run as part of it. Also not implemented: `U` (undo line),
+sentence motions `( )` and sentence objects `is as`, tag objects `it at`,
+`[{ ]}`-style unmatched-bracket motions, `gi` and `gI` (they behave like
+`i` and `I`), `gp` and `gP` (like `p` and `P`), `g*` and `g#`, and `p` in
+visual mode (it does nothing). `_` with a count or an operator does
+nothing. `~` toggles a single character (there is no `tildeop`). `d}`
+does not apply vim's exclusive-to-linewise rule, and `VjX` does nothing.
+`ci(` before the brackets fails: nvim searches forward for the next pair.
 
 **tdb keys win.** `Ctrl+V`, `Ctrl+O`, `Ctrl+E`, `Ctrl+B`, `Ctrl+C`,
 `Ctrl+S`, `Ctrl+Q`, `Ctrl+P` and all function keys are tdb pane keys and

@@ -299,6 +299,9 @@ class _Scope:
     def notify(self, text: str, severity: str = "information") -> None:
         self._host.notify(text, severity)
 
+    def fail(self) -> None:
+        self._host.fail()
+
     def goto_line(self, row: int) -> None:
         self.flush()
         self._host.set_cursor(*self._cursor)

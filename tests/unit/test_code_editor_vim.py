@@ -467,7 +467,7 @@ async def test_engine_exception_shows_warning_and_keeps_text(monkeypatch):
     def with_boom(engine):
         kb = KeyBindings()
 
-        @kb.add("Z")
+        @kb.add("Q")
         def _(event):
             event.app.current_buffer.insert_text("JUNK")
             raise RuntimeError("boom")
@@ -480,7 +480,7 @@ async def test_engine_exception_shows_warning_and_keeps_text(monkeypatch):
         notes: list[tuple[str, str]] = []
         app.notify = lambda msg, **kw: notes.append((msg, kw.get("severity")))
         ed = app.query_one("#ed", CodeEditor)
-        await pilot.press("Z")
+        await pilot.press("Q")
         assert ed.text == TEXT and ed.submode == "normal"
         assert len(notes) == 1 and notes[0][1] == "warning"
         await pilot.press("x")
