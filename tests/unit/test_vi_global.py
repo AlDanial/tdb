@@ -222,6 +222,23 @@ def test_global_follows_identical_lines_exactly(text, keys, want):
     assert not [n for n in e.drain_events() if n.severity == "error"]
 
 
+@pytest.mark.parametrize(
+    ("text", "keys", "want"),
+    [
+        # J removes the lines after the cursor; the text alone looks like
+        # a dd of the current line (nvim 0.11.6).
+        ("\n\n\n\n", ":g/^$/normal J<CR>", "\n\n"),
+        ("\n\na\n", ":g/^/normal J<CR>", "\na\n"),
+        ("a\n\nx\nb\n", ":g/^x*$/normal J<CR>", "a\nx\nb\n"),
+        ("x\n\nx\ny\n\n\nz\n", ":g/^x*$/normal gJ<CR>", "x\nxy\n\nz\n"),
+        ("x\na\nx\nb\nc\nx\nd\n", ":g/x/normal 3J<CR>", "x a x\nb\nc\nx d\n"),
+        ("\n\nx\n\n\ny\n", ":g/^$/normal VjJ<CR>", "\nx\n\ny\n"),
+    ],
+)
+def test_global_normal_join_uses_the_engine_record(text, keys, want):
+    assert run(keys, text=text, cursor=(0, 0)).text == want
+
+
 def test_global_copy_here_ends_on_the_last_copy():
     assert run(":g/x/t.<CR>", text="x\nx\n", cursor=(0, 0)).cursor == (3, 0)
     e = run(":g/x/t.<CR>", text="x\nx\nx\nx\n", cursor=(0, 0))

@@ -261,11 +261,15 @@ class _Scope:
         self._cursor = self._host.cursor_row(), self._host.cursor_col()
         self.moved = True
 
-    def _watch(self, old: list[str], before: int, after: int) -> None:
-        """A key of a ``:normal`` changed the text: the marks follow."""
+    def _watch(self, old: list[str], before: int, after: int, record: list) -> None:
+        """A key of a ``:normal`` changed the text: the marks follow, by
+        what the code that changed it recorded, else by the text."""
         new = self._host.lines()
-        change = _text_change(self._marked, old, new, before, before, after)
-        self._marked = _splice(self._marked, change, False)
+        marked = _replay(self._marked, record, before)
+        if marked is None or len(marked) != len(new):
+            change = _text_change(self._marked, old, new, before, before, after)
+            marked = _splice(self._marked, change, False)
+        self._marked = marked
 
     def last_search(self) -> str | None:
         return self._host.last_search()
@@ -311,6 +315,23 @@ class _Scope:
 # Following lines through a change
 
 _T = TypeVar("_T")
+
+
+def _replay(marked: list[bool], record: list, row: int) -> list[bool] | None:
+    """*marked* through the key's records (``LineRecord``); None when it
+    has none, or a change it did not record."""
+    if not record or None in record:
+        return None
+    for entry in record:
+        if entry[0] == "rows":
+            _, first, deleted, inserted = entry
+            marked = marked[:first] + [False] * inserted + marked[first + deleted :]
+        else:
+            _, row_map, count = entry
+            if len(row_map) != len(marked):
+                return None
+            marked = _follow_map(marked, row_map, count, row, False)
+    return marked
 
 
 _IDS: list[int] = []

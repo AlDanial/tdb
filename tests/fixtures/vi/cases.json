@@ -8227,5 +8227,77 @@
    0
   ],
   "keys": ":g/x/m+1<CR>"
+ },
+ {
+  "id": "global-normal-J-blanks",
+  "text": "\n\n\n\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/^$/normal J<CR>"
+ },
+ {
+  "id": "global-normal-J-all",
+  "text": "\n\na\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/^/normal J<CR>"
+ },
+ {
+  "id": "global-normal-J-x-or-blank",
+  "text": "a\n\nx\nb\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/^x*$/normal J<CR>"
+ },
+ {
+  "id": "global-normal-gJ",
+  "text": "x\n\nx\ny\n\n\nz\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/^x*$/normal gJ<CR>"
+ },
+ {
+  "id": "global-normal-3J",
+  "text": "x\na\nx\nb\nc\nx\nd\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/x/normal 3J<CR>"
+ },
+ {
+  "id": "global-normal-jJ",
+  "text": "x\na\nx\nx\nb\nc\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/x/normal jJ<CR>"
+ },
+ {
+  "id": "global-normal-VjJ",
+  "text": "\n\nx\n\n\ny\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/^$/normal VjJ<CR>"
+ },
+ {
+  "id": "global-normal-J-mixed",
+  "text": "a\n\n\nb\n\nc\n\n\n\nd\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/^$/normal J<CR>"
  }
 ]

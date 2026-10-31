@@ -65,9 +65,16 @@ class SubstituteTally:
     lines: int = 0
 
 
-# ``watch(old_lines, row_before, row_after)``: a key changed the text from
-# *old_lines*; the cursor row before and after it.
-LineWatch = Callable[[list[str], int, int], None]
+# What a key did to the lines, as the code that did it knows:
+# ``("rows", first, deleted, inserted)``: at row *first*, *deleted* lines
+# went and *inserted* new lines came; ``("map", row_map, count)``: each
+# old row's new row (-1: deleted) and the new line count.
+LineRecord = tuple
+
+# ``watch(old_lines, row_before, row_after, record)``: a key changed the
+# text from *old_lines*; the cursor row before and after it, and its
+# records in order (``None`` in it: a change nothing recorded).
+LineWatch = Callable[[list[str], int, int, list], None]
 
 
 class ExHost(Protocol):

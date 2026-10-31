@@ -200,6 +200,14 @@ def _add_change_word(kb: KeyBindings) -> None:
         return change_word(event, WORD=True)
 
 
+def _record_rows(buff: Buffer, first: int, deleted: int, inserted: int) -> None:
+    """Tell the engine which lines a linewise change removed or added
+    (``:g`` follows its marked lines by it)."""
+    record = getattr(buff, "record_rows", None)
+    if record is not None:
+        record(first, deleted, inserted)
+
+
 def _set_cursor(buff: Buffer, row: int, col: int) -> None:
     """Put the cursor at (*row*, *col*), clamped to a normal-mode position."""
     lines = buff.document.lines
@@ -225,7 +233,15 @@ def _delete_rows(
     lines = buff.document.lines
     deleted = "\n".join(lines[first : last + 1])
     keep = [] if replacement is None else [replacement]
-    buff.document = Document("\n".join(lines[:first] + keep + lines[last + 1 :]), 0)
+    rest = lines[:first] + keep + lines[last + 1 :]
+    gone = len(lines) - len(rest)
+    if keep:
+        _record_rows(buff, first + 1, gone, 0)  # the first line is changed
+    elif not rest:
+        _record_rows(buff, 0, gone, 1)  # an empty line is left
+    else:
+        _record_rows(buff, first, gone, 0)
+    buff.document = Document("\n".join(rest), 0)
     event.app.clipboard.set_data(ClipboardData(deleted, SelectionType.LINES))
     _set_cursor(buff, first, col)
 
@@ -263,7 +279,11 @@ def _add_nvim_cursor_fixes(kb: KeyBindings, engine: ViEngine) -> None:
         at = buff.cursor_position
         if mode == PasteMode.VI_AFTER and buff.document.current_line:
             at += 1
+        count = buff.document.line_count
         buff.paste_clipboard_data(data, count=event.arg, paste_mode=mode)
+        if data.type == SelectionType.LINES:
+            first = row + 1 if mode == PasteMode.VI_AFTER else row
+            _record_rows(buff, first, 0, buff.document.line_count - count)
         if data.type == SelectionType.CHARACTERS and "\n" in data.text:
             buff.cursor_position = at  # a multi-line put leaves the cursor at its start
         if data.type == SelectionType.LINES and data.text:
@@ -671,6 +691,7 @@ def _add_join(kb: KeyBindings) -> None:
         if row >= doc.line_count - 1:
             return
         lines, col = join_lines(doc.lines, row, max(count, 2), space)
+        _record_rows(buff, row + 1, doc.line_count - len(lines), 0)
         buff.document = Document("\n".join(lines), 0)
         _set_cursor(buff, row, col)
 

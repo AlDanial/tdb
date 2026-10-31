@@ -38,7 +38,7 @@ from prompt_toolkit.output import DummyOutput
 from prompt_toolkit.selection import SelectionType
 
 from tdb.vi.bindings import SEARCH_KEY, load_tdb_vi_bindings
-from tdb.vi.ex import ExError, LineWatch, run_ex, run_substitute
+from tdb.vi.ex import ExError, LineRecord, LineWatch, run_ex, run_substitute
 from tdb.vi.marks import JUMP, MAXCOL, MarkTable, adjust_pos, edit_rows
 from tdb.vi.search import ViPatternError, compile_pattern, find_nth, place
 from tdb.vi.substitute import (
@@ -410,6 +410,41 @@ class _ViBuffer(Buffer):
     """
 
     eol: bool = False
+    # While a ``:normal`` inside ``:g`` runs: the line changes of the key
+    # (see ``LineRecord``), or None for one nobody recorded.
+    line_record: list[LineRecord | None] | None = None
+
+    def record_rows(self, first: int, deleted: int, inserted: int) -> None:
+        """Note a linewise change: at row *first*, *deleted* lines went
+        and *inserted* new ones came."""
+        if self.line_record is not None:
+            self.line_record.append(("rows", first, deleted, inserted))
+
+    def insert_line_above(self, copy_margin: bool = True) -> None:
+        row = self.document.cursor_position_row
+        super().insert_line_above(copy_margin)
+        self.record_rows(row, 0, 1)
+
+    def insert_line_below(self, copy_margin: bool = True) -> None:
+        row = self.document.cursor_position_row
+        super().insert_line_below(copy_margin)
+        self.record_rows(row + 1, 0, 1)
+
+    def cut_selection(self) -> ClipboardData:
+        sel = self.selection_state
+        doc = self.document
+        count = doc.line_count
+        first = doc.cursor_position_row
+        if sel is not None:
+            other = doc.translate_index_to_position(sel.original_cursor_position)[0]
+            first = min(first, other)
+        data = super().cut_selection()
+        if sel is not None and sel.type == SelectionType.LINES:
+            if not self.text:
+                self.record_rows(0, count, 1)
+            else:
+                self.record_rows(first, count - self.document.line_count, 0)
+        return data
 
     def _state(self) -> tuple[str, int, bool]:
         return self.text, self.cursor_position, self.eol
@@ -522,7 +557,9 @@ class ViEngine:
         # Set by an ex command, whose changes already moved the marks.
         self._marks_adjusted = False
         # Told of each key's text change (``:normal`` inside ``:g``).
-        self._line_watch: LineWatch | None = None
+        # (watch, queue depth of the keys it watches)
+        self._line_watch: tuple[LineWatch, int] | None = None
+        self._queue_depth = 0
         # How many ``:normal`` commands are running inside each other.
         self._normal_depth = 0
         # The ``:s///c`` session being answered, or None.
@@ -589,6 +626,7 @@ class ViEngine:
     def _run_queue(self) -> None:
         """Process queued keys; `.` and ``@`` push their keys to the front."""
         replayed = 0
+        self._queue_depth += 1
         try:
             while self._queue:
                 key, replay = self._queue.popleft()
@@ -609,14 +647,46 @@ class ViEngine:
                 at = self.buffer.cursor_position if typing else None
                 self._marks_adjusted = False
                 row = self.cursor[0]
+                watch = self._watch_key()
                 self._dispatch(key)
                 if not self._marks_adjusted:
                     self._adjust_marks(text, at)
                 self._marks_adjusted = False
-                if self._line_watch is not None and self.buffer.text != text:
-                    self._line_watch(text.split("\n"), row, self.cursor[0])
+                self._watched_key(watch, text, row)
         finally:
             self.is_replaying = False
+            self._queue_depth -= 1
+
+    def _watch_key(
+        self,
+    ) -> tuple[LineWatch | None, list[LineRecord | None], int, int] | None:
+        """Before a key: start its record of line changes, if watched.
+
+        Only keys of the watched ``:normal`` are reported; keys they run
+        in turn (a ``:normal`` inside) add their records to theirs.
+        """
+        buff = self.buffer
+        if self._line_watch is not None and self._line_watch[1] == self._queue_depth:
+            buff.line_record = []
+            return self._line_watch[0], buff.line_record, 0, buff.document.line_count
+        record = buff.line_record
+        if record is not None:
+            return None, record, len(record), buff.document.line_count
+        return None
+
+    def _watched_key(self, watch, text: str, row: int) -> None:
+        """After a key: a line count change no binding recorded spoils the
+        record; a watched key reports its change."""
+        if watch is None:
+            return
+        report, record, size, count = watch
+        if self.buffer.document.line_count != count and len(record) == size:
+            record.append(None)
+        if report is None:
+            return
+        self.buffer.line_record = None
+        if self.buffer.text != text:
+            report(text.split("\n"), row, self.cursor[0], record)
 
     def _replay(self, keys: list[ViKey]) -> None:
         """Run *keys* next, before anything already queued."""
@@ -1583,6 +1653,11 @@ class _ExHost:
         buff.save_to_undo_stack()
         if was_empty and new:
             buff.eol = True  # the empty buffer got lines
+        if buff.line_record is not None:
+            if row_map is None:
+                buff.line_record.append(None)
+            else:
+                buff.line_record.append(("map", list(row_map), max(len(lines), 1)))
         buff.set_document(Document(new, 0), bypass_readonly=True)
         e._move_to(*cursor)
         if row_map is None:
@@ -1624,7 +1699,9 @@ class _ExHost:
         e = self._e
         if row is not None:
             e._move_to(row, 0)
-        saved, e._line_watch = e._line_watch, watch or e._line_watch
+        saved = e._line_watch
+        if watch is not None:
+            e._line_watch = watch, e._queue_depth + 1
         try:
             e._run_keys(ViKey.parse(keys))
         finally:

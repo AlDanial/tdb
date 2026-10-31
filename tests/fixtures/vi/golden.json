@@ -1931,6 +1931,48 @@
   ],
   "text": "x\nx\n"
  },
+ "global-normal-3J": {
+  "cursor": [
+   3,
+   1
+  ],
+  "text": "x a x\nb\nc\nx d\n"
+ },
+ "global-normal-J-all": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "\na\n"
+ },
+ "global-normal-J-blanks": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "\n\n"
+ },
+ "global-normal-J-mixed": {
+  "cursor": [
+   5,
+   0
+  ],
+  "text": "a\n\nb\nc\n\nd\n"
+ },
+ "global-normal-J-x-or-blank": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "a\nx\nb\n"
+ },
+ "global-normal-VjJ": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "\nx\n\ny\n"
+ },
  "global-normal-append": {
   "cursor": [
    2,
@@ -1972,6 +2014,20 @@
    0
   ],
   "text": "\n"
+ },
+ "global-normal-gJ": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "x\nxy\n\nz\n"
+ },
+ "global-normal-jJ": {
+  "cursor": [
+   3,
+   1
+  ],
+  "text": "x\na x\nx\nb c\n"
  },
  "global-normal-jdd-2": {
   "cursor": [
