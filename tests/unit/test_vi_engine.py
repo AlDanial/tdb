@@ -1546,6 +1546,37 @@ async def test_bar_with_operator_uses_screen_columns():
     assert e.text == "oo bar\n"
 
 
+@pytest.mark.parametrize(
+    ("text", "cursor", "keys", "tabstop", "expected"),
+    [
+        ("ab\ncd\nef\n", (1, 0), "d1|", 8, "ab\ncd\nef\n"),
+        ("ab\ncd\nef\n", (0, 1), "d2|", 8, "ab\ncd\nef\n"),
+        ("a\tb\n", (0, 1), "d5|", 8, "a\tb\n"),
+        ("a\tb\n", (0, 1), "d3|", 4, "a\tb\n"),
+        ("a\tb\n", (0, 1), "d2|", 4, "a\tb\n"),
+        ("x\n漢字\n", (1, 1), "d4|", 8, "x\n漢字\n"),
+        ("ab\ncd\nef\n", (1, 0), "c1|Q<Esc>", 8, "ab\nQcd\nef\n"),
+        ("ab\ncd\nef\n", (1, 0), "gU1|", 8, "ab\ncd\nef\n"),
+        ("\tab\ncd\n", (0, 0), "d8|", 8, "\tab\ncd\n"),
+    ],
+)
+async def test_bar_over_an_empty_region_changes_nothing(
+    text, cursor, keys, tabstop, expected
+):
+    """``N|`` onto the cursor's own character (any N inside a tab's span
+    is the tab) is an empty region: no operator changes anything."""
+    e = ViEngine(text, cursor=cursor, tabstop=tabstop)
+    e.feed_keys(keys)
+    assert e.text == expected
+
+
+async def test_bar_onto_the_cursor_yanks_nothing():
+    e = ViEngine("ab\n\tcd\n", cursor=(0, 0), tabstop=4)
+    e.feed_keys("ylj0y3|")  # 3| is inside the tab: the cursor's character
+    assert e.session.clipboard.get_data().text == ""  # an empty yank (as nvim)
+    assert e.text == "ab\n\tcd\n"
+
+
 # ---------------------------------------------------------------------------
 # An operator over an empty region changes nothing (prompt_toolkit's
 # TextObject.cut took the character, or line break, before the cursor), and

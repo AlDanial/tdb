@@ -619,7 +619,8 @@ def _add_nvim_cursor_fixes(kb: KeyBindings, engine: ViEngine) -> None:
         """``N|``: screen column N, as vim (a tab reaches to the next tab
         stop, a wide character takes two columns); past the end of the line
         the last character.  Exclusive, also for an operator (``d99|``
-        keeps the last character)."""
+        keeps the last character); onto the cursor's own character (any N
+        inside a tab's span) the region is empty (``_vim_region``)."""
         doc = event.current_buffer.document
         return TextObject(
             _screen_column_index(doc.current_line, event.arg - 1, engine.tabstop)
