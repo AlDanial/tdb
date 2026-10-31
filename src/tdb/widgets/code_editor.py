@@ -520,6 +520,7 @@ class ViLayer:
             marks=marks,
             viewport=editor,
             indent_unit=indent,
+            tabstop=editor.indent_width,  # TextArea draws tabs this wide
         )
         self._text = body  # engine text as last mirrored into the TextArea
         self._clean = body  # engine text when last loaded or saved

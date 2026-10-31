@@ -606,6 +606,7 @@ class ViEngine:
         marks: MarkTable | None = None,
         viewport: Viewport | None = None,
         indent_unit: str = "    ",
+        tabstop: int = 8,
         _extra_bindings: KeyBindings | None = None,
     ) -> None:
         self.session = session if session is not None else ViSession()
@@ -614,6 +615,9 @@ class ViEngine:
             self.marks.set(JUMP, (0, 0))  # vim: the file was entered at its top
         self.viewport = viewport
         self.indent_unit = indent_unit
+        # Screen columns a tab reaches to the next multiple of (``N|``);
+        # the editor passes the width its TextArea draws tabs with.
+        self.tabstop = max(tabstop, 1)
         self._events: list[EngineEvent] = []
         self._pending_keys: list[ViKey] = []
         # True while keys from `.` or a macro are being processed.

@@ -665,3 +665,13 @@ async def test_paste_while_search_line_is_open_goes_to_the_line():
         assert ed.command_text == "/five"
         await _send(pilot, "enter", "\r")
         assert ed.cursor_location == (1, 7)
+
+
+async def test_bar_motion_uses_the_textarea_tab_width():
+    app = _EdApp("\tx = 1\n")
+    async with app.run_test() as pilot:
+        ed = app.ed
+        assert ed.indent_width == 4
+        await _send(pilot, "5", "5")
+        await _send(pilot, "|", "|")
+        assert ed.cursor_location == (0, 1)  # x is drawn at screen column 4

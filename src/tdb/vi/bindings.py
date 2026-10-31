@@ -65,6 +65,7 @@ from prompt_toolkit.key_binding.bindings.vi import (
 from prompt_toolkit.key_binding.vi_state import CharacterFind, InputMode
 from prompt_toolkit.keys import Keys
 from prompt_toolkit.selection import PasteMode, SelectionState, SelectionType
+from prompt_toolkit.utils import get_cwidth
 
 from tdb.vi.marks import NAMES as MARK_NAMES
 from tdb.vi.search import ViPatternError, compile_pattern, find_nth, place, word_pattern
@@ -541,6 +542,18 @@ def _add_nvim_cursor_fixes(kb: KeyBindings, engine: ViEngine) -> None:
         target = doc.translate_row_col_to_index(row, col)
         return TextObject(target - doc.cursor_position, type=TextObjectType.LINEWISE)
 
+    @text_object("|")
+    def _to_screen_column(event: KeyPressEvent) -> TextObject:
+        """``N|``: screen column N, as vim (a tab reaches to the next tab
+        stop, a wide character takes two columns); past the end of the line
+        the last character.  Exclusive, also for an operator (``d99|``
+        keeps the last character)."""
+        doc = event.current_buffer.document
+        return TextObject(
+            _screen_column_index(doc.current_line, event.arg - 1, engine.tabstop)
+            - doc.cursor_position_col
+        )
+
     @text_object("G")
     def _goto_last(event: KeyPressEvent) -> TextObject:
         doc = event.current_buffer.document
@@ -609,6 +622,17 @@ def _add_nvim_cursor_fixes(kb: KeyBindings, engine: ViEngine) -> None:
             return None
         offset = doc.get_cursor_up_position(count=event.arg)
         return TextObject(offset, type=TextObjectType.LINEWISE)
+
+
+def _screen_column_index(line: str, column: int, tabstop: int) -> int:
+    """The index of the character of *line* drawn at screen *column*
+    (0-based), or of the last one when the line is shorter."""
+    x = 0
+    for i, ch in enumerate(line):
+        x += tabstop - x % tabstop if ch == "\t" else max(get_cwidth(ch), 0)
+        if x > column:
+            return i
+    return max(len(line) - 1, 0)
 
 
 class _EmptyTextObject(TextObject):

@@ -3744,6 +3744,83 @@
   ],
   "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
  },
+ "pipe-c-past-end": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "aXf\n"
+ },
+ "pipe-d-past-end": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "f\n"
+ },
+ "pipe-empty-line": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "\nab\n"
+ },
+ "pipe-tab-after": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "a\t\n"
+ },
+ "pipe-tab-d-backward": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "r\n"
+ },
+ "pipe-tab-d-forward": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": " bar\n"
+ },
+ "pipe-tab-indent": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "\t = 1\n"
+ },
+ "pipe-tab-inside": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "ab\n"
+ },
+ "pipe-tab-last-cell": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "ab\n"
+ },
+ "pipe-tab-visual": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "cd\n"
+ },
+ "pipe-tab-y": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "\ta\tab\tcd\n"
+ },
  "r": {
   "cursor": [
    0,

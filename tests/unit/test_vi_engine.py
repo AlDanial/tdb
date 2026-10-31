@@ -1515,3 +1515,32 @@ async def test_paste_cancels_a_pending_operator():
     assert not e.has_pending
     e.feed_keys("w")
     assert e.text == "XYone two\n"
+
+
+# ---------------------------------------------------------------------------
+# N| is a screen column: tabs reach the next tab stop (the editor passes the
+# width its TextArea draws them with), wide characters take two columns.
+
+
+@pytest.mark.parametrize(
+    ("text", "keys", "tabstop", "cursor"),
+    [
+        ("\tx\n", "5|", 4, (0, 1)),
+        ("\tx\n", "4|", 4, (0, 0)),
+        ("\tx\n", "5|", 8, (0, 0)),
+        ("a\t\tb\n", "9|", 4, (0, 3)),
+        ("漢字x\n", "5|", 8, (0, 2)),
+        ("漢字x\n", "2|", 8, (0, 0)),
+        ("漢字x\n", "3|", 8, (0, 1)),
+    ],
+)
+async def test_bar_counts_screen_columns(text, keys, tabstop, cursor):
+    e = ViEngine(text, tabstop=tabstop)
+    e.feed_keys(keys)
+    assert e.cursor == cursor
+
+
+async def test_bar_with_operator_uses_screen_columns():
+    e = ViEngine("\t\tfoo bar\n", tabstop=4)
+    e.feed_keys("d10|")  # screen column 9 (0-based): the first o
+    assert e.text == "oo bar\n"

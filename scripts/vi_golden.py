@@ -26,7 +26,7 @@ TIMEOUT = 10
 LUA = r"""
 vim.cmd('mapclear | mapclear!')
 vim.cmd('set shortmess+=I cmdheight=10 nomore')
-vim.cmd('set sw=4 sts=4 et ai nojoinspaces nrformats=bin,hex nostartofline')
+vim.cmd('set sw=4 sts=4 ts=8 et ai nojoinspaces nrformats=bin,hex nostartofline')
 vim.fn.cursor(tonumber(os.getenv('TDB_ROW')) + 1, tonumber(os.getenv('TDB_COL')) + 1)
 local keys = vim.api.nvim_replace_termcodes(os.getenv('TDB_KEYS'), true, false, true)
 pcall(vim.fn.feedkeys, keys, 'xt')

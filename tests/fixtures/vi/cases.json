@@ -8821,5 +8821,104 @@
    0
   ],
   "keys": "lxulx<C-r>"
+ },
+ {
+  "id": "pipe-tab-inside",
+  "text": "a\tb\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3|x"
+ },
+ {
+  "id": "pipe-tab-last-cell",
+  "text": "a\tb\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "8|x"
+ },
+ {
+  "id": "pipe-tab-after",
+  "text": "a\tb\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "9|x"
+ },
+ {
+  "id": "pipe-tab-indent",
+  "text": "\tx = 1\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "9|x"
+ },
+ {
+  "id": "pipe-tab-d-forward",
+  "text": "\t\tfoo bar\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "d20|"
+ },
+ {
+  "id": "pipe-tab-d-backward",
+  "text": "\t\tfoo bar\n",
+  "cursor": [
+   0,
+   8
+  ],
+  "keys": "d5|"
+ },
+ {
+  "id": "pipe-tab-visual",
+  "text": "ab\tcd\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "v5|d"
+ },
+ {
+  "id": "pipe-tab-y",
+  "text": "\tab\tcd\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "y10|P"
+ },
+ {
+  "id": "pipe-d-past-end",
+  "text": "abcdef\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "d99|"
+ },
+ {
+  "id": "pipe-c-past-end",
+  "text": "abcdef\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "c99|X<Esc>"
+ },
+ {
+  "id": "pipe-empty-line",
+  "text": "\nab\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "5|x"
  }
 ]

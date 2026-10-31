@@ -17,7 +17,10 @@ linewise visual (`V`). `gv` reselects the last visual area.
 `% { }`, `+ -`, `_` (without a count or operator), `gj gk`, `H M L`,
 `PageUp` / `PageDown`, and `'a` / `` `a `` / `''` / ` `` ` mark jumps. A
 count prefix works on all of them except `_`. `H M L` and `PageUp` /
-`PageDown` need a rendered editor (they act on the visible window).
+`PageDown` need a rendered editor (they act on the visible window). `N|`
+goes to screen column N as drawn: a tab reaches the editor's next tab stop
+(every 4 columns, where vim's default `tabstop` is 8) and a wide character
+takes two columns.
 
 **Operators.** `d c y > < g~ gu gU`, doubled for lines (`dd`, `cc`, `yy`,
 `>>`, `gUU`), with any motion or text object, and with counts (`d3w`,
