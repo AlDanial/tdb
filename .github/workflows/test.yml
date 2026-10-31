@@ -31,3 +31,29 @@ jobs:
         run: |
           docker run --rm --cap-add=SYS_PTRACE --security-opt seccomp=unconfined \
             tdb-test uv run pytest
+
+  windows-vi:
+    # The vi engine is pure Python and must work on Windows; the golden
+    # tests read only the committed golden.json (no nvim needed).
+    name: Vim Edit mode tests on Windows
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Run vi tests
+        run: >
+          uv run pytest
+          tests/unit/test_vi_engine.py
+          tests/unit/test_vi_textedit.py
+          tests/unit/test_vi_compat.py
+          tests/unit/test_vi_marks.py
+          tests/unit/test_vi_search.py
+          tests/unit/test_vi_ex.py
+          tests/unit/test_vi_substitute.py
+          tests/unit/test_vi_global.py
+          tests/unit/test_code_editor_vim.py

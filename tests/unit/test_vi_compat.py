@@ -32,3 +32,8 @@ def test_every_case_has_golden_entry():
     ids = [c["id"] for c in CASES]
     assert len(ids) == len(set(ids)), "duplicate case ids"
     assert set(ids) == set(GOLDEN), "cases.json and golden.json out of sync"
+
+
+def test_vi_compat_has_no_todo_differences():
+    todo = [c["id"] for c in CASES if c.get("difference", "").startswith("TODO")]
+    assert todo == []

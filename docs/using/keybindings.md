@@ -67,7 +67,7 @@ are unsaved changes. Editing keys follow the keybinding scheme:
 
 | Scheme | Editing style | Save | Leave Edit mode |
 |--------|---------------|------|-----------------|
-| `vim` | vim-lite: normal / insert modes, counts, `h j k l w b e 0 ^ $ gg G`, `x dd dw D yy p P u Ctrl+R J`, `i a I A o O`, `/ ? n N` | `:w` or `Ctrl+S` | `Esc` (from normal mode), `:q`, `:wq`, `:q!` |
+| `vim` | full vi via prompt_toolkit (operators, text objects, registers, macros, marks, `:s` `:g`) - see [Vim Edit Mode](vim-edit-mode.md) | `:w` or `Ctrl+S` | `Esc` (from normal mode), `:q`, `:wq`, `:q!` |
 | `emacs` | `Ctrl+N/P/F/B`, `Alt+F/B`, `Ctrl+A/E`, `Ctrl+K` / `Ctrl+Y`, `Ctrl+_` undo, `Ctrl+S` / `Ctrl+R` search | `Ctrl+X Ctrl+S` | `Esc` or `Ctrl+X Ctrl+C` |
 | `default` (Notepad-style) | arrows, Home/End, PgUp/PgDn, Delete/Backspace, Shift+arrows to select, `Ctrl+Z`/`Ctrl+Y`, `Ctrl+X`/`Ctrl+C`/`Ctrl+V` | `Ctrl+S` | `Esc` |
 
