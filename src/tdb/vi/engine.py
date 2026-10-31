@@ -470,6 +470,8 @@ class ViEngine:
         # typed before it (prompt_toolkit's raw ``arg``).
         self._search_from = 0
         self._search_arg: str | None = None
+        # Index in ``_change`` where the search line's keys begin.
+        self._search_change_at: int | None = None
         # The last Visual selection as (anchor, cursor, linewise), for `gv`.
         self._last_visual_raw: tuple[tuple[int, int], tuple[int, int], bool] | None = (
             None
@@ -954,6 +956,10 @@ class ViEngine:
         self._history_pos = None
         self._search_from = self.buffer.cursor_position
         self._search_arg = arg
+        change = self._change
+        self._search_change_at = (
+            len(change) if kind != ":" and change is not None else None
+        )
 
     def _history(self) -> list[str]:
         if self._line_kind == ":":
@@ -987,6 +993,11 @@ class ViEngine:
         elif name in ("up", "down"):
             self._recall(older=name == "up")
         elif name == "enter":
+            at = self._search_change_at
+            if searching and self._change is not None and at is not None:
+                # `.` repeats the pattern as accepted, not the editing keys
+                # (<Up>, <BS>...) that produced it; a macro keeps those.
+                self._change[at:] = [ViKey(c) for c in line] + [key]
             self._remember(self._history(), line)
             self._close_line()
             if searching:

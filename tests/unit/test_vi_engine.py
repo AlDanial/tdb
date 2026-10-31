@@ -848,9 +848,17 @@ async def test_star_uses_next_word_on_line_and_is_operator_target():
     e = ViEngine("foo bar foo\n")
     e.feed_keys("d*")
     assert e.text == "foo\n"
-    e = ViEngine("  ..  \n")
-    e.feed_keys("*")
+    e = ViEngine("  ..  \nx .. y\n")
+    e.feed_keys("*")  # no keyword: the non-blank run, searched literally
+    assert e.cursor == (1, 2)
+    assert e.session.last_search == (r"\.\.", False)
+    e = ViEngine("q ab.. ..\nab.. ..\n", cursor=(0, 4))
+    e.feed_keys("*")  # the run is the non-keyword characters only (nvim)
+    assert e.cursor == (0, 7)
+    e = ViEngine("  ..  \n", cursor=(0, 4))
+    e.feed_keys("*")  # only blanks left on the line
     assert notices(e) == [("No string under cursor", "error")]
+    assert e.cursor == (0, 4)
 
 
 async def test_last_search_shared_via_session():
@@ -904,3 +912,21 @@ async def test_ex_line_history_up_down():
     e.feed_keys("<CR>")
     assert e.cursor == (1, 0)
     assert s.ex_history == ["3", "2"]
+
+
+async def test_dot_repeats_the_accepted_search_pattern():
+    e = ViEngine("a x b y c x d y\n")
+    e.feed_keys("/x<CR>0")
+    e.feed_keys("d/<Up><CR>")  # recalls x
+    assert e.text == "x b y c x d y\n"
+    e.feed_keys("/y<CR>")  # the history now ends with y
+    e.feed_keys(".")
+    assert e.text == "x b x d y\n"  # d/x again, not d/y
+    assert e.session.last_change == ViKey.parse("d/x<CR>")
+
+
+async def test_macro_keeps_raw_search_line_keys():
+    e = ViEngine("a x b y c x d y\n")
+    e.feed_keys("/x<CR>0")
+    e.feed_keys("qqd/<Up><CR>q")
+    assert e.session.vi_state.named_registers["q"].text == "d/\x80ku\r"

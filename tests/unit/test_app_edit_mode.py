@@ -75,6 +75,8 @@ async def test_mode_label_vi_submodes(tmp_path):
             (("V",), "Edit:V-LINE"),
             (("escape", "2", "d"), "Edit 2d"),
             (("escape", ":", "w", "q"), "Edit :wq"),
+            (("escape", "slash", "x"), "Edit /x"),
+            (("escape", "question_mark"), "Edit ?"),
             (("escape", "x"), "Edit*"),
             (("R",), "Edit:REPLACE*"),
             (("escape", "v"), "Edit:VISUAL*"),

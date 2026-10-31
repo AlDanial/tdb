@@ -2925,6 +2925,13 @@
   ],
   "text": "ffoo\n"
  },
+ "search-d-star-nonblank": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "a b } c\n"
+ },
  "search-d-undo": {
   "cursor": [
    1,
@@ -2952,6 +2959,13 @@
    17
   ],
   "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-dot-resolved-pattern": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "x b x d y\n"
  },
  "search-empty-buffer": {
   "cursor": [
@@ -3022,6 +3036,27 @@
    0
   ],
   "text": "foo bar foo x foo\n"
+ },
+ "search-hash-nonblank": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "x } y\n  }  \n"
+ },
+ "search-hash-nonblank-class": {
+  "cursor": [
+   1,
+   5
+  ],
+  "text": "q ab.. ..\nab.. ..\n"
+ },
+ "search-hash-nonblank-n": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "} x } y }\n"
  },
  "search-jump-backtick": {
   "cursor": [
@@ -3170,6 +3205,13 @@
   ],
   "text": "  foo bar foo\n"
  },
+ "search-star-blank-rest": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "  ..  \n"
+ },
  "search-star-count": {
   "cursor": [
    0,
@@ -3183,6 +3225,13 @@
    6
   ],
   "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-star-keyword-after-wins": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "a .. b ..\n"
  },
  "search-star-metachar": {
   "cursor": [
@@ -3204,6 +3253,41 @@
    6
   ],
   "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-star-nonblank": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "  }  \nx } y\n"
+ },
+ "search-star-nonblank-class": {
+  "cursor": [
+   0,
+   7
+  ],
+  "text": "q ab.. ..\nab.. ..\n"
+ },
+ "search-star-nonblank-dots": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "  ..  \nx .. y\n"
+ },
+ "search-star-nonblank-n": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "  }  \nx } y\n"
+ },
+ "search-star-nonblank-run": {
+  "cursor": [
+   0,
+   7
+  ],
+  "text": "x }} } }}\n"
  },
  "search-star-only": {
   "cursor": [

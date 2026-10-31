@@ -6109,5 +6109,113 @@
    0
   ],
   "keys": "/c<CR>"
+ },
+ {
+  "id": "search-star-nonblank",
+  "text": "  }  \nx } y\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "*"
+ },
+ {
+  "id": "search-star-nonblank-n",
+  "text": "  }  \nx } y\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "*n"
+ },
+ {
+  "id": "search-star-nonblank-dots",
+  "text": "  ..  \nx .. y\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "*"
+ },
+ {
+  "id": "search-hash-nonblank",
+  "text": "x } y\n  }  \n",
+  "cursor": [
+   1,
+   2
+  ],
+  "keys": "#"
+ },
+ {
+  "id": "search-hash-nonblank-n",
+  "text": "} x } y }\n",
+  "cursor": [
+   0,
+   8
+  ],
+  "keys": "#n"
+ },
+ {
+  "id": "search-star-keyword-after-wins",
+  "text": "a .. b ..\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "*"
+ },
+ {
+  "id": "search-star-nonblank-class",
+  "text": "q ab.. ..\nab.. ..\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "*"
+ },
+ {
+  "id": "search-hash-nonblank-class",
+  "text": "q ab.. ..\nab.. ..\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "#"
+ },
+ {
+  "id": "search-star-nonblank-run",
+  "text": "x }} } }}\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "*"
+ },
+ {
+  "id": "search-star-blank-rest",
+  "text": "  ..  \n",
+  "cursor": [
+   0,
+   5
+  ],
+  "keys": "*"
+ },
+ {
+  "id": "search-d-star-nonblank",
+  "text": "a } b } c\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "d*"
+ },
+ {
+  "id": "search-dot-resolved-pattern",
+  "text": "a x b y c x d y\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "/x<CR>0d/<Up><CR>/y<CR>."
  }
 ]

@@ -1252,19 +1252,29 @@ def _add_search(kb: KeyBindings, engine: ViEngine) -> None:
         return target
 
     def word(backward: bool):
-        """``*`` / ``#``: the keyword under or after the cursor, as a word."""
+        """``*`` / ``#``: the word under or after the cursor.
+
+        As vim: the keyword under or after the cursor (searched as a whole
+        word), else the run of non-blank, non-keyword characters under or
+        after it (searched literally, as vim's ``\\.\\.``).
+        """
+
+        def first_after(regex: str, line: str, col: int) -> re.Match | None:
+            return next((m for m in re.finditer(regex, line) if m.end() > col), None)
 
         def target(event: KeyPressEvent) -> TextObject | None:
             doc = event.current_buffer.document
             col = doc.cursor_position_col
-            m = next(
-                (m for m in re.finditer(r"\w+", doc.current_line) if m.end() > col),
-                None,
-            )
-            if m is None:
-                notify("No string under cursor", "error")
-                return None
-            pattern = word_pattern(m.group())
+            line = doc.current_line
+            m = first_after(r"\w+", line, col)
+            if m is not None:
+                pattern = word_pattern(m.group())
+            else:
+                m = first_after(r"[^\w\s]+", line, col)
+                if m is None:
+                    notify("No string under cursor", "error")
+                    return None
+                pattern = re.escape(m.group())
             engine.session.last_search = (pattern, backward)
             engine._remember_search(pattern)
             # From the word's start, so the word itself is skipped.
