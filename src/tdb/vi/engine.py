@@ -1292,10 +1292,10 @@ class ViEngine:
         """Where match *index* of the session is in the current text."""
         c = self._confirm
         assert c is not None
-        row, start, _ = c.matches[index]
+        match = c.matches[index]
         if c.done is None:
-            return row, start
-        return c.done.positions[(row, start)]
+            return match[0], match[1]
+        return c.done.positions[match]
 
     def _confirm_goto(self) -> None:
         assert self._confirm is not None
@@ -1358,6 +1358,12 @@ class ViEngine:
         if len(c.accepted) > 2:
             rows = {r for r, _, _ in c.accepted}
             self._events.append(Notify(count_message(len(c.accepted), len(rows))))
+
+    def _end_confirm_outside(self) -> None:
+        """A change from outside the keys (revert, paste, click) ends an
+        open ``:s///c`` session first, keeping what it replaced so far."""
+        if self._confirm is not None:
+            self._end_confirm(self.cursor)
 
     def substitute_again(self, count: int | None, *, every_line: bool) -> None:
         """Normal-mode ``&`` (the last ``:s`` on *count* lines, without its
@@ -1475,6 +1481,7 @@ class ViEngine:
 
     def set_cursor(self, row: int, col: int) -> None:
         """Move the cursor (clamped), leaving visual mode."""
+        self._end_confirm_outside()
         if self.buffer.selection_state is not None:
             self.last_visual_raw = self._visual_state()
         self.buffer.exit_selection()
@@ -1482,6 +1489,7 @@ class ViEngine:
 
     def select(self, start: tuple[int, int], end: tuple[int, int]) -> None:
         """Select characterwise from *start* to *end* (inclusive); enters visual."""
+        self._end_confirm_outside()
         self.buffer.exit_selection()
         self.app.vi_state.input_mode = InputMode.NAVIGATION
         self._move_to(*start)
@@ -1490,6 +1498,7 @@ class ViEngine:
 
     def insert_text(self, text: str) -> None:
         """Insert *text* at the cursor as one undo step; mode is unchanged."""
+        self._end_confirm_outside()
         old, at = self.buffer.text, self.buffer.cursor_position
         self.buffer.save_to_undo_stack()
         self.buffer.insert_text(text)
@@ -1499,6 +1508,7 @@ class ViEngine:
 
     def reset_text(self, text: str) -> None:
         """Replace the whole buffer (undoable), keeping the cursor row/col."""
+        self._end_confirm_outside()
         row, col = self.cursor
         old = self.buffer.text
         self.buffer.exit_selection()

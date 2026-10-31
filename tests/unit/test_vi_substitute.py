@@ -157,8 +157,35 @@ def test_rebuild_with_some_matches_accepted():
     assert (done.substitutions, done.lines_changed, done.last_row) == (2, 2, 4)
     # Where each match (accepted or not) now begins, and where an
     # accepted one's line now ends.
-    assert done.positions[(2, 3)] == (4, 2)
-    assert done.positions[(2, 1)] == (3, 1)
-    assert done.positions[(0, 1)] == (0, 1)
+    assert done.positions[(2, 3, 4)] == (4, 2)
+    assert done.positions[(2, 1, 2)] == (3, 1)
+    assert done.positions[(0, 1, 2)] == (0, 1)
     assert done.end_row(2) == 4
     assert done.end_row(1) == 2
+
+
+def test_amp_flag_in_delimited_form_keeps_previous_flags():
+    last = SubstituteSpec("a", "b", "g")
+    assert parse_substitute("/x/y/&", last=last) == SubstituteSpec("x", "y", "g")
+    # vim: g after & toggles it off again; without a previous :s, no flags.
+    assert parse_substitute("/x/y/&g", last=last) == SubstituteSpec("x", "y", "gg")
+    assert parse_substitute("/x/y/&") == SubstituteSpec("x", "y", "")
+    spec = parse_substitute("/x/y/&", last=last)
+    assert apply_substitute(["xx"], 0, 0, spec)[0] == ["yy"]
+
+
+@pytest.mark.parametrize("args", ["/x/y/&&", "/x/y/g&", "&&", "g&"])
+def test_amp_flag_only_first_and_once(args):
+    with pytest.raises(SubstituteError, match="Trailing characters: &"):
+        parse_substitute(args, last=SubstituteSpec("a", "b", "g"))
+
+
+def test_rebuild_keeps_matches_with_the_same_start_apart():
+    # re.finditer(r"|a", "ab"): an empty match and "a", both at 0.
+    spec = parse_substitute("/|a/-/g")
+    matches = list(iter_matches(["ab"], 0, 0, spec))
+    assert matches[:2] == [(0, 0, 0), (0, 0, 1)]
+    done = rebuild(["ab"], 0, 0, spec, {(0, 0, 1)})
+    assert done.lines == ["-b"]
+    assert done.positions[(0, 0, 0)] == (0, 0)
+    assert done.positions[(0, 0, 1)] == (0, 0)

@@ -7776,5 +7776,32 @@
    3
   ],
   "keys": "qa:s/x/y/gc<CR>nyq:3<CR>@au"
+ },
+ {
+  "id": "subst-amp-flag-keeps-flags",
+  "text": "axx\nxx\nxx\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":s/a/b/g<CR>j:s/x/y/&<CR>"
+ },
+ {
+  "id": "subst-amp-flag-then-g",
+  "text": "axx\nxx\nxx\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":s/a/b/g<CR>j:s/x/y/&g<CR>"
+ },
+ {
+  "id": "subst-amp-flag-twice",
+  "text": "axx\nxx\nxx\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":s/a/b/g<CR>j:s/x/y/&&<CR>"
  }
 ]

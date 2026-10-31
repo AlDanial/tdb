@@ -474,7 +474,7 @@ def run_substitute(spec: SubstituteSpec, first: int, last: int, host: ExHost) ->
         return
     host.set_mark("'", (host.cursor_row(), host.cursor_col()))
     row = done.last_row
-    first_changed = min(r for r, _ in done.positions)
+    first_changed = min(r for r, _, _ in done.positions)
     host.replace_lines(
         done.lines,
         (row, _first_non_blank(done.lines[row])),

@@ -4031,6 +4031,27 @@
   ],
   "text": "  ay by\n  cc\n  yy y\n  dd\n"
  },
+ "subst-amp-flag-keeps-flags": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "bxx\nyy\nxx\n"
+ },
+ "subst-amp-flag-then-g": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "bxx\nyx\nxx\n"
+ },
+ "subst-amp-flag-twice": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "bxx\nxx\nxx\n"
+ },
  "subst-amp-flags": {
   "cursor": [
    2,

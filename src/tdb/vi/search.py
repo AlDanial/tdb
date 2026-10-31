@@ -20,10 +20,12 @@ class ViPatternError(ValueError):
     """An invalid search pattern; the message is ``re``'s."""
 
 
-def compile_pattern(pattern: str) -> re.Pattern:
-    """Compile *pattern* (Python ``re``, multiline, case-sensitive)."""
+def compile_pattern(pattern: str, *, ignore_case: bool = False) -> re.Pattern:
+    """Compile *pattern* (Python ``re``, multiline, case-sensitive unless
+    *ignore_case*)."""
+    flags = re.MULTILINE | (re.IGNORECASE if ignore_case else 0)
     try:
-        return re.compile(pattern, re.MULTILINE)
+        return re.compile(pattern, flags)
     except re.error as exc:
         raise ViPatternError(str(exc)) from None
 

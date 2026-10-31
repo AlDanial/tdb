@@ -109,6 +109,7 @@ class FakeHost:
         ("v/x/d", ExCommand(None, "vglobal", False, "/x/d")),
         ("s/a/b/", ExCommand(None, "substitute", False, "/a/b/")),
         ("&&", ExCommand(None, "&", False, "&")),
+        ("s   g", ExCommand(None, "substitute", False, "g")),
         ("ma", ExCommand(None, "ma", False, "")),
         ("x", ExCommand(None, "xit", False, "")),
     ],

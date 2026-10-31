@@ -9,7 +9,9 @@ a match never spans lines.  The replacement is a ``re.sub`` template:
 
 Flags: ``g`` all matches in a line (``gg`` turns it off again), ``i`` /
 ``I`` ignore / match case, ``c`` confirm each match, ``e`` no error when
-nothing matches, and a leading ``&`` keeps the previous flags.
+nothing matches.  A leading ``&`` (``:s/x/y/&``, ``:&&``) starts from the
+previous ``:s``'s flags; later flags are added to them (so ``&g`` turns a
+kept ``g`` off).
 """
 
 from __future__ import annotations
@@ -53,10 +55,8 @@ def parse_substitute(
     if not args.strip() or args[0].isalnum() or args[0] == "&":
         if last is None:
             raise SubstituteError("No previous regular expression")
-        flags = args.strip()
-        if flags.startswith("&"):
-            flags = last.flags + flags[1:]
-        return SubstituteSpec(last.pattern, last.replacement, _check_flags(flags))
+        flags = _resolve_flags(args.strip(), last)
+        return SubstituteSpec(last.pattern, last.replacement, flags)
     delim = args[0]
     if delim in ' \t\\"|':
         raise SubstituteError("Regular expressions can't be delimited by letters")
@@ -66,7 +66,8 @@ def parse_substitute(
         if not last_search:
             raise SubstituteError("No previous regular expression")
         pattern = last_search
-    return SubstituteSpec(pattern, replacement, _check_flags(args[i:].strip()))
+    flags = _resolve_flags(args[i:].strip(), last)
+    return SubstituteSpec(pattern, replacement, flags)
 
 
 def _field(args: str, i: int, delim: str, *, keep_escape: bool) -> tuple[str, int]:
@@ -90,11 +91,14 @@ def _field(args: str, i: int, delim: str, *, keep_escape: bool) -> tuple[str, in
     return "".join(out), i
 
 
-def _check_flags(flags: str) -> str:
-    bad = flags.lstrip("&")
-    for j, ch in enumerate(bad):
-        if ch not in _FLAGS:
-            raise SubstituteError(f"Trailing characters: {bad[j:]}")
+def _resolve_flags(flags: str, last: SubstituteSpec | None) -> str:
+    """*flags* as typed, a leading ``&`` replaced by *last*'s flags."""
+    rest = flags.removeprefix("&")
+    for j, ch in enumerate(rest):
+        if ch not in _FLAGS:  # also a second ``&``
+            raise SubstituteError(f"Trailing characters: {rest[j:]}")
+    if flags.startswith("&"):
+        return (last.flags if last is not None else "") + rest
     return flags
 
 
@@ -119,11 +123,9 @@ def quiet_flag(spec: SubstituteSpec) -> bool:
 
 def compile_spec(spec: SubstituteSpec) -> re.Pattern:
     """The compiled pattern (``i``: ignore case unless a later ``I``)."""
-    rx = compile_pattern(spec.pattern)  # raises ViPatternError
     flags = spec.flags
-    if "i" in flags and flags.rfind("i") > flags.rfind("I"):
-        rx = re.compile(spec.pattern, re.MULTILINE | re.IGNORECASE)
-    return rx
+    ignore = "i" in flags and flags.rfind("i") > flags.rfind("I")
+    return compile_pattern(spec.pattern, ignore_case=ignore)  # ViPatternError
 
 
 def _template(replacement: str) -> str:
@@ -181,8 +183,8 @@ class Rebuilt:
     lines_changed: int
     # New row of the last part of the last changed line (-1: no change).
     last_row: int
-    # (old row, match start) -> where that match now begins.
-    positions: dict[tuple[int, int], tuple[int, int]] = field(default_factory=dict)
+    # Each match ``(old row, start, end)`` -> where it now begins.
+    positions: dict[tuple[int, int, int], tuple[int, int]] = field(default_factory=dict)
 
     def end_row(self, row: int) -> int:
         """The new row of the last part of old line *row*."""
@@ -207,7 +209,7 @@ def rebuild(
     every = global_flag(spec)
     out: list[str] = list(lines[:first])
     row_map = list(range(first))
-    positions: dict[tuple[int, int], tuple[int, int]] = {}
+    positions: dict[tuple[int, int, int], tuple[int, int]] = {}
     subs = changed = 0
     last_row = -1
     for row in range(first, len(lines)):
@@ -223,11 +225,12 @@ def rebuild(
         for m in matches:
             parts.append(line[at : m.start()])
             built = "".join(parts)
-            positions[(row, m.start())] = (
+            match = (row, m.start(), m.end())
+            positions[match] = (
                 len(out) + built.count("\n"),
                 len(built) - built.rfind("\n") - 1,
             )
-            if accepted is None or (row, m.start(), m.end()) in accepted:
+            if accepted is None or match in accepted:
                 parts.append(m.expand(template))
                 hits += 1
             else:

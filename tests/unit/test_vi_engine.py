@@ -1303,3 +1303,43 @@ async def test_normal_ends_a_confirm_session():
     e = ViEngine("xx\n")
     e.feed_keys(":normal :s/x/y/gc<lt>CR>y<CR>")
     assert (e.text, e.mode) == ("yx\n", "normal")
+
+
+async def test_revert_during_confirm_ends_the_session():
+    e = ViEngine("ax\nbx\n")
+    e.feed_keys(":%s/x/y/c<CR>y")
+    assert (e.text, e.mode) == ("ay\nbx\n", "confirm")
+    e.reset_text("zz\nqq\n")  # Edit > Revert to Disk
+    assert (e.text, e.mode, e.status) == ("zz\nqq\n", "normal", "")
+    e.feed_keys("y<Esc>")  # a normal-mode y now, not an answer
+    assert e.text == "zz\nqq\n"
+    e.feed_keys("u")  # the revert is its own step
+    assert e.text == "ay\nbx\n"
+    e.feed_keys("u")  # then the confirm session
+    assert e.text == "ax\nbx\n"
+
+
+async def test_paste_during_confirm_ends_the_session():
+    e = ViEngine("ax\nbx\n")
+    e.feed_keys(":%s/x/y/c<CR>y")
+    e.insert_text("P")
+    assert (e.text, e.mode) == ("ay\nbPx\n", "normal")  # at the match
+    e.feed_keys("u")
+    assert e.text == "ay\nbx\n"
+
+
+async def test_click_during_confirm_ends_the_session():
+    e = ViEngine("ax\nbx\n")
+    e.feed_keys(":%s/x/y/c<CR>")
+    e.set_cursor(0, 0)
+    assert (e.mode, e.cursor) == ("normal", (0, 0))
+    e.feed_keys(":%s/x/y/c<CR>")
+    e.select((0, 0), (0, 1))
+    assert e.mode == "visual"
+    assert e.text == "ax\nbx\n"
+
+
+async def test_ex_args_arrive_left_stripped():
+    e = ViEngine("xx\nxx\n")
+    e.feed_keys(":s/x/y/<CR>j:s   g<CR>")
+    assert e.text == "yx\nyy\n"
