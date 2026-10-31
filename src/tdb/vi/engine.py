@@ -115,6 +115,10 @@ _REGISTER_CHAR_KEYS = {v: k for k, v in _REGISTER_CHARS.items()} | {"\n": "ctrl+
 # command fails, which prompt_toolkit does not report).
 _REPLAY_LIMIT = 100_000
 
+# ``:normal`` commands nested deeper than this fail (vim's E169), long
+# before Python's recursion limit.
+_NORMAL_DEPTH_LIMIT = 20
+
 # Keys that end the repeat of a counted insert (vim: the insert is broken).
 _CURSOR_KEYS = frozenset(
     {"up", "down", "left", "right", "home", "end", "pageup", "pagedown"}
@@ -488,6 +492,8 @@ class ViEngine:
         self._insert_repeat: tuple[str, int, int | None] | None = None
         # Set by an ex command, whose changes already moved the marks.
         self._marks_adjusted = False
+        # How many ``:normal`` commands are running inside each other.
+        self._normal_depth = 0
 
         body, eol = _split_eol(text)
         self.buffer = _ViBuffer(document=Document(body, 0), multiline=True)
@@ -1175,8 +1181,11 @@ class ViEngine:
 
         As vim's ``:normal``, an unfinished command is ended as by Esc.
         """
+        if self._normal_depth >= _NORMAL_DEPTH_LIMIT:
+            raise ExError("Command too recursive")
         queue, replaying = self._queue, self.is_replaying
         self._queue = deque((k, True) for k in keys)
+        self._normal_depth += 1
         try:
             self._run_queue()
             if self._cmdline is not None:
@@ -1190,6 +1199,7 @@ class ViEngine:
                 self._run_queue()
             self._register = None
         finally:
+            self._normal_depth -= 1
             self._queue, self.is_replaying = queue, replaying
 
     def drain_events(self) -> list[EngineEvent]:
@@ -1430,15 +1440,26 @@ class _ExHost:
 
     @contextmanager
     def undo_group(self) -> Iterator[None]:
-        """Everything the command changes is one undo step (redo cleared)."""
+        """Everything the command changes is one undo step (redo cleared).
+
+        A command whose keys undid older changes (``:normal u``) is left
+        as those undos made it, so ``<C-r>`` still redoes them.
+        """
         buff = self._e.buffer
-        mark, text, eol = len(buff._undo_stack), buff.text, buff.eol
+        before = list(buff._undo_stack)
+        mark, text, eol = len(before), buff.text, buff.eol
+        redo = list(buff._redo_stack)
         try:
             yield
         finally:
-            if (buff.text, buff.eol) != (text, eol):
-                self._e._group_undo(mark, text, eol)
-                buff._redo_stack = []
+            undo = buff._undo_stack
+            if len(undo) >= mark and undo[:mark] == before:
+                if (buff.text, buff.eol) != (text, eol):
+                    self._e._group_undo(mark, text, eol)
+                    buff._redo_stack = []
+                else:  # no net change: no undo step, the redo kept
+                    del undo[mark:]
+                    buff._redo_stack = redo
 
 
 def _first_changed_row(

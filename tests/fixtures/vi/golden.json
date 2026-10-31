@@ -1399,6 +1399,20 @@
   ],
   "text": "  a1x\n  b2x\n  c3\n  d4\n  e5\n"
  },
+ "ex-normal-noop-undo": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "a\nb\nc\n"
+ },
+ "ex-normal-noop-undo-twice": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "\nb\nc\n"
+ },
  "ex-normal-o": {
   "cursor": [
    2,
@@ -1419,6 +1433,27 @@
    0
   ],
   "text": "  a1\n b2\n c3\n d4\n  e5\n"
+ },
+ "ex-normal-u": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "a\nb\nc\n"
+ },
+ "ex-normal-u-redo": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "\nb\nc\n"
+ },
+ "ex-normal-u-then-u": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "a\nb\nc\n"
  },
  "ex-normal-undo": {
   "cursor": [
@@ -1664,6 +1699,13 @@
    2
   ],
   "text": "  a1\n  b\n  c3\n  d4\n  e5\n"
+ },
+ "ex-w-range-rejected": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "\nb\nc\n"
  },
  "ex-y-cursor": {
   "cursor": [

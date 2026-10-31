@@ -304,3 +304,14 @@ def test_unknown_command():
         run_ex(":2bogus", FakeHost())
     with pytest.raises(ExError, match="^Not an editor command: 3;4$"):
         run_ex("3;4", FakeHost())
+
+
+@pytest.mark.parametrize("line", ["1,3w", "%wq", "2x", "'a,'bw"])
+def test_write_with_a_range_is_refused(line):
+    host = FakeHost()
+    host.marks = {"a": (0, 0), "b": (1, 0)}
+    with pytest.raises(ExError, match="^Use ! to write partial buffer$"):
+        run_ex(line, host)
+    with pytest.raises(ExError, match="^Writing part of the buffer is not supported$"):
+        run_ex(line + "!", host)
+    assert host.events == []

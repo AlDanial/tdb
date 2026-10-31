@@ -7028,5 +7028,60 @@
    3
   ],
   "keys": ":5t1<CR>u"
+ },
+ {
+  "id": "ex-normal-noop-undo",
+  "text": "a\nb\nc\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":normal ddP<CR>u"
+ },
+ {
+  "id": "ex-normal-noop-undo-twice",
+  "text": "a\nb\nc\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "x:normal ddP<CR>u",
+  "difference": "nvim keeps an undo step for a :normal that changes nothing (u then does nothing visible); the engine adds no step, so u undoes the change before it"
+ },
+ {
+  "id": "ex-normal-u",
+  "text": "a\nb\nc\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "x:normal u<CR>"
+ },
+ {
+  "id": "ex-normal-u-redo",
+  "text": "a\nb\nc\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "x:normal u<CR><C-r>"
+ },
+ {
+  "id": "ex-normal-u-then-u",
+  "text": "a\nb\nc\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "xjx:normal u<CR>u"
+ },
+ {
+  "id": "ex-w-range-rejected",
+  "text": "a\nb\nc\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":1,2w<CR>x"
  }
 ]

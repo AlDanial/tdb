@@ -375,8 +375,17 @@ def _no_args(cmd: ExCommand) -> None:
         raise ExError(f"Trailing characters: {cmd.args}")
 
 
+def _whole_buffer(cmd: ExCommand) -> None:
+    """``:w`` and friends write the whole buffer; a range is refused."""
+    if cmd.range is not None:
+        if cmd.bang:
+            raise ExError("Writing part of the buffer is not supported")
+        raise ExError("Use ! to write partial buffer")
+
+
 def _write(cmd: ExCommand, host: ExHost) -> None:
     _no_args(cmd)
+    _whole_buffer(cmd)
     host.save()
 
 
@@ -387,6 +396,7 @@ def _quit(cmd: ExCommand, host: ExHost) -> None:
 
 def _write_quit(cmd: ExCommand, host: ExHost) -> None:
     _no_args(cmd)
+    _whole_buffer(cmd)
     host.save()
     host.leave(False)
 

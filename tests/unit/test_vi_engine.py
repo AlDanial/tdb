@@ -1072,3 +1072,38 @@ async def test_ex_goto_and_jump_mark():
     assert e.cursor == (2, 0) and e.marks.get("'") == (0, 0)
     e.feed_keys("''")
     assert e.cursor == (0, 0)
+
+
+async def test_normal_with_no_net_change_leaves_undo_intact():
+    e = ViEngine("a\nb\nc\n")
+    e.feed_keys(":normal ddP<CR>")
+    assert e.text == "a\nb\nc\n"
+    e.feed_keys("u")
+    assert e.text == "a\nb\nc\n"
+    e.feed_keys("x:normal ddP<CR>")
+    assert e.buffer._redo_stack == []
+    e.feed_keys("u")
+    assert e.text == "a\nb\nc\n"
+    e.feed_keys("<C-r>")  # the redo survived the no-op command
+    assert e.text == "\nb\nc\n"
+
+
+async def test_normal_u_keeps_the_redo():
+    e = ViEngine("a\nb\nc\n")
+    e.feed_keys("x:normal u<CR>")
+    assert e.text == "a\nb\nc\n"
+    e.feed_keys("<C-r>")
+    assert e.text == "\nb\nc\n"
+    e.feed_keys("jx:normal u<CR>u")
+    assert e.text == "a\nb\nc\n"
+
+
+async def test_recursive_normal_fails_cleanly(caplog):
+    e = ViEngine("a\nb\n")
+    e.feed_keys("qq:normal @q<CR>q")
+    e.drain_events()
+    with caplog.at_level("DEBUG"):
+        e.feed_keys("@q")
+    assert e.drain_events() == [Notify("Command too recursive", "error")]
+    assert caplog.records == []  # no traceback logged
+    assert (e.text, e.mode) == ("a\nb\n", "normal")
