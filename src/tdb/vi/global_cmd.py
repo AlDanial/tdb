@@ -130,13 +130,25 @@ class _Scope:
         self.tally = SubstituteTally()
         self._lines = host.lines()
         self._base = len(self._lines)  # rows at the last flush
-        self._origin = list(range(self._base))
+        self._origin_rows: list[int] | None = None  # None: each its own row
         self._dirty = False
         self._undo_cursor: tuple[int, int] | None = None
         self._cursor = host.cursor_row(), host.cursor_col()
         # The column vim's ``:m`` / ``:t`` keep (the wanted column).
         self._want = self._cursor[1]
         self.moved = False
+
+    @property
+    def _origin(self) -> list[int]:
+        """Each row's row at the last flush (-1: made since); built only
+        when a command here needs it (a run of :normal keys does not)."""
+        if self._origin_rows is None:
+            self._origin_rows = list(range(self._base))
+        return self._origin_rows
+
+    @_origin.setter
+    def _origin(self, rows: list[int]) -> None:
+        self._origin_rows = rows
 
     def next_marked(self) -> bool:
         """Unmark the first marked line and start a run on it (False: none)."""
@@ -179,7 +191,7 @@ class _Scope:
         """Take the host's text as the new starting point."""
         self._lines = self._host.lines()
         self._base = len(self._lines)
-        self._origin = list(range(self._base))
+        self._origin_rows = None
         self._dirty = False
         self._undo_cursor = None
 
@@ -265,6 +277,8 @@ class _Scope:
         """A key of a ``:normal`` changed the text: the marks follow, by
         what the code that changed it recorded, else by the text."""
         new = self._host.lines()
+        if not record and len(old) == len(new):
+            return  # no line came or went: each mark stays on its row
         marked = _replay(self._marked, record, before)
         if marked is None or len(marked) != len(new):
             change = _text_change(self._marked, old, new, before, before, after)

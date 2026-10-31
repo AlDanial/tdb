@@ -55,7 +55,7 @@ from tdb.vi.substitute import (
     iter_matches,
     rebuild,
 )
-from tdb.vi.textedit import diff_text
+from tdb.vi.textedit import diff_text, remember_insert
 
 log = logging.getLogger(__name__)
 
@@ -416,11 +416,62 @@ class _Registers(Clipboard):
         e.session.clipboard.rotate()  # type: ignore[attr-defined]
 
 
-def _line_start_indexes(self: Document) -> list[int]:
-    """``Document._line_start_indexes`` without a Python loop.
+class _LineStarts:
+    """A text's line start offsets, split at the row of its last edit:
+    rows ``0 .. hlen - 1`` absolute (``head``), the rows after them
+    relative to the end of the text (``tail[toff:]``: start minus *size*,
+    the text's length).
+
+    An edit leaves the tail's values alone, so the next text's table
+    shares this one's lists: an edit at or after the split row appends to
+    ``head`` (when no other table has, the entries past ``hlen`` being no
+    one else's) and moves ``toff`` on.  Typing and ``:%normal`` cost O(1)
+    instead of a scan of every line (see ``_derive_cache``).  Neither list
+    is ever changed below a table's ``hlen`` / at or after its ``toff``.
+    """
+
+    __slots__ = ("head", "hlen", "size", "tail", "toff")
+
+    def __init__(
+        self, head: list[int], hlen: int, tail: list[int], toff: int, size: int
+    ) -> None:
+        self.head, self.hlen, self.tail, self.toff, self.size = (
+            head,
+            hlen,
+            tail,
+            toff,
+            size,
+        )
+
+    def __len__(self) -> int:
+        return self.hlen + len(self.tail) - self.toff
+
+    def __getitem__(self, row: int) -> int:
+        """Start of *row* (negative rows count from the end, as a list)."""
+        if row < 0:
+            row += len(self)
+            if row < 0:
+                raise IndexError(row)
+        if row < self.hlen:
+            return self.head[row]
+        return self.tail[self.toff + row - self.hlen] + self.size
+
+    def find(self, index: int) -> tuple[int, int]:
+        """``(row, start)`` of the line holding text offset *index*."""
+        tail, toff, size = self.tail, self.toff, self.size
+        if toff < len(tail) and index >= tail[toff] + size:
+            k = bisect_right(tail, index - size, toff) - 1
+            return self.hlen + k - toff, tail[k] + size
+        pos = bisect_right(self.head, index, 0, self.hlen) - 1
+        return pos, self.head[pos]
+
+
+def _line_start_indexes(self: Document) -> list[int] | _LineStarts:
+    """``Document._line_start_indexes``: without a Python loop, or the
+    split table ``_derive_cache`` left.
 
     prompt_toolkit builds this table (the offset each line starts at) with
-    a Python ``for`` loop for every new text, so an edit costs a loop over
+    a Python ``for`` loop for every new text, so each edit cost a loop over
     every line, and ``:%normal`` on 10,000 lines spent most of its seconds
     here.  ``accumulate`` gives the same list at C speed.
     """
@@ -433,36 +484,94 @@ def _line_start_indexes(self: Document) -> list[int]:
     return cache.line_indexes
 
 
+def _find_line_start_index(self: Document, index: int) -> tuple[int, int]:
+    """``Document._find_line_start_index`` over either kind of table."""
+    starts = self._line_start_indexes
+    if type(starts) is list:
+        pos = bisect_right(starts, index) - 1
+        return pos, starts[pos]
+    return starts.find(index)
+
+
+def _translate_row_col_to_index(self: Document, row: int, col: int) -> int:
+    """``Document.translate_row_col_to_index`` (same code) over either kind
+    of table."""
+    starts = self._line_start_indexes
+    lines = self.lines
+    try:
+        result = starts[row]
+        line = lines[row]
+    except IndexError:
+        if row < 0:
+            result = starts[0]
+            line = lines[0]
+        else:
+            result = starts[-1]
+            line = lines[-1]
+    result += max(0, min(col, len(line)))
+    return max(0, min(result, len(self.text)))
+
+
+# prompt_toolkit is pinned below 3.1; these are the only readers of the
+# line-start table (``Document._line_start_indexes``).
 Document._line_start_indexes = property(_line_start_indexes)  # type: ignore[method-assign,assignment]
+Document._find_line_start_index = _find_line_start_index  # type: ignore[method-assign]
+Document.translate_row_col_to_index = _translate_row_col_to_index  # type: ignore[method-assign]
 
 
-def _derive_cache(
-    old: str, known: _DocumentCache, new: str, cache: _DocumentCache
-) -> None:
+def _derive_cache(old: str, known: _DocumentCache, new: str, cache: _DocumentCache) -> None:
     """Fill *cache* (lines, line starts of *new*) from *known* (those of
-    *old*) by the one edit between the texts: list slicing in C instead
-    of prompt_toolkit's split and scan of the whole new text."""
+    *old*) by the one edit between the texts: a list copy and slices in C,
+    or less (see ``_LineStarts``), instead of prompt_toolkit's split and
+    scan of the whole new text."""
     lines, starts = known.lines, known.line_indexes
     edit = diff_text(old, new)
     if lines is None or starts is None or edit is None:
         return
-    first = bisect_right(starts, edit.start) - 1
-    last = bisect_right(starts, edit.old_end) - 1
+    if type(starts) is list:
+        # The old text's own table becomes this view of its list, so the
+        # rows a later table appends to the list are not the old text's.
+        starts = known.line_indexes = _LineStarts(  # type: ignore[assignment]
+            starts, len(starts), [], 0, len(old)
+        )
+    first, first_start = starts.find(edit.start)
+    last, last_start = starts.find(edit.old_end)
     mid = (
-        lines[first][: edit.start - starts[first]]
+        lines[first][: edit.start - first_start]
         + edit.new_text
-        + lines[last][edit.old_end - starts[last] :]
+        + lines[last][edit.old_end - last_start :]
     ).split("\n")
-    new_starts = starts[: first + 1]
-    pos = starts[first]
+    new_lines = _ImmutableLineList(lines)
+    list.__setitem__(new_lines, slice(first, last + 1), mid)
+    head, hlen, tail, toff, size = (
+        starts.head,
+        starts.hlen,
+        starts.tail,
+        starts.toff,
+        starts.size,
+    )
+    # Rows 0 .. first, absolute.
+    if first + 1 == hlen and len(head) == hlen:
+        new_head = head  # extended in place: no table uses what is past hlen
+    elif first < hlen:
+        new_head = head[: first + 1]
+    else:
+        new_head = head if len(head) == hlen else head[:hlen]
+        new_head += [t + size for t in tail[toff : toff + first + 1 - hlen]]
+    pos = new_head[first]
     for line in mid[:-1]:
         pos += len(line) + 1
-        new_starts.append(pos)
-    tail = starts[last + 1 :]
-    delta = len(new) - len(old)
-    new_starts += map(delta.__add__, tail) if delta else tail
-    cache.lines = _ImmutableLineList(lines[:first] + mid + lines[last + 1 :])
-    cache.line_indexes = new_starts
+        new_head.append(pos)
+    # The rows after the edit keep their place relative to the end.
+    if last + 1 >= hlen:
+        new_tail, new_toff = tail, toff + last + 1 - hlen
+    else:
+        new_tail = [x - size for x in head[last + 1 : hlen]] + tail[toff:]
+        new_toff = 0
+    cache.lines = new_lines
+    cache.line_indexes = _LineStarts(  # type: ignore[assignment]
+        new_head, first + len(mid), new_tail, new_toff, len(new)
+    )
 
 
 class _ViBuffer(Buffer):
@@ -488,6 +597,24 @@ class _ViBuffer(Buffer):
     _grouped_change = False
     # The text and its shared Document cache as of the last change.
     _known: tuple[str, _DocumentCache] | None = None
+    # While insert_text runs: (text before, cursor offset, inserted text).
+    _inserting: tuple[str, int, str] | None = None
+
+    def insert_text(
+        self,
+        data: str,
+        overwrite: bool = False,
+        move_cursor: bool = True,
+        fire_event: bool = True,
+    ) -> None:
+        """prompt_toolkit's, noting the insert so the change need not be
+        found by comparing the texts (typing, ``:%normal A...``)."""
+        if not overwrite:
+            self._inserting = self.text, self.cursor_position, data
+        try:
+            super().insert_text(data, overwrite, move_cursor, fire_event)
+        finally:
+            self._inserting = None
 
     def _text_changed(self) -> None:
         """Before prompt_toolkit's handling: the new text's lines and line
@@ -497,6 +624,9 @@ class _ViBuffer(Buffer):
         if cache is None:
             cache = _text_to_document_cache[new] = _DocumentCache()
         known = self._known
+        inserting = self._inserting
+        if inserting is not None and known is not None and inserting[0] is known[0]:
+            remember_insert(inserting[0], inserting[1], inserting[2], new)
         if cache.lines is None and known is not None:
             _derive_cache(known[0], known[1], new, cache)
         self._known = new, cache
@@ -818,7 +948,9 @@ class ViEngine:
             return
         self.buffer.line_record = None
         if self.buffer.text != text:
-            report(text.split("\n"), row, self.cursor[0], record)
+            cache = _text_to_document_cache.get(text)  # its lines are known
+            lines = cache.lines if cache is not None else None
+            report(text.split("\n") if lines is None else lines, row, self.cursor[0], record)
 
     def fail(self) -> None:
         """The command being run failed (vim's beep): an unmatched motion or
@@ -954,7 +1086,12 @@ class ViEngine:
             return
         edit = diff_text(old, new)
         assert edit is not None
-        first, old_last, new_last, cols = edit_rows(edit, old, typed_at)
+        cache = _text_to_document_cache.get(old)
+        starts = cache.line_indexes if cache is not None else None
+        row = None
+        if type(starts) is _LineStarts:  # the old text's rows are known
+            row = starts.find(edit.start)[0]
+        first, old_last, new_last, cols = edit_rows(edit, old, typed_at, row)
         self.marks.adjust(first, old_last, new_last, last_cols=cols)
         raw = self._last_visual_raw
         if raw is not None:
@@ -1848,7 +1985,9 @@ class _ExHost:
         self._e = engine
 
     def lines(self) -> list[str]:
-        return list(self._e.buffer.document.lines)
+        # prompt_toolkit's own list, which cannot be changed in place (no
+        # command changes it): a copy per line made :%normal quadratic.
+        return self._e.buffer.document.lines
 
     def cursor_row(self) -> int:
         return self._e.cursor[0]

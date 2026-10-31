@@ -42,6 +42,23 @@ def _timed(keys: str, text: str, limit: float, mem_limit: int | None = None):
     return e
 
 
+def test_percent_normal_on_10k_lines_time():
+    text = _numbered(10_000)
+    e = _timed(":%normal Ax<CR>", text, 2.0)
+    assert e.text == text.replace("\n", "x\n")
+
+
+def test_global_normal_on_20k_lines_time():
+    text = _numbered(20_000)
+    e = _timed(":g/7/normal Ax<CR>", text, 3.0)
+    want = "".join(
+        line + ("x" if "7" in line else "") + "\n" for line in text.splitlines()
+    )
+    assert e.text == want
+    e.feed_keys("u")
+    assert e.text == text
+
+
 def test_percent_normal_on_10k_lines_memory():
     text = _numbered(10_000)
     e = ViEngine(text)
@@ -57,34 +74,61 @@ def test_percent_normal_on_10k_lines_memory():
     assert e.text == text
 
 
-def test_derived_document_cache_matches_a_fresh_one():
-    # The engine's buffer derives each new text's lines and line starts
-    # from the previous text's; they must equal prompt_toolkit's own.
-    import random
+def _check_table(text: str, rng) -> None:
+    """The shared Document cache of *text* equals a fresh one."""
+    import bisect
 
     from prompt_toolkit.document import Document, _text_to_document_cache
+
+    cache = _text_to_document_cache[text]
+    assert cache.lines is not None
+    assert list(cache.lines) == text.split("\n")
+    want, pos = [], 0
+    for line in text.split("\n"):
+        want.append(pos)
+        pos += len(line) + 1
+    doc = Document(text)
+    starts = doc._line_start_indexes
+    assert [starts[i] for i in range(len(starts))] == want
+    assert starts[-1] == want[-1]
+    for index in {0, len(text), rng.randint(0, len(text))}:
+        row = bisect.bisect_right(want, index) - 1
+        assert doc.translate_index_to_position(index) == (row, index - want[row])
+    fresh = Document(text)
+    fresh._cache = type(cache)()
+    for row in (-1, 0, len(want) - 1, len(want), rng.randint(0, len(want))):
+        assert doc.translate_row_col_to_index(row, 2) == (
+            fresh.translate_row_col_to_index(row, 2)
+        )
+
+
+def test_derived_document_cache_matches_a_fresh_one():
+    # The engine's buffer derives each new text's lines and line starts
+    # from the previous text's; they must equal prompt_toolkit's own,
+    # also for an older text gone back to (as undo does), whose table a
+    # later one shares.
+    import random
+
+    from prompt_toolkit.document import Document
 
     rng = random.Random(7)
     e = ViEngine("ab\n\ncd\nef\n")
     buff = e.buffer
     buff.text = buff.text + "z"  # the first change has nothing to derive from
+    history: list[str] = []
     for _ in range(3000):
+        if history and rng.random() < 0.2:
+            buff.text = rng.choice(history)
+            _check_table(buff.text, rng)
         text = buff.text
+        history.append(text)
         a = rng.randint(0, len(text))
         b = rng.randint(a, min(len(text), a + rng.choice((0, 1, 3, 12))))
         piece = "".join(rng.choice("x\n\n y") for _ in range(rng.randint(0, 4)))
         buff.document  # the old text's cache is filled, as when the engine runs
         Document(text).cursor_position_row
         buff.text = text[:a] + piece + text[b:]
-        new = buff.text
-        cache = _text_to_document_cache[new]
-        assert cache.lines is not None
-        assert list(cache.lines) == new.split("\n")
-        want, pos = [], 0
-        for line in new.split("\n"):
-            want.append(pos)
-            pos += len(line) + 1
-        assert cache.line_indexes == want
+        _check_table(buff.text, rng)
 
 
 def test_global_normal_is_one_step():

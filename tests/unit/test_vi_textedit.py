@@ -30,3 +30,24 @@ def test_repeated_chars_do_not_overlap_prefix_and_suffix():
     assert edit is not None
     old = "aaa"
     assert old[: edit.start] + edit.new_text + old[edit.old_end :] == "aa"
+
+
+def test_remember_insert_gives_what_diff_text_would():
+    import random
+
+    from tdb.vi import textedit
+
+    rng = random.Random(3)
+    for _ in range(3000):
+        old = "".join(rng.choice("ab\n") for _ in range(rng.randint(0, 30)))
+        if rng.random() < 0.05:
+            old = "a" * 200
+        pos = rng.randint(0, len(old))
+        data = "".join(rng.choice("ab\n") for _ in range(rng.randint(1, 4)))
+        new = old[:pos] + data + old[pos:]
+        textedit._last = ("", "", None)
+        textedit.remember_insert(old, pos, data, new)
+        primed = textedit._last
+        assert textedit._diff(old, new) == textedit.diff_text(old, new)
+        if primed[0] is old:
+            assert primed[2] == textedit._diff(old, new)

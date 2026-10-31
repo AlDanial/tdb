@@ -16,17 +16,26 @@ class TextEdit:
     old_end: int
     new_text: str
 
-    def line_delta(self, old: str) -> tuple[int, int, int]:
+    def line_delta(
+        self, old: str, first_row: int | None = None
+    ) -> tuple[int, int, int]:
         """Return ``(first_row, old_last_row, new_last_row)`` of the edit.
 
         Rows are 0-based rows of *old* (the text the edit applies to);
         ``new_last_row`` is the last row the replacement occupies in the
-        new text.
+        new text.  *first_row*, when the caller knows it, saves counting
+        the lines before the edit.
         """
-        first_row = old.count("\n", 0, self.start)
+        if first_row is None:
+            first_row = old.count("\n", 0, self.start)
         old_last_row = first_row + old.count("\n", self.start, self.old_end)
         new_last_row = first_row + self.new_text.count("\n")
         return first_row, old_last_row, new_last_row
+
+
+# The last diff_text call: (old, new, result).  The vi engine diffs the
+# same two texts twice per change (its line cache, then the marks).
+_last: tuple[str, str, TextEdit | None] = ("", "", None)
 
 
 def diff_text(old: str, new: str) -> TextEdit | None:
@@ -35,6 +44,41 @@ def diff_text(old: str, new: str) -> TextEdit | None:
     The common prefix and suffix are found by bisection over slice
     comparisons (done in C), so one keystroke on a large file stays cheap.
     """
+    global _last
+    if old is _last[0] and new is _last[1]:
+        return _last[2]
+    edit = _diff(old, new)
+    _last = (old, new, edit)
+    return edit
+
+
+def remember_insert(old: str, pos: int, data: str, new: str) -> None:
+    """*new* is *old* with *data* inserted at *pos*: record what
+    ``diff_text(old, new)`` returns, without comparing the whole texts.
+
+    The edit is the one ``diff_text`` finds (as far right as the texts
+    allow), so a caller sees no difference.  An insert whose text repeats
+    what follows it for long is left to ``diff_text``.
+    """
+    global _last
+    if not data:
+        return
+    n = len(data)
+    shift = 0  # how far the common prefix runs past pos
+    rest = len(old) - pos
+    while shift < rest and shift < 64:
+        here = data[shift] if shift < n else old[pos + shift - n]
+        if old[pos + shift] != here:
+            break
+        shift += 1
+    else:
+        if shift < rest:
+            return  # a long run: let diff_text find it
+    start = pos + shift
+    _last = (old, new, TextEdit(start, start, new[start : start + n]))
+
+
+def _diff(old: str, new: str) -> TextEdit | None:
     if old == new:
         return None
     limit = min(len(old), len(new))

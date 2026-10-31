@@ -119,7 +119,10 @@ def adjust_pos(
 
 
 def edit_rows(
-    edit: TextEdit, old: str, typed_at: int | None = None
+    edit: TextEdit,
+    old: str,
+    typed_at: int | None = None,
+    first_row: int | None = None,
 ) -> tuple[int, int, int, tuple[int, int] | None]:
     """``adjust`` arguments for *edit* applied to *old*.
 
@@ -132,11 +135,12 @@ def edit_rows(
     *typed_at* is the cursor offset when the edit was typed in insert
     mode: an edit there is never whole lines (nvim keeps the marks of a
     line split by ``<CR>`` on its first part, even at column 0).
+    *first_row* is the row of ``edit.start`` in *old*, when known.
     """
     if edit.start == typed_at:
-        return _general(edit, old, *edit.line_delta(old))
-    edit = _whole_lines(edit, old)
-    first, old_last, new_last = edit.line_delta(old)
+        return _general(edit, old, *edit.line_delta(old, first_row))
+    edit = _whole_lines(edit, old)  # (it stays on the same row)
+    first, old_last, new_last = edit.line_delta(old, first_row)
     start_col = edit.start - (old.rfind("\n", 0, edit.start) + 1)
     end_col = edit.old_end - (old.rfind("\n", 0, edit.old_end) + 1)
     new = edit.new_text
