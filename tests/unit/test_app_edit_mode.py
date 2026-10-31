@@ -128,6 +128,33 @@ async def test_vi_engine_starts_on_code_view_cursor_line(tmp_path):
         assert ed.text == "x = 1\ny = 2\n = 3\n"
 
 
+async def test_marks_survive_leave_and_file_switch(tmp_path):
+    app = TdbApp(program="", config=TdbConfig(keybindings="vim"))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        a = _write(tmp_path)
+        b = str(Path(tmp_path) / "other.py")
+        Path(b).write_text("a = 1\nb = 2\nc = 3\n", encoding="utf-8")
+        cv = await _enter_edit(app, pilot, a)
+        await pilot.press("j", "j", "l", "m", "a", "g", "g")
+        await pilot.press("escape")  # leave Edit mode (buffer is clean)
+        await pilot.pause()
+        assert not cv.is_editing
+        await _enter_edit(app, pilot, b)
+        engine = app.query_one(CodeEditor)._layer.engine
+        assert engine.marks.get("a") is None
+        await pilot.press("escape")
+        await pilot.pause()
+        await _enter_edit(app, pilot, a)
+        ed = app.query_one(CodeEditor)
+        assert ed._layer.engine.cursor == (0, 0)
+        await pilot.press("`", "a")
+        await pilot.pause()
+        assert ed._layer.engine.cursor == ed.cursor_location == (2, 1)
+        await pilot.press("g", "g", "'", "a")
+        assert ed.cursor_location == (2, 0)
+
+
 async def test_save_remaps_breakpoints_and_notifies(tmp_path):
     app = TdbApp(program="", config=TdbConfig(keybindings="default"))
     async with app.run_test() as pilot:

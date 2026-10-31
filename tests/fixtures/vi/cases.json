@@ -4984,5 +4984,518 @@
    0
   ],
   "keys": "3ia<End>b<Esc>"
+ },
+ {
+  "id": "mark-d-quote",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "majjd'a"
+ },
+ {
+  "id": "mark-d-backtick",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "majjlld`a"
+ },
+ {
+  "id": "mark-y-quote-P",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "majjy'aP"
+ },
+ {
+  "id": "mark-k-quote",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   2,
+   6
+  ],
+  "keys": "mak'a"
+ },
+ {
+  "id": "mark-x-backtick",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   1,
+   7
+  ],
+  "keys": "ma3jx`a"
+ },
+ {
+  "id": "mark-quote-quote",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "majj''"
+ },
+ {
+  "id": "mark-backtick-backtick",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "majj``"
+ },
+ {
+  "id": "mark-O-moved",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   2,
+   6
+  ],
+  "keys": "maggOnew<Esc>j'a"
+ },
+ {
+  "id": "mark-O-moved-backtick",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   2,
+   6
+  ],
+  "keys": "maggOnew<Esc>j`a"
+ },
+ {
+  "id": "mark-dd-deleted",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   2,
+   6
+  ],
+  "keys": "madd'a"
+ },
+ {
+  "id": "mark-dd-above",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   3,
+   6
+  ],
+  "keys": "makkdd'a"
+ },
+ {
+  "id": "mark-dd-above-backtick",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   3,
+   6
+  ],
+  "keys": "makkdd`a"
+ },
+ {
+  "id": "mark-G-quote-quote",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "G''"
+ },
+ {
+  "id": "mark-G-backtick-twice",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "G````"
+ },
+ {
+  "id": "mark-gg-quote-quote",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   5,
+   6
+  ],
+  "keys": "gg''"
+ },
+ {
+  "id": "mark-3G-backtick",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "3G``"
+ },
+ {
+  "id": "mark-brace-quote",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "}''"
+ },
+ {
+  "id": "mark-percent-quote",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   7,
+   7
+  ],
+  "keys": "%``"
+ },
+ {
+  "id": "mark-unset",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   2,
+   6
+  ],
+  "keys": "'z"
+ },
+ {
+  "id": "mark-unset-op",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   2,
+   6
+  ],
+  "keys": "d'z"
+ },
+ {
+  "id": "mark-fresh-quote-quote",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   3,
+   6
+  ],
+  "keys": "''"
+ },
+ {
+  "id": "mark-shorter-line",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   3,
+   10
+  ],
+  "keys": "ma0d$ix<Esc>gg`a"
+ },
+ {
+  "id": "mark-J-below",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   3,
+   6
+  ],
+  "keys": "makJ`a"
+ },
+ {
+  "id": "mark-u-restores",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   3,
+   6
+  ],
+  "keys": "maggdd`au`a"
+ },
+ {
+  "id": "mark-c-quote",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "majjc'anew<Esc>"
+ },
+ {
+  "id": "mark-V-lt-backtick",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "Vj<Esc>gg`<"
+ },
+ {
+  "id": "mark-V-gt-backtick",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "Vj<Esc>gg`>"
+ },
+ {
+  "id": "mark-V-gt-quote",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "Vj<Esc>gg'>"
+ },
+ {
+  "id": "mark-V-lt-quote",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "Vj<Esc>G'<"
+ },
+ {
+  "id": "mark-Vk-gt-backtick",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   3,
+   6
+  ],
+  "keys": "Vk<Esc>gg`>"
+ },
+ {
+  "id": "mark-Vk-lt-backtick",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   3,
+   6
+  ],
+  "keys": "Vk<Esc>gg`<"
+ },
+ {
+  "id": "mark-v-gt-backtick",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "vjl<Esc>gg`>"
+ },
+ {
+  "id": "mark-v-lt-backtick",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "vjl<Esc>gg`<"
+ },
+ {
+  "id": "mark-vk-lt-backtick",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   3,
+   6
+  ],
+  "keys": "vkh<Esc>gg`<"
+ },
+ {
+  "id": "mark-V-lt-after-O",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   2,
+   6
+  ],
+  "keys": "Vj<Esc>ggOnew<Esc>`<"
+ },
+ {
+  "id": "mark-V-d-lt",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   2,
+   6
+  ],
+  "keys": "Vjd`<"
+ },
+ {
+  "id": "mark-gv-after-O",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   2,
+   6
+  ],
+  "keys": "Vj<Esc>ggOnew<Esc>gvd"
+ },
+ {
+  "id": "mark-gv-after-dd",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   3,
+   6
+  ],
+  "keys": "vj<Esc>ggddgvd"
+ },
+ {
+  "id": "mark-gv-after-2O",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   2,
+   6
+  ],
+  "keys": "vjl<Esc>ggOa<CR>b<Esc>gvd"
+ },
+ {
+  "id": "mark-macro-jump",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "qqGqgg@q``"
+ },
+ {
+  "id": "mark-dot-jump",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   3,
+   6
+  ],
+  "keys": "d}uggj.``"
+ },
+ {
+  "id": "mark-x-same-line",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   3,
+   9
+  ],
+  "keys": "ma0x`a"
+ },
+ {
+  "id": "mark-split-same-line",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   3,
+   9
+  ],
+  "keys": "ma0fzi<CR><Esc>`a"
+ },
+ {
+  "id": "mark-split-above",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   3,
+   9
+  ],
+  "keys": "mak$i<CR><Esc>`a"
+ },
+ {
+  "id": "mark-dj-deleted",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   3,
+   9
+  ],
+  "keys": "makdj`a"
+ },
+ {
+  "id": "mark-G-on-last-line",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   7,
+   6
+  ],
+  "keys": "G``"
+ },
+ {
+  "id": "mark-dd-last-line",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   7,
+   3
+  ],
+  "keys": "makdd'a"
+ },
+ {
+  "id": "mark-p-below",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   3,
+   6
+  ],
+  "keys": "makyyp`a"
+ },
+ {
+  "id": "mark-visual-jump",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "majjv`ad"
+ },
+ {
+  "id": "mark-V-quote-op",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   3,
+   6
+  ],
+  "keys": "makkV'ad"
+ },
+ {
+  "id": "mark-O-indented",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   3,
+   6
+  ],
+  "keys": "makOnew<Esc>`a"
+ },
+ {
+  "id": "mark-o-indented",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   3,
+   6
+  ],
+  "keys": "makonew<Esc>`a"
+ },
+ {
+  "id": "mark-insert-cr-col0",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   7,
+   9
+  ],
+  "keys": "ma0i<CR><Esc>`a"
+ },
+ {
+  "id": "mark-insert-bs-join",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   3,
+   9
+  ],
+  "keys": "ma0i<BS><Esc>`a"
+ },
+ {
+  "id": "mark-P-indented",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   3,
+   6
+  ],
+  "keys": "makyyjP`a"
+ },
+ {
+  "id": "mark-y-G-no-move",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "y4G``"
+ },
+ {
+  "id": "mark-y-backtick-moves",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   2,
+   6
+  ],
+  "keys": "majjy`a``"
  }
 ]

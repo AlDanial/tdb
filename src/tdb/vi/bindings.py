@@ -65,6 +65,7 @@ from prompt_toolkit.key_binding.vi_state import CharacterFind, InputMode
 from prompt_toolkit.keys import Keys
 from prompt_toolkit.selection import PasteMode, SelectionState, SelectionType
 
+from tdb.vi.marks import NAMES as MARK_NAMES
 from tdb.vi.textobjects import (
     PAIRS,
     Cursor,
@@ -112,6 +113,7 @@ def load_tdb_vi_bindings(engine: ViEngine) -> KeyBindings:
     _add_visual_commands(kb, engine)
     _add_increment(kb)
     _add_counted_commands(kb)
+    _add_marks(kb, engine)
 
     return kb
 
@@ -1113,3 +1115,72 @@ def _add_counted_commands(kb: KeyBindings) -> None:
 
     repeat(";", False)
     repeat(",", True)
+
+
+def _add_marks(kb: KeyBindings, engine: ViEngine) -> None:
+    """``m{a-z}``, and the ``'x`` (linewise) and `` `x `` (exclusive) motions.
+
+    Marks live in ``engine.marks``; a jump clamps the mark to the text
+    (vim keeps the stored column).  An unset mark is vim's E20: a warning
+    and no motion, which also cancels a pending operator.
+    """
+    from tdb.vi.engine import Notify
+
+    text_object = create_text_object_decorator(kb)
+    movable = (
+        vi_navigation_mode | vi_selection_mode
+    ) & ~vi_waiting_for_text_object_mode
+
+    @kb.add("m", Keys.Any, filter=movable)
+    def _set_mark(event: KeyPressEvent) -> None:
+        name = event.data
+        if len(name) == 1 and "a" <= name <= "z":
+            doc = event.current_buffer.document
+            engine.marks.set(name, (doc.cursor_position_row, doc.cursor_position_col))
+
+    def mark(event: KeyPressEvent) -> tuple[int, int] | None:
+        """The mark named by the key, clamped to the text, or None."""
+        name = event.data
+        pos = engine.marks.get(name) if name in (*MARK_NAMES, "`") else None
+        if pos is None:
+            if len(name) == 1 and name.isprintable():
+                engine._events.append(Notify(f"Mark not set: {name}", "warning"))
+            return None
+        lines = event.current_buffer.document.lines
+        row = max(0, min(pos[0], len(lines) - 1))
+        return row, max(0, min(pos[1], len(lines[row]) - 1))
+
+    def first_nonblank(lines: list[str], row: int) -> int:
+        line = lines[row]
+        return len(line) - len(line.lstrip(" \t"))
+
+    def line_target(event: KeyPressEvent) -> TextObject | None:
+        pos = mark(event)
+        if pos is None:
+            return None
+        doc = event.current_buffer.document
+        lines = doc.lines
+        target = index(lines, (pos[0], first_nonblank(lines, pos[0])))
+        return TextObject(target - doc.cursor_position, type=TextObjectType.LINEWISE)
+
+    def char_target(event: KeyPressEvent) -> TextObject | None:
+        pos = mark(event)
+        if pos is None:
+            return None
+        doc = event.current_buffer.document
+        here = (doc.cursor_position_row, doc.cursor_position_col)
+        if engine.app.vi_state.operator_func is None:
+            return TextObject(index(doc.lines, pos) - doc.cursor_position)
+        start, end = sorted((here, pos))
+        return _charwise(doc.lines, doc.cursor_position, start, end, False)
+
+    for key, target in (("'", line_target), ("`", char_target)):
+        text_object(key, Keys.Any, no_move_handler=True, no_selection_handler=True)(
+            target
+        )
+
+        @kb.add(key, Keys.Any, filter=movable)
+        def _jump(event: KeyPressEvent, target=target) -> None:
+            obj = target(event)
+            if obj is not None:
+                event.current_buffer.cursor_position += obj.start

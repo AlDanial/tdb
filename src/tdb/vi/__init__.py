@@ -14,10 +14,12 @@ from tdb.vi.engine import (
     ViKey,
     ViSession,
 )
+from tdb.vi.marks import MarkTable
 from tdb.vi.textedit import TextEdit, diff_text
 
 __all__ = [
     "LeaveRequest",
+    "MarkTable",
     "Notify",
     "SaveRequest",
     "TextEdit",

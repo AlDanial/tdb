@@ -1553,6 +1553,405 @@
   ],
   "text": "f f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
  },
+ "mark-3G-backtick": {
+  "cursor": [
+   1,
+   6
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-G-backtick-twice": {
+  "cursor": [
+   7,
+   6
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-G-on-last-line": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-G-quote-quote": {
+  "cursor": [
+   1,
+   4
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-J-below": {
+  "cursor": [
+   2,
+   13
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22 z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-O-indented": {
+  "cursor": [
+   4,
+   6
+  ],
+  "text": "def f(a, b):\n    x = 1\n    new\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-O-moved": {
+  "cursor": [
+   3,
+   4
+  ],
+  "text": "new\ndef f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-O-moved-backtick": {
+  "cursor": [
+   3,
+   6
+  ],
+  "text": "new\ndef f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-P-indented": {
+  "cursor": [
+   4,
+   6
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-V-d-lt": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "def f(a, b):\n    x = 1\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-V-gt-backtick": {
+  "cursor": [
+   2,
+   9
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-V-gt-quote": {
+  "cursor": [
+   2,
+   4
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-V-lt-after-O": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "new\ndef f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-V-lt-backtick": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-V-lt-quote": {
+  "cursor": [
+   1,
+   4
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-V-quote-op": {
+  "cursor": [
+   1,
+   4
+  ],
+  "text": "def f(a, b):\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-Vk-gt-backtick": {
+  "cursor": [
+   3,
+   10
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-Vk-lt-backtick": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-backtick-backtick": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-brace-quote": {
+  "cursor": [
+   1,
+   4
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-c-quote": {
+  "cursor": [
+   1,
+   6
+  ],
+  "text": "def f(a, b):\n    new\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-d-backtick": {
+  "cursor": [
+   1,
+   6
+  ],
+  "text": "def f(a, b):\n    x 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-d-quote": {
+  "cursor": [
+   1,
+   6
+  ],
+  "text": "def f(a, b):\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-dd-above": {
+  "cursor": [
+   2,
+   4
+  ],
+  "text": "def f(a, b):\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-dd-above-backtick": {
+  "cursor": [
+   2,
+   6
+  ],
+  "text": "def f(a, b):\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-dd-deleted": {
+  "cursor": [
+   2,
+   6
+  ],
+  "text": "def f(a, b):\n    x = 1\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-dd-last-line": {
+  "cursor": [
+   6,
+   0
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\nprint(f(1, 2))\n"
+ },
+ "mark-dj-deleted": {
+  "cursor": [
+   2,
+   8
+  ],
+  "text": "def f(a, b):\n    x = 1\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-dot-jump": {
+  "cursor": [
+   1,
+   5
+  ],
+  "text": "def f(a, b):\n    x \n\nprint(f(1, 2))\n"
+ },
+ "mark-fresh-quote-quote": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-gg-quote-quote": {
+  "cursor": [
+   5,
+   4
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-gv-after-2O": {
+  "cursor": [
+   4,
+   6
+  ],
+  "text": "a\nb\ndef f(a, b):\n    x = 1\n    y 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-gv-after-O": {
+  "cursor": [
+   3,
+   6
+  ],
+  "text": "new\ndef f(a, b):\n    x = 1\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-gv-after-dd": {
+  "cursor": [
+   2,
+   6
+  ],
+  "text": "    x = 1\n    y = 22\n    z  4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-insert-bs-join": {
+  "cursor": [
+   2,
+   19
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-insert-cr-col0": {
+  "cursor": [
+   7,
+   0
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\n\nprint(f(1, 2))\n"
+ },
+ "mark-k-quote": {
+  "cursor": [
+   2,
+   4
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-macro-jump": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-o-indented": {
+  "cursor": [
+   4,
+   6
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    new\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-p-below": {
+  "cursor": [
+   4,
+   6
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-percent-quote": {
+  "cursor": [
+   7,
+   7
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-quote-quote": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-shorter-line": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\nx\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-split-above": {
+  "cursor": [
+   4,
+   9
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 2\n    2\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-split-same-line": {
+  "cursor": [
+   3,
+   3
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    \n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-u-restores": {
+  "cursor": [
+   3,
+   6
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-unset": {
+  "cursor": [
+   2,
+   6
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-unset-op": {
+  "cursor": [
+   2,
+   6
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-v-gt-backtick": {
+  "cursor": [
+   2,
+   7
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-v-lt-backtick": {
+  "cursor": [
+   1,
+   6
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-visual-jump": {
+  "cursor": [
+   1,
+   6
+  ],
+  "text": "def f(a, b):\n    x  333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-vk-lt-backtick": {
+  "cursor": [
+   2,
+   5
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-x-backtick": {
+  "cursor": [
+   1,
+   7
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w =4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-x-same-line": {
+  "cursor": [
+   3,
+   9
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n   z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-y-G-no-move": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-y-backtick-moves": {
+  "cursor": [
+   4,
+   6
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-y-quote-P": {
+  "cursor": [
+   1,
+   4
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
  "motion-B": {
   "cursor": [
    0,

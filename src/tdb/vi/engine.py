@@ -36,9 +36,10 @@ from prompt_toolkit.output import DummyOutput
 from prompt_toolkit.selection import SelectionType
 
 from tdb.vi.bindings import load_tdb_vi_bindings
+from tdb.vi.marks import JUMP, MAXCOL, MarkTable, adjust_pos, edit_rows
+from tdb.vi.textedit import diff_text
 
 if TYPE_CHECKING:
-    from tdb.vi.marks import MarkTable
     from tdb.vi.substitute import SubstituteSpec
 
 log = logging.getLogger(__name__)
@@ -114,6 +115,15 @@ _REPLAY_LIMIT = 100_000
 _CURSOR_KEYS = frozenset(
     {"up", "down", "left", "right", "home", "end", "pageup", "pagedown"}
 )
+
+# Motions that are jumps (they set the previous-jump mark), as the keys
+# after any count and operator; ' and ` take any mark name.
+_JUMPS = frozenset(
+    {("G",), ("g", "g"), ("%",), ("(",), (")",), ("{",), ("}",), ("H",), ("M",)}
+    | {("L",), ("n",), ("N",), ("*",), ("#",)}
+)
+_OPERATORS = frozenset("dcy<>=!")
+_G_OPERATORS = frozenset("~uU?q")
 
 # ViKey name -> vim notation, for showing pending keys in the status.
 _DISPLAY: dict[str, str] = {
@@ -417,7 +427,9 @@ class ViEngine:
         _extra_bindings: KeyBindings | None = None,
     ) -> None:
         self.session = session if session is not None else ViSession()
-        self.marks = marks
+        self.marks = marks if marks is not None else MarkTable()
+        if self.marks.get(JUMP) is None:
+            self.marks.set(JUMP, (0, 0))  # vim: the file was entered at its top
         self.viewport = viewport
         self.indent_unit = indent_unit
         self._events: list[EngineEvent] = []
@@ -448,9 +460,13 @@ class ViEngine:
         # Text of the ':' line while in the stub command mode, else None.
         self._cmdline: str | None = None
         # The last Visual selection as (anchor, cursor, linewise), for `gv`.
-        self.last_visual_raw: tuple[tuple[int, int], tuple[int, int], bool] | None = (
+        self._last_visual_raw: tuple[tuple[int, int], tuple[int, int], bool] | None = (
             None
         )
+        # Keys of the normal/Visual command being given to prompt_toolkit,
+        # and the cursor when it began (the previous-jump mark if it jumps).
+        self._cmd_keys: list[str] = []
+        self._cmd_start: tuple[int, int] = (0, 0)
         # A `{count}i/a/I/A/o/O` insert waiting for its Esc: the command key,
         # the count, and the index in ``_change`` where the typed keys begin.
         self._insert_repeat: tuple[str, int, int | None] | None = None
@@ -489,6 +505,7 @@ class ViEngine:
         if self._recording is not None:
             self._recorded.append(key)
         before = self._snapshot()
+        marks_before = self.marks.snapshot(), self._last_visual_raw
         self._pending_keys.append(key)
         self._queue.append((key, False))
         self._ran_macro = False
@@ -499,6 +516,8 @@ class ViEngine:
         except Exception as exc:  # a stray key must never crash tdb
             log.exception("vi engine error on key %r", key.name)
             self._recover(*before)
+            self.marks.restore(marks_before[0])
+            self._last_visual_raw = marks_before[1]
             self._events.append(Notify(f"vi: {key.notation} failed: {exc}", "warning"))
             return
         if not self._key_pending():
@@ -522,7 +541,11 @@ class ViEngine:
                         )
                         break
                 self.is_replaying = replay
+                text = self.buffer.text
+                typing = self.mode in ("insert", "replace")
+                at = self.buffer.cursor_position if typing else None
                 self._dispatch(key)
+                self._adjust_marks(text, at)
         finally:
             self.is_replaying = False
 
@@ -575,7 +598,9 @@ class ViEngine:
             return
         visual_before = self._visual_state()
         text_before = self.buffer.text
+        self._begin_motion(key)
         self._feed_ptk(key)
+        self._end_motion(text_before)
         if visual_before is not None:
             if self.buffer.selection_state is None:
                 self.last_visual_raw = visual_before  # the selection just ended
@@ -595,6 +620,50 @@ class ViEngine:
         if not self._ptk_pending() and self._rejected is None:
             self._register = None
         self._end_command()
+
+    def _begin_motion(self, key: ViKey) -> None:
+        """Before a normal/Visual key goes to prompt_toolkit: note the command."""
+        if self.mode not in ("normal", "visual", "visual-line"):
+            self._cmd_keys = []
+            return
+        if not self._ptk_pending():
+            self._cmd_keys, self._cmd_start = [], self.cursor
+        self._cmd_keys.append(key.name)
+
+    def _end_motion(self, text_before: str) -> None:
+        """After the key: a finished jump sets the previous-jump mark.
+
+        As vim's ``checkpcmark``, a jump that did not move the cursor (or
+        change the text) leaves the mark alone.
+        """
+        if not self._cmd_keys or self._ptk_pending():
+            return
+        keys, self._cmd_keys = self._cmd_keys, []
+        if _is_jump(keys) and (
+            self.cursor != self._cmd_start or self.buffer.text != text_before
+        ):
+            self.marks.set(JUMP, self._cmd_start)
+
+    def _adjust_marks(self, old: str, typed_at: int | None = None) -> None:
+        """After a text change from *old*: move the marks and the ``gv`` area.
+
+        *typed_at* is the cursor offset before a key typed in insert mode.
+        """
+        new = self.buffer.text
+        if new == old:
+            return
+        edit = diff_text(old, new)
+        assert edit is not None
+        first, old_last, new_last, cols = edit_rows(edit, old, typed_at)
+        self.marks.adjust(first, old_last, new_last, last_cols=cols)
+        raw = self._last_visual_raw
+        if raw is not None:
+            anchor, cursor, linewise = raw
+            anchor, cursor = (
+                adjust_pos(p, first, old_last, new_last, keep=True, last_cols=cols) or p
+                for p in (anchor, cursor)
+            )
+            self._last_visual_raw = anchor, cursor, linewise
 
     def _feed_ptk(self, key: ViKey) -> None:
         """Hand *key* to prompt_toolkit (not recorded for `.`)."""
@@ -672,6 +741,28 @@ class ViEngine:
         row = min(row, doc.line_count - 1)
         col = min(col, len(doc.lines[row]))
         undo[-1] = (text_before, doc.translate_row_col_to_index(row, col), undo[-1][2])
+
+    @property
+    def last_visual_raw(
+        self,
+    ) -> tuple[tuple[int, int], tuple[int, int], bool] | None:
+        """The last Visual area as ``(anchor, cursor, linewise)``, for ``gv``."""
+        return self._last_visual_raw
+
+    @last_visual_raw.setter
+    def last_visual_raw(
+        self, raw: tuple[tuple[int, int], tuple[int, int], bool] | None
+    ) -> None:
+        """Remember a Visual area that ended; also sets ``'<`` and ``'>``."""
+        self._last_visual_raw = raw
+        if raw is None:
+            return
+        anchor, cursor, linewise = raw
+        start, end = min(anchor, cursor), max(anchor, cursor)
+        if linewise:  # vim: the whole lines, from column 0 to MAXCOL
+            start, end = (start[0], 0), (end[0], MAXCOL)
+        self.marks.set("<", start)
+        self.marks.set(">", end)
 
     @property
     def last_visual(self) -> tuple[tuple[int, int], tuple[int, int], bool] | None:
@@ -861,7 +952,10 @@ class ViEngine:
             self._events += [SaveRequest(), LeaveRequest()]
         elif cmd.isdigit():
             row = max(1, min(int(cmd), self.buffer.document.line_count)) - 1
+            start = self.cursor
             self._move_to(row, self.cursor[1])  # nvim nostartofline
+            if self.cursor != start:
+                self.marks.set(JUMP, start)
         elif cmd:
             self._events.append(Notify(f"Unknown command: :{cmd}", "warning"))
 
@@ -970,19 +1064,23 @@ class ViEngine:
 
     def insert_text(self, text: str) -> None:
         """Insert *text* at the cursor as one undo step; mode is unchanged."""
+        old, at = self.buffer.text, self.buffer.cursor_position
         self.buffer.save_to_undo_stack()
         self.buffer.insert_text(text)
         if self.mode == "normal":
             self._move_to(*self.cursor)  # keep the cursor on a character
+        self._adjust_marks(old, at)  # a paste is typed text
 
     def reset_text(self, text: str) -> None:
         """Replace the whole buffer (undoable), keeping the cursor row/col."""
         row, col = self.cursor
+        old = self.buffer.text
         self.buffer.exit_selection()
         self.buffer.save_to_undo_stack()
         body, self.buffer.eol = _split_eol(text)
         self.buffer.set_document(Document(body, 0), bypass_readonly=True)
         self._move_to(row, col)
+        self._adjust_marks(old)
 
     def _move_to(self, row: int, col: int) -> None:
         """Set the cursor, clamped to the text (and to a character in normal mode)."""
@@ -994,6 +1092,25 @@ class ViEngine:
         )
         col = max(0, min(col, last))
         self.buffer.cursor_position = doc.translate_row_col_to_index(row, col)
+
+
+def _is_jump(keys: list[str]) -> bool:
+    """Whether the command *keys* (count, operator, count, motion) is a jump."""
+
+    def skip_count(i: int) -> int:
+        if i < len(keys) and keys[i] in "123456789":
+            i += 1
+            while i < len(keys) and keys[i].isdigit():
+                i += 1
+        return i
+
+    i = skip_count(0)
+    if i < len(keys) - 1 and keys[i] in _OPERATORS:
+        i += 1
+    elif i < len(keys) - 2 and keys[i] == "g" and keys[i + 1] in _G_OPERATORS:
+        i += 2
+    rest = tuple(keys[skip_count(i) :])
+    return rest in _JUMPS or (len(rest) == 2 and rest[0] in ("'", "`"))
 
 
 def _command_key(keys: list[ViKey], counts: frozenset[int]) -> ViKey | None:

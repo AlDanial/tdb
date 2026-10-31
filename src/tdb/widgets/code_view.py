@@ -23,12 +23,11 @@ from textual.widgets import Input, Label
 
 from tdb.keybindings import KeybindingConfig, Mode
 from tdb.source_edit import atomic_write_text
-from tdb.vi import ViSession
+from tdb.vi import MarkTable, ViSession
 from tdb.widgets.code_editor import CodeEditor, _UnsavedChangesModal
 
 if TYPE_CHECKING:
     from tdb.dap.types import SourceBreakpoint
-    from tdb.vi.marks import MarkTable
 
 
 # How much of a file load_file inspects before deciding it is binary.
@@ -727,7 +726,11 @@ class CodeView(ScrollableContainer, can_focus=True):
         if self.keybindings.scheme == "emacs":
             editor._set_layer(EmacsLayer(editor))
         elif self.keybindings.scheme == "vim":
-            editor._set_layer(ViLayer(editor, session=self._vi_session))
+            marks = None
+            if self.source_path is not None:
+                key = str(Path(self.source_path).resolve())
+                marks = self._vi_marks.setdefault(key, MarkTable())
+            editor._set_layer(ViLayer(editor, session=self._vi_session, marks=marks))
 
     def leave_edit_mode(self, discard: bool = False) -> None:
         """The one exit from Edit mode. Prompts when there are unsaved
