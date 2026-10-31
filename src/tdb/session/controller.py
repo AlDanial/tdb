@@ -195,7 +195,8 @@ class DebugController:
     ) -> None:
         """A file whose breakpoints ALL failed to bind usually means the
         target has no debug info for it (native binary built without -g,
-        or generated/stale source). Surface a hint on the console.
+        or generated/stale source). Surface a warning on the console,
+        with the -g hint only for compiled languages.
 
         Deliberately a no-op when `result` is empty (e.g. sending an
         empty breakpoint list to disable/clear) — there's nothing to
@@ -217,9 +218,14 @@ class DebugController:
             self._emit_unbound_warning(source_path)
 
     def _emit_unbound_warning(self, source_path: str) -> None:
+        # The -g hint only makes sense where the build controls debug info.
+        hint = (
+            " — was the program compiled with debug info (-g)?"
+            if self.profile.capabilities.compiled
+            else ""
+        )
         self.event_handler.on_output(
-            f"warning: no breakpoints bound in {source_path} — "
-            f"was the program compiled with debug info (-g)?\n",
+            f"warning: no breakpoints bound in {source_path}{hint}\n",
             "console",
         )
 

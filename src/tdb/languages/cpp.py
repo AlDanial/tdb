@@ -471,6 +471,7 @@ def build_cpp_profile(
         # `pause` reliably stops a never-stopped, actively-looping
         # debuggee on both gdb -i dap and lldb-dap.
         capabilities=ProfileCapabilities(
+            compiled=True,
             pause_while_running=True,
             interactive_variable=NATIVE_INTERACTIVE_VARIABLE[adapter_id],
             breakpoint_hook_frame=is_breakpoint_hook_frame,

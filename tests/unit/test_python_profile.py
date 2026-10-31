@@ -118,3 +118,33 @@ def test_profile_shape():
 def test_build_rejects_unknown_adapter():
     with pytest.raises(LanguageNotSupportedError):
         build_python_profile(adapter="gdb")
+
+
+def test_just_my_code_marks_program_dir_as_user_code(tmp_path):
+    # A program installed under site-packages (e.g. tdb's packaged
+    # examples) is library code to debugpy: without this rule
+    # justMyCode skips its entry stop and breakpoints.
+    prog = tmp_path / "prog.py"
+    body = DebugpyAdapter().launch_body(
+        program=str(prog),
+        args=[],
+        cwd=".",
+        env=None,
+        stop_on_entry=True,
+        console="externalTerminal",
+        opts={},
+    )
+    assert body["rules"] == [{"path": str(tmp_path), "include": True}]
+
+
+def test_no_rules_without_just_my_code(tmp_path):
+    body = DebugpyAdapter().launch_body(
+        program=str(tmp_path / "prog.py"),
+        args=[],
+        cwd=".",
+        env=None,
+        stop_on_entry=True,
+        console="externalTerminal",
+        opts={"just_my_code": False},
+    )
+    assert "rules" not in body
