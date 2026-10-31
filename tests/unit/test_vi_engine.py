@@ -1544,3 +1544,54 @@ async def test_bar_with_operator_uses_screen_columns():
     e = ViEngine("\t\tfoo bar\n", tabstop=4)
     e.feed_keys("d10|")  # screen column 9 (0-based): the first o
     assert e.text == "oo bar\n"
+
+
+# ---------------------------------------------------------------------------
+# An operator over an empty region changes nothing (prompt_toolkit's
+# TextObject.cut took the character, or line break, before the cursor), and
+# a motion that fails at the start of the buffer cancels the operator.
+
+
+@pytest.mark.parametrize(
+    ("text", "cursor", "keys", "expected"),
+    [
+        ("abc\nxy\n", (1, 0), "d0", "abc\nxy\n"),
+        ("abc\nxy\n", (0, 0), "d0", "abc\nxy\n"),
+        ("abc\nxy\n", (1, 0), "dh", "abc\nxy\n"),
+        ("abc\nxy\n", (1, 0), "d^", "abc\nxy\n"),
+        ("  abc\n", (0, 2), "d^", "  abc\n"),
+        ("abc\nxy\n", (0, 0), "db", "abc\nxy\n"),
+        ("abc\nxy\n", (0, 0), "dge", "abc\nxy\n"),
+        ("xy\n", (0, 1), "dTx", "xy\n"),
+        ("abc\nxy\n", (1, 0), "c0Q<Esc>", "abc\nQxy\n"),
+        ("ab\n\ncd\n", (1, 0), "dl", "ab\n\ncd\n"),
+        ("ab\n\ncd\n", (1, 0), "dg_", "ab\n\ncd\n"),
+        ("ab\ncd\nef\n", (0, 0), ":%normal d0<CR>", "ab\ncd\nef\n"),
+        ("  ab\n  cd\n", (0, 0), ":%normal ^d^<CR>", "  ab\n  cd\n"),
+        ("abc\nxy\n", (1, 0), ">0", "abc\n    xy\n"),
+    ],
+)
+async def test_operator_over_an_empty_region_changes_nothing(
+    text, cursor, keys, expected
+):
+    e = ViEngine(text, cursor=cursor)
+    e.feed_keys(keys)
+    assert e.text == expected
+
+
+async def test_empty_yank_yanks_empty_text():
+    """vim yanks an empty region too: ``P`` then has nothing to put."""
+    e = ViEngine("abc\nxy\n")
+    e.feed_keys("ylj0y0")
+    assert e.session.clipboard.get_data().text == ""
+    e.feed_keys(":normal PAZ<CR>")  # P fails
+    assert e.text == "abc\nxy\n"
+
+
+async def test_empty_region_does_not_abort_but_a_failed_b_does():
+    e = ViEngine("abc\nxy\nzz\n")
+    e.feed_keys("qa0d0AZ<Esc>jq2@a")  # d0 is a no-op, not a failure
+    assert e.text == "abcZ\nxyZ\nzzZ\n"
+    e = ViEngine("abc\nxy\n")
+    e.feed_keys(":normal dbAZ<CR>")  # b at the start of the buffer fails
+    assert e.text == "abc\nxy\n"

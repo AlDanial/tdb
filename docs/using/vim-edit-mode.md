@@ -130,6 +130,11 @@ sentence motions `( )` and sentence objects `is as`, tag objects `it at`,
 visual mode (it does nothing). `_` with a count or an operator does
 nothing. `~` toggles a single character (there is no `tildeop`). `d}`
 does not apply vim's exclusive-to-linewise rule, and `VjX` does nothing.
+A multi-line `d` that starts in the indent and ends before only blanks
+(`d2e`, `d2g_`) stays charwise; vim makes it linewise. `<Space>` and
+`<BS>` do not wrap to the next or previous line. An operator over an
+empty region (`d0` or `gU0` at column 0) changes nothing; nvim's `gU`
+and `g~` there change the line.
 `ci(` before the brackets fails: nvim searches forward for the next pair.
 
 **tdb keys win.** `Ctrl+V`, `Ctrl+O`, `Ctrl+E`, `Ctrl+B`, `Ctrl+C`,

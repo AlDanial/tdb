@@ -1,9 +1,10 @@
 """Pure ports of vim's text objects and ``J`` (no prompt_toolkit).
 
 Ports of ``current_word``, ``current_par``, ``current_block``,
-``current_quote`` and ``do_join``.  Positions are ``(row, col)`` over a list
-of lines; ``col == len(line)`` is the line end.  prompt_toolkit's versions
-differ from vim on whitespace runs, paragraphs and "no enclosing pair".
+``current_quote``, ``bck_word``, ``bckend_word`` and ``do_join``.  Positions
+are ``(row, col)`` over a list of lines; ``col == len(line)`` is the line
+end.  prompt_toolkit's versions differ from vim on whitespace runs,
+paragraphs, "no enclosing pair" and the start of the buffer.
 """
 
 from __future__ import annotations
@@ -131,6 +132,53 @@ class Cursor:
             if i == -1 or (i >= 1 and last_line):
                 return True
         return True
+
+
+def back_word(
+    lines: list[str], pos: Pos, count: int, bigword: bool
+) -> tuple[Pos, bool]:
+    """vim's ``bck_word`` (``b``/``B``): where *count* words back leads,
+    and False when the motion fails (it started at the start of the
+    buffer).  Running into the start of the buffer stops there."""
+    c = Cursor(lines, pos, bigword)
+    for _ in range(count):
+        if c.dec() == -1:
+            return c.pos, False
+        while c.cls() == 0:  # the white space before the word
+            if c.col == 0 and not lines[c.row]:
+                break  # an empty line is a word
+            if c.dec() == -1:
+                return c.pos, True
+        else:
+            cclass = c.cls()
+            while c.cls() == cclass:  # back to the start of the word
+                if c.dec() == -1:
+                    return c.pos, True
+            c.inc()
+    return c.pos, True
+
+
+def back_word_end(
+    lines: list[str], pos: Pos, count: int, bigword: bool
+) -> tuple[Pos, bool]:
+    """vim's ``bckend_word`` (``ge``/``gE``): where *count* word ends back
+    leads, and False when the motion fails: a step starts at the start of
+    the buffer (the cursor may have moved there on an earlier step)."""
+    c = Cursor(lines, pos, bigword)
+    for _ in range(count):
+        sclass = c.cls()
+        if c.dec() == -1:
+            return c.pos, False
+        if sclass != 0:
+            while c.cls() == sclass:
+                if c.dec() == -1:
+                    return c.pos, True
+        while c.cls() == 0:
+            if c.col == 0 and not lines[c.row]:
+                break  # an empty line is a word end
+            if c.dec() == -1:
+                return c.pos, True
+    return c.pos, True
 
 
 class NoObject(Exception):

@@ -74,6 +74,8 @@ from tdb.vi.textobjects import (
     Cursor,
     NoObject,
     Pos,
+    back_word,
+    back_word_end,
     block_span,
     current_par,
     current_word,
@@ -118,6 +120,7 @@ def load_tdb_vi_bindings(engine: ViEngine) -> KeyBindings:
 
     _add_change_word(kb, engine)
     _add_nvim_cursor_fixes(kb, engine)
+    _add_backward_words(kb, engine)
     _add_text_objects(kb, engine)
     _add_join(kb, engine)
     _add_viewport_commands(kb, engine)
@@ -158,6 +161,68 @@ def _text_objects(kb: KeyBindings, engine: ViEngine):
     return text_object
 
 
+def _operators(kb: KeyBindings):
+    """``create_operator_decorator`` whose operators get vim's region for
+    a charwise motion (every tdb operator is registered through it).
+
+    prompt_toolkit's ``TextObject.operator_range`` moves an exclusive end
+    at column 0 back a character whatever the start, and ``cut`` then
+    takes a character before the cursor for an empty region: ``d0`` at
+    column 0 joined the line to the one above, at the start of the buffer
+    it duplicated text.  See ``_vim_region``.  The decorated function is
+    returned wrapped (``vi_state.operator_func`` is the wrapper).
+    """
+    register = create_operator_decorator(kb)
+
+    def operator(*keys, **kwargs):
+        def decorator(func):
+            def run(event: KeyPressEvent, text_obj: TextObject) -> None:
+                func(event, _vim_region(event.current_buffer, text_obj))
+
+            register(*keys, **kwargs)(run)
+            return run
+
+        return decorator
+
+    return operator
+
+
+def _vim_region(buff: Buffer, obj: TextObject) -> TextObject:
+    """*obj* as vim operates on it, where prompt_toolkit would not.
+
+    A charwise object whose region is empty in prompt_toolkit (an
+    exclusive one, or an inclusive one of just a line end, as on an empty
+    line) goes through ``_charwise``: empty in vim too (``d0`` at
+    column 0, ``dh``, ``d^`` on the first non-blank, ``dTx`` next to the
+    ``x``, ``d1|`` onto the cursor) it becomes an ``_EmptyTextObject``,
+    which no operator changes text for (``c`` still inserts, ``<`` and
+    ``>`` still shift the line, as in vim); ending at column 0 of a later
+    line (``dw`` on an empty line) it gets vim's exclusive rule.  Visual
+    selections and linewise objects are left alone.
+    """
+    if (
+        buff.selection_state is not None
+        or obj.type not in (TextObjectType.EXCLUSIVE, TextObjectType.INCLUSIVE)
+        or isinstance(obj, _EmptyTextObject)
+    ):
+        return obj
+    doc = buff.document
+    cur = doc.cursor_position
+    start, end = obj.sorted()
+    inclusive = obj.type == TextObjectType.INCLUSIVE
+    last = doc.translate_index_to_position(cur + end)
+    if inclusive:
+        # (tdb's own inclusive objects can end on a line end: the break)
+        if start != end or last[1] < len(doc.lines[last[0]]):
+            return obj
+    else:
+        first, upto = obj.operator_range(doc)
+        if first < upto:
+            return obj
+    first_pos = doc.translate_index_to_position(cur + start)
+    return _charwise(doc.lines, cur, first_pos, last, inclusive)
+
+
 def _add_unknown_keys(kb: KeyBindings, engine: ViEngine) -> None:
     """Unknown or unsupported keys: cancel the command, notify, fail.
 
@@ -169,7 +234,7 @@ def _add_unknown_keys(kb: KeyBindings, engine: ViEngine) -> None:
     their motion and change nothing; ``!{motion}`` opens the ``:`` line
     with the range, as vim does, where ``!`` is refused.
     """
-    operator = create_operator_decorator(kb)
+    operator = _operators(kb)
     pending = vi_waiting_for_text_object_mode
     visual = vi_selection_mode & ~pending
     command = vi_navigation_mode | visual
@@ -240,7 +305,7 @@ def _add_change_word(kb: KeyBindings, engine: ViEngine) -> None:
     needs a tdb-owned ``c`` operator so the ``w``/``W`` text objects can
     tell a change apart from ``d``/``y``.
     """
-    operator = create_operator_decorator(kb)
+    operator = _operators(kb)
     text_object = create_text_object_decorator(kb)
 
     @operator("c", filter=~is_read_only)
@@ -362,7 +427,7 @@ def _add_nvim_cursor_fixes(kb: KeyBindings, engine: ViEngine) -> None:
     The reference is nvim with ``nostartofline``: edits that vim does not
     consider "move to the first non-blank" keep the column.
     """
-    operator = create_operator_decorator(kb)
+    operator = _operators(kb)
 
     @kb.add("d", "d", filter=vi_navigation_mode & ~is_read_only)
     def _delete_line(event: KeyPressEvent) -> None:
@@ -480,9 +545,16 @@ def _add_nvim_cursor_fixes(kb: KeyBindings, engine: ViEngine) -> None:
 
     @operator("y")
     def _yank(event: KeyPressEvent, text_obj: TextObject) -> None:
-        """``y{motion}``: the cursor moves to the start of the yanked text."""
+        """``y{motion}``: the cursor moves to the start of the yanked text.
+
+        An empty region (``y0`` at column 0, ``yi(`` on ``()``) yanks
+        empty text, as vim does."""
         buff = event.current_buffer
         _, data = text_obj.cut(buff)
+        if isinstance(text_obj, _EmptyTextObject):
+            event.app.clipboard.yank(data)  # type: ignore[attr-defined]
+            buff.cursor_position += text_obj.start
+            return
         if data.text or data.type == SelectionType.LINES:
             event.app.clipboard.yank(data)  # type: ignore[attr-defined]
         sel = buff.selection_state
@@ -622,6 +694,80 @@ def _add_nvim_cursor_fixes(kb: KeyBindings, engine: ViEngine) -> None:
             return None
         offset = doc.get_cursor_up_position(count=event.arg)
         return TextObject(offset, type=TextObjectType.LINEWISE)
+
+
+def _add_backward_words(kb: KeyBindings, engine: ViEngine) -> None:
+    """vim's ``b``/``B``/``ge``/``gE`` and ``g_``.
+
+    prompt_toolkit's ``b`` stays put when fewer than *count* words are
+    left (vim stops at the start of the buffer), and at the start of the
+    buffer neither ``b`` nor ``ge`` fails; its ``ge`` then takes the
+    cursor's character.  Its ``g_`` on an empty line ends on the line
+    break above.  Under an operator a failed motion cancels it.
+    """
+    text_object = _text_objects(kb, engine)
+    movable = (
+        vi_navigation_mode | vi_selection_mode
+    ) & ~vi_waiting_for_text_object_mode
+
+    def backward(keys: tuple[str, ...], find, bigword: bool, inclusive: bool) -> None:
+        def go(event: KeyPressEvent) -> tuple[Pos, Pos, bool]:
+            """(cursor, target, ok); the cursor is moved to the target."""
+            buff = event.current_buffer
+            doc = buff.document
+            pos = (doc.cursor_position_row, doc.cursor_position_col)
+            to, ok = find(doc.lines, pos, event.arg, bigword)
+            buff.cursor_position = doc.translate_row_col_to_index(*to)
+            return pos, to, ok
+
+        @text_object(*keys, no_move_handler=True, no_selection_handler=True)
+        def target(event: KeyPressEvent) -> TextObject | None:
+            buff = event.current_buffer
+            doc = buff.document
+            pos, to, ok = go(event)
+            if not ok:
+                return None  # the operator is cancelled; the cursor moved
+            buff.cursor_position = doc.cursor_position
+            return _charwise(doc.lines, doc.cursor_position, to, pos, inclusive)
+
+        @kb.add(*keys, filter=movable)
+        def _move(event: KeyPressEvent) -> None:
+            if not go(event)[2]:
+                engine.fail()  # (``5ge`` can fail after moving)
+
+    backward(("b",), back_word, False, False)
+    backward(("B",), back_word, True, False)
+    backward(("g", "e"), back_word_end, False, True)
+    backward(("g", "E"), back_word_end, True, True)
+
+    def last_nonblank(event: KeyPressEvent) -> Pos | None:
+        """``[count]g_``: the last non-blank *count* - 1 lines down (column 0
+        on a blank line); a count on the last line fails."""
+        doc = event.current_buffer.document
+        lines = doc.lines
+        row = doc.cursor_position_row
+        if event.arg > 1 and row >= len(lines) - 1:
+            return None
+        to = min(row + event.arg - 1, len(lines) - 1)
+        return to, max(len(lines[to].rstrip(" \t")) - 1, 0)
+
+    @text_object("g", "_", no_move_handler=True, no_selection_handler=True)
+    def _last_nonblank(event: KeyPressEvent) -> TextObject | None:
+        to = last_nonblank(event)
+        if to is None:
+            return None
+        doc = event.current_buffer.document
+        pos = (doc.cursor_position_row, doc.cursor_position_col)
+        return _charwise(doc.lines, doc.cursor_position, pos, to, True)
+
+    @kb.add("g", "_", filter=movable)
+    def _move_last_nonblank(event: KeyPressEvent) -> None:
+        to = last_nonblank(event)
+        if to is None:
+            engine.fail()
+            return
+        doc = event.current_buffer.document
+        event.current_buffer.cursor_position = doc.translate_row_col_to_index(*to)
 
 
 def _screen_column_index(line: str, column: int, tabstop: int) -> int:

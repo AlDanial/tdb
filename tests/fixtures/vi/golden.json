@@ -1259,12 +1259,642 @@
   ],
   "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = \n"
  },
+ "empty-2d0": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
  "empty-J": {
   "cursor": [
    0,
    0
   ],
   "text": ""
+ },
+ "empty-b-count-clamps": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "d\n"
+ },
+ "empty-b-from-emptyline": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "ab\n"
+ },
+ "empty-b-indent": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "ab\n"
+ },
+ "empty-c-0": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\nQxy\n"
+ },
+ "empty-c-0-normal": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "abc\nAZxy\n"
+ },
+ "empty-c-0-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "Qabc\nxy\n"
+ },
+ "empty-c-0-top-normal": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "AZabc\nxy\n"
+ },
+ "empty-c-B-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-c-B-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-c-T": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "xQy\n"
+ },
+ "empty-c-T-col0": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "ab\nxQy\n"
+ },
+ "empty-c-T-col0-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "ab\nxAZy\n"
+ },
+ "empty-c-T-normal": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "xAZy\n"
+ },
+ "empty-c-b-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-c-b-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-c-bar-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nQ\ncd\n"
+ },
+ "empty-c-bar-emptyline-normal": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "ab\nAZ\ncd\n"
+ },
+ "empty-c-bar-tab": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "aQ\tb\n"
+ },
+ "empty-c-bar-tab-normal": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "aAZ\tb\n"
+ },
+ "empty-c-bar1": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nQcd\nef\n"
+ },
+ "empty-c-bar1-normal": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "ab\nAZcd\nef\n"
+ },
+ "empty-c-bar2": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "aQb\ncd\nef\n"
+ },
+ "empty-c-bar2-normal": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "aAZb\ncd\nef\n"
+ },
+ "empty-c-brace-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "Qabc\nxy\n"
+ },
+ "empty-c-brace-top-normal": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "AZabc\nxy\n"
+ },
+ "empty-c-caret": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "  Qabc\n"
+ },
+ "empty-c-caret-col0": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\nQxy\n"
+ },
+ "empty-c-caret-col0-normal": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "abc\nAZxy\n"
+ },
+ "empty-c-caret-normal": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "  AZabc\n"
+ },
+ "empty-c-dollar-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nQ\ncd\n"
+ },
+ "empty-c-dollar-emptyline-normal": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "ab\nAZ\ncd\n"
+ },
+ "empty-c-gE-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-c-gE-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-c-g_-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nQ\ncd\n"
+ },
+ "empty-c-g_-emptyline-normal": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "ab\nAZ\ncd\n"
+ },
+ "empty-c-ge-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-c-ge-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-c-h": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\nQxy\n"
+ },
+ "empty-c-h-normal": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "abc\nAZxy\n"
+ },
+ "empty-c-l-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nQ\ncd\n"
+ },
+ "empty-c-l-emptyline-normal": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "ab\nAZ\ncd\n"
+ },
+ "empty-c-space-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nQ\ncd\n"
+ },
+ "empty-c-space-emptyline-normal": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "ab\nAZ\ncd\n"
+ },
+ "empty-c-w-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nQ\ncd\n"
+ },
+ "empty-c-w-emptyline-normal": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "ab\nAZ\ncd\n"
+ },
+ "empty-count-d3h": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-d-0": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-d-0-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "abc\nxyZ\n"
+ },
+ "empty-d-0-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-d-0-top-normal": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "abcZ\nxy\n"
+ },
+ "empty-d-B-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-d-B-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-d-T": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "xy\n"
+ },
+ "empty-d-T-col0": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "ab\nxy\n"
+ },
+ "empty-d-T-col0-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "ab\nxyZ\n"
+ },
+ "empty-d-T-normal": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "xyZ\n"
+ },
+ "empty-d-b-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-d-b-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-d-bar-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-d-bar-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-d-bar-tab": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "a\tb\n"
+ },
+ "empty-d-bar-tab-normal": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "a\tbZ\n"
+ },
+ "empty-d-bar1": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\ncd\nef\n"
+ },
+ "empty-d-bar1-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "ab\ncdZ\nef\n"
+ },
+ "empty-d-bar2": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "ab\ncd\nef\n"
+ },
+ "empty-d-bar2-normal": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "abZ\ncd\nef\n"
+ },
+ "empty-d-brace-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-d-brace-top-normal": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "abcZ\nxy\n"
+ },
+ "empty-d-caret": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "  abc\n"
+ },
+ "empty-d-caret-col0": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-d-caret-col0-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "abc\nxyZ\n"
+ },
+ "empty-d-caret-normal": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "  abcZ\n"
+ },
+ "empty-d-dollar-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-d-dollar-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-d-gE-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-d-gE-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-d-g_-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-d-g_-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-d-ge-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-d-ge-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-d-h": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-d-h-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "abc\nxyZ\n"
+ },
+ "empty-d-l-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-d-l-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-d-space-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\ncd\n"
+ },
+ "empty-d-space-emptyline-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "ab\ncdZ\n"
+ },
+ "empty-d-w-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\ncd\n"
+ },
+ "empty-d-w-emptyline-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "ab\ncdZ\n"
+ },
+ "empty-d0-keeps-register": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\naxy\n"
  },
  "empty-dd": {
   "cursor": [
@@ -1280,6 +1910,1602 @@
   ],
   "text": ""
  },
+ "empty-dot-d0": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gU-0": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\nXY\n"
+ },
+ "empty-gU-0-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "abc\nXYZ\n"
+ },
+ "empty-gU-0-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "Abc\nxy\n"
+ },
+ "empty-gU-0-top-normal": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "AbcZ\nxy\n"
+ },
+ "empty-gU-B-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gU-B-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gU-T": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "xy\n"
+ },
+ "empty-gU-T-col0": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "ab\nxy\n"
+ },
+ "empty-gU-T-col0-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "ab\nxyZ\n"
+ },
+ "empty-gU-T-normal": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "xyZ\n"
+ },
+ "empty-gU-b-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gU-b-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gU-bar-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-gU-bar-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-gU-bar-tab": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "a\tb\n"
+ },
+ "empty-gU-bar-tab-normal": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "a\tbZ\n"
+ },
+ "empty-gU-bar1": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nCD\nef\n"
+ },
+ "empty-gU-bar1-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "ab\nCDZ\nef\n"
+ },
+ "empty-gU-bar2": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "ab\ncd\nef\n"
+ },
+ "empty-gU-bar2-normal": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "abZ\ncd\nef\n"
+ },
+ "empty-gU-brace-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "Abc\nxy\n"
+ },
+ "empty-gU-brace-top-normal": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "AbcZ\nxy\n"
+ },
+ "empty-gU-caret": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "  abc\n"
+ },
+ "empty-gU-caret-col0": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\nXY\n"
+ },
+ "empty-gU-caret-col0-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "abc\nXYZ\n"
+ },
+ "empty-gU-caret-normal": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "  abcZ\n"
+ },
+ "empty-gU-dollar-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-gU-dollar-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-gU-gE-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gU-gE-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gU-g_-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-gU-g_-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-gU-ge-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gU-ge-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gU-h": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\nXY\n"
+ },
+ "empty-gU-h-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "abc\nXYZ\n"
+ },
+ "empty-gU-l-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-gU-l-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-gU-space-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-gU-space-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-gU-w-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-gU-w-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-g_-count": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "ef\n"
+ },
+ "empty-g_-count-change": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "aQ  \nef\n"
+ },
+ "empty-g_-count-last-line-fails": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\ncd\n"
+ },
+ "empty-g_-count-motion": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "ab  \ncd  \ne\n"
+ },
+ "empty-g_-count-yank": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "ab  \ncdb  \ncd  \nef\n"
+ },
+ "empty-g_-motion-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nX\ncd\n"
+ },
+ "empty-ge-count-fails": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "a b c\n"
+ },
+ "empty-ge-count-moves": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "a b c\n"
+ },
+ "empty-ge-count-moves-under-op": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": " b c\n"
+ },
+ "empty-ge-from-emptyline": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "b\n"
+ },
+ "empty-ge-indent": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "\n"
+ },
+ "empty-ge-line-above": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "a\n"
+ },
+ "empty-ge-motion-indent": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "X  ab\n"
+ },
+ "empty-gt-0": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\n    xy\n"
+ },
+ "empty-gt-0-normal": {
+  "cursor": [
+   1,
+   6
+  ],
+  "text": "abc\n    xyZ\n"
+ },
+ "empty-gt-0-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "    abc\nxy\n"
+ },
+ "empty-gt-0-top-normal": {
+  "cursor": [
+   0,
+   7
+  ],
+  "text": "    abcZ\nxy\n"
+ },
+ "empty-gt-B-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gt-B-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gt-T": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "    xy\n"
+ },
+ "empty-gt-T-col0": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "ab\n    xy\n"
+ },
+ "empty-gt-T-col0-normal": {
+  "cursor": [
+   1,
+   6
+  ],
+  "text": "ab\n    xyZ\n"
+ },
+ "empty-gt-T-normal": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "    xyZ\n"
+ },
+ "empty-gt-b-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gt-b-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gt-bar-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-gt-bar-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-gt-bar-tab": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "    a\tb\n"
+ },
+ "empty-gt-bar-tab-normal": {
+  "cursor": [
+   0,
+   7
+  ],
+  "text": "    a\tbZ\n"
+ },
+ "empty-gt-bar1": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n    cd\nef\n"
+ },
+ "empty-gt-bar1-normal": {
+  "cursor": [
+   1,
+   6
+  ],
+  "text": "ab\n    cdZ\nef\n"
+ },
+ "empty-gt-bar2": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "    ab\ncd\nef\n"
+ },
+ "empty-gt-bar2-normal": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "    abZ\ncd\nef\n"
+ },
+ "empty-gt-brace-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "    abc\nxy\n"
+ },
+ "empty-gt-brace-top-normal": {
+  "cursor": [
+   0,
+   7
+  ],
+  "text": "    abcZ\nxy\n"
+ },
+ "empty-gt-caret": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "      abc\n"
+ },
+ "empty-gt-caret-col0": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\n    xy\n"
+ },
+ "empty-gt-caret-col0-normal": {
+  "cursor": [
+   1,
+   6
+  ],
+  "text": "abc\n    xyZ\n"
+ },
+ "empty-gt-caret-normal": {
+  "cursor": [
+   0,
+   9
+  ],
+  "text": "      abcZ\n"
+ },
+ "empty-gt-dollar-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-gt-dollar-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-gt-gE-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gt-gE-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gt-g_-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-gt-g_-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-gt-ge-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gt-ge-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gt-h": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\n    xy\n"
+ },
+ "empty-gt-h-normal": {
+  "cursor": [
+   1,
+   6
+  ],
+  "text": "abc\n    xyZ\n"
+ },
+ "empty-gt-l-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-gt-l-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-gt-space-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-gt-space-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-gt-w-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-gt-w-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-gtilde-0": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\nXY\n"
+ },
+ "empty-gtilde-0-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "abc\nXYZ\n"
+ },
+ "empty-gtilde-0-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "Abc\nxy\n"
+ },
+ "empty-gtilde-0-top-normal": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "AbcZ\nxy\n"
+ },
+ "empty-gtilde-B-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gtilde-B-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gtilde-T": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "xy\n"
+ },
+ "empty-gtilde-T-col0": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "ab\nxy\n"
+ },
+ "empty-gtilde-T-col0-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "ab\nxyZ\n"
+ },
+ "empty-gtilde-T-normal": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "xyZ\n"
+ },
+ "empty-gtilde-b-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gtilde-b-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gtilde-bar-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-gtilde-bar-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-gtilde-bar-tab": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "a\tb\n"
+ },
+ "empty-gtilde-bar-tab-normal": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "a\tbZ\n"
+ },
+ "empty-gtilde-bar1": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nCD\nef\n"
+ },
+ "empty-gtilde-bar1-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "ab\nCDZ\nef\n"
+ },
+ "empty-gtilde-bar2": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "ab\ncd\nef\n"
+ },
+ "empty-gtilde-bar2-normal": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "abZ\ncd\nef\n"
+ },
+ "empty-gtilde-brace-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "Abc\nxy\n"
+ },
+ "empty-gtilde-brace-top-normal": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "AbcZ\nxy\n"
+ },
+ "empty-gtilde-caret": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "  abc\n"
+ },
+ "empty-gtilde-caret-col0": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\nXY\n"
+ },
+ "empty-gtilde-caret-col0-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "abc\nXYZ\n"
+ },
+ "empty-gtilde-caret-normal": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "  abcZ\n"
+ },
+ "empty-gtilde-dollar-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-gtilde-dollar-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-gtilde-gE-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gtilde-gE-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gtilde-g_-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-gtilde-g_-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-gtilde-ge-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gtilde-ge-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gtilde-h": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\nXY\n"
+ },
+ "empty-gtilde-h-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "abc\nXYZ\n"
+ },
+ "empty-gtilde-l-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-gtilde-l-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-gtilde-space-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-gtilde-space-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-gtilde-w-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-gtilde-w-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-gu-0": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gu-0-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "abc\nxyZ\n"
+ },
+ "empty-gu-0-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gu-0-top-normal": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "abcZ\nxy\n"
+ },
+ "empty-gu-B-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gu-B-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gu-T": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "xy\n"
+ },
+ "empty-gu-T-col0": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "ab\nxy\n"
+ },
+ "empty-gu-T-col0-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "ab\nxyZ\n"
+ },
+ "empty-gu-T-normal": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "xyZ\n"
+ },
+ "empty-gu-b-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gu-b-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gu-bar-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-gu-bar-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-gu-bar-tab": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "a\tb\n"
+ },
+ "empty-gu-bar-tab-normal": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "a\tbZ\n"
+ },
+ "empty-gu-bar1": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\ncd\nef\n"
+ },
+ "empty-gu-bar1-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "ab\ncdZ\nef\n"
+ },
+ "empty-gu-bar2": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "ab\ncd\nef\n"
+ },
+ "empty-gu-bar2-normal": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "abZ\ncd\nef\n"
+ },
+ "empty-gu-brace-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gu-brace-top-normal": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "abcZ\nxy\n"
+ },
+ "empty-gu-caret": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "  abc\n"
+ },
+ "empty-gu-caret-col0": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gu-caret-col0-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "abc\nxyZ\n"
+ },
+ "empty-gu-caret-normal": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "  abcZ\n"
+ },
+ "empty-gu-dollar-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-gu-dollar-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-gu-gE-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gu-gE-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gu-g_-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-gu-g_-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-gu-ge-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gu-ge-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gu-h": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gu-h-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "abc\nxyZ\n"
+ },
+ "empty-gu-l-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-gu-l-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-gu-space-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-gu-space-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-gu-w-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-gu-w-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-lt-0": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-lt-0-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "abc\nxyZ\n"
+ },
+ "empty-lt-0-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-lt-0-top-normal": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "abcZ\nxy\n"
+ },
+ "empty-lt-B-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-lt-B-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-lt-T": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "xy\n"
+ },
+ "empty-lt-T-col0": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "ab\nxy\n"
+ },
+ "empty-lt-T-col0-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "ab\nxyZ\n"
+ },
+ "empty-lt-T-normal": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "xyZ\n"
+ },
+ "empty-lt-b-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-lt-b-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-lt-bar-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-lt-bar-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-lt-bar-tab": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "a\tb\n"
+ },
+ "empty-lt-bar-tab-normal": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "a\tbZ\n"
+ },
+ "empty-lt-bar1": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\ncd\nef\n"
+ },
+ "empty-lt-bar1-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "ab\ncdZ\nef\n"
+ },
+ "empty-lt-bar2": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "ab\ncd\nef\n"
+ },
+ "empty-lt-bar2-normal": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "abZ\ncd\nef\n"
+ },
+ "empty-lt-brace-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-lt-brace-top-normal": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "abcZ\nxy\n"
+ },
+ "empty-lt-caret": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "abc\n"
+ },
+ "empty-lt-caret-col0": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-lt-caret-col0-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "abc\nxyZ\n"
+ },
+ "empty-lt-caret-normal": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "abcZ\n"
+ },
+ "empty-lt-dollar-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-lt-dollar-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-lt-gE-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-lt-gE-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-lt-g_-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-lt-g_-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-lt-ge-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-lt-ge-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-lt-h": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-lt-h-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "abc\nxyZ\n"
+ },
+ "empty-lt-l-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-lt-l-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-lt-space-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-lt-space-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-lt-w-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-lt-w-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-macro-d0-goes-on": {
+  "cursor": [
+   2,
+   1
+  ],
+  "text": "abcZ\nyZ\nzz\n"
+ },
+ "empty-macro-db-aborts": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "ZZ\nxy\n"
+ },
+ "empty-normal-all-caret": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "  ab\n  cd\n"
+ },
+ "empty-normal-all-d0": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "ab\ncd\nef\n"
+ },
  "empty-p": {
   "cursor": [
    0,
@@ -1293,6 +3519,328 @@
    0
   ],
   "text": ""
+ },
+ "empty-y-0": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-y-0-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "abc\nxyZ\n"
+ },
+ "empty-y-0-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-y-0-top-normal": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "abcZ\nxy\n"
+ },
+ "empty-y-B-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-y-B-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-y-T": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "xy\n"
+ },
+ "empty-y-T-col0": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "ab\nxy\n"
+ },
+ "empty-y-T-col0-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "ab\nxyZ\n"
+ },
+ "empty-y-T-normal": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "xyZ\n"
+ },
+ "empty-y-b-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-y-b-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-y-bar-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-y-bar-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-y-bar-tab": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "a\tb\n"
+ },
+ "empty-y-bar-tab-normal": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "a\tbZ\n"
+ },
+ "empty-y-bar1": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\ncd\nef\n"
+ },
+ "empty-y-bar1-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "ab\ncdZ\nef\n"
+ },
+ "empty-y-bar2": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "ab\ncd\nef\n"
+ },
+ "empty-y-bar2-normal": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "abZ\ncd\nef\n"
+ },
+ "empty-y-brace-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-y-brace-top-normal": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "abcZ\nxy\n"
+ },
+ "empty-y-caret": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "  abc\n"
+ },
+ "empty-y-caret-col0": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-y-caret-col0-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "abc\nxyZ\n"
+ },
+ "empty-y-caret-normal": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "  abcZ\n"
+ },
+ "empty-y-dollar-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-y-dollar-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-y-gE-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-y-gE-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-y-g_-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-y-g_-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-y-ge-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-y-ge-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-y-h": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-y-h-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "abc\nxyZ\n"
+ },
+ "empty-y-l-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-y-l-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-y-space-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-y-space-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-y-w-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-y-w-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-y0-append": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\nabc\n\nxy\n"
+ },
+ "empty-y0-keeps-register": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-y0-sets-register-0": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-yi-paren-yanks-empty": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "abc ()\n"
  },
  "eol-G-dd": {
   "cursor": [
