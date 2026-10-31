@@ -1063,6 +1063,636 @@
   ],
   "text": "a\nb\nc\na\n"
  },
+ "ex-co-end": {
+  "cursor": [
+   5,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  b2\n"
+ },
+ "ex-co-end-undo": {
+  "cursor": [
+   4,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n"
+ },
+ "ex-copy-full": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "  a1\n  b2\n  c3\n  b2\n  d4\n  e5\n"
+ },
+ "ex-count-colon": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "  a1\n  d4\n  e5\n"
+ },
+ "ex-d-all": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "\n"
+ },
+ "ex-d-count": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "  a1\n  d4\n  e5\n"
+ },
+ "ex-d-dot-repeats-normal": {
+  "cursor": [
+   2,
+   2
+  ],
+  "text": "  1\n  b2\n  4\n  e5\n"
+ },
+ "ex-d-end-undo": {
+  "cursor": [
+   3,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n"
+ },
+ "ex-d-last-lines": {
+  "cursor": [
+   2,
+   2
+  ],
+  "text": "  a1\n  b2\n  c3\n"
+ },
+ "ex-d-mark-below": {
+  "cursor": [
+   2,
+   2
+  ],
+  "text": "  a1\n  c3\n  d4\n  e5\n"
+ },
+ "ex-d-marks": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "  a1\n  e5\n"
+ },
+ "ex-d-out-of-range": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n"
+ },
+ "ex-d-range": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "  a1\n  d4\n  e5\n"
+ },
+ "ex-d-register": {
+  "cursor": [
+   2,
+   2
+  ],
+  "text": "  a1\n  c3\n  b2\n  d4\n  e5\n"
+ },
+ "ex-d-then-p": {
+  "cursor": [
+   2,
+   2
+  ],
+  "text": "  a1\n  d4\n  b2\n  c3\n  e5\n"
+ },
+ "ex-d-undo": {
+  "cursor": [
+   1,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n"
+ },
+ "ex-d-visual": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "  a1\n  d4\n  e5\n"
+ },
+ "ex-d-visual-charwise": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "  a1\n  d4\n  e5\n"
+ },
+ "ex-delete-full": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "def f(a, b):\n\ny = 10\nz = 20\n"
+ },
+ "ex-empty-d": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": ""
+ },
+ "ex-empty-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "x\n"
+ },
+ "ex-empty-t": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "\n\n"
+ },
+ "ex-goto": {
+  "cursor": [
+   4,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n"
+ },
+ "ex-goto-jump-mark": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n"
+ },
+ "ex-goto-last-minus": {
+  "cursor": [
+   3,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n"
+ },
+ "ex-goto-mark": {
+  "cursor": [
+   2,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n"
+ },
+ "ex-goto-relative": {
+  "cursor": [
+   2,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n"
+ },
+ "ex-goto-zero": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n"
+ },
+ "ex-leading-colons": {
+  "cursor": [
+   2,
+   2
+  ],
+  "text": "  a1\n  b2\n  d4\n  e5\n"
+ },
+ "ex-m-down": {
+  "cursor": [
+   3,
+   3
+  ],
+  "text": "  a1\n  d4\n  b2\n  c3\n  e5\n"
+ },
+ "ex-m-end": {
+  "cursor": [
+   4,
+   3
+  ],
+  "text": "  c3\n  d4\n  e5\n  a1\n  b2\n"
+ },
+ "ex-m-into-itself": {
+  "cursor": [
+   1,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n"
+ },
+ "ex-m-mark-follows": {
+  "cursor": [
+   4,
+   2
+  ],
+  "text": "  b2\n  c3\n  d4\n  e5\n  a1\n"
+ },
+ "ex-m-marks-range": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "  b2\n  c3\n  a1\n  d4\n  e5\n"
+ },
+ "ex-m-noop": {
+  "cursor": [
+   2,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n"
+ },
+ "ex-m-top": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "  d4\n  a1\n  b2\n  c3\n  e5\n"
+ },
+ "ex-m-undo": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n"
+ },
+ "ex-m-undo-redo": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "  c3\n  d4\n  e5\n  a1\n  b2\n"
+ },
+ "ex-m-up-undo": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n"
+ },
+ "ex-macro": {
+  "cursor": [
+   4,
+   0
+  ],
+  "text": "  c3\n  d4\n  e5\n  a1\n  b2\n"
+ },
+ "ex-macro-twice": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "  a1\n  e5\n"
+ },
+ "ex-noeol-d-last": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "a"
+ },
+ "ex-noeol-m": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "b\na"
+ },
+ "ex-normal-all": {
+  "cursor": [
+   4,
+   4
+  ],
+  "text": "  a1;\n  b2;\n  c3;\n  d4;\n  e5;\n"
+ },
+ "ex-normal-current": {
+  "cursor": [
+   2,
+   2
+  ],
+  "text": "  a1\n  b2\n  c\n  d4\n  e5\n"
+ },
+ "ex-normal-dd-all": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "\n"
+ },
+ "ex-normal-dj": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "  c3\n"
+ },
+ "ex-normal-dot": {
+  "cursor": [
+   1,
+   4
+  ],
+  "text": "  a1x\n  b2x\n  c3\n  d4\n  e5\n"
+ },
+ "ex-normal-o": {
+  "cursor": [
+   2,
+   2
+  ],
+  "text": "  a1\n  x\n  x\n  b2\n  c3\n  d4\n  e5\n"
+ },
+ "ex-normal-pending-op": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "  a1\n b2\n  c3\n  d4\n  e5\n"
+ },
+ "ex-normal-range": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "  a1\n b2\n c3\n d4\n  e5\n"
+ },
+ "ex-normal-undo": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n"
+ },
+ "ex-range-comma-default": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "  a1\n  e5\n"
+ },
+ "ex-range-dollar-minus": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "  a1\n  e5\n"
+ },
+ "ex-range-plus-minus": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "  a1\n  e5\n"
+ },
+ "ex-range-visual-y": {
+  "cursor": [
+   5,
+   2
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  a1\n  b2\n"
+ },
+ "ex-t-mark": {
+  "cursor": [
+   3,
+   2
+  ],
+  "text": "  a1\n  a1\n  b2\n  c3\n  d4\n  e5\n"
+ },
+ "ex-t-range": {
+  "cursor": [
+   5,
+   0
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  a1\n  b2\n  e5\n"
+ },
+ "ex-t-top": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "  a1\n  a1\n  b2\n  c3\n  d4\n  e5\n"
+ },
+ "ex-t-undo": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n"
+ },
+ "ex-undo-m-down-r0": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n"
+ },
+ "ex-undo-m-down-r2": {
+  "cursor": [
+   2,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n"
+ },
+ "ex-undo-m-down-r4": {
+  "cursor": [
+   1,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n"
+ },
+ "ex-undo-m-down-r6": {
+  "cursor": [
+   1,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n"
+ },
+ "ex-undo-m-end-r0": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n"
+ },
+ "ex-undo-m-end-r2": {
+  "cursor": [
+   2,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n"
+ },
+ "ex-undo-m-end-r4": {
+  "cursor": [
+   1,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n"
+ },
+ "ex-undo-m-end-r6": {
+  "cursor": [
+   1,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n"
+ },
+ "ex-undo-m-up-r0": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n"
+ },
+ "ex-undo-m-up-r2": {
+  "cursor": [
+   5,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n"
+ },
+ "ex-undo-m-up-r4": {
+  "cursor": [
+   4,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n"
+ },
+ "ex-undo-m-up-r6": {
+  "cursor": [
+   6,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n"
+ },
+ "ex-undo-m-up2-r0": {
+  "cursor": [
+   5,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n"
+ },
+ "ex-undo-m-up2-r2": {
+  "cursor": [
+   2,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n"
+ },
+ "ex-undo-m-up2-r4": {
+  "cursor": [
+   4,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n"
+ },
+ "ex-undo-m-up2-r6": {
+  "cursor": [
+   6,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n"
+ },
+ "ex-undo-t-r0": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n"
+ },
+ "ex-undo-t-r2": {
+  "cursor": [
+   1,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n"
+ },
+ "ex-undo-t-r4": {
+  "cursor": [
+   1,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n"
+ },
+ "ex-undo-t-r6": {
+  "cursor": [
+   1,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n"
+ },
+ "ex-unknown": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "  a\n  b2\n  c3\n  d4\n  e5\n"
+ },
+ "ex-visual-esc": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "  a\n  b2\n  c3\n  d4\n  e5\n"
+ },
+ "ex-visual-esc-down": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "  a1\n  b\n  c3\n  d4\n  e5\n"
+ },
+ "ex-visual-esc-up": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "  a1\n  2\n  c3\n  d4\n  e5\n"
+ },
+ "ex-visual-line-esc-down": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "  a1\n b2\n  c3\n  d4\n  e5\n"
+ },
+ "ex-visual-line-esc-up": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "  a1\n  b\n  c3\n  d4\n  e5\n"
+ },
+ "ex-y-cursor": {
+  "cursor": [
+   3,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n"
+ },
+ "ex-y-register": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "  a1\n  b2\n  b2\n  c3\n  d4\n  e5\n"
+ },
+ "ex-y-then-P": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  b2\n  c3\n  d4\n  e5\n"
+ },
+ "ex-y-zero-register": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "  b2\n  b2\n  c3\n  d4\n  e5\n"
+ },
  "f": {
   "cursor": [
    0,

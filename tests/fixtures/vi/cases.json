@@ -6217,5 +6217,816 @@
    0
   ],
   "keys": "/x<CR>0d/<Up><CR>/y<CR>."
+ },
+ {
+  "id": "ex-d-range",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":2,3d<CR>"
+ },
+ {
+  "id": "ex-d-last-lines",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   1,
+   3
+  ],
+  "keys": ":4,5d<CR>"
+ },
+ {
+  "id": "ex-d-then-p",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":2,3d<CR>p"
+ },
+ {
+  "id": "ex-d-register",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":2d a<CR>\"ap"
+ },
+ {
+  "id": "ex-d-count",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":2d 2<CR>"
+ },
+ {
+  "id": "ex-d-all",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   2,
+   1
+  ],
+  "keys": ":%d<CR>"
+ },
+ {
+  "id": "ex-d-dot-repeats-normal",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "x:3d<CR>."
+ },
+ {
+  "id": "ex-d-undo",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":2,3d<CR>u"
+ },
+ {
+  "id": "ex-d-marks",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "jmajjmb:'a,'bd<CR>"
+ },
+ {
+  "id": "ex-d-mark-below",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "4Gmegg:2d<CR>'e"
+ },
+ {
+  "id": "ex-d-out-of-range",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":9d<CR>"
+ },
+ {
+  "id": "ex-d-visual",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "jVj:d<CR>"
+ },
+ {
+  "id": "ex-d-visual-charwise",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "jvjl:d<CR>"
+ },
+ {
+  "id": "ex-y-cursor",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   3,
+   3
+  ],
+  "keys": ":2y<CR>"
+ },
+ {
+  "id": "ex-y-register",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":2y a<CR>\"ap"
+ },
+ {
+  "id": "ex-y-then-P",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   1,
+   3
+  ],
+  "keys": ":.,$-1y<CR>P"
+ },
+ {
+  "id": "ex-y-zero-register",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":2y<CR>dd\"0p"
+ },
+ {
+  "id": "ex-m-end",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":1,2m$<CR>"
+ },
+ {
+  "id": "ex-m-top",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":4m0<CR>"
+ },
+ {
+  "id": "ex-m-noop",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   1,
+   3
+  ],
+  "keys": ":2,3m3<CR>"
+ },
+ {
+  "id": "ex-m-down",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   1,
+   3
+  ],
+  "keys": ":2,3m4<CR>"
+ },
+ {
+  "id": "ex-m-into-itself",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   1,
+   3
+  ],
+  "keys": ":2,4m3<CR>"
+ },
+ {
+  "id": "ex-m-mark-follows",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "ma:1m$<CR>gg'a"
+ },
+ {
+  "id": "ex-m-marks-range",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "jmajmb:'a,'bm0<CR>G'b"
+ },
+ {
+  "id": "ex-m-undo",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":1,2m$<CR>u"
+ },
+ {
+  "id": "ex-m-undo-redo",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":1,2m$<CR>u<C-r>"
+ },
+ {
+  "id": "ex-t-top",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   2,
+   3
+  ],
+  "keys": ":1t0<CR>"
+ },
+ {
+  "id": "ex-co-end",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   1,
+   3
+  ],
+  "keys": ":co$<CR>"
+ },
+ {
+  "id": "ex-t-range",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":1,2t4<CR>"
+ },
+ {
+  "id": "ex-t-mark",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "jjmagg:1t0<CR>'a"
+ },
+ {
+  "id": "ex-copy-full",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":2copy 3<CR>"
+ },
+ {
+  "id": "ex-t-undo",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   2,
+   3
+  ],
+  "keys": ":1t0<CR>u"
+ },
+ {
+  "id": "ex-normal-all",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   1,
+   3
+  ],
+  "keys": ":%normal A;<CR>"
+ },
+ {
+  "id": "ex-normal-undo",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   1,
+   3
+  ],
+  "keys": ":%normal A;<CR>u"
+ },
+ {
+  "id": "ex-normal-dd-all",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   1,
+   3
+  ],
+  "keys": ":%normal dd<CR>"
+ },
+ {
+  "id": "ex-normal-range",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":2,4norm 0x<CR>"
+ },
+ {
+  "id": "ex-normal-current",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   2,
+   3
+  ],
+  "keys": ":normal 2x<CR>"
+ },
+ {
+  "id": "ex-normal-dj",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":%normal dj<CR>"
+ },
+ {
+  "id": "ex-normal-o",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":1,2normal ox<CR>"
+ },
+ {
+  "id": "ex-normal-dot",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":1normal Ax<CR>j."
+ },
+ {
+  "id": "ex-normal-pending-op",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   1,
+   1
+  ],
+  "keys": ":normal d<CR>x"
+ },
+ {
+  "id": "ex-goto",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   1,
+   3
+  ],
+  "keys": ":5<CR>"
+ },
+ {
+  "id": "ex-goto-relative",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":.+2<CR>"
+ },
+ {
+  "id": "ex-goto-last-minus",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":$-1<CR>"
+ },
+ {
+  "id": "ex-goto-mark",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "jjmagg:'a<CR>"
+ },
+ {
+  "id": "ex-goto-jump-mark",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":4<CR>''"
+ },
+ {
+  "id": "ex-goto-zero",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   3,
+   3
+  ],
+  "keys": ":0<CR>"
+ },
+ {
+  "id": "ex-range-dollar-minus",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":2,$-1d<CR>"
+ },
+ {
+  "id": "ex-range-plus-minus",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   2,
+   3
+  ],
+  "keys": ":.-1,.+1d<CR>"
+ },
+ {
+  "id": "ex-range-comma-default",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   1,
+   3
+  ],
+  "keys": ":,4d<CR>"
+ },
+ {
+  "id": "ex-range-visual-y",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "Vj:y<CR>Gp"
+ },
+ {
+  "id": "ex-count-colon",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   1,
+   3
+  ],
+  "keys": "2:d<CR>"
+ },
+ {
+  "id": "ex-macro",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qq:1m$<CR>q@q"
+ },
+ {
+  "id": "ex-macro-twice",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qq:2d<CR>q2@q"
+ },
+ {
+  "id": "ex-visual-esc",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "vj:<Esc>x"
+ },
+ {
+  "id": "ex-unknown",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":bogus<CR>x"
+ },
+ {
+  "id": "ex-leading-colons",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "::  3d<CR>"
+ },
+ {
+  "id": "ex-delete-full",
+  "text": "def f(a, b):\n    x = 1\n    return x\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":2,3delete<CR>"
+ },
+ {
+  "id": "ex-empty-d",
+  "text": "",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":d<CR>"
+ },
+ {
+  "id": "ex-empty-t",
+  "text": "",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":t0<CR>"
+ },
+ {
+  "id": "ex-empty-normal",
+  "text": "",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":normal ix<CR>",
+  "difference": "pre-existing: text typed into an empty buffer gets no final newline (nvim adds one)"
+ },
+ {
+  "id": "ex-noeol-m",
+  "text": "a\nb",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":1m$<CR>"
+ },
+ {
+  "id": "ex-noeol-d-last",
+  "text": "a\nb",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":2d<CR>"
+ },
+ {
+  "id": "ex-visual-line-esc-down",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "jVj:<Esc>x"
+ },
+ {
+  "id": "ex-visual-line-esc-up",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "jjVk:<Esc>x"
+ },
+ {
+  "id": "ex-visual-esc-up",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "jjlvk:<Esc>x"
+ },
+ {
+  "id": "ex-visual-esc-down",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "jjlvkl:<Esc>x"
+ },
+ {
+  "id": "ex-d-end-undo",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   1,
+   3
+  ],
+  "keys": ":4,5d<CR>u"
+ },
+ {
+  "id": "ex-co-end-undo",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   1,
+   3
+  ],
+  "keys": ":1co$<CR>u"
+ },
+ {
+  "id": "ex-m-up-undo",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":4,5m1<CR>u"
+ },
+ {
+  "id": "ex-undo-m-up-r0",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":4,5m1<CR>u"
+ },
+ {
+  "id": "ex-undo-m-up2-r0",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":4,5m2<CR>u"
+ },
+ {
+  "id": "ex-undo-m-down-r0",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":2,3m5<CR>u"
+ },
+ {
+  "id": "ex-undo-m-end-r0",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":2,3m$<CR>u"
+ },
+ {
+  "id": "ex-undo-t-r0",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":5t1<CR>u"
+ },
+ {
+  "id": "ex-undo-m-up-r2",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n",
+  "cursor": [
+   2,
+   3
+  ],
+  "keys": ":4,5m1<CR>u"
+ },
+ {
+  "id": "ex-undo-m-up2-r2",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n",
+  "cursor": [
+   2,
+   3
+  ],
+  "keys": ":4,5m2<CR>u"
+ },
+ {
+  "id": "ex-undo-m-down-r2",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n",
+  "cursor": [
+   2,
+   3
+  ],
+  "keys": ":2,3m5<CR>u"
+ },
+ {
+  "id": "ex-undo-m-end-r2",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n",
+  "cursor": [
+   2,
+   3
+  ],
+  "keys": ":2,3m$<CR>u"
+ },
+ {
+  "id": "ex-undo-t-r2",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n",
+  "cursor": [
+   2,
+   3
+  ],
+  "keys": ":5t1<CR>u"
+ },
+ {
+  "id": "ex-undo-m-up-r4",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n",
+  "cursor": [
+   4,
+   3
+  ],
+  "keys": ":4,5m1<CR>u"
+ },
+ {
+  "id": "ex-undo-m-up2-r4",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n",
+  "cursor": [
+   4,
+   3
+  ],
+  "keys": ":4,5m2<CR>u"
+ },
+ {
+  "id": "ex-undo-m-down-r4",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n",
+  "cursor": [
+   4,
+   3
+  ],
+  "keys": ":2,3m5<CR>u"
+ },
+ {
+  "id": "ex-undo-m-end-r4",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n",
+  "cursor": [
+   4,
+   3
+  ],
+  "keys": ":2,3m$<CR>u"
+ },
+ {
+  "id": "ex-undo-t-r4",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n",
+  "cursor": [
+   4,
+   3
+  ],
+  "keys": ":5t1<CR>u"
+ },
+ {
+  "id": "ex-undo-m-up-r6",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n",
+  "cursor": [
+   6,
+   3
+  ],
+  "keys": ":4,5m1<CR>u"
+ },
+ {
+  "id": "ex-undo-m-up2-r6",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n",
+  "cursor": [
+   6,
+   3
+  ],
+  "keys": ":4,5m2<CR>u"
+ },
+ {
+  "id": "ex-undo-m-down-r6",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n",
+  "cursor": [
+   6,
+   3
+  ],
+  "keys": ":2,3m5<CR>u"
+ },
+ {
+  "id": "ex-undo-m-end-r6",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n",
+  "cursor": [
+   6,
+   3
+  ],
+  "keys": ":2,3m$<CR>u"
+ },
+ {
+  "id": "ex-undo-t-r6",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n",
+  "cursor": [
+   6,
+   3
+  ],
+  "keys": ":5t1<CR>u"
  }
 ]

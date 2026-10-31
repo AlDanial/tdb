@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import logging
 from collections import deque
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from string import ascii_letters
 from typing import TYPE_CHECKING, Literal, Protocol
@@ -36,6 +38,7 @@ from prompt_toolkit.output import DummyOutput
 from prompt_toolkit.selection import SelectionType
 
 from tdb.vi.bindings import SEARCH_KEY, load_tdb_vi_bindings
+from tdb.vi.ex import ExError, run_ex
 from tdb.vi.marks import JUMP, MAXCOL, MarkTable, adjust_pos, edit_rows
 from tdb.vi.search import ViPatternError, compile_pattern, find_nth, place
 from tdb.vi.textedit import diff_text
@@ -483,6 +486,8 @@ class ViEngine:
         # A `{count}i/a/I/A/o/O` insert waiting for its Esc: the command key,
         # the count, and the index in ``_change`` where the typed keys begin.
         self._insert_repeat: tuple[str, int, int | None] | None = None
+        # Set by an ex command, whose changes already moved the marks.
+        self._marks_adjusted = False
 
         body, eol = _split_eol(text)
         self.buffer = _ViBuffer(document=Document(body, 0), multiline=True)
@@ -557,8 +562,11 @@ class ViEngine:
                 text = self.buffer.text
                 typing = self.mode in ("insert", "replace")
                 at = self.buffer.cursor_position if typing else None
+                self._marks_adjusted = False
                 self._dispatch(key)
-                self._adjust_marks(text, at)
+                if not self._marks_adjusted:
+                    self._adjust_marks(text, at)
+                self._marks_adjusted = False
         finally:
             self.is_replaying = False
 
@@ -576,8 +584,7 @@ class ViEngine:
             return
         name = key.name
         idle = self.mode == "normal" and not self._ptk_busy()
-        if idle and name == ":" and not self._key_pending():
-            self._open_line(":")
+        if name == ":" and self._open_ex_line():
             return
         if idle and name in ("q", "@", "."):
             # Not part of a change; an abandoned count belongs to them, and
@@ -943,8 +950,8 @@ class ViEngine:
         self._cmdline = None
 
     # ------------------------------------------------------------------
-    # The ':' command line (minimal stub; Task 10 replaces it with real ex)
-    # and the '/' '?' search line
+    # The ':' command line (ex commands, see tdb.vi.ex) and the '/' '?'
+    # search line
 
     def _open_line(self, kind: str, arg: str | None = None) -> None:
         """Open the ``:``, ``/`` or ``?`` line; *arg* is a search's count.
@@ -960,6 +967,44 @@ class ViEngine:
         self._search_change_at = (
             len(change) if kind != ":" and change is not None else None
         )
+
+    def _open_ex_line(self) -> bool:
+        """``:`` in normal mode (``3:`` gives ``.,.+2``) or Visual mode
+        (``'<,'>``); False when ``:`` is not a command here."""
+        mode = self.mode
+        if (
+            mode not in ("normal", "visual", "visual-line")
+            or self._ptk_busy()
+            or self._wait is not None
+            or self._register is not None
+        ):
+            return False
+        # Not part of a `.` change (a count or a Visual area may have begun one).
+        self._change = None
+        if mode == "normal":
+            count = self._take_count()
+            if count is None:
+                prefill = ""
+            else:
+                prefill = "." if count == 1 else f".,.+{count - 1}"
+        else:
+            self.app.key_processor.arg = None
+            visual = self._visual_state()
+            assert visual is not None
+            self.last_visual_raw = visual
+            self.buffer.exit_selection()
+            # As vim, the cursor goes to the start of the area (a linewise
+            # one ending below the cursor: column 0 of its first line).
+            anchor, cursor, linewise = visual
+            if linewise:
+                if anchor < cursor:
+                    self._move_to(anchor[0], 0)
+            else:
+                self._move_to(*min(anchor, cursor))
+            prefill = "'<,'>"
+        self._open_line(":")
+        self._cmdline = prefill
+        return True
 
     def _history(self) -> list[str]:
         if self._line_kind == ":":
@@ -1004,7 +1049,7 @@ class ViEngine:
                 self._run_search(line)
                 self._end_search()
             else:
-                self._run_cmdline(line.strip())
+                self._run_cmdline(line)
         elif len(name) == 1:
             self._edit_line(line + name)
 
@@ -1108,21 +1153,44 @@ class ViEngine:
             self._register = None
         self._end_command()
 
-    def _run_cmdline(self, cmd: str) -> None:
-        if cmd == "w":
-            self._events.append(SaveRequest())
-        elif cmd in ("q", "q!"):
-            self._events.append(LeaveRequest(discard=cmd == "q!"))
-        elif cmd in ("wq", "x"):
-            self._events += [SaveRequest(), LeaveRequest()]
-        elif cmd.isdigit():
-            row = max(1, min(int(cmd), self.buffer.document.line_count)) - 1
-            start = self.cursor
-            self._move_to(row, self.cursor[1])  # nvim nostartofline
-            if self.cursor != start:
-                self.marks.set(JUMP, start)
-        elif cmd:
-            self._events.append(Notify(f"Unknown command: :{cmd}", "warning"))
+    def _run_cmdline(self, line: str) -> None:
+        """``<CR>`` on the ``:`` line: run it as an ex command."""
+        try:
+            run_ex(line, _ExHost(self))
+        except ExError as exc:
+            self._events.append(Notify(str(exc), "error"))
+        finally:
+            # The marks already followed each change the command made.
+            self._marks_adjusted = True
+
+    def _goto_row(self, row: int) -> None:
+        """``:N``: go to *row*, keeping the column (nvim nostartofline)."""
+        start = self.cursor
+        self._move_to(row, self.cursor[1])
+        if self.cursor != start:
+            self.marks.set(JUMP, start)
+
+    def _run_keys(self, keys: list[ViKey]) -> None:
+        """Run *keys* now, as replayed keys (``:normal``), then normal mode.
+
+        As vim's ``:normal``, an unfinished command is ended as by Esc.
+        """
+        queue, replaying = self._queue, self.is_replaying
+        self._queue = deque((k, True) for k in keys)
+        try:
+            self._run_queue()
+            if self._cmdline is not None:
+                self._close_line()
+                if self._line_kind != ":":
+                    self._cancel_operator()
+                    self._end_search()
+            self._wait = None
+            if self._key_pending() or self.mode != "normal":
+                self._queue.append((ViKey("escape"), True))
+                self._run_queue()
+            self._register = None
+        finally:
+            self._queue, self.is_replaying = queue, replaying
 
     def drain_events(self) -> list[EngineEvent]:
         """Return and clear the events produced since the last drain."""
@@ -1257,6 +1325,131 @@ class ViEngine:
         )
         col = max(0, min(col, last))
         self.buffer.cursor_position = doc.translate_row_col_to_index(row, col)
+
+
+class _ExHost:
+    """``ExHost`` over a ``ViEngine``: what ``:`` commands act on."""
+
+    def __init__(self, engine: ViEngine) -> None:
+        self._e = engine
+
+    def lines(self) -> list[str]:
+        return list(self._e.buffer.document.lines)
+
+    def cursor_row(self) -> int:
+        return self._e.cursor[0]
+
+    def cursor_col(self) -> int:
+        return self._e.cursor[1]
+
+    def mark(self, name: str) -> tuple[int, int] | None:
+        return self._e.marks.get(name)
+
+    def replace_lines(
+        self,
+        lines: list[str],
+        cursor: tuple[int, int],
+        *,
+        row_map: Sequence[int] | None = None,
+        undo_cursor: tuple[int, int] | None = None,
+    ) -> None:
+        e = self._e
+        buff = e.buffer
+        old = buff.text
+        was_empty = not old and not buff.eol
+        new = "\n".join(lines)
+        if new == old:
+            e._move_to(*cursor)  # e.g. a move to where the lines are
+            return
+        if undo_cursor is None:
+            row = _first_changed_row(buff.document.lines, lines, row_map)
+            undo_cursor = row, e.cursor[1]
+        # The undo entry holds the cursor ``u`` puts back.
+        buff.cursor_position = buff.document.translate_row_col_to_index(*undo_cursor)
+        buff.save_to_undo_stack()
+        if was_empty and new:
+            buff.eol = True  # the empty buffer got lines
+        buff.set_document(Document(new, 0), bypass_readonly=True)
+        e._move_to(*cursor)
+        if row_map is None:
+            e._adjust_marks(old)
+            return
+        marks = e.marks
+        marks.restore(
+            {
+                name: (row_map[r], c) if 0 <= r < len(row_map) else (r, c)
+                for name, (r, c) in marks.snapshot().items()
+            }
+        )
+        raw = e._last_visual_raw
+        if raw is not None:
+            (ar, ac), (cr, cc), linewise = raw
+            last = len(row_map) - 1
+            e._last_visual_raw = (
+                (row_map[min(ar, last)], ac),
+                (row_map[min(cr, last)], cc),
+                linewise,
+            )
+
+    def set_register(
+        self, name: str | None, text: str, linewise: bool, *, yank: bool = False
+    ) -> None:
+        e = self._e
+        kind = SelectionType.LINES if linewise else SelectionType.CHARACTERS
+        saved, e._register = e._register, name
+        try:
+            e.registers.store(ClipboardData(text, kind), yank=yank)
+        finally:
+            e._register = saved
+
+    def run_normal(self, row: int | None, keys: str) -> None:
+        if row is not None:
+            self._e._move_to(row, 0)
+        self._e._run_keys(ViKey.parse(keys))
+
+    def last_search(self) -> str | None:
+        last = self._e.session.last_search
+        return None if last is None else last[0]
+
+    def set_last_search(self, pattern: str) -> None:
+        session = self._e.session
+        backward = session.last_search[1] if session.last_search else False
+        session.last_search = (pattern, backward)
+
+    def save(self) -> None:
+        self._e._events.append(SaveRequest())
+
+    def leave(self, discard: bool) -> None:
+        self._e._events.append(LeaveRequest(discard=discard))
+
+    def notify(self, text: str, severity: str = "information") -> None:
+        self._e._events.append(Notify(text, severity))  # type: ignore[arg-type]
+
+    def goto_line(self, row: int) -> None:
+        self._e._goto_row(row)
+
+    @contextmanager
+    def undo_group(self) -> Iterator[None]:
+        """Everything the command changes is one undo step (redo cleared)."""
+        buff = self._e.buffer
+        mark, text, eol = len(buff._undo_stack), buff.text, buff.eol
+        try:
+            yield
+        finally:
+            if (buff.text, buff.eol) != (text, eol):
+                self._e._group_undo(mark, text, eol)
+                buff._redo_stack = []
+
+
+def _first_changed_row(
+    old: list[str], new: list[str], row_map: Sequence[int] | None
+) -> int:
+    """The first row of *old* a ``replace_lines`` changes (or the last row)."""
+    if row_map is not None:
+        moved = (r for r, to in enumerate(row_map) if r != to)
+    else:
+        moved = (r for r, (a, b) in enumerate(zip(old, new)) if a != b)
+    return min(next(moved, len(new)), len(old) - 1)
 
 
 def _is_jump(keys: list[str]) -> bool:

@@ -196,7 +196,7 @@ async def test_unknown_command_notifies():
         notes: list[str] = []
         app.notify = lambda msg, **kw: notes.append(msg)
         await pilot.press(":", "b", "o", "g", "u", "s", "enter")
-        assert notes and "Unknown command" in notes[0]
+        assert notes and "Not an editor command" in notes[0]
 
 
 async def test_x_and_X_with_count():

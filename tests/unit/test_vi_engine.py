@@ -146,7 +146,7 @@ async def test_undo_redo_restore_final_newline(first, second):
     assert e.text == second
 
 
-async def test_command_line_stub():
+async def test_command_line_basics():
     e = ViEngine("abc\n  def\nghi\n")
     e.feed_keys(":")
     assert e.mode == "command" and e.status == ":" and e.has_pending
@@ -171,7 +171,7 @@ async def test_command_line_stub():
     e.feed_keys(":99<CR>")
     assert e.cursor == (2, 2)
     e.feed_keys(":bogus<CR>")
-    assert e.drain_events() == [Notify("Unknown command: :bogus", "warning")]
+    assert e.drain_events() == [Notify("Not an editor command: bogus", "error")]
     e.feed_keys(":xy<Esc>")
     assert e.mode == "normal" and e.drain_events() == []
     e.feed_keys(":a<BS><BS>")  # Backspace on an empty line cancels
@@ -930,3 +930,145 @@ async def test_macro_keeps_raw_search_line_keys():
     e.feed_keys("/x<CR>0")
     e.feed_keys("qqd/<Up><CR>q")
     assert e.session.vi_state.named_registers["q"].text == "d/\x80ku\r"
+
+
+async def test_colon_in_visual_mode_prefills_the_visual_range():
+    e = ViEngine("a\nb\nc\nd\n")
+    e.feed_keys("jVj:")
+    assert (e.mode, e.status) == ("command", ":'<,'>")
+    e.feed_keys("d<CR>")
+    assert e.text == "a\nd\n"
+    e.feed_keys("vl:")
+    assert e.status == ":'<,'>"
+    e.feed_keys("<Esc>")
+    assert e.mode == "normal" and e.selection is None
+
+
+async def test_count_before_colon_prefills_a_relative_range():
+    e = ViEngine("a\nb\nc\nd\n", cursor=(1, 0))
+    e.feed_keys("3:")
+    assert e.status == ":.,.+2"
+    e.feed_keys("<Esc>1:")
+    assert e.status == ":."
+
+
+async def test_percent_normal_is_one_undo_step():
+    e = ViEngine("a\nb\nc\n")
+    e.feed_keys(":%normal A;<CR>")
+    assert e.text == "a;\nb;\nc;\n"
+    e.feed_keys("u")
+    assert e.text == "a\nb\nc\n"
+    e.feed_keys("<C-r>")
+    assert e.text == "a;\nb;\nc;\n"
+    e.feed_keys("uu")  # nothing older to undo
+    assert e.text == "a\nb\nc\n"
+
+
+async def test_ex_commands_are_single_undo_steps_and_clear_redo():
+    e = ViEngine("a\nb\nc\nd\n")
+    for cmd in (":1,2m$<CR>", ":1t0<CR>", ":2,3d<CR>"):
+        before = e.text
+        e.feed_keys(cmd)
+        assert e.text != before
+        e.feed_keys("u")
+        assert e.text == before
+        e.feed_keys("<C-r>")
+    e.feed_keys("u:1d<CR><C-r>")  # a new change drops the redo
+    assert e.text == "c\nd\na\nb\n"
+    assert e.buffer._redo_stack == []
+
+
+async def test_noop_move_leaves_no_undo_entry():
+    e = ViEngine("a\nb\nc\n")
+    undo = list(e.buffer._undo_stack)
+    e.feed_keys(":2m1<CR>")
+    assert (e.text, e.cursor) == ("a\nb\nc\n", (1, 0))
+    assert e.buffer._undo_stack == undo
+
+
+async def test_put_after_ex_delete_and_yank():
+    e = ViEngine("1\n2\n3\n4\n5\n")
+    e.feed_keys(":3,4d<CR>")
+    assert e.session.clipboard.get_data().text == "3\n4"
+    e.feed_keys("ggp")
+    assert e.text == "1\n3\n4\n2\n5\n"
+    e.feed_keys(':2y a<CR>G"ap')
+    assert e.text == "1\n3\n4\n2\n5\n3\n"
+    e.feed_keys(":1y<CR>")  # an unnamed yank also sets "0
+    assert e.session.vi_state.named_registers["0"].text == "1"
+
+
+async def test_dot_after_ex_delete_repeats_the_normal_change():
+    e = ViEngine("abc\ndef\nghi\n")
+    e.feed_keys("x:2d<CR>.")
+    assert e.text == "bc\nhi\n"
+    assert e.session.last_change == ViKey.parse("x")
+
+
+async def test_macro_records_and_replays_ex_commands():
+    e = ViEngine("1\n2\n3\n4\n")
+    e.feed_keys("qq:1m$<CR>q")
+    assert e.session.vi_state.named_registers["q"].text == ":1m$\r"
+    assert e.text == "2\n3\n4\n1\n"
+    e.feed_keys("2@q")
+    assert e.text == "4\n1\n2\n3\n"
+    e.feed_keys("u")  # the whole macro run is one undo step
+    assert e.text == "2\n3\n4\n1\n"
+
+
+async def test_marks_follow_moved_and_copied_lines():
+    e = ViEngine("a\nb\nc\nd\n")
+    e.feed_keys("majmb:1,2m$<CR>")
+    assert (e.marks.get("a"), e.marks.get("b")) == ((2, 0), (3, 0))
+    e.feed_keys(":1t0<CR>")
+    assert (e.marks.get("a"), e.marks.get("b")) == ((3, 0), (4, 0))
+    e.feed_keys(":1d<CR>")
+    assert (e.marks.get("a"), e.marks.get("b")) == ((2, 0), (3, 0))
+    e.feed_keys(":3d<CR>")
+    assert (e.marks.get("a"), e.marks.get("b")) == (None, (2, 0))
+
+
+async def test_marks_follow_normal_on_each_line():
+    e = ViEngine("a\nb\nc\n")
+    e.feed_keys("Gmc:1normal O<CR>")
+    assert e.marks.get("c") == (3, 0)
+    assert e.text == "\na\nb\nc\n"
+
+
+async def test_ex_errors_notify_and_change_nothing():
+    e = ViEngine("a\nb\n")
+    e.feed_keys(":'zd<CR>")
+    assert e.drain_events() == [Notify("Mark not set: z", "error")]
+    e.feed_keys(":9d<CR>:1,2m1<CR>:s/a/b/<CR>")
+    assert e.drain_events() == [
+        Notify("Invalid range", "error"),
+        Notify("Cannot move a range of lines into itself", "error"),
+        Notify("Not an editor command: s/a/b/", "error"),
+    ]
+    assert e.text == "a\nb\n" and e.mode == "normal"
+
+
+async def test_normal_ends_an_unfinished_command():
+    e = ViEngine("abc\ndef\n")
+    e.feed_keys(":%normal Ax<CR>")
+    assert (e.text, e.mode) == ("abcx\ndefx\n", "normal")
+    e.feed_keys(":normal d<CR>")
+    assert (e.has_pending, e.status) == (False, "")
+    e.feed_keys(":normal v<CR>")
+    assert e.mode == "normal"
+    e.feed_keys(":normal :d<CR>")  # an unfinished ':' line is dropped
+    assert (e.text, e.mode) == ("abcx\ndefx\n", "normal")
+
+
+async def test_normal_keys_are_not_recorded_twice_in_a_macro():
+    e = ViEngine("a\nb\n")
+    e.feed_keys("qq:normal Ax<CR>q")
+    assert e.session.vi_state.named_registers["q"].text == ":normal Ax\r"
+
+
+async def test_ex_goto_and_jump_mark():
+    e = ViEngine("a\nb\nc\n")
+    e.feed_keys(":3<CR>")
+    assert e.cursor == (2, 0) and e.marks.get("'") == (0, 0)
+    e.feed_keys("''")
+    assert e.cursor == (0, 0)
