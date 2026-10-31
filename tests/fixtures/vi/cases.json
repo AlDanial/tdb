@@ -7083,5 +7083,698 @@
    0
   ],
   "keys": ":1,2w<CR>x"
+ },
+ {
+  "id": "subst-first",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   3,
+   1
+  ],
+  "keys": ":%s/x/y/<CR>"
+ },
+ {
+  "id": "subst-g",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   3,
+   1
+  ],
+  "keys": ":%s/x/y/g<CR>"
+ },
+ {
+  "id": "subst-g-undo",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   2,
+   3
+  ],
+  "keys": ":%s/x/y/g<CR>u"
+ },
+ {
+  "id": "subst-range-undo",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   3,
+   3
+  ],
+  "keys": ":2,3s/x/y/g<CR>u"
+ },
+ {
+  "id": "subst-range-undo-on-line",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   2,
+   4
+  ],
+  "keys": ":2,3s/x/y/g<CR>u"
+ },
+ {
+  "id": "subst-range-redo",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   2,
+   4
+  ],
+  "keys": ":2,3s/x/y/g<CR>u<C-r>"
+ },
+ {
+  "id": "subst-i",
+  "text": "  ax bx\n  xc\n  xx x\n  dx\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/X/Y/gi<CR>"
+ },
+ {
+  "id": "subst-gg",
+  "text": "  ax bx\n  xc\n  xx x\n  dx\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":s/x/y/gg<CR>"
+ },
+ {
+  "id": "subst-hash-delim",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":s#x#y#g<CR>"
+ },
+ {
+  "id": "subst-no-trailing-delim",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":s/x/y<CR>"
+ },
+ {
+  "id": "subst-no-replacement",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":s/x<CR>"
+ },
+ {
+  "id": "subst-cr-split",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/x/Q\\rR/g<CR>"
+ },
+ {
+  "id": "subst-cr-split-undo",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/x/Q\\rR/g<CR>u"
+ },
+ {
+  "id": "subst-cr-split-mark",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   2,
+   3
+  ],
+  "keys": "ma:%s/x/Q\\rR/g<CR>gg'a"
+ },
+ {
+  "id": "subst-split-mark-above",
+  "text": "  ax bx\n  xc\n  xx x\n  dx\n",
+  "cursor": [
+   1,
+   3
+  ],
+  "keys": "mb:3s/x/Q\\rR/g<CR>`b"
+ },
+ {
+  "id": "subst-split-mark-on",
+  "text": "  ax bx\n  xc\n  xx x\n  dx\n",
+  "cursor": [
+   2,
+   4
+  ],
+  "keys": "mb:3s/x/Q\\rR/g<CR>`b"
+ },
+ {
+  "id": "subst-split-mark-below",
+  "text": "  ax bx\n  xc\n  xx x\n  dx\n",
+  "cursor": [
+   3,
+   1
+  ],
+  "keys": "mb:3s/x/Q\\rR/g<CR>`b"
+ },
+ {
+  "id": "subst-not-found",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   3,
+   3
+  ],
+  "keys": ":%s/q/y/<CR>"
+ },
+ {
+  "id": "subst-e-flag",
+  "text": "  ax bx\n  xc\n  xx x\n  dx\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/q/Y/ge<CR>"
+ },
+ {
+  "id": "subst-bol",
+  "text": "  ax bx\n  xc\n  xx x\n  dx\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/^/# /<CR>"
+ },
+ {
+  "id": "subst-eol",
+  "text": "  ax bx\n  xc\n  xx x\n  dx\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/$/;/<CR>"
+ },
+ {
+  "id": "subst-x-eol",
+  "text": "  ax bx\n  xc\n  xx x\n  dx\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/x$/E/<CR>"
+ },
+ {
+  "id": "subst-class",
+  "text": "  ax bx\n  xc\n  xx x\n  dx\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/[ab]x/Z/g<CR>"
+ },
+ {
+  "id": "subst-dot",
+  "text": "  ax bx\n  xc\n  xx x\n  dx\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/x.x/Z/g<CR>"
+ },
+ {
+  "id": "subst-visual",
+  "text": "  ax bx\n  xc\n  xx x\n  dx\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "Vj:s/x/y/g<CR>"
+ },
+ {
+  "id": "subst-repeat-drops-flags",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":s/x/y/g<CR>:3<CR>:s<CR>"
+ },
+ {
+  "id": "subst-amp-amp-keeps-flags",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":s/x/y/g<CR>:3<CR>:&&<CR>"
+ },
+ {
+  "id": "subst-amp-flags",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":s/x/y/<CR>:3<CR>:&g<CR>"
+ },
+ {
+  "id": "subst-s-flags",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":s/x/y/<CR>:3<CR>:s g<CR>"
+ },
+ {
+  "id": "subst-percent-amp-amp",
+  "text": "  ax bx\n  xc\n  xx x\n  dx\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":s/x/y/<CR>:%&&<CR>"
+ },
+ {
+  "id": "subst-empty-pattern",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "/b<CR>:s//Z/<CR>"
+ },
+ {
+  "id": "subst-sets-last-search",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   3,
+   3
+  ],
+  "keys": ":%s/x/y/<CR>gg0n"
+ },
+ {
+  "id": "subst-jump-mark",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/x/y/<CR>``"
+ },
+ {
+  "id": "subst-jump-mark-line",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   1,
+   3
+  ],
+  "keys": ":3s/x/y/<CR>``"
+ },
+ {
+  "id": "subst-normal-amp",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":s/x/y/<CR>j&"
+ },
+ {
+  "id": "subst-normal-amp-no-flags",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":s/x/y/g<CR>jj&"
+ },
+ {
+  "id": "subst-normal-amp-count",
+  "text": "  ax bx\n  xc\n  xx x\n  dx\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":s/x/y/<CR>j3&"
+ },
+ {
+  "id": "subst-normal-amp-count-undo",
+  "text": "  ax bx\n  xc\n  xx x\n  dx\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":s/x/y/<CR>j3&u"
+ },
+ {
+  "id": "subst-normal-amp-count-past-end",
+  "text": "  ax bx\n  xc\n  xx x\n  dx\n",
+  "cursor": [
+   2,
+   1
+  ],
+  "keys": ":s/x/y/<CR>3&"
+ },
+ {
+  "id": "subst-normal-amp-not-dot",
+  "text": "  ax bx\n  xc\n  xx x\n  dx\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":s/x/y/<CR>j&j."
+ },
+ {
+  "id": "subst-normal-amp-none",
+  "text": "  ax bx\n  xc\n  xx x\n  dx\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "&"
+ },
+ {
+  "id": "subst-normal-amp-forgets-flags",
+  "text": "xx\nxx\nxx\nxx\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":s/x/y/g<CR>j&j:&&<CR>"
+ },
+ {
+  "id": "subst-g-amp",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":s/x/y/g<CR>jjg&"
+ },
+ {
+  "id": "subst-g-amp-last-search",
+  "text": "  ax bx\n  xc\n  xx x\n  dx\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":s/x/y/<CR>/c<CR>g&"
+ },
+ {
+  "id": "subst-g-amp-after-amp",
+  "text": "xx\nxx\nxx\nxx\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":s/x/y/g<CR>j&jg&"
+ },
+ {
+  "id": "subst-empty-buffer",
+  "text": "",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":%s/a/b/<CR>"
+ },
+ {
+  "id": "subst-empty-buffer-amp",
+  "text": "",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "&"
+ },
+ {
+  "id": "subst-confirm-ynyq",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/x/y/gc<CR>ynyq"
+ },
+ {
+  "id": "subst-confirm-keys-run-out",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/x/y/gc<CR>yn"
+ },
+ {
+  "id": "subst-confirm-all-n",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/x/y/gc<CR>nnnnn"
+ },
+ {
+  "id": "subst-confirm-all-y",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/x/y/gc<CR>yyyyy"
+ },
+ {
+  "id": "subst-confirm-last-y",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/x/y/gc<CR>nnnny"
+ },
+ {
+  "id": "subst-confirm-last-n",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/x/y/gc<CR>yynnn"
+ },
+ {
+  "id": "subst-confirm-last-n-2",
+  "text": "  ax bx\n  xc\n  xx x\n  dx\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/x/y/gc<CR>yyyynyn"
+ },
+ {
+  "id": "subst-confirm-l",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/x/y/gc<CR>nyl"
+ },
+ {
+  "id": "subst-confirm-l-mid-line",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/x/y/gc<CR>nl"
+ },
+ {
+  "id": "subst-confirm-a",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/x/y/gc<CR>na"
+ },
+ {
+  "id": "subst-confirm-a-undo",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/x/y/gc<CR>na<Esc>u"
+ },
+ {
+  "id": "subst-confirm-ignored-key",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/x/y/gc<CR>yzy<Esc>"
+ },
+ {
+  "id": "subst-confirm-ctrl-c",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/x/y/gc<CR>y<C-c>"
+ },
+ {
+  "id": "subst-confirm-undo",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/x/y/gc<CR>yy<Esc>u"
+ },
+ {
+  "id": "subst-confirm-undo-first-row",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": ":%s/x/y/gc<CR>nnyq<Esc>u"
+ },
+ {
+  "id": "subst-confirm-undo-first-row-2",
+  "text": "  ax bx\n  xc\n  xx x\n  dx\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/x/y/gc<CR>nnnnnyn<Esc>u"
+ },
+ {
+  "id": "subst-confirm-q-first",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": ":%s/x/y/gc<CR>q"
+ },
+ {
+  "id": "subst-confirm-no-g",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   3,
+   4
+  ],
+  "keys": ":%s/x/y/c<CR>q"
+ },
+ {
+  "id": "subst-confirm-last-search",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": ":%s/x/y/gc<CR>nnyq<Esc>gg0n"
+ },
+ {
+  "id": "subst-confirm-current-line",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":s/x/y/gc<CR>ny"
+ },
+ {
+  "id": "subst-confirm-split-last-y",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/x/Q\\rR/gc<CR>nnnny"
+ },
+ {
+  "id": "subst-confirm-split-q",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/x/Q\\rR/gc<CR>nyq"
+ },
+ {
+  "id": "subst-confirm-split-last-n",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/x/Q\\rR/gc<CR>ynnnn"
+ },
+ {
+  "id": "subst-confirm-split-l",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/x/Q\\rR/gc<CR>nnnl"
+ },
+ {
+  "id": "subst-confirm-split-a",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/x/Q\\rR/gc<CR>na"
+ },
+ {
+  "id": "subst-confirm-split-jump",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   3,
+   1
+  ],
+  "keys": ":%s/x/Q\\rR/gc<CR>nyq``"
+ },
+ {
+  "id": "subst-confirm-split-mark",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   3,
+   1
+  ],
+  "keys": "md:%s/x/Q\\rR/gc<CR>nyq`d"
+ },
+ {
+  "id": "subst-confirm-g-amp-keeps-c",
+  "text": "  ax bx\n  xc\n  xx x\n  dx\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/x/y/gc<CR>yyyyn<Esc>g&"
+ },
+ {
+  "id": "subst-confirm-macro",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "qa:s/x/y/gc<CR>nyq:3<CR>@a"
+ },
+ {
+  "id": "subst-confirm-macro-open",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "qa:s/x/y/gc<CR>nyq:3<CR>@au"
  }
 ]

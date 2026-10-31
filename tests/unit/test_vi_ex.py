@@ -22,6 +22,7 @@ class FakeHost:
         self.row_maps: list[object] = []
         self.groups = 0
         self.search: str | None = None
+        self.substitute = None
 
     def lines(self) -> list[str]:
         return list(self._lines)
@@ -56,6 +57,18 @@ class FakeHost:
 
     def set_last_search(self, pattern):
         self.search = pattern
+
+    def set_mark(self, name, pos):
+        self.marks[name] = pos
+
+    def last_substitute(self):
+        return self.substitute
+
+    def set_last_substitute(self, spec):
+        self.substitute = spec
+
+    def confirm_substitute(self, spec, first, last):
+        self.events.append(("confirm", spec.pattern, first, last))
 
     def save(self):
         self.events.append("save")
@@ -291,7 +304,7 @@ def test_write_and_quit(line, events):
     assert host.events == events
 
 
-@pytest.mark.parametrize("line", ["s/a/b/", "&", "&&", "g/x/d", "g!/x/d", "v/x/d"])
+@pytest.mark.parametrize("line", ["g/x/d", "g!/x/d", "v/x/d"])
 def test_later_commands_are_not_yet_editor_commands(line):
     host = FakeHost()
     with pytest.raises(ExError, match=f"^Not an editor command: {line}$"):
@@ -315,3 +328,38 @@ def test_write_with_a_range_is_refused(line):
     with pytest.raises(ExError, match="^Writing part of the buffer is not supported$"):
         run_ex(line + "!", host)
     assert host.events == []
+
+
+def test_substitute_runs_as_one_group_with_a_row_map():
+    host = FakeHost("ax\nb\nx,x", row=1, col=0)
+    run_ex(r"%s/x/\n/g", host)
+    assert host.lines() == ["a", "", "b", "", ",", ""]
+    assert host.row_maps == [[0, 2, 3]]
+    assert (host.row, host.col, host.groups) == (5, 0, 1)
+    assert host.marks["'"] == (1, 0)
+    assert host.search == "x"
+    assert host.events == [("3 substitutions on 2 lines", "information")]
+
+
+def test_substitute_confirm_is_handed_to_the_host():
+    host = FakeHost("a\nx\nx")
+    run_ex("2,3s/x/y/c", host)
+    assert host.events == [("confirm", "x", 1, 2)]
+    assert host.lines() == ["a", "x", "x"]
+
+
+@pytest.mark.parametrize(
+    ("line", "message"),
+    [
+        ("&", "No previous regular expression"),
+        ("s", "No previous regular expression"),
+        ("s/(/x/", "Invalid pattern: missing ), unterminated subpattern at position 0"),
+        ("&/x/y/", "Trailing characters: /x/y/"),
+    ],
+)
+def test_substitute_errors(line, message):
+    host = FakeHost()
+    with pytest.raises(ExError) as info:
+        run_ex(line, host)
+    assert str(info.value) == message
+    assert host.lines() == ["l1", "l2", "l3", "l4", "l5"]

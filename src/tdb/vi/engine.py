@@ -19,7 +19,7 @@ from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from string import ascii_letters
-from typing import TYPE_CHECKING, Literal, Protocol
+from typing import Literal, Protocol
 
 from prompt_toolkit.application import Application
 from prompt_toolkit.application.current import set_app
@@ -38,13 +38,17 @@ from prompt_toolkit.output import DummyOutput
 from prompt_toolkit.selection import SelectionType
 
 from tdb.vi.bindings import SEARCH_KEY, load_tdb_vi_bindings
-from tdb.vi.ex import ExError, run_ex
+from tdb.vi.ex import ExError, run_ex, run_substitute
 from tdb.vi.marks import JUMP, MAXCOL, MarkTable, adjust_pos, edit_rows
 from tdb.vi.search import ViPatternError, compile_pattern, find_nth, place
+from tdb.vi.substitute import (
+    Rebuilt,
+    SubstituteSpec,
+    count_message,
+    iter_matches,
+    rebuild,
+)
 from tdb.vi.textedit import diff_text
-
-if TYPE_CHECKING:
-    from tdb.vi.substitute import SubstituteSpec
 
 log = logging.getLogger(__name__)
 
@@ -315,6 +319,31 @@ class ViSession:
     last_macro: str | None = None
 
 
+# What an undo group needs to make its changes one step: the undo-stack
+# length and entries, text and final-newline flag, and redo stack when
+# it began.
+_UndoGroup = tuple[int, list, str, bool, list]
+
+
+@dataclass
+class _Confirm:
+    """A ``:s///c`` session waiting for y/n/a/q/l."""
+
+    spec: SubstituteSpec
+    first: int
+    last: int
+    lines: list[str]  # the text when the session began
+    matches: list[tuple[int, int, int]]  # (row, start, end) in ``lines``
+    undo: _UndoGroup
+    # Marks and the ``gv`` area when it began; each step maps them anew.
+    marks: dict[str, tuple[int, int]]
+    visual: tuple[tuple[int, int], tuple[int, int], bool] | None
+    start: tuple[int, int]  # the cursor, for the previous-jump mark
+    index: int = 0
+    accepted: set[tuple[int, int, int]] = field(default_factory=set)
+    done: Rebuilt | None = None
+
+
 def _append_register(old: ClipboardData | None, new: ClipboardData) -> ClipboardData:
     """``"A``: *new* appended to *old*; linewise if either one is."""
     if old is None:
@@ -494,6 +523,8 @@ class ViEngine:
         self._marks_adjusted = False
         # How many ``:normal`` commands are running inside each other.
         self._normal_depth = 0
+        # The ``:s///c`` session being answered, or None.
+        self._confirm: _Confirm | None = None
 
         body, eol = _split_eol(text)
         self.buffer = _ViBuffer(document=Document(body, 0), multiline=True)
@@ -536,7 +567,13 @@ class ViEngine:
         try:
             self._run_queue()
             if self._ran_macro:  # vim: undo takes back a whole macro run
-                self._group_undo(len(before[2]), before[0].text, before[1])
+                doc, eol, undo, redo = before
+                if self._confirm is not None:
+                    # The macro left a :s///c session open: it and the
+                    # macro's other changes become one step when it ends.
+                    self._confirm.undo = (len(undo), undo, doc.text, eol, redo)
+                else:
+                    self._group_undo(len(undo), doc.text, eol)
         except Exception as exc:  # a stray key must never crash tdb
             log.exception("vi engine error on key %r", key.name)
             self._recover(*before)
@@ -582,6 +619,10 @@ class ViEngine:
 
     def _dispatch(self, key: ViKey) -> None:
         """One key: engine-level commands, else prompt_toolkit."""
+        if self._confirm is not None:
+            self._feed_confirm(key)
+            self._marks_adjusted = True  # each step already mapped them
+            return
         if self._cmdline is not None:
             self._feed_cmdline(key)
             return
@@ -950,6 +991,9 @@ class ViEngine:
     def _recover(self, *snapshot) -> None:
         """After an error: the pre-key state, nothing pending or queued."""
         self._restore(*snapshot)
+        if self._confirm is not None:
+            confirm, self._confirm = self._confirm, None
+            self._close_undo_group(confirm.undo)
         self._pending_keys.clear()
         self._queue.clear()
         self._wait = self._register = self._change = self._rejected = None
@@ -1202,6 +1246,140 @@ class ViEngine:
             self._normal_depth -= 1
             self._queue, self.is_replaying = queue, replaying
 
+    # ------------------------------------------------------------------
+    # Undo groups and the ``:s///c`` confirm session
+
+    def _open_undo_group(self) -> _UndoGroup:
+        buff = self.buffer
+        undo = list(buff._undo_stack)
+        return len(undo), undo, buff.text, buff.eol, list(buff._redo_stack)
+
+    def _close_undo_group(self, group: _UndoGroup) -> None:
+        """Make the changes since ``_open_undo_group`` one undo step.
+
+        A change undone by keys inside (``:normal u``) is left as those
+        undos made it, so ``<C-r>`` still redoes it; no net change leaves
+        no step and keeps the redo.
+        """
+        mark, before, text, eol, redo = group
+        buff = self.buffer
+        undo = buff._undo_stack
+        if len(undo) >= mark and undo[:mark] == before:
+            if (buff.text, buff.eol) != (text, eol):
+                self._group_undo(mark, text, eol)
+                buff._redo_stack = []
+            else:
+                del undo[mark:]
+                buff._redo_stack = redo
+
+    def _start_confirm(self, spec: SubstituteSpec, first: int, last: int) -> None:
+        """Begin a ``:s///c`` session at its first match."""
+        lines = list(self.buffer.document.lines)
+        self._confirm = _Confirm(
+            spec=spec,
+            first=first,
+            last=last,
+            lines=lines,
+            matches=list(iter_matches(lines, first, last, spec)),
+            undo=self._open_undo_group(),
+            marks=self.marks.snapshot(),
+            visual=self._last_visual_raw,
+            start=self.cursor,
+        )
+        self._confirm_goto()
+
+    def _confirm_position(self, index: int) -> tuple[int, int]:
+        """Where match *index* of the session is in the current text."""
+        c = self._confirm
+        assert c is not None
+        row, start, _ = c.matches[index]
+        if c.done is None:
+            return row, start
+        return c.done.positions[(row, start)]
+
+    def _confirm_goto(self) -> None:
+        assert self._confirm is not None
+        self._move_to(*self._confirm_position(self._confirm.index))
+
+    def _feed_confirm(self, key: ViKey) -> None:
+        """One answer: y n a q l (Esc / Ctrl+C: q); other keys are ignored."""
+        c = self._confirm
+        assert c is not None
+        name = key.name
+        match = c.matches[c.index]
+        if name in ("q", "escape", "ctrl+c"):
+            self._end_confirm(self._confirm_position(c.index))
+        elif name in ("y", "l"):
+            c.accepted.add(match)
+            self._confirm_apply()
+            if name == "l" or c.index == len(c.matches) - 1:
+                assert c.done is not None
+                self._end_confirm((c.done.end_row(match[0]), 0))
+            else:
+                c.index += 1
+                self._confirm_goto()
+        elif name == "n":
+            if c.index == len(c.matches) - 1:
+                self._end_confirm(self._confirm_position(c.index))
+            else:
+                c.index += 1
+                self._confirm_goto()
+        elif name == "a":
+            c.accepted.update(c.matches[c.index :])
+            self._confirm_apply()
+            assert c.done is not None
+            row = c.done.last_row
+            line = c.done.lines[row]
+            self._end_confirm((row, len(line) - len(line.lstrip(" \t"))))
+
+    def _confirm_apply(self) -> None:
+        """Put the accepted replacements into the text (marks follow)."""
+        c = self._confirm
+        assert c is not None
+        c.done = done = rebuild(c.lines, c.first, c.last, c.spec, c.accepted)
+        if "\n".join(done.lines) == self.buffer.text:
+            return
+        marks = dict(c.marks)
+        marks[JUMP] = c.start  # vim: the jump mark is where :s began
+        self.marks.restore(marks)
+        self._last_visual_raw = c.visual
+        first = min(r for r, _, _ in c.accepted)
+        _ExHost(self).replace_lines(
+            done.lines, self.cursor, row_map=done.row_map, undo_cursor=(first, 0)
+        )
+
+    def _end_confirm(self, cursor: tuple[int, int]) -> None:
+        """End the session: one undo step, the cursor, the count report."""
+        c = self._confirm
+        assert c is not None
+        self._confirm = None
+        self._close_undo_group(c.undo)
+        self._move_to(*cursor)
+        if len(c.accepted) > 2:
+            rows = {r for r, _, _ in c.accepted}
+            self._events.append(Notify(count_message(len(c.accepted), len(rows))))
+
+    def substitute_again(self, count: int | None, *, every_line: bool) -> None:
+        """Normal-mode ``&`` (the last ``:s`` on *count* lines, without its
+        flags) and ``g&`` (it on every line with the last search pattern,
+        keeping its flags).  Neither is a change ``.`` repeats."""
+        self._change = None
+        if not every_line:
+            self._run_cmdline("s" if count in (None, 1) else f".,.+{count - 1}s")
+            return
+        host = _ExHost(self)
+        last, search = self.session.last_substitute, host.last_search()
+        try:
+            if last is None or not search:
+                raise ExError("No previous regular expression")
+            spec = SubstituteSpec(search, last.replacement, last.flags)
+            with host.undo_group():
+                run_substitute(spec, 0, len(host.lines()) - 1, host)
+        except ExError as exc:
+            self._events.append(Notify(str(exc), "error"))
+        finally:
+            self._marks_adjusted = True
+
     def drain_events(self) -> list[EngineEvent]:
         """Return and clear the events produced since the last drain."""
         events, self._events = self._events, []
@@ -1228,7 +1406,9 @@ class ViEngine:
 
     @property
     def mode(self) -> str:
-        """``normal insert replace visual visual-line command search``."""
+        """``normal insert replace visual visual-line command search confirm``."""
+        if self._confirm is not None:
+            return "confirm"
         if self._cmdline is not None:
             return "command" if self._line_kind == ":" else "search"
         input_mode = self.app.vi_state.input_mode
@@ -1259,7 +1439,10 @@ class ViEngine:
 
     @property
     def status(self) -> str:
-        """``:cmd`` / ``/pat`` line, pending keys (``"a2d``), ``recording @a``, or ``""``."""
+        """``:cmd`` / ``/pat`` line, the ``:s///c`` prompt, pending keys
+        (``"a2d``), ``recording @a``, or ``""``."""
+        if self._confirm is not None:
+            return f"replace with {self._confirm.spec.replacement} (y/n/a/q/l)?"
         if self._cmdline is not None:
             return self._line_kind + self._cmdline
         if self._pending_keys and self._key_pending():
@@ -1355,6 +1538,9 @@ class _ExHost:
     def mark(self, name: str) -> tuple[int, int] | None:
         return self._e.marks.get(name)
 
+    def set_mark(self, name: str, pos: tuple[int, int]) -> None:
+        self._e.marks.set(name, pos)
+
     def replace_lines(
         self,
         lines: list[str],
@@ -1426,6 +1612,15 @@ class _ExHost:
         backward = session.last_search[1] if session.last_search else False
         session.last_search = (pattern, backward)
 
+    def last_substitute(self) -> SubstituteSpec | None:
+        return self._e.session.last_substitute
+
+    def set_last_substitute(self, spec: SubstituteSpec) -> None:
+        self._e.session.last_substitute = spec
+
+    def confirm_substitute(self, spec: SubstituteSpec, first: int, last: int) -> None:
+        self._e._start_confirm(spec, first, last)
+
     def save(self) -> None:
         self._e._events.append(SaveRequest())
 
@@ -1440,26 +1635,12 @@ class _ExHost:
 
     @contextmanager
     def undo_group(self) -> Iterator[None]:
-        """Everything the command changes is one undo step (redo cleared).
-
-        A command whose keys undid older changes (``:normal u``) is left
-        as those undos made it, so ``<C-r>`` still redoes them.
-        """
-        buff = self._e.buffer
-        before = list(buff._undo_stack)
-        mark, text, eol = len(before), buff.text, buff.eol
-        redo = list(buff._redo_stack)
+        """Everything the command changes is one undo step (redo cleared)."""
+        group = self._e._open_undo_group()
         try:
             yield
         finally:
-            undo = buff._undo_stack
-            if len(undo) >= mark and undo[:mark] == before:
-                if (buff.text, buff.eol) != (text, eol):
-                    self._e._group_undo(mark, text, eol)
-                    buff._redo_stack = []
-                else:  # no net change: no undo step, the redo kept
-                    del undo[mark:]
-                    buff._redo_stack = redo
+            self._e._close_undo_group(group)
 
 
 def _first_changed_row(

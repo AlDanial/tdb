@@ -5,8 +5,9 @@ command through an ``ExHost``, which owns the text, cursor, marks and
 registers.  Rows are 0-based; the line numbers typed in an address are
 1-based, as in vim.
 
-Supported here: ``:w :q :q! :wq :x :N :d :y :m :t :co :normal``.
-``:s :& :g :g! :v`` have dispatch slots that later tasks fill in.
+Supported here: ``:w :q :q! :wq :x :N :d :y :m :t :co :normal :s :&``
+(``:s`` itself is in ``tdb.vi.substitute``).  ``:g :g! :v`` have
+dispatch slots that a later task fills in.
 """
 
 from __future__ import annotations
@@ -16,6 +17,17 @@ from collections.abc import Callable, Sequence
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from typing import Literal, Protocol
+
+from tdb.vi.search import ViPatternError
+from tdb.vi.substitute import (
+    SubstituteError,
+    SubstituteSpec,
+    confirm_flag,
+    count_message,
+    parse_substitute,
+    quiet_flag,
+    rebuild,
+)
 
 
 class ExError(Exception):
@@ -60,6 +72,8 @@ class ExHost(Protocol):
         """Mark *name* (``a``-``z``, ``<``, ``>``, ``'``), or None if unset."""
         ...
 
+    def set_mark(self, name: str, pos: tuple[int, int]) -> None: ...
+
     def replace_lines(
         self,
         lines: list[str],
@@ -90,6 +104,15 @@ class ExHost(Protocol):
     def last_search(self) -> str | None: ...
 
     def set_last_search(self, pattern: str) -> None: ...
+
+    def last_substitute(self) -> SubstituteSpec | None: ...
+
+    def set_last_substitute(self, spec: SubstituteSpec) -> None: ...
+
+    def confirm_substitute(self, spec: SubstituteSpec, first: int, last: int) -> None:
+        """Start asking about each match of *spec* in rows *first*..*last*
+        (there is at least one); the answers are keys typed later."""
+        ...
 
     def save(self) -> None: ...
 
@@ -401,6 +424,67 @@ def _write_quit(cmd: ExCommand, host: ExHost) -> None:
     host.leave(False)
 
 
+def _substitute(cmd: ExCommand, host: ExHost) -> None:
+    """``:[range]s/pat/rep/[flags]`` (``:s [flags]`` repeats the last one)."""
+    _substitute_with(cmd.args, cmd, host)
+
+
+def _repeat_substitute(cmd: ExCommand, host: ExHost) -> None:
+    """``:[range]&[&][flags]``: the last ``:s`` again."""
+    args = cmd.args.strip()
+    if args and not (args[0].isalnum() or args[0] == "&"):
+        raise ExError(f"Trailing characters: {args}")
+    _substitute_with(args, cmd, host)
+
+
+def _substitute_with(args: str, cmd: ExCommand, host: ExHost) -> None:
+    try:
+        spec = parse_substitute(
+            args, last=host.last_substitute(), last_search=host.last_search()
+        )
+    except SubstituteError as exc:
+        raise ExError(str(exc)) from None
+    first, last = resolve_range(cmd.range, host, "current")
+    run_substitute(spec, first, last, host)
+
+
+def run_substitute(spec: SubstituteSpec, first: int, last: int, host: ExHost) -> None:
+    """Substitute *spec* in rows *first*..*last* (or start confirming).
+
+    As vim: the pattern becomes the last search, the cursor goes to the
+    first non-blank of the last changed line, the previous-jump mark to
+    where the cursor was, and the count is reported when it is more than
+    vim's default ``'report'`` (2).
+    """
+    lines = host.lines()
+    try:
+        done = rebuild(lines, first, last, spec)
+    except ViPatternError as exc:
+        raise ExError(f"Invalid pattern: {exc}") from None
+    except SubstituteError as exc:
+        raise ExError(str(exc)) from None
+    host.set_last_substitute(spec)
+    host.set_last_search(spec.pattern)
+    if not done.substitutions:
+        if not quiet_flag(spec):
+            host.notify(f"Pattern not found: {spec.pattern}", "warning")
+        return
+    if confirm_flag(spec):
+        host.confirm_substitute(spec, first, last)
+        return
+    host.set_mark("'", (host.cursor_row(), host.cursor_col()))
+    row = done.last_row
+    first_changed = min(r for r, _ in done.positions)
+    host.replace_lines(
+        done.lines,
+        (row, _first_non_blank(done.lines[row])),
+        row_map=done.row_map,
+        undo_cursor=(first_changed, 0),
+    )
+    if done.substitutions > 2:
+        host.notify(count_message(done.substitutions, done.lines_changed))
+
+
 def _not_yet(cmd: ExCommand, host: ExHost) -> None:
     """A command a later task implements (run_ex reports it as unknown)."""
     raise NotImplementedError
@@ -412,9 +496,9 @@ COMMANDS: dict[str, Callable[[ExCommand, ExHost], None]] = {
     "move": _move,
     "copy": _copy,
     "normal": _normal,
-    # Tasks 11-12: substitute / & / global / vglobal.
-    "substitute": _not_yet,
-    "&": _not_yet,
+    "substitute": _substitute,
+    "&": _repeat_substitute,
+    # Task 12: global / vglobal.
     "global": _not_yet,
     "vglobal": _not_yet,
 }

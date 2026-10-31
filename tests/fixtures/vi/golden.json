@@ -4024,6 +4024,545 @@
   ],
   "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
  },
+ "subst-amp-amp-keeps-flags": {
+  "cursor": [
+   2,
+   2
+  ],
+  "text": "  ay by\n  cc\n  yy y\n  dd\n"
+ },
+ "subst-amp-flags": {
+  "cursor": [
+   2,
+   2
+  ],
+  "text": "  ay bx\n  cc\n  yy y\n  dd\n"
+ },
+ "subst-bol": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "#   ax bx\n#   xc\n#   xx x\n#   dx\n"
+ },
+ "subst-class": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "  Z Z\n  xc\n  xx x\n  dx\n"
+ },
+ "subst-confirm-a": {
+  "cursor": [
+   2,
+   2
+  ],
+  "text": "  ax by\n  cc\n  yy y\n  dd\n"
+ },
+ "subst-confirm-a-undo": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n"
+ },
+ "subst-confirm-all-n": {
+  "cursor": [
+   2,
+   5
+  ],
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n"
+ },
+ "subst-confirm-all-y": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "  ay by\n  cc\n  yy y\n  dd\n"
+ },
+ "subst-confirm-ctrl-c": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "  ay bx\n  cc\n  xx x\n  dd\n"
+ },
+ "subst-confirm-current-line": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "  ax by\n  cc\n  xx x\n  dd\n"
+ },
+ "subst-confirm-g-amp-keeps-c": {
+  "cursor": [
+   2,
+   3
+  ],
+  "text": "  ay by\n  yc\n  yx x\n  dx\n"
+ },
+ "subst-confirm-ignored-key": {
+  "cursor": [
+   2,
+   2
+  ],
+  "text": "  ay by\n  cc\n  xx x\n  dd\n"
+ },
+ "subst-confirm-keys-run-out": {
+  "cursor": [
+   2,
+   2
+  ],
+  "text": "  ay bx\n  cc\n  xx x\n  dd\n"
+ },
+ "subst-confirm-l": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "  ax by\n  cc\n  yx x\n  dd\n"
+ },
+ "subst-confirm-l-mid-line": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "  ax by\n  cc\n  xx x\n  dd\n"
+ },
+ "subst-confirm-last-n": {
+  "cursor": [
+   2,
+   5
+  ],
+  "text": "  ay by\n  cc\n  xx x\n  dd\n"
+ },
+ "subst-confirm-last-n-2": {
+  "cursor": [
+   3,
+   3
+  ],
+  "text": "  ay by\n  yc\n  yx y\n  dx\n"
+ },
+ "subst-confirm-last-search": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "  ax bx\n  cc\n  yx x\n  dd\n"
+ },
+ "subst-confirm-last-y": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "  ax bx\n  cc\n  xx y\n  dd\n"
+ },
+ "subst-confirm-macro": {
+  "cursor": [
+   2,
+   5
+  ],
+  "text": "  ax by\n  cc\n  xy x\n  dd\n"
+ },
+ "subst-confirm-macro-open": {
+  "cursor": [
+   2,
+   5
+  ],
+  "text": "  ax by\n  cc\n  xy x\n  dd\n"
+ },
+ "subst-confirm-no-g": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n"
+ },
+ "subst-confirm-q-first": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n"
+ },
+ "subst-confirm-split-a": {
+  "cursor": [
+   6,
+   0
+  ],
+  "text": "  ax bQ\nR\n  cc\n  Q\nRQ\nR Q\nR\n  dd\n"
+ },
+ "subst-confirm-split-jump": {
+  "cursor": [
+   4,
+   1
+  ],
+  "text": "  ax bQ\nR\n  cc\n  xx x\n  dd\n"
+ },
+ "subst-confirm-split-l": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "  ax bx\n  cc\n  xQ\nR x\n  dd\n"
+ },
+ "subst-confirm-split-last-n": {
+  "cursor": [
+   3,
+   5
+  ],
+  "text": "  aQ\nR bx\n  cc\n  xx x\n  dd\n"
+ },
+ "subst-confirm-split-last-y": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "  ax bx\n  cc\n  xx Q\nR\n  dd\n"
+ },
+ "subst-confirm-split-mark": {
+  "cursor": [
+   4,
+   1
+  ],
+  "text": "  ax bQ\nR\n  cc\n  xx x\n  dd\n"
+ },
+ "subst-confirm-split-q": {
+  "cursor": [
+   3,
+   2
+  ],
+  "text": "  ax bQ\nR\n  cc\n  xx x\n  dd\n"
+ },
+ "subst-confirm-undo": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n"
+ },
+ "subst-confirm-undo-first-row": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n"
+ },
+ "subst-confirm-undo-first-row-2": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "  ax bx\n  xc\n  xx x\n  dx\n"
+ },
+ "subst-confirm-ynyq": {
+  "cursor": [
+   2,
+   3
+  ],
+  "text": "  ay bx\n  cc\n  yx x\n  dd\n"
+ },
+ "subst-cr-split": {
+  "cursor": [
+   7,
+   0
+  ],
+  "text": "  aQ\nR bQ\nR\n  cc\n  Q\nRQ\nR Q\nR\n  dd\n"
+ },
+ "subst-cr-split-mark": {
+  "cursor": [
+   4,
+   2
+  ],
+  "text": "  aQ\nR bQ\nR\n  cc\n  Q\nRQ\nR Q\nR\n  dd\n"
+ },
+ "subst-cr-split-undo": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n"
+ },
+ "subst-dot": {
+  "cursor": [
+   2,
+   2
+  ],
+  "text": "  ax bx\n  xc\n  xZ\n  dx\n"
+ },
+ "subst-e-flag": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "  ax bx\n  xc\n  xx x\n  dx\n"
+ },
+ "subst-empty-buffer": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": ""
+ },
+ "subst-empty-buffer-amp": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": ""
+ },
+ "subst-empty-pattern": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "  ax Zx\n  cc\n  xx x\n  dd\n"
+ },
+ "subst-eol": {
+  "cursor": [
+   3,
+   2
+  ],
+  "text": "  ax bx;\n  xc;\n  xx x;\n  dx;\n"
+ },
+ "subst-first": {
+  "cursor": [
+   2,
+   2
+  ],
+  "text": "  ay bx\n  cc\n  yx x\n  dd\n"
+ },
+ "subst-g": {
+  "cursor": [
+   2,
+   2
+  ],
+  "text": "  ay by\n  cc\n  yy y\n  dd\n"
+ },
+ "subst-g-amp": {
+  "cursor": [
+   2,
+   2
+  ],
+  "text": "  ay by\n  cc\n  yy y\n  dd\n"
+ },
+ "subst-g-amp-after-amp": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "yy\nyy\nyx\nyx\n"
+ },
+ "subst-g-amp-last-search": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "  ay bx\n  xy\n  xx x\n  dx\n"
+ },
+ "subst-g-undo": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n"
+ },
+ "subst-gg": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "  ay bx\n  xc\n  xx x\n  dx\n"
+ },
+ "subst-hash-delim": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "  ay by\n  cc\n  xx x\n  dd\n"
+ },
+ "subst-i": {
+  "cursor": [
+   3,
+   2
+  ],
+  "text": "  aY bY\n  Yc\n  YY Y\n  dY\n"
+ },
+ "subst-jump-mark": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "  ay bx\n  cc\n  yx x\n  dd\n"
+ },
+ "subst-jump-mark-line": {
+  "cursor": [
+   1,
+   3
+  ],
+  "text": "  ax bx\n  cc\n  yx x\n  dd\n"
+ },
+ "subst-no-replacement": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "  a bx\n  cc\n  xx x\n  dd\n"
+ },
+ "subst-no-trailing-delim": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "  ay bx\n  cc\n  xx x\n  dd\n"
+ },
+ "subst-normal-amp": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "  ay bx\n  cc\n  xx x\n  dd\n"
+ },
+ "subst-normal-amp-count": {
+  "cursor": [
+   3,
+   2
+  ],
+  "text": "  ay bx\n  yc\n  yx x\n  dy\n"
+ },
+ "subst-normal-amp-count-past-end": {
+  "cursor": [
+   2,
+   2
+  ],
+  "text": "  ax bx\n  xc\n  yx x\n  dx\n"
+ },
+ "subst-normal-amp-count-undo": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "  ay bx\n  xc\n  xx x\n  dx\n"
+ },
+ "subst-normal-amp-forgets-flags": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "yy\nyx\nyx\nxx\n"
+ },
+ "subst-normal-amp-no-flags": {
+  "cursor": [
+   2,
+   2
+  ],
+  "text": "  ay by\n  cc\n  yx x\n  dd\n"
+ },
+ "subst-normal-amp-none": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "  ax bx\n  xc\n  xx x\n  dx\n"
+ },
+ "subst-normal-amp-not-dot": {
+  "cursor": [
+   2,
+   2
+  ],
+  "text": "  ay bx\n  yc\n  xx x\n  dx\n"
+ },
+ "subst-not-found": {
+  "cursor": [
+   3,
+   3
+  ],
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n"
+ },
+ "subst-percent-amp-amp": {
+  "cursor": [
+   3,
+   2
+  ],
+  "text": "  ay by\n  yc\n  yx x\n  dy\n"
+ },
+ "subst-range-redo": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "  ax bx\n  cc\n  yy y\n  dd\n"
+ },
+ "subst-range-undo": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n"
+ },
+ "subst-range-undo-on-line": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n"
+ },
+ "subst-repeat-drops-flags": {
+  "cursor": [
+   2,
+   2
+  ],
+  "text": "  ay by\n  cc\n  yx x\n  dd\n"
+ },
+ "subst-s-flags": {
+  "cursor": [
+   2,
+   2
+  ],
+  "text": "  ay bx\n  cc\n  yy y\n  dd\n"
+ },
+ "subst-sets-last-search": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "  ay bx\n  cc\n  yx x\n  dd\n"
+ },
+ "subst-split-mark-above": {
+  "cursor": [
+   1,
+   3
+  ],
+  "text": "  ax bx\n  xc\n  Q\nRQ\nR Q\nR\n  dx\n"
+ },
+ "subst-split-mark-below": {
+  "cursor": [
+   6,
+   1
+  ],
+  "text": "  ax bx\n  xc\n  Q\nRQ\nR Q\nR\n  dx\n"
+ },
+ "subst-split-mark-on": {
+  "cursor": [
+   2,
+   2
+  ],
+  "text": "  ax bx\n  xc\n  Q\nRQ\nR Q\nR\n  dx\n"
+ },
+ "subst-visual": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "  ay by\n  yc\n  xx x\n  dx\n"
+ },
+ "subst-x-eol": {
+  "cursor": [
+   3,
+   2
+  ],
+  "text": "  ax bE\n  xc\n  xx E\n  dE\n"
+ },
  "t": {
   "cursor": [
    0,

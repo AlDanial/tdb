@@ -1039,11 +1039,11 @@ async def test_ex_errors_notify_and_change_nothing():
     e = ViEngine("a\nb\n")
     e.feed_keys(":'zd<CR>")
     assert e.drain_events() == [Notify("Mark not set: z", "error")]
-    e.feed_keys(":9d<CR>:1,2m1<CR>:s/a/b/<CR>")
+    e.feed_keys(":9d<CR>:1,2m1<CR>:g/a/d<CR>")
     assert e.drain_events() == [
         Notify("Invalid range", "error"),
         Notify("Cannot move a range of lines into itself", "error"),
-        Notify("Not an editor command: s/a/b/", "error"),
+        Notify("Not an editor command: g/a/d", "error"),
     ]
     assert e.text == "a\nb\n" and e.mode == "normal"
 
@@ -1107,3 +1107,199 @@ async def test_recursive_normal_fails_cleanly(caplog):
     assert e.drain_events() == [Notify("Command too recursive", "error")]
     assert caplog.records == []  # no traceback logged
     assert (e.text, e.mode) == ("a\nb\n", "normal")
+
+
+# ----------------------------------------------------------------------
+# :s substitute (Task 11)
+
+SUB_TEXT = "  ax bx\n  cc\n  xx x\n  dd\n"
+
+
+async def test_substitute_reports_count_and_is_one_undo_step():
+    e = ViEngine("x x\nx\ny\n")
+    e.feed_keys(":%s/x/y/g<CR>")
+    assert e.text == "y y\ny\ny\n"
+    assert e.drain_events() == [Notify("3 substitutions on 2 lines")]
+    assert e.cursor == (1, 0)  # the last changed line, first non-blank
+    e.feed_keys("u")
+    assert (e.text, e.cursor) == ("x x\nx\ny\n", (0, 0))
+    e.feed_keys("<C-r>")
+    assert e.text == "y y\ny\ny\n"
+
+
+async def test_substitute_cursor_and_quiet_for_few_changes():
+    e = ViEngine(SUB_TEXT, cursor=(3, 1))
+    e.feed_keys(":%s/x/y/<CR>")
+    assert (e.text, e.cursor) == ("  ay bx\n  cc\n  yx x\n  dd\n", (2, 2))
+    assert e.drain_events() == []  # vim reports more than 'report' (2) only
+    assert e.marks.get("'") == (3, 1)
+
+
+async def test_substitute_pattern_not_found():
+    e = ViEngine(SUB_TEXT, cursor=(3, 3))
+    undo = list(e.buffer._undo_stack)
+    e.feed_keys(":%s/q/y/<CR>")
+    assert e.drain_events() == [Notify("Pattern not found: q", "warning")]
+    assert (e.text, e.cursor) == (SUB_TEXT, (3, 3))
+    assert e.buffer._undo_stack == undo
+    e.feed_keys(":%s/q/y/e<CR>")  # e: no message
+    assert e.drain_events() == []
+
+
+async def test_substitute_errors_notify_and_change_nothing():
+    e = ViEngine("a(b\n")
+    e.feed_keys(":s/(/x/<CR>")
+    [event] = e.drain_events()
+    assert event.severity == "error" and event.text.startswith("Invalid pattern:")
+    e.feed_keys(r":s/a/\3/<CR>")
+    [event] = e.drain_events()
+    assert event.severity == "error" and event.text.startswith("Invalid replacement:")
+    e.feed_keys(":s<CR>&")
+    assert e.drain_events() == [
+        Notify("No previous regular expression", "error"),
+        Notify("No previous regular expression", "error"),
+    ]
+    assert (e.text, e.mode) == ("a(b\n", "normal")
+
+
+async def test_substitute_then_ampersand_repeats_on_another_line():
+    e = ViEngine("xx\nxx\nxx\nxx\nxx\n")
+    e.feed_keys(":s/x/y/g<CR>j:&&<CR>")  # :&& keeps the flags
+    assert e.text == "yy\nyy\nxx\nxx\nxx\n"
+    e.feed_keys("j&")  # & drops them
+    assert e.text == "yy\nyy\nyx\nxx\nxx\n"
+    e.feed_keys("j.")  # & and :s are not repeated by `.`
+    assert e.text == "yy\nyy\nyx\nxx\nxx\n"
+    e.feed_keys("2&")  # a count: that many lines
+    assert (e.text, e.cursor) == ("yy\nyy\nyx\nyx\nyx\n", (4, 0))
+    e.feed_keys("u")
+    assert e.text == "yy\nyy\nyx\nxx\nxx\n"
+
+
+async def test_g_ampersand_uses_last_search_on_all_lines():
+    e = ViEngine("xa\nxb\nxc\n")
+    e.feed_keys(":s/x/y/<CR>/b<CR>g&")
+    assert e.text == "ya\nxy\nxc\n"
+
+
+async def test_substitute_sets_last_search_and_empty_pattern_uses_it():
+    e = ViEngine("ab ab\nab\n")
+    e.feed_keys(":s/b/B/<CR>gg0n")
+    assert e.cursor == (0, 4)
+    e.feed_keys("/a<CR>:%s//A/<CR>")
+    assert e.text == "AB ab\nAb\n"
+
+
+async def test_substitute_newline_split_moves_marks():
+    e = ViEngine("a,b\nc\n", cursor=(1, 0))
+    e.feed_keys(r"mc:1s/,/\n/<CR>")
+    assert (e.text, e.cursor) == ("a\nb\nc\n", (1, 0))
+    assert e.marks.get("c") == (2, 0)
+    e.feed_keys("u")
+    assert e.text == "a,b\nc\n"
+
+
+async def test_substitute_in_visual_range():
+    e = ViEngine("x\nx\nx\n")
+    e.feed_keys("Vj:s/x/y/<CR>")
+    assert e.text == "y\ny\nx\n"
+
+
+async def test_substitute_confirm_prompt():
+    e = ViEngine(SUB_TEXT)
+    e.feed_keys(":%s/x/y/gc<CR>")
+    assert (e.mode, e.status) == ("confirm", "replace with y (y/n/a/q/l)?")
+    assert e.cursor == (0, 3)
+    assert e.has_pending
+    e.feed_keys("y")
+    assert (e.text.split("\n")[0], e.cursor) == ("  ay bx", (0, 6))
+    e.feed_keys("n")
+    assert e.cursor == (2, 2)
+    e.feed_keys("zu")  # other keys are ignored
+    assert (e.cursor, e.mode) == ((2, 2), "confirm")
+    e.feed_keys("y")
+    assert e.cursor == (2, 3)
+    e.feed_keys("q")
+    assert (e.mode, e.status) == ("normal", "")
+    assert (e.text, e.cursor) == ("  ay bx\n  cc\n  yx x\n  dd\n", (2, 3))
+    e.feed_keys("u")  # the whole confirm session is one undo step
+    assert (e.text, e.cursor) == (SUB_TEXT, (0, 0))
+    e.feed_keys("u")
+    assert e.text == SUB_TEXT
+
+
+@pytest.mark.parametrize(
+    ("keys", "text", "cursor"),
+    [
+        ("yyyyy", "  ay by\n  cc\n  yy y\n  dd\n", (2, 0)),
+        ("nnnnn", SUB_TEXT, (2, 5)),
+        ("yynnn", "  ay by\n  cc\n  xx x\n  dd\n", (2, 5)),
+        ("nyl", "  ax by\n  cc\n  yx x\n  dd\n", (2, 0)),
+        ("na", "  ax by\n  cc\n  yy y\n  dd\n", (2, 2)),
+        ("y<Esc>", "  ay bx\n  cc\n  xx x\n  dd\n", (0, 6)),
+        ("y<C-c>", "  ay bx\n  cc\n  xx x\n  dd\n", (0, 6)),
+        ("ynyq", "  ay bx\n  cc\n  yx x\n  dd\n", (2, 3)),
+    ],
+)
+async def test_substitute_confirm_answers(keys, text, cursor):
+    e = ViEngine(SUB_TEXT)
+    e.feed_keys(":%s/x/y/gc<CR>" + keys)
+    assert (e.text, e.cursor, e.mode) == (text, cursor, "normal")
+    e.feed_keys("u")
+    assert e.text == SUB_TEXT
+
+
+async def test_substitute_confirm_reports_count_at_the_end():
+    e = ViEngine(SUB_TEXT)
+    e.feed_keys(":%s/x/y/gc<CR>yyy")
+    assert e.drain_events() == []
+    e.feed_keys("q")
+    assert e.drain_events() == [Notify("3 substitutions on 2 lines")]
+
+
+async def test_substitute_confirm_with_split_and_marks():
+    e = ViEngine(SUB_TEXT, cursor=(3, 1))
+    e.feed_keys(r"md:%s/x/Q\rR/gc<CR>nyq")
+    assert e.text == "  ax bQ\nR\n  cc\n  xx x\n  dd\n"
+    assert e.cursor == (3, 2)  # the match the q was given on
+    assert e.marks.get("d") == (4, 1)
+    assert e.marks.get("'") == (4, 1)
+    e.feed_keys("u")
+    assert (e.text, e.marks.get("d")) == (SUB_TEXT, (3, 1))
+
+
+async def test_substitute_confirm_no_match():
+    e = ViEngine(SUB_TEXT)
+    e.feed_keys(":%s/q/y/c<CR>")
+    assert e.mode == "normal"
+    assert e.drain_events() == [Notify("Pattern not found: q", "warning")]
+
+
+async def test_macro_replays_confirm_session():
+    e = ViEngine("xx\nxx\nxx\n")
+    e.feed_keys("qq:s/x/y/gc<CR>nyjq")
+    assert e.session.vi_state.named_registers["q"].text == ":s/x/y/gc\rnyj"
+    assert e.text == "xy\nxx\nxx\n"
+    e.feed_keys("@q")
+    assert (e.text, e.cursor) == ("xy\nxy\nxx\n", (2, 0))
+    e.feed_keys("u")
+    assert e.text == "xy\nxx\nxx\n"
+
+
+async def test_macro_leaving_confirm_open_is_one_undo_step():
+    from prompt_toolkit.clipboard import ClipboardData
+
+    e = ViEngine("xxx\n")
+    e.session.vi_state.named_registers["q"] = ClipboardData(":s/x/y/gc\ry")
+    e.feed_keys("@q")
+    assert (e.text, e.mode, e.cursor) == ("yxx\n", "confirm", (0, 1))
+    e.feed_keys("y<Esc>")
+    assert e.text == "yyx\n"
+    e.feed_keys("u")
+    assert e.text == "xxx\n"
+
+
+async def test_normal_ends_a_confirm_session():
+    e = ViEngine("xx\n")
+    e.feed_keys(":normal :s/x/y/gc<lt>CR>y<CR>")
+    assert (e.text, e.mode) == ("yx\n", "normal")

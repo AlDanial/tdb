@@ -122,8 +122,25 @@ def load_tdb_vi_bindings(engine: ViEngine) -> KeyBindings:
     _add_counted_commands(kb)
     _add_marks(kb, engine)
     _add_search(kb, engine)
+    _add_substitute_repeat(kb, engine)
 
     return kb
+
+
+def _add_substitute_repeat(kb: KeyBindings, engine: ViEngine) -> None:
+    """``&``: the last ``:s`` on the current line (a count: that many
+    lines), without its flags; ``g&``: it on every line, with its flags
+    and the last search pattern (vim's ``:%s//~/&``)."""
+
+    @kb.add("&", filter=vi_navigation_mode)
+    def _repeat(event: KeyPressEvent) -> None:
+        engine.substitute_again(
+            event.arg if event.arg_present else None, every_line=False
+        )
+
+    @kb.add("g", "&", filter=vi_navigation_mode)
+    def _repeat_all(event: KeyPressEvent) -> None:
+        engine.substitute_again(None, every_line=True)
 
 
 def _add_change_word(kb: KeyBindings) -> None:
