@@ -412,9 +412,11 @@ def _add_nvim_cursor_fixes(kb: KeyBindings, engine: ViEngine) -> None:
     text_object = create_text_object_decorator(kb)
 
     def has_count(event: KeyPressEvent) -> bool:
-        """Whether a count was typed (``dG`` always carries ``_arg == "1"``)."""
+        """Whether a count was typed.  Under an operator prompt_toolkit always
+        sets ``_arg`` (``dG`` carries ``"1"``, as does ``d1G``), so ask the
+        engine, which saw the keys."""
         if event.app.vi_state.operator_func is not None:
-            return event.arg != 1
+            return engine.count_typed()
         return bool(event._arg)
 
     def goto_row(event: KeyPressEvent, row: int) -> TextObject:

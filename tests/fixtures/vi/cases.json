@@ -8299,5 +8299,95 @@
    0
   ],
   "keys": ":g/^$/normal J<CR>"
+ },
+ {
+  "id": "count-G-d1G",
+  "text": "a\nb\nc\nd\ne\n",
+  "cursor": [
+   2,
+   0
+  ],
+  "keys": "d1G"
+ },
+ {
+  "id": "count-G-d4G",
+  "text": "a\nb\nc\nd\ne\n",
+  "cursor": [
+   2,
+   0
+  ],
+  "keys": "d4G"
+ },
+ {
+  "id": "count-G-d2gg",
+  "text": "a\nb\nc\nd\ne\n",
+  "cursor": [
+   2,
+   0
+  ],
+  "keys": "d2gg"
+ },
+ {
+  "id": "count-G-d5gg",
+  "text": "a\nb\nc\nd\ne\n",
+  "cursor": [
+   2,
+   0
+  ],
+  "keys": "d5gg"
+ },
+ {
+  "id": "count-G-1dG",
+  "text": "a\nb\nc\nd\ne\n",
+  "cursor": [
+   2,
+   0
+  ],
+  "keys": "1dG"
+ },
+ {
+  "id": "count-G-y1GP",
+  "text": "a\nb\nc\nd\ne\n",
+  "cursor": [
+   2,
+   0
+  ],
+  "keys": "y1GP"
+ },
+ {
+  "id": "count-G-c1G",
+  "text": "a\nb\nc\nd\ne\n",
+  "cursor": [
+   2,
+   0
+  ],
+  "keys": "c1Gx<Esc>"
+ },
+ {
+  "id": "count-G-indent1G",
+  "text": "a\nb\nc\nd\ne\n",
+  "cursor": [
+   2,
+   0
+  ],
+  "keys": ">1G"
+ },
+ {
+  "id": "count-G-2d2G",
+  "text": "a\nb\nc\nd\ne\n",
+  "cursor": [
+   2,
+   0
+  ],
+  "keys": "2d2G"
+ },
+ {
+  "id": "count-G-d1G-top",
+  "text": "a\nb\nc\nd\ne\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "d1G"
  }
 ]

@@ -671,6 +671,76 @@
   ],
   "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
  },
+ "count-G-1dG": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "d\ne\n"
+ },
+ "count-G-2d2G": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "a\nb\ne\n"
+ },
+ "count-G-c1G": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "x\nd\ne\n"
+ },
+ "count-G-d1G": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "d\ne\n"
+ },
+ "count-G-d1G-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "b\nc\nd\ne\n"
+ },
+ "count-G-d2gg": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "a\nd\ne\n"
+ },
+ "count-G-d4G": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "a\nb\ne\n"
+ },
+ "count-G-d5gg": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "a\nb\n"
+ },
+ "count-G-indent1G": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "    a\n    b\n    c\nd\ne\n"
+ },
+ "count-G-y1GP": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "a\nb\nc\na\nb\nc\nd\ne\n"
+ },
  "ct)": {
   "cursor": [
    2,

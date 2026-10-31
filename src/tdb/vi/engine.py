@@ -772,6 +772,11 @@ class ViEngine:
             self._cmd_keys, self._cmd_start = [], self.cursor
         self._cmd_keys.append(key.name)
 
+    def count_typed(self) -> bool:
+        """Whether the normal/Visual command being run was given a count,
+        before or after its operator (``d1G``, ``1dG``)."""
+        return any(len(k) == 1 and k.isdigit() for k in self._cmd_keys)
+
     def _end_motion(self, text_before: str) -> None:
         """After the key: a finished jump sets the previous-jump mark.
 
