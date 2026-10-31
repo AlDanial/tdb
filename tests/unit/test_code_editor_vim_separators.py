@@ -10,12 +10,13 @@ keep CRLF.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from textual import events
 
 from tdb.widgets.code_editor import CodeEditor
 from tdb.widgets.code_view import CodeView
-
 from tests.unit.test_code_editor_vim import _EdApp, _send
 from tests.unit.test_code_view_edit_mode import _CVApp
 
@@ -96,7 +97,7 @@ async def _edit_and_save(tmp_path, data: bytes, keys: str) -> bytes:
             await _send(pilot, ch, ch)
         assert cv.save_file()
         await pilot.pause()
-        return open(path, "rb").read()
+        return Path(path).read_bytes()
 
 
 async def test_separators_in_the_file_round_trip(tmp_path):
@@ -137,7 +138,7 @@ async def test_revert_to_disk_keeps_separators(tmp_path):
     app = _vim_app()
     async with app.run_test() as pilot:
         cv = app.query_one("#cv", CodeView)
-        path = _write_bytes(tmp_path, "a\x0cb\nc\r\n".encode())
+        path = _write_bytes(tmp_path, b"a\x0cb\nc\r\n")
         cv.load_file(path)
         assert await cv.enter_edit_mode()
         await pilot.pause()

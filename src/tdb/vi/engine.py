@@ -519,7 +519,9 @@ Document._find_line_start_index = _find_line_start_index  # type: ignore[method-
 Document.translate_row_col_to_index = _translate_row_col_to_index  # type: ignore[method-assign]
 
 
-def _derive_cache(old: str, known: _DocumentCache, new: str, cache: _DocumentCache) -> None:
+def _derive_cache(
+    old: str, known: _DocumentCache, new: str, cache: _DocumentCache
+) -> None:
     """Fill *cache* (lines, line starts of *new*) from *known* (those of
     *old*) by the one edit between the texts: a list copy and slices in C,
     or less (see ``_LineStarts``), instead of prompt_toolkit's split and
@@ -950,7 +952,12 @@ class ViEngine:
         if self.buffer.text != text:
             cache = _text_to_document_cache.get(text)  # its lines are known
             lines = cache.lines if cache is not None else None
-            report(text.split("\n") if lines is None else lines, row, self.cursor[0], record)
+            report(
+                text.split("\n") if lines is None else lines,
+                row,
+                self.cursor[0],
+                record,
+            )
 
     def fail(self) -> None:
         """The command being run failed (vim's beep): an unmatched motion or

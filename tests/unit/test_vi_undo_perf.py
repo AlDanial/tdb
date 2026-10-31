@@ -125,8 +125,8 @@ def test_derived_document_cache_matches_a_fresh_one():
         a = rng.randint(0, len(text))
         b = rng.randint(a, min(len(text), a + rng.choice((0, 1, 3, 12))))
         piece = "".join(rng.choice("x\n\n y") for _ in range(rng.randint(0, 4)))
-        buff.document  # the old text's cache is filled, as when the engine runs
-        Document(text).cursor_position_row
+        # The old text's cache is filled, as when the engine runs.
+        _ = buff.document, Document(text).cursor_position_row
         buff.text = text[:a] + piece + text[b:]
         _check_table(buff.text, rng)
 
