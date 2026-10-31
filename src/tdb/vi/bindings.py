@@ -39,6 +39,7 @@ The Ctrl+R redo binding is adapted from pyvim (``pyvim/key_bindings.py``):
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING
 
 from prompt_toolkit.application.current import get_app
@@ -66,6 +67,7 @@ from prompt_toolkit.keys import Keys
 from prompt_toolkit.selection import PasteMode, SelectionState, SelectionType
 
 from tdb.vi.marks import NAMES as MARK_NAMES
+from tdb.vi.search import ViPatternError, compile_pattern, find_nth, place, word_pattern
 from tdb.vi.textobjects import (
     PAIRS,
     Cursor,
@@ -84,6 +86,11 @@ if TYPE_CHECKING:
     from prompt_toolkit.key_binding import KeyPressEvent
 
     from tdb.vi.engine import ViEngine
+
+# Internal key the engine feeds when a '/' or '?' line is accepted: the
+# search as a motion (a KeyPress no ViKey can produce; F-keys never reach
+# the engine).
+SEARCH_KEY = Keys.F24
 
 
 def load_tdb_vi_bindings(engine: ViEngine) -> KeyBindings:
@@ -114,6 +121,7 @@ def load_tdb_vi_bindings(engine: ViEngine) -> KeyBindings:
     _add_increment(kb)
     _add_counted_commands(kb)
     _add_marks(kb, engine)
+    _add_search(kb, engine)
 
     return kb
 
@@ -1181,6 +1189,107 @@ def _add_marks(kb: KeyBindings, engine: ViEngine) -> None:
 
         @kb.add(key, Keys.Any, filter=movable)
         def _jump(event: KeyPressEvent, target=target) -> None:
+            obj = target(event)
+            if obj is not None:
+                event.current_buffer.cursor_position += obj.start
+
+
+def _add_search(kb: KeyBindings, engine: ViEngine) -> None:
+    """``n N * #`` and the accepted ``/`` ``?`` line (``SEARCH_KEY``).
+
+    They replace prompt_toolkit's bindings, which read
+    ``app.current_search_state``: patterns are Python ``re`` and the last
+    one is ``engine.session.last_search``.  Each is a charwise exclusive
+    motion (also for operators and Visual mode) with a count.
+    """
+    from tdb.vi.engine import Notify
+
+    text_object = create_text_object_decorator(kb)
+    movable = (
+        vi_navigation_mode | vi_selection_mode
+    ) & ~vi_waiting_for_text_object_mode
+
+    def notify(text: str, severity: str = "information") -> None:
+        engine._events.append(Notify(text, severity))  # type: ignore[arg-type]
+
+    def motion(
+        event: KeyPressEvent, pattern: str, backward: bool, offset: int
+    ) -> TextObject | None:
+        """The motion to the count'th match of *pattern* from *offset*."""
+        try:
+            rx = compile_pattern(pattern)
+        except ViPatternError as exc:
+            notify(f"Invalid pattern: {exc}", "error")
+            return None
+        doc = event.current_buffer.document
+        found = find_nth(doc.text, rx, offset, backward, event.arg)
+        if found is None:
+            notify(f"Pattern not found: {pattern}", "warning")
+            return None
+        if found[2]:
+            notify(
+                "search hit TOP, continuing at BOTTOM"
+                if backward
+                else "search hit BOTTOM, continuing at TOP"
+            )
+        cur = doc.cursor_position
+        if engine.app.vi_state.operator_func is None:
+            return TextObject(place(doc.text, found[0]) - cur)
+        here = (doc.cursor_position_row, doc.cursor_position_col)
+        start, end = sorted((here, doc.translate_index_to_position(found[0])))
+        return _charwise(doc.lines, cur, start, end, False)
+
+    def repeat(reverse: bool):
+        def target(event: KeyPressEvent) -> TextObject | None:
+            last = engine.session.last_search
+            if last is None:
+                notify("No previous regular expression", "error")
+                return None
+            pattern, backward = last
+            offset = event.current_buffer.cursor_position
+            return motion(event, pattern, backward != reverse, offset)
+
+        return target
+
+    def word(backward: bool):
+        """``*`` / ``#``: the keyword under or after the cursor, as a word."""
+
+        def target(event: KeyPressEvent) -> TextObject | None:
+            doc = event.current_buffer.document
+            col = doc.cursor_position_col
+            m = next(
+                (m for m in re.finditer(r"\w+", doc.current_line) if m.end() > col),
+                None,
+            )
+            if m is None:
+                notify("No string under cursor", "error")
+                return None
+            pattern = word_pattern(m.group())
+            engine.session.last_search = (pattern, backward)
+            engine._remember_search(pattern)
+            # From the word's start, so the word itself is skipped.
+            offset = doc.cursor_position - col + m.start()
+            return motion(event, pattern, backward, offset)
+
+        return target
+
+    @kb.add("/", filter=movable | vi_waiting_for_text_object_mode)
+    @kb.add("?", filter=movable | vi_waiting_for_text_object_mode)
+    def _open_search(event: KeyPressEvent) -> None:
+        """Open the engine's search line; a pending operator waits for it."""
+        engine._open_line(event.data, event._arg)
+
+    for key, target in (
+        (SEARCH_KEY, repeat(False)),
+        ("n", repeat(False)),
+        ("N", repeat(True)),
+        ("*", word(False)),
+        ("#", word(True)),
+    ):
+        text_object(key, no_move_handler=True, no_selection_handler=True)(target)
+
+        @kb.add(key, filter=movable)
+        def _move(event: KeyPressEvent, target=target) -> None:
             obj = target(event)
             if obj is not None:
                 event.current_buffer.cursor_position += obj.start

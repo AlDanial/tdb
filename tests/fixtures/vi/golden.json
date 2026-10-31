@@ -2785,6 +2785,482 @@
   ],
   "text": "Xef f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
  },
+ "search-2d-count": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-N": {
+  "cursor": [
+   2,
+   12
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-V": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "z = 20\n"
+ },
+ "search-bs-cancels": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "df f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-bwd": {
+  "cursor": [
+   2,
+   12
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-c": {
+  "cursor": [
+   1,
+   7
+  ],
+  "text": "def f(a, b):\n    y = hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-caret": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-caret-empty-line": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-count": {
+  "cursor": [
+   0,
+   9
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-count-n": {
+  "cursor": [
+   5,
+   2
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-d": {
+  "cursor": [
+   1,
+   4
+  ],
+  "text": "def f(a, b):\n    there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-d-bwd": {
+  "cursor": [
+   1,
+   4
+  ],
+  "text": "def f(a, b):\n    (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-d-col0": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "y = 10\nz = 20\n"
+ },
+ "search-d-col0-mid": {
+  "cursor": [
+   1,
+   5
+  ],
+  "text": "def f(a, b):\n    x \ny = 10\nz = 20\n"
+ },
+ "search-d-count": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-d-dot": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "x x three x\n"
+ },
+ "search-d-dot-count": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "x d x\n"
+ },
+ "search-d-hash": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "oo\n"
+ },
+ "search-d-star": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "foo\n"
+ },
+ "search-d-star-mid": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "ffoo\n"
+ },
+ "search-d-undo": {
+  "cursor": [
+   1,
+   4
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-dn": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "def f(a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-dollar": {
+  "cursor": [
+   0,
+   11
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-dollar-n": {
+  "cursor": [
+   1,
+   17
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-empty-buffer": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": ""
+ },
+ "search-empty-q-reuses": {
+  "cursor": [
+   0,
+   9
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-empty-reuses": {
+  "cursor": [
+   2,
+   16
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-esc-restores": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-f-slash": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "a/b/c\n"
+ },
+ "search-fwd": {
+  "cursor": [
+   2,
+   4
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-hash": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-hash-N": {
+  "cursor": [
+   0,
+   14
+  ],
+  "text": "foo bar foo x foo\n"
+ },
+ "search-hash-mid-word": {
+  "cursor": [
+   0,
+   8
+  ],
+  "text": "foo bar foo x foo\n"
+ },
+ "search-hash-n": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "foo bar foo x foo\n"
+ },
+ "search-jump-backtick": {
+  "cursor": [
+   1,
+   6
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-jump-mark": {
+  "cursor": [
+   1,
+   4
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-literal-slash": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "a/b/c\n"
+ },
+ "search-macro": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "xx c x d x\n"
+ },
+ "search-macro-count": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "xxx d x e\n"
+ },
+ "search-macro-n": {
+  "cursor": [
+   0,
+   10
+  ],
+  "text": "a x b Y c Y d x\n"
+ },
+ "search-n": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-n-jump-mark": {
+  "cursor": [
+   2,
+   6
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-not-found": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-not-found-op": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "def f(a, b):\n   x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-notfound-keeps-mark": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-overlap": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "aaaa\n"
+ },
+ "search-overlap-bwd": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "aaaa\n"
+ },
+ "search-overlap-n": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "xaaaaa\n"
+ },
+ "search-q-N": {
+  "cursor": [
+   0,
+   9
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-q-jump-mark": {
+  "cursor": [
+   1,
+   6
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-q-n": {
+  "cursor": [
+   0,
+   9
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-regex-class": {
+  "cursor": [
+   2,
+   21
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-regex-plus": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-star": {
+  "cursor": [
+   2,
+   12
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-star-blank": {
+  "cursor": [
+   0,
+   10
+  ],
+  "text": "  foo bar foo\n"
+ },
+ "search-star-count": {
+  "cursor": [
+   0,
+   10
+  ],
+  "text": "ab x ab x ab x ab\n"
+ },
+ "search-star-jump-mark": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-star-metachar": {
+  "cursor": [
+   0,
+   8
+  ],
+  "text": "a.b axb a.b\n"
+ },
+ "search-star-mid-word": {
+  "cursor": [
+   0,
+   8
+  ],
+  "text": "foo bar foo x foo\n"
+ },
+ "search-star-n": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-star-only": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "foo bar\n"
+ },
+ "search-star-whole-word": {
+  "cursor": [
+   0,
+   11
+  ],
+  "text": "foo foobar foo\n"
+ },
+ "search-tabs": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "\tab x\n\t\tx y\n"
+ },
+ "search-v": {
+  "cursor": [
+   1,
+   4
+  ],
+  "text": "def f(a, b):\n    here\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-v-n": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": " + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-wrap-bwd": {
+  "cursor": [
+   5,
+   0
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-wrap-fwd": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-y-p": {
+  "cursor": [
+   1,
+   5
+  ],
+  "text": "def f(a, b):\n    x x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
  "semicolon": {
   "cursor": [
    0,

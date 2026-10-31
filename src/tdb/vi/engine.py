@@ -35,8 +35,9 @@ from prompt_toolkit.layout.controls import BufferControl
 from prompt_toolkit.output import DummyOutput
 from prompt_toolkit.selection import SelectionType
 
-from tdb.vi.bindings import load_tdb_vi_bindings
+from tdb.vi.bindings import SEARCH_KEY, load_tdb_vi_bindings
 from tdb.vi.marks import JUMP, MAXCOL, MarkTable, adjust_pos, edit_rows
+from tdb.vi.search import ViPatternError, compile_pattern, find_nth, place
 from tdb.vi.textedit import diff_text
 
 if TYPE_CHECKING:
@@ -457,8 +458,18 @@ class ViEngine:
         # State before a command with an unsupported register, which is
         # rolled back when that command ends.
         self._rejected: tuple[Document, bool, list, list] | None = None
-        # Text of the ':' line while in the stub command mode, else None.
+        # Text of the ':', '/' or '?' line (``_line_kind``) while it is
+        # open, else None.
         self._cmdline: str | None = None
+        self._line_kind = ":"
+        # Browsing the line's history: index of the entry shown (None when
+        # not browsing) and the text typed before browsing began.
+        self._history_pos: int | None = None
+        self._history_prefix = ""
+        # Cursor offset when the '/' or '?' line was opened, and the count
+        # typed before it (prompt_toolkit's raw ``arg``).
+        self._search_from = 0
+        self._search_arg: str | None = None
         # The last Visual selection as (anchor, cursor, linewise), for `gv`.
         self._last_visual_raw: tuple[tuple[int, int], tuple[int, int], bool] | None = (
             None
@@ -564,7 +575,7 @@ class ViEngine:
         name = key.name
         idle = self.mode == "normal" and not self._ptk_busy()
         if idle and name == ":" and not self._key_pending():
-            self._cmdline = ""
+            self._open_line(":")
             return
         if idle and name in ("q", "@", "."):
             # Not part of a change; an abandoned count belongs to them, and
@@ -927,21 +938,164 @@ class ViEngine:
         self._pending_keys.clear()
         self._queue.clear()
         self._wait = self._register = self._change = self._rejected = None
+        self._cmdline = None
 
     # ------------------------------------------------------------------
-    # ':' command line (minimal stub; Task 10 replaces it with real ex)
+    # The ':' command line (minimal stub; Task 10 replaces it with real ex)
+    # and the '/' '?' search line
+
+    def _open_line(self, kind: str, arg: str | None = None) -> None:
+        """Open the ``:``, ``/`` or ``?`` line; *arg* is a search's count.
+
+        ``/`` and ``?`` come from their prompt_toolkit binding, so they
+        work after an operator (``d/x<CR>``) and in Visual mode.
+        """
+        self._line_kind, self._cmdline = kind, ""
+        self._history_pos = None
+        self._search_from = self.buffer.cursor_position
+        self._search_arg = arg
+
+    def _history(self) -> list[str]:
+        if self._line_kind == ":":
+            return self.session.ex_history
+        return self.session.search_history
+
+    @staticmethod
+    def _remember(history: list[str], entry: str) -> None:
+        """Add *entry* to *history*, moving an earlier copy to the end."""
+        if entry:
+            if entry in history:
+                history.remove(entry)
+            history.append(entry)
+
+    def _remember_search(self, pattern: str) -> None:
+        self._remember(self.session.search_history, pattern)
 
     def _feed_cmdline(self, key: ViKey) -> None:
-        cmd = self._cmdline or ""
-        if key.name == "escape" or (key.name == "backspace" and not cmd):
-            self._cmdline = None
-        elif key.name == "backspace":
-            self._cmdline = cmd[:-1]
-        elif key.name == "enter":
-            self._cmdline = None
-            self._run_cmdline(cmd.strip())
-        elif len(key.name) == 1:
-            self._cmdline = cmd + key.name
+        searching = self._line_kind != ":"
+        if searching and self._change is not None:
+            self._change.append(key)  # `d/x<CR>` is repeated by `.`
+        line = self._cmdline or ""
+        name = key.name
+        if name == "escape" or (name == "backspace" and not line):
+            self._close_line()
+            if searching:
+                self._cancel_operator()
+                self._end_search()
+        elif name == "backspace":
+            self._edit_line(line[:-1])
+        elif name in ("up", "down"):
+            self._recall(older=name == "up")
+        elif name == "enter":
+            self._remember(self._history(), line)
+            self._close_line()
+            if searching:
+                self._run_search(line)
+                self._end_search()
+            else:
+                self._run_cmdline(line.strip())
+        elif len(name) == 1:
+            self._edit_line(line + name)
+
+    def _edit_line(self, line: str) -> None:
+        self._cmdline = line
+        self._history_pos = None
+        self._incsearch()
+
+    def _recall(self, *, older: bool) -> None:
+        """Up / Down: the previous / next history entry starting as typed."""
+        history = self._history()
+        if self._history_pos is None:
+            if not older:
+                return
+            self._history_prefix = self._cmdline or ""
+            pos = len(history)
+        else:
+            pos = self._history_pos
+        prefix = self._history_prefix
+        step = -1 if older else 1
+        pos += step
+        while 0 <= pos < len(history) and not history[pos].startswith(prefix):
+            pos += step
+        if 0 <= pos < len(history):
+            self._history_pos, self._cmdline = pos, history[pos]
+        elif not older:
+            self._history_pos, self._cmdline = None, prefix
+        self._incsearch()
+
+    def _close_line(self) -> None:
+        """Close the line, putting back the cursor an incremental search moved."""
+        if self._cmdline is not None and self._line_kind != ":":
+            self.buffer.cursor_position = self._search_from
+        self._cmdline = None
+        self._history_pos = None
+        self._cmd_keys = []
+
+    def _search_count(self) -> int:
+        """The count typed before ``/`` (times an operator's count)."""
+        arg = self._search_arg
+        op_arg = self.app.vi_state.operator_arg
+        count = int(arg) if arg and arg.isdigit() else 1
+        return count * (op_arg or 1)
+
+    def _incsearch(self) -> None:
+        """While typing a search: the cursor on the match it would go to."""
+        if self._line_kind == ":":
+            return
+        pos = self._search_from
+        if self._cmdline:
+            try:
+                rx = compile_pattern(self._cmdline)
+            except ViPatternError:
+                rx = None
+            text = self.buffer.text
+            found = rx and find_nth(
+                text, rx, pos, self._line_kind == "?", self._search_count()
+            )
+            if found:
+                pos = place(text, found[0])
+        self.buffer.cursor_position = pos
+
+    def _cancel_operator(self) -> None:
+        """Drop a pending operator and count (a search that did not happen)."""
+        vs = self.app.vi_state
+        vs.operator_func = None
+        vs.operator_arg = None
+        self.app.key_processor.arg = None
+
+    def _run_search(self, line: str) -> None:
+        """``<CR>`` on the search line: the search, as a motion."""
+        backward = self._line_kind == "?"
+        pattern = line
+        if not pattern and self.session.last_search is not None:
+            pattern = self.session.last_search[0]
+        error = None
+        if not pattern:
+            error = "No previous regular expression"
+        else:
+            try:
+                compile_pattern(pattern)
+            except ViPatternError as exc:
+                error = f"Invalid pattern: {exc}"
+        if error is not None:
+            self._events.append(Notify(error, "error"))
+            self._cancel_operator()
+            return
+        self.session.last_search = (pattern, backward)
+        start, text = self.cursor, self.buffer.text
+        kp = self.app.key_processor
+        kp.arg = self._search_arg
+        with set_app(self.app):  # the motion is SEARCH_KEY's binding: `n`
+            kp.feed(KeyPress(SEARCH_KEY, ""))
+            kp.process_keys()
+        if self.cursor != start or self.buffer.text != text:
+            self.marks.set(JUMP, start)
+
+    def _end_search(self) -> None:
+        """After the search line closed: the command it was part of ends."""
+        if not self._ptk_pending() and self._rejected is None:
+            self._register = None
+        self._end_command()
 
     def _run_cmdline(self, cmd: str) -> None:
         if cmd == "w":
@@ -985,9 +1139,9 @@ class ViEngine:
 
     @property
     def mode(self) -> str:
-        """``normal insert replace visual visual-line command`` (more later)."""
+        """``normal insert replace visual visual-line command search``."""
         if self._cmdline is not None:
-            return "command"
+            return "command" if self._line_kind == ":" else "search"
         input_mode = self.app.vi_state.input_mode
         if input_mode in (InputMode.INSERT, InputMode.INSERT_MULTIPLE):
             return "insert"
@@ -1016,9 +1170,9 @@ class ViEngine:
 
     @property
     def status(self) -> str:
-        """``:cmd`` line, pending keys (``"a2d``), ``recording @a``, or ``""``."""
+        """``:cmd`` / ``/pat`` line, pending keys (``"a2d``), ``recording @a``, or ``""``."""
         if self._cmdline is not None:
-            return ":" + self._cmdline
+            return self._line_kind + self._cmdline
         if self._pending_keys and self._key_pending():
             return "".join(k.notation for k in self._pending_keys)
         if self._recording:

@@ -608,6 +608,22 @@ async def test_pageup_pagedown_keys():
         assert ed.visible_rows()[0] == page - 2 + page // 2
 
 
+async def test_inline_search_line_mirrors_cursor():
+    app = _EdApp()
+    async with app.run_test() as pilot:
+        ed = app.query_one("#ed", CodeEditor)
+        await pilot.press("slash", "f", "i")
+        assert (ed.submode, ed.command_text) == ("search", "/fi")
+        assert ed.cursor_location == (1, 7)  # incremental: on "five"
+        await pilot.press("escape")
+        assert (ed.submode, ed.cursor_location) == ("normal", (0, 0))
+        assert app.leave == []  # Esc only cancelled the search
+        await pilot.press("slash", "s", "enter", "n")
+        assert ed.cursor_location == (3, 0)
+        await pilot.press("question_mark", "f", "o", "enter")
+        assert ed.cursor_location == (1, 2)
+
+
 async def test_h_l_use_the_real_window():
     text = "".join(f"line {i}\n" for i in range(200))
     app = _EdApp(text=text)

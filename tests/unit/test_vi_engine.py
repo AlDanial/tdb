@@ -653,3 +653,254 @@ async def test_increment_without_number_changes_nothing():
     e.feed_keys("<C-a><C-x>")
     assert e.text == "hello\n"
     assert e.session.last_change is None
+
+
+# ----------------------------------------------------------------------
+# Search (/ ? n N * #)
+
+
+def notices(e: ViEngine) -> list[tuple[str, str]]:
+    return [(n.text, n.severity) for n in e.drain_events() if isinstance(n, Notify)]
+
+
+async def test_incremental_search_moves_cursor():
+    e = ViEngine("abc\nfree tree\n", cursor=(0, 1))
+    e.feed_keys("/re")
+    assert (e.mode, e.status, e.cursor) == ("search", "/re", (1, 1))
+    e.feed_keys("<Esc>")
+    assert (e.mode, e.status, e.cursor) == ("normal", "", (0, 1))
+    e.feed_keys("/re<CR>")
+    assert (e.mode, e.status, e.cursor) == ("normal", "", (1, 1))
+    assert e.session.last_search == ("re", False)
+
+
+async def test_incremental_search_without_match_keeps_cursor():
+    e = ViEngine("abc\nfree\n", cursor=(0, 1))
+    e.feed_keys("/rez")
+    assert (e.mode, e.cursor) == ("search", (0, 1))
+    e.feed_keys("<BS>")
+    assert e.cursor == (1, 1)
+
+
+async def test_backspace_on_empty_search_line_cancels():
+    e = ViEngine("abc\nfree\n", cursor=(0, 1))
+    e.feed_keys("/r<BS>")
+    assert (e.mode, e.status) == ("search", "/")
+    e.feed_keys("<BS>")
+    assert (e.mode, e.status, e.cursor) == ("normal", "", (0, 1))
+    assert e.session.last_search is None
+
+
+async def test_question_mark_searches_backward():
+    e = ViEngine("foo\nbar\nfoo\n", cursor=(2, 1))
+    e.feed_keys("?o")
+    assert (e.status, e.cursor) == ("?o", (0, 2))
+    e.feed_keys("<CR>")
+    assert e.cursor == (0, 2)
+    assert e.session.last_search == ("o", True)
+
+
+async def test_search_history_up_down():
+    s = ViSession()
+    e = ViEngine("alpha beta gamma\n", session=s)
+    e.feed_keys("/beta<CR>/gamma<CR>/alpha<CR>")
+    assert s.search_history == ["beta", "gamma", "alpha"]
+    e.feed_keys("/<Up>")
+    assert e.status == "/alpha"
+    e.feed_keys("<Up>")
+    assert e.status == "/gamma"
+    e.feed_keys("<Down>")
+    assert e.status == "/alpha"
+    e.feed_keys("<Down>")
+    assert e.status == "/"
+    e.feed_keys("b<Up>")  # a typed prefix filters the history
+    assert e.status == "/beta"
+    e.feed_keys("<Down>")
+    assert e.status == "/b"
+    e.feed_keys("<Esc>/beta<CR>")  # a repeated pattern moves to the end
+    assert s.search_history == ["gamma", "alpha", "beta"]
+
+
+async def test_search_not_found_notifies():
+    e = ViEngine("abc\n", cursor=(0, 1))
+    e.feed_keys("/zzz<CR>")
+    assert notices(e) == [("Pattern not found: zzz", "warning")]
+    assert (e.cursor, e.mode) == ((0, 1), "normal")
+
+
+async def test_search_wrap_notifies():
+    e = ViEngine("foo\nbar\n", cursor=(1, 0))
+    e.feed_keys("/foo<CR>")
+    assert e.cursor == (0, 0)
+    assert notices(e) == [("search hit BOTTOM, continuing at TOP", "information")]
+    e.feed_keys("?bar<CR>")
+    assert e.cursor == (1, 0)
+    assert notices(e) == [("search hit TOP, continuing at BOTTOM", "information")]
+    e.feed_keys("n")
+    assert notices(e) == [("search hit TOP, continuing at BOTTOM", "information")]
+
+
+async def test_invalid_regex_notifies_error():
+    e = ViEngine("a(b\n")
+    e.feed_keys("/(<CR>")
+    [(text, severity)] = notices(e)
+    assert severity == "error" and text.startswith("Invalid pattern: ")
+    assert (e.text, e.cursor, e.mode) == ("a(b\n", (0, 0), "normal")
+    assert e.session.last_search is None
+    e.feed_keys("d/(<CR>")  # the operator is cancelled
+    assert (e.text, e.mode, e.has_pending) == ("a(b\n", "normal", False)
+
+
+async def test_empty_pattern_uses_last_search():
+    e = ViEngine("xay a\n")
+    e.feed_keys("/<CR>")
+    assert notices(e) == [("No previous regular expression", "error")]
+    e.feed_keys("/a<CR>/<CR>")
+    assert e.cursor == (0, 4)
+    e.feed_keys("?<CR>")
+    assert e.cursor == (0, 1)
+    assert e.session.last_search == ("a", True)
+
+
+async def test_search_is_operator_target():
+    e = ViEngine("one two xyz\n")
+    e.feed_keys("d/x<CR>")
+    assert (e.text, e.cursor, e.mode) == ("xyz\n", (0, 0), "normal")
+    e.feed_keys("u")
+    assert e.text == "one two xyz\n"
+
+
+async def test_search_operator_with_escape_cancels():
+    e = ViEngine("one two xyz\n")
+    e.feed_keys("d/x<Esc>")
+    assert (e.mode, e.has_pending) == ("normal", False)
+    e.feed_keys("x")  # a plain x, not the motion of a pending d
+    assert e.text == "ne two xyz\n"
+
+
+async def test_search_operator_repeats_with_dot():
+    e = ViEngine("a x b x c x\n")
+    e.feed_keys("d/x<CR>l.")
+    assert e.text == "xx c x\n"
+
+
+async def test_search_counts():
+    e = ViEngine("foo\nbar\nfoo\n")
+    e.feed_keys("3/o<CR>")
+    assert e.cursor == (2, 1)
+    e.feed_keys("2N")
+    assert e.cursor == (0, 1)
+
+
+async def test_search_in_visual_mode_extends_selection():
+    e = ViEngine("one two xyz\n")
+    e.feed_keys("v/x<CR>")
+    assert (e.mode, e.selection) == ("visual", ((0, 0), (0, 8)))
+    e.feed_keys("d")
+    assert e.text == "yz\n"
+
+
+async def test_search_sets_previous_jump_mark():
+    e = ViEngine("foo\nbar\nfoo\n", cursor=(1, 1))
+    e.feed_keys("/foo<CR>")
+    assert e.cursor == (2, 0)
+    assert e.marks.get("'") == (1, 1)
+    e.feed_keys("/zzz<CR>")  # no move: the mark is kept
+    assert e.marks.get("'") == (1, 1)
+
+
+async def test_n_after_question_mark_goes_backward():
+    e = ViEngine("x foo x foo x\n", cursor=(0, 12))
+    e.feed_keys("?foo<CR>")
+    assert e.cursor == (0, 8)
+    e.feed_keys("n")
+    assert e.cursor == (0, 2)
+    e.feed_keys("N")
+    assert e.cursor == (0, 8)
+
+
+async def test_n_without_previous_search_notifies():
+    e = ViEngine("abc\n")
+    e.feed_keys("n")
+    assert notices(e) == [("No previous regular expression", "error")]
+    assert e.cursor == (0, 0)
+
+
+async def test_star_and_hash():
+    e = ViEngine("foo.bar foo x foobar foo\n", cursor=(0, 1))
+    e.feed_keys("*")
+    assert e.cursor == (0, 8)
+    assert e.session.last_search == (r"\bfoo\b", False)
+    assert e.session.search_history[-1] == r"\bfoo\b"
+    e.feed_keys("n")  # foobar is not the word foo
+    assert e.cursor == (0, 21)
+    e.feed_keys("#")
+    assert e.cursor == (0, 8)
+    assert e.session.last_search == (r"\bfoo\b", True)
+    e.feed_keys("n")
+    assert e.cursor == (0, 0)
+
+
+async def test_star_uses_next_word_on_line_and_is_operator_target():
+    e = ViEngine("  foo bar foo\n")
+    e.feed_keys("*")  # on blanks: the next keyword
+    assert e.cursor == (0, 10)
+    e = ViEngine("foo bar foo\n")
+    e.feed_keys("d*")
+    assert e.text == "foo\n"
+    e = ViEngine("  ..  \n")
+    e.feed_keys("*")
+    assert notices(e) == [("No string under cursor", "error")]
+
+
+async def test_last_search_shared_via_session():
+    s = ViSession()
+    a = ViEngine("foo\n", session=s)
+    b = ViEngine("x foo foo\n", session=s)
+    a.feed_keys("/foo<CR>")
+    b.feed_keys("n")
+    assert b.cursor == (0, 2)
+    b.feed_keys("#")
+    a.feed_keys("n")  # # made the shared search backward
+    assert s.last_search == (r"\bfoo\b", True)
+
+
+async def test_search_in_macro():
+    e = ViEngine("a x b x c x d x\n")
+    e.feed_keys("qqd/x<CR>lq@q")
+    assert e.text == "xx c x d x\n"
+
+
+async def test_search_on_empty_buffer():
+    e = ViEngine("")
+    e.feed_keys("/x<CR>n*#")
+    assert (e.text, e.cursor, e.mode) == ("", (0, 0), "normal")
+
+
+async def test_search_with_register_and_cancel():
+    e = ViEngine("one two xyz\n")
+    e.feed_keys('"ad/x<CR>')
+    assert e.text == "xyz\n"
+    assert e.session.vi_state.named_registers["a"].text == "one two "
+    e.feed_keys('"bd/y<Esc>')
+    assert (e.has_pending, e.status) == (False, "")
+    e.feed_keys('"cd/(<CR>')
+    assert (e.has_pending, e.status) == (False, "")
+
+
+async def test_search_escape_in_visual_mode_keeps_selection():
+    e = ViEngine("one two xyz\n")
+    e.feed_keys("vl/x")
+    assert e.cursor == (0, 8)
+    e.feed_keys("<Esc>")
+    assert (e.mode, e.selection) == ("visual", ((0, 0), (0, 1)))
+
+
+async def test_ex_line_history_up_down():
+    s = ViSession()
+    e = ViEngine("a\nb\nc\n", session=s)
+    e.feed_keys(":2<CR>:3<CR>:<Up><Up>")
+    assert e.status == ":2"
+    e.feed_keys("<CR>")
+    assert e.cursor == (1, 0)
+    assert s.ex_history == ["3", "2"]
