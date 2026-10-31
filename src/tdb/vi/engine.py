@@ -21,18 +21,14 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from itertools import accumulate
 from string import ascii_letters
-from typing import Literal, Protocol
+from typing import TYPE_CHECKING, Any, Literal, Protocol
 
+import prompt_toolkit.document as ptk_document
 from prompt_toolkit.application import Application
 from prompt_toolkit.application.current import set_app
 from prompt_toolkit.buffer import Buffer
 from prompt_toolkit.clipboard import Clipboard, ClipboardData, InMemoryClipboard
-from prompt_toolkit.document import (
-    Document,
-    _DocumentCache,
-    _ImmutableLineList,
-    _text_to_document_cache,
-)
+from prompt_toolkit.document import Document
 from prompt_toolkit.enums import EditingMode
 from prompt_toolkit.input import DummyInput
 from prompt_toolkit.key_binding import KeyBindings, merge_key_bindings
@@ -56,6 +52,9 @@ from tdb.vi.substitute import (
     rebuild,
 )
 from tdb.vi.textedit import diff_text, remember_insert
+
+if TYPE_CHECKING:
+    from prompt_toolkit.document import _DocumentCache
 
 log = logging.getLogger(__name__)
 
@@ -512,15 +511,69 @@ def _translate_row_col_to_index(self: Document, row: int, col: int) -> int:
     return max(0, min(result, len(self.text)))
 
 
-# prompt_toolkit is pinned below 3.1; these are the only readers of the
-# line-start table (``Document._line_start_indexes``).
-Document._line_start_indexes = property(_line_start_indexes)  # type: ignore[method-assign,assignment]
-Document._find_line_start_index = _find_line_start_index  # type: ignore[method-assign]
-Document.translate_row_col_to_index = _translate_row_col_to_index  # type: ignore[method-assign]
+@dataclass(frozen=True)
+class _DocumentInternals:
+    """The private prompt_toolkit names the fast line tables rely on."""
+
+    cache_type: type  # ``_DocumentCache``
+    line_list: type  # ``_ImmutableLineList``
+    caches: Any  # ``_text_to_document_cache``: text -> its ``_DocumentCache``
+
+
+# The three Document attributes the patch replaces.
+_PATCHED = (
+    "_line_start_indexes",
+    "_find_line_start_index",
+    "translate_row_col_to_index",
+)
+
+
+def _document_internals() -> _DocumentInternals | None:
+    """prompt_toolkit's ``Document`` internals, or None when they are not
+    what the patch expects (a prompt_toolkit that renamed them): then
+    ``Document`` is left alone and prompt_toolkit's own, slower, line
+    tables are used."""
+    try:
+        internals = _DocumentInternals(
+            ptk_document._DocumentCache,
+            ptk_document._ImmutableLineList,
+            ptk_document._text_to_document_cache,
+        )
+        probe = internals.cache_type()
+        needed = [(probe, "lines"), (probe, "line_indexes")]
+        needed += [(internals.caches, "get"), (Document, "__slots__")]
+        needed += [(Document, name) for name in _PATCHED]
+        for owner, name in needed:
+            if not hasattr(owner, name):
+                raise AttributeError(name)
+        if "_cache" not in Document.__slots__:
+            raise AttributeError("Document._cache")
+    except (AttributeError, TypeError) as error:
+        log.debug("prompt_toolkit Document internals changed (%s): slow path", error)
+        return None
+    return internals
+
+
+# Document's own attributes, before the patch (for tests of the slow path).
+_DOCUMENT_ORIGINALS = {
+    name: Document.__dict__[name] for name in _PATCHED if name in Document.__dict__
+}
+# None: the internals changed, and every user below takes the slow path.
+_PTK = _document_internals()
+if _PTK is not None:
+    # prompt_toolkit is pinned below 3.1; these are the only readers of the
+    # line-start table (``Document._line_start_indexes``).
+    Document._line_start_indexes = property(_line_start_indexes)  # type: ignore[method-assign,assignment]
+    Document._find_line_start_index = _find_line_start_index  # type: ignore[method-assign]
+    Document.translate_row_col_to_index = _translate_row_col_to_index  # type: ignore[method-assign]
 
 
 def _derive_cache(
-    old: str, known: _DocumentCache, new: str, cache: _DocumentCache
+    ptk: _DocumentInternals,
+    old: str,
+    known: _DocumentCache,
+    new: str,
+    cache: _DocumentCache,
 ) -> None:
     """Fill *cache* (lines, line starts of *new*) from *known* (those of
     *old*) by the one edit between the texts: a list copy and slices in C,
@@ -543,7 +596,7 @@ def _derive_cache(
         + edit.new_text
         + lines[last][edit.old_end - last_start :]
     ).split("\n")
-    new_lines = _ImmutableLineList(lines)
+    new_lines = ptk.line_list(lines)
     list.__setitem__(new_lines, slice(first, last + 1), mid)
     head, hlen, tail, toff, size = (
         starts.head,
@@ -597,8 +650,9 @@ class _ViBuffer(Buffer):
     restored: str | None = None
     # Inside a group: a change since the group's entry was saved.
     _grouped_change = False
-    # The text and its shared Document cache as of the last change.
-    _known: tuple[str, _DocumentCache] | None = None
+    # The text and its shared Document cache (None on the slow path) as of
+    # the last change.
+    _known: tuple[str, _DocumentCache | None] | None = None
     # While insert_text runs: (text before, cursor offset, inserted text).
     _inserting: tuple[str, int, str] | None = None
 
@@ -622,15 +676,17 @@ class _ViBuffer(Buffer):
         """Before prompt_toolkit's handling: the new text's lines and line
         starts come from the previous text's (see ``_derive_cache``)."""
         new = self.text
-        cache = _text_to_document_cache.get(new)
-        if cache is None:
-            cache = _text_to_document_cache[new] = _DocumentCache()
         known = self._known
         inserting = self._inserting
         if inserting is not None and known is not None and inserting[0] is known[0]:
             remember_insert(inserting[0], inserting[1], inserting[2], new)
-        if cache.lines is None and known is not None:
-            _derive_cache(known[0], known[1], new, cache)
+        ptk, cache = _PTK, None
+        if ptk is not None:
+            cache = ptk.caches.get(new)
+            if cache is None:
+                cache = ptk.caches[new] = ptk.cache_type()
+            if cache.lines is None and known is not None and known[1] is not None:
+                _derive_cache(ptk, known[0], known[1], new, cache)
         self._known = new, cache
         super()._text_changed()
 
@@ -950,8 +1006,8 @@ class ViEngine:
             return
         self.buffer.line_record = None
         if self.buffer.text != text:
-            cache = _text_to_document_cache.get(text)  # its lines are known
-            lines = cache.lines if cache is not None else None
+            cache = None if _PTK is None else _PTK.caches.get(text)
+            lines = cache.lines if cache is not None else None  # known lines
             report(
                 text.split("\n") if lines is None else lines,
                 row,
@@ -1093,7 +1149,7 @@ class ViEngine:
             return
         edit = diff_text(old, new)
         assert edit is not None
-        cache = _text_to_document_cache.get(old)
+        cache = None if _PTK is None else _PTK.caches.get(old)
         starts = cache.line_indexes if cache is not None else None
         row = None
         if type(starts) is _LineStarts:  # the old text's rows are known
