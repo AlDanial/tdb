@@ -46,6 +46,8 @@ buffer, `f` or a search that finds nothing, `2dd` on the last line, an
 unknown key), so `qajddq99@a` stops at the end of the file. In `:g`, a
 `:normal` that fails on one line stops only that line. When you type keys
 yourself a failure does not stop the keys after it, and tdb does not beep.
+A macro run, a `.` and a `:normal` are each one undo step; a `u` inside one
+undoes everything it changed so far, as in vim.
 
 **Marks.** `ma` to `mz` set, `'a` and `` `a `` jump. `'<` and `'>` are the
 visual-area marks and `''` / ` `` ` return to the previous position.
