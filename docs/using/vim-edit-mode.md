@@ -14,20 +14,23 @@ differs from vim.
 linewise visual (`V`). `gv` reselects the last visual area.
 
 **Motions.** `h j k l`, `w b e W B E ge`, `0 ^ $ |`, `gg G NG`, `f F t T ; ,`,
-`% ( ) { }`, `H M L`, `+ - _`, `gj gk`, `PageUp` / `PageDown`, and
-`'a` / `` `a `` mark jumps. A count prefix works on all of them.
+`% { }`, `+ -`, `_` (without a count or operator), `gj gk`, `H M L`,
+`PageUp` / `PageDown`, and `'a` / `` `a `` / `''` / ` `` ` mark jumps. A
+count prefix works on all of them except `_`. `H M L` and `PageUp` /
+`PageDown` need a rendered editor (they act on the visible window).
 
-**Operators.** `d c y > < = ~ g~ gu gU J gJ`, doubled for lines (`dd`,
-`cc`, `yy`, `>>`), with any motion or text object, and with counts
-(`d3w`, `3dd`, `2d3w`). `x X D C s S Y r R p P gp gP u Ctrl+R U`,
-`Ctrl+A` / `Ctrl+X` (increment / decrement the number at or after the
-cursor, with a count).
+**Operators.** `d c y > < g~ gu gU`, doubled for lines (`dd`, `cc`, `yy`,
+`>>`, `gUU`), with any motion or text object, and with counts (`d3w`,
+`3dd`, `2d3w`). `J gJ` (with a count), `~`, `x X D C s S Y r R p P u
+Ctrl+R`, and in visual mode `d c y > < ~ u U J`.
+`Ctrl+A` / `Ctrl+X` increment / decrement the number at or after the
+cursor, with a count (decimal, hex `0x`, negative).
 
 **Text objects.** `iw aw iW aW`, `ip ap`, quotes `i" a" i' a' i\` a\``,
 brackets `i( a( ib ab i[ a[ i{ a{ iB aB i< a<`: `ciw`, `ci(`, `dap`,
 `yi"`, and so on.
 
-**Insert entry.** `i a I A o O gi gI`.
+**Insert entry.** `i a I A o O`.
 
 **Registers.** `"a` to `"z`, `"A` to `"Z` (append), the unnamed register
 `""`, the yank register `"0`, and the black hole `"_`. `.` repeats the
@@ -62,11 +65,12 @@ tdb tries to match vim (the engine is checked against real nvim by a
 golden test suite), but these differences are known.
 
 **Regular expressions are Python `re`.** Patterns in `/`, `?`, `:s`, `:g`
-and `:v` are case-sensitive by default; use `(?i)` at the start of a
-pattern, or the `i` flag of `:s`, to ignore case. A translation table maps
-the common vim spellings: `\(...\)` becomes `(...)`, `\<word\>` becomes
-`\bword\b`, `\{n}` becomes `{n}`. `~` (previous replacement) is not
-supported. `re.MULTILINE` is always on, so `^` and `$` match per line, but
+and `:v` are passed to Python's `re` as written, with no translation of
+vim syntax: write groups as `(...)` (not `\(...\)`, which matches a
+literal parenthesis), word boundaries as `\b` (not `\<` `\>`) and counts as
+`{n}` (not `\{n}`). Patterns are case-sensitive by default; use `(?i)` at
+the start of a pattern, or the `i` flag of `:s`, to ignore case. `~`
+(previous replacement) is not supported. `re.MULTILINE` is always on, so `^` and `$` match per line, but
 `\s` also matches a newline. Python's `\w` differs from vim's `iskeyword`
 for some non-ASCII text. There is no timeout, so a pattern with
 catastrophic backtracking freezes the UI while you type it.
@@ -96,6 +100,14 @@ a `:normal`, a macro or `.`: `:normal jdd` on the last line deletes it.
 alone). `d}` does not apply vim's exclusive-to-linewise rule, and `VjX`
 does nothing.
 
+**Not implemented.** The `=` operator (`3G=ip` swallows the `=`, then `i`
+enters insert mode), `U` (undo line), sentence motions `( )` and sentence
+objects `is as`, tag objects `it at`, `[{ ]}`-style unmatched-bracket
+motions, `gi` and `gI` (they behave like `i` and `I`), `gp` and `gP` (like
+`p` and `P`), and `p` in visual mode (it does nothing). `_` with a count
+or an operator does nothing. `~` toggles a single character (there is no
+`tildeop`).
+
 **tdb keys win.** `Ctrl+V`, `Ctrl+O`, `Ctrl+E`, `Ctrl+B`, `Ctrl+C`,
 `Ctrl+S`, `Ctrl+Q`, `Ctrl+P` and all function keys are tdb pane keys and
 never reach the editor, so block visual mode (`Ctrl+V`), scroll lines
@@ -113,10 +125,8 @@ are not supported. `dd` on the first of two identical adjacent lines moves
 the other line's mark.
 
 **Text objects and editing.** `i"` / `a"` ignore counts, and brackets
-inside quotes are not special-cased. No tag objects (`it`, `at`) and no
-sentence objects (`is`, `as`). Decimal `Ctrl+A` / `Ctrl+X` do not wrap at
-64 bits. `r<Tab>` does nothing. `{count}gi` and `{count}gI` do not repeat
-the insert. In insert mode, `Ctrl+W` on punctuation and `<CR>` inside
+inside quotes are not special-cased. Decimal `Ctrl+A` / `Ctrl+X` do not wrap at
+64 bits. `r<Tab>` does nothing. In insert mode, `Ctrl+W` on punctuation and `<CR>` inside
 leading whitespace (autoindent) behave differently from vim. Typing into
 an empty buffer leaves no final newline. `:g/x/normal j` resets the wanted
 column, and an error in a `:g` nested through `:normal` does not stop the

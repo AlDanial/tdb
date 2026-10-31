@@ -47,7 +47,7 @@ jobs:
 
       - name: Run vi tests
         run: >
-          uv run pytest
+          uv run --with pytest --with pytest-asyncio --with pytest-cov pytest
           tests/unit/test_vi_engine.py
           tests/unit/test_vi_textedit.py
           tests/unit/test_vi_compat.py
@@ -56,4 +56,5 @@ jobs:
           tests/unit/test_vi_ex.py
           tests/unit/test_vi_substitute.py
           tests/unit/test_vi_global.py
+          tests/unit/test_vi_textobjects.py
           tests/unit/test_code_editor_vim.py
