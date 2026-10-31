@@ -65,6 +65,11 @@ class SubstituteTally:
     lines: int = 0
 
 
+# ``watch(old_lines, row_before, row_after)``: a key changed the text from
+# *old_lines*; the cursor row before and after it.
+LineWatch = Callable[[list[str], int, int], None]
+
+
 class ExHost(Protocol):
     """What ex commands need from the editor."""
 
@@ -109,9 +114,12 @@ class ExHost(Protocol):
         """Store *text* as a delete (or with *yank* a yank) would."""
         ...
 
-    def run_normal(self, row: int | None, keys: str) -> None:
+    def run_normal(
+        self, row: int | None, keys: str, *, watch: LineWatch | None = None
+    ) -> None:
         """Run normal-mode *keys* with the cursor at the start of *row*
-        (None: where it is), then end any unfinished command."""
+        (None: where it is), then end any unfinished command.  *watch* is
+        called after each key that changed the text."""
         ...
 
     def last_search(self) -> str | None: ...
@@ -304,7 +312,10 @@ def _delete(cmd: ExCommand, host: ExHost) -> None:
     rest = lines[:first] + lines[last + 1 :]
     row = min(first, max(len(rest) - 1, 0))
     col = _first_non_blank(rest[row]) if rest else 0
-    host.replace_lines(rest, (row, col))
+    n = last - first + 1
+    # The row map says which lines went, also among identical ones.
+    row_map = [*range(first), *[-1] * n, *range(first, len(lines) - n)]
+    host.replace_lines(rest, (row, col), row_map=row_map)
 
 
 def _yank(cmd: ExCommand, host: ExHost) -> None:

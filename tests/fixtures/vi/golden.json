@@ -1805,6 +1805,20 @@
   ],
   "text": "  ax\n  cx\ndx\n"
  },
+ "global-copy-here-2": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "x\nx\nx\nx\n"
+ },
+ "global-copy-here-4": {
+  "cursor": [
+   7,
+   0
+  ],
+  "text": "x\nx\nx\nx\nx\nx\nx\nx\n"
+ },
  "global-d": {
   "cursor": [
    1,
@@ -1875,6 +1889,13 @@
   ],
   "text": "y\nx1\nx2\nx3\n"
  },
+ "global-m-plus": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "x\nx\ny\nx\n"
+ },
  "global-m0": {
   "cursor": [
    0,
@@ -1896,6 +1917,20 @@
   ],
   "text": "  ax\nb\n  cx\ndx\n  e\n"
  },
+ "global-next-d-2": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "x\n"
+ },
+ "global-next-d-4": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "x\nx\n"
+ },
  "global-normal-append": {
   "cursor": [
    2,
@@ -1910,12 +1945,82 @@
   ],
   "text": "def f()\nx\ndef g()\n"
  },
+ "global-normal-dd-blank": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "a\nb\n"
+ },
+ "global-normal-dd-same": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "\n"
+ },
+ "global-normal-dj": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "x\n"
+ },
+ "global-normal-dk": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "\n"
+ },
+ "global-normal-jdd-2": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "x\n"
+ },
+ "global-normal-jdd-4": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "x\nx\n"
+ },
+ "global-normal-o": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "x\nx\nx\nx\n"
+ },
  "global-normal-open": {
   "cursor": [
    1,
    1
   ],
   "text": "x\nxx\ny\n"
+ },
+ "global-normal-yyP": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "x\nx\nx\nx\ny\n"
+ },
+ "global-normal-yyp": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "x\nx\nx\nx\ny\n"
+ },
+ "global-prev-d": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "\n"
  },
  "global-range": {
   "cursor": [

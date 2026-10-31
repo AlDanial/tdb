@@ -8092,5 +8092,140 @@
    0
   ],
   "keys": ":g/^/s/^/a/<CR>"
+ },
+ {
+  "id": "global-next-d-2",
+  "text": "x\nx\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/x/+1d<CR>"
+ },
+ {
+  "id": "global-next-d-4",
+  "text": "x\nx\nx\nx\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/x/+1d<CR>"
+ },
+ {
+  "id": "global-normal-jdd-2",
+  "text": "x\nx\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/x/normal jdd<CR>"
+ },
+ {
+  "id": "global-normal-jdd-4",
+  "text": "x\nx\nx\nx\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/x/normal jdd<CR>"
+ },
+ {
+  "id": "global-copy-here-2",
+  "text": "x\nx\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/x/t.<CR>"
+ },
+ {
+  "id": "global-copy-here-4",
+  "text": "x\nx\nx\nx\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/x/t.<CR>"
+ },
+ {
+  "id": "global-normal-dd-same",
+  "text": "x\nx\nx\nx\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/x/normal dd<CR>"
+ },
+ {
+  "id": "global-normal-dd-blank",
+  "text": "a\n\n\n\nb\n\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/^$/normal dd<CR>"
+ },
+ {
+  "id": "global-normal-dk",
+  "text": "x\nx\nx\nx\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/x/normal dk<CR>"
+ },
+ {
+  "id": "global-normal-dj",
+  "text": "x\nx\nx\nx\nx\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/x/normal dj<CR>"
+ },
+ {
+  "id": "global-normal-yyp",
+  "text": "x\nx\ny\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/x/normal yyp<CR>"
+ },
+ {
+  "id": "global-normal-yyP",
+  "text": "x\nx\ny\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/x/normal yyP<CR>"
+ },
+ {
+  "id": "global-normal-o",
+  "text": "x\nx\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/x/normal ox<CR>"
+ },
+ {
+  "id": "global-prev-d",
+  "text": "x\nx\nx\nx\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/x/-1d<CR>"
+ },
+ {
+  "id": "global-m-plus",
+  "text": "x\nx\nx\ny\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/x/m+1<CR>"
  }
 ]

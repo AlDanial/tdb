@@ -38,7 +38,7 @@ from prompt_toolkit.output import DummyOutput
 from prompt_toolkit.selection import SelectionType
 
 from tdb.vi.bindings import SEARCH_KEY, load_tdb_vi_bindings
-from tdb.vi.ex import ExError, run_ex, run_substitute
+from tdb.vi.ex import ExError, LineWatch, run_ex, run_substitute
 from tdb.vi.marks import JUMP, MAXCOL, MarkTable, adjust_pos, edit_rows
 from tdb.vi.search import ViPatternError, compile_pattern, find_nth, place
 from tdb.vi.substitute import (
@@ -521,6 +521,8 @@ class ViEngine:
         self._insert_repeat: tuple[str, int, int | None] | None = None
         # Set by an ex command, whose changes already moved the marks.
         self._marks_adjusted = False
+        # Told of each key's text change (``:normal`` inside ``:g``).
+        self._line_watch: LineWatch | None = None
         # How many ``:normal`` commands are running inside each other.
         self._normal_depth = 0
         # The ``:s///c`` session being answered, or None.
@@ -606,10 +608,13 @@ class ViEngine:
                 typing = self.mode in ("insert", "replace")
                 at = self.buffer.cursor_position if typing else None
                 self._marks_adjusted = False
+                row = self.cursor[0]
                 self._dispatch(key)
                 if not self._marks_adjusted:
                     self._adjust_marks(text, at)
                 self._marks_adjusted = False
+                if self._line_watch is not None and self.buffer.text != text:
+                    self._line_watch(text.split("\n"), row, self.cursor[0])
         finally:
             self.is_replaying = False
 
@@ -1613,10 +1618,17 @@ class _ExHost:
         finally:
             e._register = saved
 
-    def run_normal(self, row: int | None, keys: str) -> None:
+    def run_normal(
+        self, row: int | None, keys: str, *, watch: LineWatch | None = None
+    ) -> None:
+        e = self._e
         if row is not None:
-            self._e._move_to(row, 0)
-        self._e._run_keys(ViKey.parse(keys))
+            e._move_to(row, 0)
+        saved, e._line_watch = e._line_watch, watch or e._line_watch
+        try:
+            e._run_keys(ViKey.parse(keys))
+        finally:
+            e._line_watch = saved
 
     def last_search(self) -> str | None:
         last = self._e.session.last_search

@@ -44,7 +44,7 @@ class FakeHost:
     def set_register(self, name, text, linewise, *, yank=False):
         self.registers[name] = (text, linewise, yank)
 
-    def run_normal(self, row, keys):
+    def run_normal(self, row, keys, *, watch=None):
         self.normal.append((row, keys))
         if keys == "dd":
             del self._lines[row if row is not None else self.row]
@@ -177,7 +177,7 @@ def test_delete_range_goes_to_unnamed_register():
     assert host.registers == {None: ("  l3\n  l4", True, False)}
     assert (host.row, host.col) == (2, 2)  # first non-blank
     assert host.groups == 1
-    assert host.row_maps == [None]  # marks follow the diff (whole lines)
+    assert host.row_maps == [[0, 1, -1, -1, 2]]  # exact, even for equal lines
 
 
 def test_delete_register_and_count():

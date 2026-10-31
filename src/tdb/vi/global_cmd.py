@@ -23,7 +23,10 @@ asks about each match; tdb does not support that).
 The ex commands run on a copy of the lines (``_Scope``), which goes to
 the host in one ``replace_lines`` at the end, or before a ``:normal``
 (which runs in the editor itself).  So a ``:g`` that changes thousands
-of lines makes one text change, not thousands.
+of lines makes one text change, not thousands.  The marked lines follow
+each ex command's row map exactly, also among identical lines; through
+a ``:normal`` they follow each key's change, placed by the cursor rows
+before and after it (``_place``).
 """
 
 from __future__ import annotations
@@ -36,6 +39,7 @@ from tdb.vi.ex import (
     ExCommand,
     ExError,
     ExHost,
+    LineWatch,
     SubstituteTally,
     resolve_range,
     run_ex,
@@ -72,18 +76,11 @@ def run_global(cmd: ExCommand, host: ExHost, invert: bool) -> None:
         host.notify(f"Pattern {found}: {pattern}", "warning")
         return
     host.set_mark("'", (host.cursor_row(), host.cursor_col()))
-    scope = _Scope(host)
+    scope = _Scope(host, marked)
     _depth += 1
     try:
-        while True:
-            try:
-                row = marked.index(True)
-            except ValueError:
-                break
-            marked[row] = False
-            old = scope.begin(row)
+        while scope.next_marked():
             run_ex(command, scope)
-            marked = _follow(marked, old, scope.lines(), row, scope.row_map, False)
     finally:
         _depth -= 1
         scope.finish()
@@ -117,7 +114,9 @@ class _Scope:
     Changes stay here until ``flush`` hands them to the host in one
     ``replace_lines``, with a row map from where each line was at the
     last flush (``_origin``: that row, or -1 for a line made since), so
-    the host's marks follow their lines.  It flushes before a ``:normal``
+    the host's marks follow their lines.  It also keeps which lines are
+    still to be visited (``_marked``) through every change: exactly with
+    the row map each ex command gives, and key by key in a ``:normal``.  It flushes before a ``:normal``
     and anything else that needs the real text, and at the end.
 
     In a run, the cursor is at the start of the marked line until the
@@ -125,8 +124,9 @@ class _Scope:
     stays where ``:g`` set it; the run is part of the ``:g``'s undo step.
     """
 
-    def __init__(self, host: ExHost) -> None:
+    def __init__(self, host: ExHost, marked: list[bool]) -> None:
         self._host = host
+        self._marked = marked
         self.tally = SubstituteTally()
         self._lines = host.lines()
         self._base = len(self._lines)  # rows at the last flush
@@ -137,19 +137,19 @@ class _Scope:
         # The column vim's ``:m`` / ``:t`` keep (the wanted column).
         self._want = self._cursor[1]
         self.moved = False
-        # The row map of the run's one change, if it had one.
-        self.row_map: Sequence[int] | None = None
-        self._changes = 0
 
-    def begin(self, row: int) -> list[str]:
-        """Start a run on *row*; the lines before it."""
+    def next_marked(self) -> bool:
+        """Unmark the first marked line and start a run on it (False: none)."""
+        try:
+            row = self._marked.index(True)
+        except ValueError:
+            return False
+        self._marked[row] = False
         if self.moved:
             self._want = self._cursor[1]
         self._cursor = row, 0
         self.moved = False
-        self.row_map = None
-        self._changes = 0
-        return self._lines
+        return True
 
     def finish(self) -> None:
         """Where vim leaves the cursor, the text to the host, the count."""
@@ -226,21 +226,24 @@ class _Scope:
     ) -> None:
         old = self._lines
         new = lines or [""]
-        hint, col = self._cursor[0], self.cursor_col()
+        row, col = self._cursor[0], self.cursor_col()
         self.moved = True
-        self._changes += 1
-        self.row_map = row_map if self._changes == 1 else None
         self._lines = new
         self._cursor = self._clamp(*cursor)
+        if row_map is not None:  # the ex commands here all give one
+            self._marked = _follow_map(self._marked, row_map, len(new), row, False)
+            self._origin = _follow_map(self._origin, row_map, len(new), row, -1)
+        elif new != old:
+            change = _text_change(self._marked, old, new, row, row, self._cursor[0])
+            self._marked = _splice(self._marked, change, False)
+            self._origin = _splice(self._origin, change, -1)
         if new == old:
             return
         if self._undo_cursor is None:
             if undo_cursor is None:
                 differ = (r for r, (a, b) in enumerate(zip(old, new)) if a != b)
-                row = min(next(differ, len(new)), len(old) - 1)
-                undo_cursor = row, col
+                undo_cursor = min(next(differ, len(new)), len(old) - 1), col
             self._undo_cursor = undo_cursor
-        self._origin = _follow(self._origin, old, new, hint, row_map, -1)
         self._dirty = True
 
     def set_register(
@@ -248,14 +251,21 @@ class _Scope:
     ) -> None:
         self._host.set_register(name, text, linewise, yank=yank)
 
-    def run_normal(self, row: int | None, keys: str) -> None:
+    def run_normal(
+        self, row: int | None, keys: str, *, watch: LineWatch | None = None
+    ) -> None:
         self.flush()
-        self._host.run_normal(self._cursor[0] if row is None else row, keys)
+        start = self._cursor[0] if row is None else row
+        self._host.run_normal(start, keys, watch=self._watch)
         self._reload()
         self._cursor = self._host.cursor_row(), self._host.cursor_col()
         self.moved = True
-        self._changes += 1
-        self.row_map = None
+
+    def _watch(self, old: list[str], before: int, after: int) -> None:
+        """A key of a ``:normal`` changed the text: the marks follow."""
+        new = self._host.lines()
+        change = _text_change(self._marked, old, new, before, before, after)
+        self._marked = _splice(self._marked, change, False)
 
     def last_search(self) -> str | None:
         return self._host.last_search()
@@ -303,73 +313,142 @@ class _Scope:
 _T = TypeVar("_T")
 
 
-def _follow(
-    values: list[_T],
+_IDS: list[int] = []
+
+
+def _ids(n: int) -> list[int]:
+    """``[0, 1, ...]``, at least *n* long and shared, so slices of it are
+    cheap to compare with a row map."""
+    if len(_IDS) < n:
+        _IDS.extend(range(len(_IDS), n))
+    return _IDS
+
+
+def _follow_map(
+    values: list[_T], row_map: Sequence[int], count: int, row: int, fill: _T
+) -> list[_T]:
+    """*values* (one per old row) moved by *row_map* (each old row's new
+    row, -1: deleted) to *count* new rows; a new line gets *fill*.
+
+    The rows the map moves are found from the map itself, with slice
+    comparisons (*row* is where to look first): the rows before them
+    keep their row and the rows after them shift by the change in line
+    count.  Only the moved rows are visited one by one, so a ``:g`` whose
+    command changes one line is not quadratic in Python steps.
+    """
+    rows = list(row_map)
+    n = len(rows)
+    ids = _ids(max(n, count))
+    limit = min(n, count)
+    p = _common(lambda lo, hi: rows[lo:hi] == ids[lo:hi], limit, row)
+    s = _common(
+        lambda lo, hi: rows[n - hi : n - lo] == ids[count - hi : count - lo],
+        limit - p,
+        n - row - 1,
+    )
+    middle = [fill] * (count - s - p)
+    for r in range(p, n - s):
+        to = rows[r] - p
+        if 0 <= to < len(middle):
+            middle[to] = values[r]
+        elif rows[r] >= 0:  # not one block: follow the whole map
+            out = [fill] * count
+            for old, new in enumerate(rows):
+                if new >= 0:
+                    out[new] = values[old]
+            return out
+    return values[:p] + middle + values[n - s :]
+
+
+# ``(first, old_end, new_end)``: old rows ``first..old_end-1`` became new
+# rows ``first..new_end-1``; the rows around them are the same lines.
+_Change = tuple[int, int, int]
+
+
+def _splice(values: list[_T], change: _Change, fill: _T) -> list[_T]:
+    """*values* through *change*: the changed rows keep theirs one for
+    one, extra new rows get *fill*, deleted rows lose theirs."""
+    p, old_end, new_end = change
+    kept = min(old_end, new_end) - p
+    middle = values[p : p + kept] + [fill] * (new_end - p - kept)
+    return values[:p] + middle + values[old_end:]
+
+
+def _text_change(
+    marked: list[bool],
     old: list[str],
     new: list[str],
     row: int,
-    row_map: Sequence[int] | None,
-    fill: _T,
-) -> list[_T]:
-    """*values* (one per row of *old*) moved to the rows of *new*; a new
-    line gets *fill*.
+    before: int,
+    after: int,
+) -> _Change:
+    """The change from *old* to *new*, found by comparing the text.
 
-    The change is found by comparing the text; the lines before and after
-    it keep their values.  With *row_map* (every old row's new row: a
-    ``:m``, ``:t`` or ``:s``) the changed lines' values follow it.
-    Otherwise the changed lines keep theirs one for one and a deleted
-    line loses its value; a deletion or insertion among identical lines
-    is put as near *row* (the line the command ran on) as it can be, as
-    that is where commands change the text.
-
-    Only the changed rows are visited one by one, so a ``:g`` whose
-    command changes one line is not quadratic in Python steps.
-    """
-    if old == new:
-        return values
-    p, old_end, new_end = _changed_rows(old, new, row, slide=row_map is None)
-    if row_map is None:
-        kept = min(old_end - p, new_end - p)
-        middle = values[p : p + kept] + [fill] * (new_end - p - kept)
-        return values[:p] + middle + values[old_end:]
-    middle = [fill] * (new_end - p)
-    for r in range(p, old_end):
-        to = row_map[r] - p
-        if not 0 <= to < len(middle):
-            break  # identical lines around the change moved too
-        middle[to] = values[r]
-    else:
-        return values[:p] + middle + values[old_end:]
-    out = [fill] * len(new)
-    for r, to in enumerate(row_map):
-        out[to] = values[r]
-    return out
-
-
-def _changed_rows(
-    old: list[str], new: list[str], row: int, *, slide: bool
-) -> tuple[int, int, int]:
-    """``(first, old_end, new_end)``: rows ``first..old_end-1`` of *old*
-    became rows ``first..new_end-1`` of *new*; the rest is the same.
-
-    With *slide*, a deletion or insertion among identical lines is moved
-    up towards *row*.
+    Lines deleted or inserted among identical lines could have gone at
+    several rows; ``_place`` picks one from the cursor row *before* and
+    *after* the change (*row*: the run's line, *marked*: the lines still
+    to visit).
     """
     n, m = len(old), len(new)
-    p = _common(lambda lo, hi: old[lo:hi] == new[lo:hi], min(n, m), row)
+    p = _common(lambda lo, hi: old[lo:hi] == new[lo:hi], min(n, m), before)
     s = _common(
         lambda lo, hi: old[n - hi : n - lo] == new[m - hi : m - lo],
         min(n, m) - p,
-        n - row - 1,
+        n - before - 1,
     )
     old_end, new_end = n - s, m - s
-    if slide and new_end == p:  # lines deleted
-        while p > row and old[p - 1] == old[old_end - 1]:
-            p, old_end, new_end = p - 1, old_end - 1, new_end - 1
-    elif slide and old_end == p:  # lines inserted
-        while p > row and new[p - 1] == new[new_end - 1]:
-            p, old_end, new_end = p - 1, old_end - 1, new_end - 1
+    if p in (old_end, new_end):  # only deleted, or only inserted lines
+        size = old_end - new_end
+        p = _place(marked, old if size > 0 else new, p, size, row, before, after)
+        old_end, new_end = p + max(size, 0), p + max(-size, 0)
     return p, old_end, new_end
+
+
+def _place(
+    marked: list[bool],
+    lines: list[str],
+    last: int,
+    size: int,
+    row: int,
+    before: int,
+    after: int,
+) -> int:
+    """The row where *size* lines were deleted (``-size`` inserted, if
+    negative); *lines* is the text that has them.
+
+    *last* is the last row it can be; if the lines above are the same
+    text, it can be any row from ``first`` to *last*.  A line delete
+    (``dd``, ``dj``, ``dk``, ``:d``...) takes the cursor's line and
+    leaves the cursor on the first line after the deleted ones, or on
+    the one before them when they were the last; a put or ``o`` / ``O``
+    adds lines at or below the cursor's line and puts the cursor on
+    them.  The rows that fit both cursor rows are taken.  When that
+    leaves a choice (or none), the deleted lines are taken to be marked
+    ones: a line vim may have deleted is then not visited, so the
+    command does not run more often than vim's would.
+    """
+    count = abs(size)
+    first = last
+    while first > 0 and lines[first - 1] == lines[first - 1 + count]:
+        first -= 1
+    if first == last:
+        return last
+    span = range(first, last + 1)
+    if size < 0:
+        fits = [c for c in (before, before + 1) if c in span and c <= after < c + count]
+        return fits[0] if len(fits) == 1 else min(max(after, first), last)
+    end = len(lines) - count  # the start of a block that was the last lines
+    fits = [
+        c
+        for c in (after, after + 1)
+        if c in span
+        and c <= before < c + count
+        and (c == after or (c == end and after == c - 1))
+    ]
+    if len(fits) == 1:
+        return fits[0]
+    choices = fits or [c for c in (after, after + 1) if c in span] or list(span)
+    return max(choices, key=lambda c: (sum(marked[c : c + count]), -abs(c - row)))
 
 
 def _common(same: Callable[[int, int], bool], limit: int, hint: int) -> int:

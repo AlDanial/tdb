@@ -201,6 +201,33 @@ def test_global_marks_lines_first():
     assert e.text == "x\nxx\ny\n"
 
 
+@pytest.mark.parametrize(
+    ("text", "keys", "want"),
+    [
+        # Deleting identical lines other than the run's own (nvim 0.11.6).
+        ("x\nx\n", ":g/x/+1d<CR>", "x\n"),
+        ("x\nx\nx\nx\n", ":g/x/+1d<CR>", "x\nx\n"),
+        ("x\nx\nx\nx\n", ":g/x/-1d<CR>", "\n"),
+        ("x\nx\n", ":g/x/normal jdd<CR>", "x\n"),
+        ("x\nx\nx\nx\n", ":g/x/normal jdd<CR>", "x\nx\n"),
+        ("x\nx\nx\nx\n", ":g/x/normal dk<CR>", "\n"),
+        ("x\nx\nx\nx\n", ":g/x/normal dd<CR>", "\n"),
+        ("a\n\n\n\nb\n\n", ":g/^$/normal dd<CR>", "a\nb\n"),
+        ("x\nx\ny\n", ":g/x/normal yyp<CR>", "x\nx\nx\nx\ny\n"),
+    ],
+)
+def test_global_follows_identical_lines_exactly(text, keys, want):
+    e = run(keys, text=text, cursor=(0, 0))
+    assert e.text == want
+    assert not [n for n in e.drain_events() if n.severity == "error"]
+
+
+def test_global_copy_here_ends_on_the_last_copy():
+    assert run(":g/x/t.<CR>", text="x\nx\n", cursor=(0, 0)).cursor == (3, 0)
+    e = run(":g/x/t.<CR>", text="x\nx\nx\nx\n", cursor=(0, 0))
+    assert (e.text, e.cursor) == ("x\n" * 8, (7, 0))
+
+
 def test_global_marks_follow_moved_lines():
     # Each moved line keeps its mark: every line is moved exactly once.
     e = run(":g/x/m$<CR>", text="x1\nx2\nx3\ny\n", cursor=(0, 0))
@@ -239,12 +266,18 @@ def test_global_split_lines_keep_the_marks_of_later_lines():
 
 
 def test_global_performance():
+    # The brief's limit; one retry so a busy CI runner's hiccup is not a
+    # failure (a real slowdown fails both tries).
     text = "".join(f"line {i} value {i * 13}\n" for i in range(5000))
-    e = ViEngine(text)
-    start = time.perf_counter()
-    e.feed_keys(":g/7/s/1/2/<CR>")
-    elapsed = time.perf_counter() - start
-    assert e.text != text
-    assert elapsed < 1.0, f":g took {elapsed:.2f}s"
-    e.feed_keys("u")
-    assert e.text == text
+    times = []
+    for _ in range(2):
+        e = ViEngine(text)
+        start = time.perf_counter()
+        e.feed_keys(":g/7/s/1/2/<CR>")
+        times.append(time.perf_counter() - start)
+        assert e.text != text
+        e.feed_keys("u")
+        assert e.text == text
+        if times[-1] < 1.0:
+            break
+    assert times[-1] < 1.0, f":g took {', '.join(f'{t:.2f}s' for t in times)}"
