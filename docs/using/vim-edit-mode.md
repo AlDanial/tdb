@@ -133,8 +133,11 @@ does not apply vim's exclusive-to-linewise rule, and `VjX` does nothing.
 A multi-line `d` that starts in the indent and ends before only blanks
 (`d2e`, `d2g_`) stays charwise; vim makes it linewise. `<Space>` and
 `<BS>` do not wrap to the next or previous line. An operator over an
-empty region (`d0` or `gU0` at column 0) changes nothing; nvim's `gU`
-and `g~` there change the line.
+empty region (`d0` or `gU0` at column 0) changes nothing; nvim's `gu`,
+`gU` and `g~` there change the line (the first character, at the start
+of the buffer). Such an empty change is not an undo step and does not
+clear redo: after `xd0`, `u` undoes the `x`; in vim it undoes the empty
+`d0`, and `Ctrl+R` then has nothing to redo.
 `ci(` before the brackets fails: nvim searches forward for the next pair.
 
 **tdb keys win.** `Ctrl+V`, `Ctrl+O`, `Ctrl+E`, `Ctrl+B`, `Ctrl+C`,
