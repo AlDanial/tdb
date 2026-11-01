@@ -365,6 +365,10 @@ class ProfileCapabilities:
     # up front rather than silently stopping on every hit.
     conditional_breakpoints: bool = True
 
+    # True -> breakpoints depend on the build emitting debug info (-g),
+    # so an all-unbound file gets a "compiled with debug info?" hint.
+    compiled: bool = False
+
     # "rust" -> Rust-specific concurrency inspection is available.
     # None -> no language-specific concurrency inspection support.
     concurrency_inspection: str | None = None

@@ -232,6 +232,7 @@ def build_go_profile(
             frame_placeholder="<main>",
         ),
         capabilities=ProfileCapabilities(
+            compiled=True,
             breakpoint_hook_frame=is_breakpoint_hook_frame,
             pause_while_running=True,  # dlv dap honors DAP `pause` -> --run works
             concurrency_inspection="go",

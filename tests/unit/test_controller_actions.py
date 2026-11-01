@@ -18,6 +18,7 @@ import pytest
 from tdb.dap.client import DAPError
 from tdb.dap.messages import Event, Response
 from tdb.session.controller import DebugController
+from tdb.languages.cpp import build_cpp_profile
 from tdb.session.event_bus import DebugEventHandler
 from tdb.session.state import SessionPhase
 from tdb.dap.types import (
@@ -419,18 +420,29 @@ async def test_clear_all_breakpoints_wipes_state_and_wire():
 
 
 async def test_unbound_breakpoints_warn_on_console():
-    ctrl, fake, handler = _make()
+    ctrl, fake, handler = _make(profile=build_cpp_profile())
     fake.breakpoint_results = [{"verified": False, "line": 3}]
     await ctrl.add_breakpoint("/x/prog.cpp", 3)
     warnings = [o for o in handler.outputs if "debug info" in o[0]]
     assert warnings, "expected an unbound-breakpoint warning"
 
 
+async def test_unbound_warning_omits_debug_info_hint_for_interpreted():
+    """-g means nothing for a Python script: warn, but without the
+    compile-with-debug-info hint."""
+    ctrl, fake, handler = _make()
+    fake.breakpoint_results = [{"verified": False, "line": 3}]
+    await ctrl.add_breakpoint("/x/prog.py", 3)
+    warnings = [o for o in handler.outputs if "no breakpoints bound" in o[0]]
+    assert warnings, "expected an unbound-breakpoint warning"
+    assert "debug info" not in warnings[0][0]
+
+
 async def test_verified_breakpoints_do_not_warn():
     ctrl, fake, handler = _make()
     fake.breakpoint_results = [{"verified": True, "line": 3}]
     await ctrl.add_breakpoint("/x/prog.py", 3)
-    assert not [o for o in handler.outputs if "debug info" in o[0]]
+    assert not [o for o in handler.outputs if "no breakpoints bound" in o[0]]
 
 
 async def test_partially_bound_breakpoints_do_not_warn():
@@ -448,7 +460,7 @@ async def test_partially_bound_breakpoints_do_not_warn():
         {"verified": False, "line": 5},
     ]
     await ctrl.set_breakpoint_condition("/f.py", 3, "x > 1")
-    assert not [o for o in handler.outputs if "debug info" in o[0]]
+    assert not [o for o in handler.outputs if "no breakpoints bound" in o[0]]
 
 
 async def test_deferred_breakpoints_do_not_warn():
@@ -461,7 +473,7 @@ async def test_deferred_breakpoints_do_not_warn():
         {"verified": False, "line": 3, "message": DEFERRED_VERIFICATION_MESSAGE}
     ]
     await ctrl.add_breakpoint("/x/prog.pl", 3)
-    assert not [o for o in handler.outputs if "debug info" in o[0]]
+    assert not [o for o in handler.outputs if "no breakpoints bound" in o[0]]
 
 
 async def test_breakpoint_changed_event_updates_verified_state():
@@ -487,7 +499,7 @@ async def test_breakpoint_changed_event_updates_verified_state():
     )
     (bp,) = ctrl.state.breakpoints["/x/prog.pl"]
     assert bp.verified is True
-    assert not [o for o in handler.outputs if "debug info" in o[0]]
+    assert not [o for o in handler.outputs if "no breakpoints bound" in o[0]]
 
 
 async def test_breakpoint_changed_event_warns_when_genuinely_unbound():
@@ -512,7 +524,7 @@ async def test_breakpoint_changed_event_warns_when_genuinely_unbound():
     )
     (bp,) = ctrl.state.breakpoints["/x/prog.pl"]
     assert bp.verified is False
-    assert [o for o in handler.outputs if "debug info" in o[0]]
+    assert [o for o in handler.outputs if "no breakpoints bound" in o[0]]
 
 
 async def test_breakpoint_changed_event_ignores_unknown_line():
@@ -534,7 +546,7 @@ async def test_breakpoint_changed_event_ignores_unknown_line():
     )
     (bp,) = ctrl.state.breakpoints["/x/prog.pl"]
     assert bp.verified is False  # untouched — no matching line
-    assert not [o for o in handler.outputs if "debug info" in o[0]]
+    assert not [o for o in handler.outputs if "no breakpoints bound" in o[0]]
 
 
 # --- Stack navigation ------------------------------------------------------
@@ -983,7 +995,7 @@ async def test_do_configure_warns_on_unbound_breakpoints():
     transmit site, so this is where users should see the hint first.
     """
     handler = _RecordingHandler()
-    ctrl = DebugController(handler)
+    ctrl = DebugController(handler, profile=build_cpp_profile())
     fake = _FakeDAP()
     ctrl.client = fake
     fake.breakpoint_results = [{"verified": False, "line": 3}]

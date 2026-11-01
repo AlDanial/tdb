@@ -190,6 +190,7 @@ def build_rust_profile(
         adapter=adapters[adapter_id](executable=executable, attach_pid=attach_pid),
         presentation=Presentation(lexer="rust", parse_error=parse_rust_error),
         capabilities=ProfileCapabilities(
+            compiled=True,
             pause_while_running=True,
             concurrency_inspection="rust",
             interactive_variable=NATIVE_INTERACTIVE_VARIABLE[adapter_id],
