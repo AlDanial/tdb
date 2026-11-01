@@ -12314,5 +12314,123 @@
    3
   ],
   "keys": "y2g_P"
+ },
+ {
+  "id": "s-emptyline",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "sQ<Esc>"
+ },
+ {
+  "id": "s-count-past-end",
+  "text": "ab\ncd\nef\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "3sQ<Esc>"
+ },
+ {
+  "id": "s-count-past-end-col0",
+  "text": "ab\ncd\nef\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3sQ<Esc>"
+ },
+ {
+  "id": "s-count-emptyline",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "3sQ<Esc>"
+ },
+ {
+  "id": "s-count-line-lost",
+  "text": "ab\ncd\nef\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "5sQ<Esc>"
+ },
+ {
+  "id": "s-count-last-line",
+  "text": "ab\ncd\n",
+  "cursor": [
+   1,
+   1
+  ],
+  "keys": "5sQ<Esc>"
+ },
+ {
+  "id": "s-count-inside",
+  "text": "abcdef\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "3sQ<Esc>"
+ },
+ {
+  "id": "s-normal",
+  "text": "ab\ncd\nef\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": ":normal 3sQ<CR>"
+ },
+ {
+  "id": "s-register",
+  "text": "ab\ncd\nef\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "\"a3sQ<Esc>j\"aP"
+ },
+ {
+  "id": "s-dot",
+  "text": "abcdef\nxyz\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "2sQ<Esc>j0."
+ },
+ {
+  "id": "s-dot-count",
+  "text": "abcdef\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "sQ<Esc>j05."
+ },
+ {
+  "id": "s-undo",
+  "text": "ab\ncd\nef\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "3sQ<Esc>u"
+ },
+ {
+  "id": "s-empty-buffer",
+  "text": "",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "sQ<Esc>",
+  "difference": "pre-existing: text typed into an empty buffer gets no final newline (nvim adds one)"
  }
 ]

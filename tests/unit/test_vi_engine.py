@@ -1642,3 +1642,19 @@ async def test_last_nonblank_backward_under_an_operator(keys, cursor, expected):
     e = ViEngine("foo   \n", cursor=cursor)
     e.feed_keys(keys)
     assert e.text == expected
+
+
+@pytest.mark.parametrize(
+    ("text", "cursor", "keys", "expected"),
+    [
+        ("ab\n\ncd\n", (1, 0), "sQ<Esc>", "ab\nQ\ncd\n"),
+        ("ab\ncd\nef\n", (0, 1), "3sQ<Esc>", "aQ\ncd\nef\n"),
+        ("ab\ncd\nef\n", (0, 0), "5sQ<Esc>", "Q\ncd\nef\n"),
+    ],
+)
+async def test_s_stops_at_the_line_end(text, cursor, keys, expected):
+    """``{count}s`` is ``c{count}l``: never past the end of the line
+    (prompt_toolkit's ``s`` deleted line breaks and the next lines)."""
+    e = ViEngine(text, cursor=cursor)
+    e.feed_keys(keys)
+    assert e.text == expected

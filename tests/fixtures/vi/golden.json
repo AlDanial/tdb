@@ -6824,6 +6824,97 @@
   ],
   "text": "Xef f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
  },
+ "s-count-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nQ\ncd\n"
+ },
+ "s-count-inside": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "aQef\n"
+ },
+ "s-count-last-line": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "ab\ncQ\n"
+ },
+ "s-count-line-lost": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "Q\ncd\nef\n"
+ },
+ "s-count-past-end": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "aQ\ncd\nef\n"
+ },
+ "s-count-past-end-col0": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "Q\ncd\nef\n"
+ },
+ "s-dot": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "Qcdef\nQz\n"
+ },
+ "s-dot-count": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "Qbcdef\nQ\n"
+ },
+ "s-empty-buffer": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "Q\n"
+ },
+ "s-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nQ\ncd\n"
+ },
+ "s-normal": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "aQ\ncd\nef\n"
+ },
+ "s-register": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "aQ\ncbd\nef\n"
+ },
+ "s-undo": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "ab\ncd\nef\n"
+ },
  "search-2d-count": {
   "cursor": [
    0,

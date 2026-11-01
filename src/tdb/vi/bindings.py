@@ -332,6 +332,14 @@ def _add_change_word(kb: KeyBindings, engine: ViEngine) -> None:
         _change_rows(event, row, min(row + event.arg, doc.line_count) - 1)
         event.app.vi_state.input_mode = InputMode.INSERT
 
+    @kb.add("s", filter=vi_navigation_mode & ~is_read_only)
+    def _substitute(event: KeyPressEvent) -> None:
+        """``{count}s``: ``c{count}l``, so it stops at the end of the line
+        (prompt_toolkit's deleted *count* characters across line ends)."""
+        doc = event.current_buffer.document
+        n = min(event.arg, len(doc.current_line) - doc.cursor_position_col)
+        change(event, TextObject(n))  # an empty line: an empty region
+
     changing = Condition(lambda: get_app().vi_state.operator_func is change)
 
     def change_word(event: KeyPressEvent, *, WORD: bool) -> TextObject:
