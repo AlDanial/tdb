@@ -49,8 +49,10 @@ jobs:
         uses: astral-sh/setup-uv@v7
 
       - name: Run vi tests
+        # --no-cov: coverage is not collected here, and its line tracer
+        # (on Python 3.12; 3.14 uses sys.monitoring) slows the timing tests 2x.
         run: >
-          uv run --with pytest --with pytest-asyncio --with pytest-cov pytest
+          uv run --with pytest --with pytest-asyncio --with pytest-cov pytest --no-cov
           tests/unit/test_vi_engine.py
           tests/unit/test_vi_textedit.py
           tests/unit/test_vi_compat.py

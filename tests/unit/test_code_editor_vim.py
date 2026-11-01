@@ -489,25 +489,30 @@ async def test_engine_exception_shows_warning_and_keeps_text(monkeypatch):
 
 async def test_typing_latency_on_large_file():
     text = "".join(f"line {i} with some words here\n" for i in range(5000))
-    app = _EdApp(text=text)
-    async with app.run_test():
-        ed = app.query_one("#ed", CodeEditor)
-        layer = ed._layer
-        keys = list("2500G") + list("ciwfoo") + ["escape"]
-        keys += ["j", "w", "c", "i", "w", *"bar", "escape"] * 20
-        keys += ["x", "j"] * 40
-        keys += ["i", *"typed text ", "escape"] * 8
-        keys = keys[:300]
-        events = [
-            Key("space", " ") if k == " " else Key(k, k if len(k) == 1 else None)
-            for k in keys
-        ]
-        start = time.perf_counter()
-        for event in events:
-            layer.handle_key(event)
-        elapsed = time.perf_counter() - start
-        assert ed.text == layer.engine.text
-        assert elapsed < 1.0, f"{len(events)} keys took {elapsed:.2f}s"
+    keys = list("2500G") + list("ciwfoo") + ["escape"]
+    keys += ["j", "w", "c", "i", "w", *"bar", "escape"] * 20
+    keys += ["x", "j"] * 40
+    keys += ["i", *"typed text ", "escape"] * 8
+    keys = keys[:300]
+    events = [
+        Key("space", " ") if k == " " else Key(k, k if len(k) == 1 else None)
+        for k in keys
+    ]
+    # 2 s leaves room for slow CI runners (Windows took 1.5 s with coverage
+    # on); one retry, each from a fresh editor, as test_global_performance.
+    for _ in range(2):
+        app = _EdApp(text=text)
+        async with app.run_test():
+            ed = app.query_one("#ed", CodeEditor)
+            layer = ed._layer
+            start = time.perf_counter()
+            for event in events:
+                layer.handle_key(event)
+            elapsed = time.perf_counter() - start
+            assert ed.text == layer.engine.text
+        if elapsed < 2.0:
+            break
+    assert elapsed < 2.0, f"{len(events)} keys took {elapsed:.2f}s"
 
 
 async def test_ctrl_z_leaves_text_unchanged_in_normal_and_insert():
