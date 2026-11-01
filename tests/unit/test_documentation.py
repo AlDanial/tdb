@@ -211,3 +211,15 @@ async def test_every_anchor_in_load_docs_resolves_in_markdown_viewer():
         markdown = app.query_one(Markdown)
         unresolved = [a for a in anchors if not markdown.goto_anchor(a)]
     assert unresolved == []
+
+
+def test_vim_edit_mode_page_is_stitched_into_tdb_doc():
+    nav = _nav()
+    assert "using/vim-edit-mode.md" in nav
+    assert nav.index("using/vim-edit-mode.md") == nav.index("using/keybindings.md") + 1
+    docs = load_docs()
+    assert docs is not None
+    assert "Differences from vim" in docs
+    assert "vim-lite" not in (DOCS / "using" / "keybindings.md").read_text(
+        encoding="utf-8"
+    )

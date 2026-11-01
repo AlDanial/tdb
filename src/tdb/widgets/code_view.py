@@ -23,6 +23,7 @@ from textual.widgets import Input, Label
 
 from tdb.keybindings import KeybindingConfig, Mode
 from tdb.source_edit import atomic_write_text
+from tdb.vi import MarkTable, ViSession
 from tdb.widgets.code_editor import CodeEditor, _UnsavedChangesModal
 
 if TYPE_CHECKING:
@@ -51,6 +52,14 @@ def looks_binary(path: str) -> bool:
 
 
 log = logging.getLogger(__name__)
+
+# Pane-title suffix for each vi sub-mode that has a fixed label.
+_SUBMODE_LABELS = {
+    "insert": ":INSERT",
+    "replace": ":REPLACE",
+    "visual": ":VISUAL",
+    "visual-line": ":V-LINE",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -462,6 +471,10 @@ class CodeView(ScrollableContainer, can_focus=True):
         # Cleared by the App for replay / post-mortem sessions.
         self.edit_enabled: bool = True
         self._editor: CodeEditor | None = None
+        # vim scheme: registers/history shared by every Edit session, and
+        # marks per file (filled in by the marks support).
+        self._vi_session = ViSession()
+        self._vi_marks: dict[str, MarkTable] = {}
         # True when the displayed text came from a readable local file
         # (load_file success). load_content (remote source) clears it.
         self._source_is_local: bool = False
@@ -475,6 +488,9 @@ class CodeView(ScrollableContainer, can_focus=True):
         # cannot be edited; the App replaces them freely.
         self._source_is_placeholder: bool = False
         self._had_trailing_newline: bool = True
+        # The source text as read (line ends and separators intact), for
+        # the vim scheme's editor, which saves exactly what it edits.
+        self._source_text = ""
         # A load_file/load_content that arrived while editing another
         # file. Applied when the editor closes.
         self._deferred_source: tuple[str, str] | None = None
@@ -641,15 +657,18 @@ class CodeView(ScrollableContainer, can_focus=True):
 
     def mode_label(self) -> str:
         """Text for the pane title: 'Debug', 'Navigation', 'Edit',
-        'Edit*', 'Edit:INSERT*', 'Edit :wq' ..."""
+        'Edit*', 'Edit:INSERT*', 'Edit:V-LINE', 'Edit :wq', 'Edit 2d',
+        'Edit /pat' ..."""
         if self.mode != Mode.EDIT or self._editor is None:
             return self.mode.value
         label = "Edit"
         sub = self._editor.submode
-        if sub == "insert":
-            label += ":INSERT"
-        elif sub == "command":
-            label += f" :{self._editor.command_text}"
+        status = self._editor.command_text
+        if sub in _SUBMODE_LABELS:
+            label += _SUBMODE_LABELS[sub]
+        elif status and sub in ("normal", "command", "search", "confirm"):
+            # The engine's status already carries its ':' / '/' / '?'.
+            label += f" {status}"
         if self._editor.is_dirty:
             label += "*"
         return label
@@ -697,6 +716,7 @@ class CodeView(ScrollableContainer, can_focus=True):
         self.mode = Mode.EDIT
         await self.mount(editor)
         editor.move_cursor((max(0, self.cursor_line - 1), 0))
+        editor.sync_layer_from_widget()
         editor.scroll_cursor_visible(center=True)
         editor.focus()
         self._announce_mode()
@@ -704,12 +724,23 @@ class CodeView(ScrollableContainer, can_focus=True):
 
     def _install_key_layer(self, editor: CodeEditor) -> None:
         """Attach the scheme's key layer. The Notepad scheme has none."""
-        from tdb.widgets.code_editor import EmacsLayer, VimLayer
+        from tdb.widgets.code_editor import EmacsLayer, ViLayer
 
         if self.keybindings.scheme == "emacs":
             editor._set_layer(EmacsLayer(editor))
         elif self.keybindings.scheme == "vim":
-            editor._set_layer(VimLayer(editor))
+            marks = None
+            if self.source_path is not None:
+                key = str(Path(self.source_path).resolve())
+                marks = self._vi_marks.setdefault(key, MarkTable())
+            editor._set_layer(
+                ViLayer(
+                    editor,
+                    session=self._vi_session,
+                    marks=marks,
+                    text=self._source_text,
+                )
+            )
 
     def leave_edit_mode(self, discard: bool = False) -> None:
         """The one exit from Edit mode. Prompts when there are unsaved
@@ -744,15 +775,17 @@ class CodeView(ScrollableContainer, can_focus=True):
         if self._editor is None or self.source_path is None:
             return False
         try:
-            text = Path(self.source_path).read_text(encoding="utf-8", errors="replace")
+            # Bytes, not read_text: universal newlines would turn CRLF and a
+            # lone \r into \n, which the vim scheme keeps as they are.
+            raw = Path(self.source_path).read_bytes()
+            text = raw.decode("utf-8", errors="replace")
         except OSError as exc:
             self.app.notify(
                 f"Cannot read {self.source_path}: {exc}", title="Edit", severity="error"
             )
             return False
-        self._editor.replace(text, (0, 0), self._editor.document.end)
+        self._editor.load_file_text(text)  # the vi engine's revert is undoable
         self._editor.mark_clean()
-        self._editor.move_cursor((0, 0))
         self._announce_mode()
         return True
 
@@ -761,7 +794,7 @@ class CodeView(ScrollableContainer, can_focus=True):
         notify and keep the buffer dirty. Posts FileSaved on success."""
         if self._editor is None or self.source_path is None:
             return False
-        text = self._editor.text
+        text = self._editor.file_text
         try:
             atomic_write_text(self.source_path, text)
         except OSError as exc:
@@ -784,7 +817,7 @@ class CodeView(ScrollableContainer, can_focus=True):
         editor = self._editor
         if editor is None:
             return
-        text = editor.text
+        text = editor.file_text
         row = editor.cursor_location[0]
         self._editor = None
         editor.remove()
@@ -809,7 +842,10 @@ class CodeView(ScrollableContainer, can_focus=True):
                 self.goto_line(self.current_line)
         elif reload_from_disk and self.source_path is not None:
             self.load_file(self.source_path)
-        elif self.source_path is not None and text != self._editor_text():
+        elif self.source_path is not None and text not in (
+            self._editor_text(),
+            self._source_text,
+        ):
             # Saved text (save_file already updated _lines) or an edit
             # the user chose to keep: re-highlight and recompute step units.
             self._install_source(text, self.source_path)
@@ -1091,6 +1127,7 @@ class CodeView(ScrollableContainer, can_focus=True):
         self._source_lossy = is_lossy
         self._source_is_placeholder = is_placeholder
         self._had_trailing_newline = text.endswith("\n")
+        self._source_text = text
         self._lines = text.splitlines()
         if is_placeholder:
             # A message, not code: no statement analysis, no syntax

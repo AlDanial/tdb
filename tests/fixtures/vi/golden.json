@@ -1,0 +1,9648 @@
+{
+ "2dd": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "def f(a, b):\n\ny = 10\nz = 20\n"
+ },
+ "2dj": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "\ny = 10\nz = 20\n"
+ },
+ "2p-lines": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "def f(a, b):\ndef f(a, b):\n    x = \"hi there\"\ndef f(a, b):\n    x = \"hi there\"\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "3G": {
+  "cursor": [
+   2,
+   5
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "3dd-near-end": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\n"
+ },
+ "9j": {
+  "cursor": [
+   5,
+   3
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "A": {
+  "cursor": [
+   0,
+   12
+  ],
+  "text": "def f(a, b):X\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "C": {
+  "cursor": [
+   1,
+   6
+  ],
+  "text": "def f(a, b):\n    x X\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "D": {
+  "cursor": [
+   1,
+   5
+  ],
+  "text": "def f(a, b):\n    x \n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "F": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "G-col": {
+  "cursor": [
+   5,
+   5
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "G-short": {
+  "cursor": [
+   5,
+   5
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "I": {
+  "cursor": [
+   1,
+   4
+  ],
+  "text": "def f(a, b):\n    Xx = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "O": {
+  "cursor": [
+   1,
+   4
+  ],
+  "text": "def f(a, b):\n    X\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "R": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "XYf f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "S": {
+  "cursor": [
+   1,
+   4
+  ],
+  "text": "def f(a, b):\n    X\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "T": {
+  "cursor": [
+   0,
+   7
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "Vj<": {
+  "cursor": [
+   1,
+   6
+  ],
+  "text": "def f(a, b):\nx = \"hi there\"\nreturn (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "Vj>": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "    def f(a, b):\n        x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "Vk>": {
+  "cursor": [
+   2,
+   6
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n        return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "a": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "def Xf(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "abort-2cc-last": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "a\nb\n\n"
+ },
+ "abort-2dd-last": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "a\nb\nc\n"
+ },
+ "abort-2dd-last-then-x": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "a\nb\n\n"
+ },
+ "abort-2indent-last": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "a\nb\nc\n"
+ },
+ "abort-2yy-last": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "a\nb\nc\n"
+ },
+ "abort-3at-second-run": {
+  "cursor": [
+   2,
+   1
+  ],
+  "text": "aZ\nbZ\ncZ\n"
+ },
+ "abort-J-last": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "a\nb c\n"
+ },
+ "abort-dot-after-failed-j": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "x\nx\nx\n"
+ },
+ "abort-dot-replay-fails": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "b\nc\nd\ne\n"
+ },
+ "abort-global-normal-continues": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "x1\naZ\nx2\n"
+ },
+ "abort-global-normal-jdd": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "x\nx\n"
+ },
+ "abort-macro-3rx": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "xxx\nab\n"
+ },
+ "abort-macro-ci-paren": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "(X)\nb\nc\n"
+ },
+ "abort-macro-comma": {
+  "cursor": [
+   3,
+   1
+  ],
+  "text": "a,\nb,\nc,\nd,\n"
+ },
+ "abort-macro-ctrl-a": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "2\n3\nx\n3\n"
+ },
+ "abort-macro-dk-top": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "aZ\n"
+ },
+ "abort-macro-fz": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "ab\nc,d\n"
+ },
+ "abort-macro-jdd": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "1\n3\n5\n"
+ },
+ "abort-macro-l-end": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "a\nab\n"
+ },
+ "abort-macro-percent": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "(a\nb\n(c)\n"
+ },
+ "abort-macro-tilde-empty": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "A\n\nb\n"
+ },
+ "abort-macro-vjd": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "e\n"
+ },
+ "abort-macro-w-end": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "a  \n"
+ },
+ "abort-normal-jdd-last": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "a\nb\nc\n"
+ },
+ "abort-x-empty-line-continues": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "a\n\n\n\n"
+ },
+ "brace-close": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "brace-open": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "cc": {
+  "cursor": [
+   1,
+   4
+  ],
+  "text": "def f(a, b):\n    X\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "cc-count": {
+  "cursor": [
+   2,
+   4
+  ],
+  "text": "one two three\n    X\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "cc-count-past-end": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "one two three\n    four five\nsix seven\nX\n"
+ },
+ "ci\"": {
+  "cursor": [
+   1,
+   9
+  ],
+  "text": "def f(a, b):\n    x = \"X\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "cnt-1i": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "xfoo\n"
+ },
+ "cnt-2Fz": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "a,b,c\n"
+ },
+ "cnt-2Fz-few": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "a,b,c\n"
+ },
+ "cnt-2I-undo": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "  foo\n"
+ },
+ "cnt-2Ihi": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "  hihifoo\n"
+ },
+ "cnt-2Tz": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "a,b,c\n"
+ },
+ "cnt-2Tz-few": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "a,b,c\n"
+ },
+ "cnt-2a-reg": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "fbboo\n"
+ },
+ "cnt-2fz": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "a,b,c\n"
+ },
+ "cnt-2fz-few": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "a,b,c\n"
+ },
+ "cnt-2i-bs": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "acacfoo\n"
+ },
+ "cnt-2i-empty": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "foo\n"
+ },
+ "cnt-2i-esc-cursor": {
+  "cursor": [
+   0,
+   7
+  ],
+  "text": "foo ababbar\n"
+ },
+ "cnt-2i-multiline": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "a\nba\nbfoo\n"
+ },
+ "cnt-2o-dot": {
+  "cursor": [
+   5,
+   0
+  ],
+  "text": "foo\nX\nX\nbar\nX\nX\n"
+ },
+ "cnt-2oX": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "foo\nX\nX\nbar\n"
+ },
+ "cnt-2oX-undo": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "foo\nbar\n"
+ },
+ "cnt-2r-dot-count": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "xxxxefgh\n"
+ },
+ "cnt-2r-then-dot": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "xxxxxfgh\n"
+ },
+ "cnt-2s": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "Xcdef\n"
+ },
+ "cnt-2tz": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "a,b,c\n"
+ },
+ "cnt-2tz-few": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "a,b,c\n"
+ },
+ "cnt-3Ahi": {
+  "cursor": [
+   0,
+   8
+  ],
+  "text": "foohihihi\nbar\n"
+ },
+ "cnt-3Ox": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "foo\nx\nx\nx\nbar\n"
+ },
+ "cnt-3a-end": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "foobbb\n"
+ },
+ "cnt-3a-undo": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "foo\n"
+ },
+ "cnt-3ab": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "fbbboo\n"
+ },
+ "cnt-3comma-few": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "a,b,c\n"
+ },
+ "cnt-3i-dot": {
+  "cursor": [
+   0,
+   7
+  ],
+  "text": "xxfoo xxbar\n"
+ },
+ "cnt-3i-dot-count": {
+  "cursor": [
+   0,
+   10
+  ],
+  "text": "xxfoo xxxxxbar\n"
+ },
+ "cnt-3i-end": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "afoob\n"
+ },
+ "cnt-3i-esc-esc": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "xxxfoo\n"
+ },
+ "cnt-3i-left": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "bafoo\n"
+ },
+ "cnt-3i-macro": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "xxxxfoo\n"
+ },
+ "cnt-3i-undo": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "foo\n"
+ },
+ "cnt-3i-undo-redo": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "xxxfoo\n"
+ },
+ "cnt-3r-undo": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abcdef\n"
+ },
+ "cnt-3rx": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "xxxdef\n"
+ },
+ "cnt-3rx-exact": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "abcxxx\n"
+ },
+ "cnt-3rx-fewer": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "abcdef\n"
+ },
+ "cnt-3semi": {
+  "cursor": [
+   0,
+   7
+  ],
+  "text": "a,b,c,d,e\n"
+ },
+ "cnt-3semi-few": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "a,b,c\n"
+ },
+ "cnt-5i": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "-----foo\n"
+ },
+ "cnt-5rx-fewer": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "abc\n"
+ },
+ "cnt-T-comma": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "a,b,c,d,e\n"
+ },
+ "cnt-T-comma-d": {
+  "cursor": [
+   0,
+   8
+  ],
+  "text": "a,b,c,d,e\n"
+ },
+ "cnt-T-semi": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "a,b,c,d,e\n"
+ },
+ "cnt-c3f-few": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "a,b,c\n"
+ },
+ "cnt-d2f": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "c\n"
+ },
+ "cnt-d3F-few": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "a,b,c\n"
+ },
+ "cnt-d3T-few": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "a,b,c\n"
+ },
+ "cnt-d3f-few": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "a,b,c\n"
+ },
+ "cnt-d3f-few-then-x": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": ",b,c\n"
+ },
+ "cnt-d3f-nomatch": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\n"
+ },
+ "cnt-d3t-few": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "a,b,c\n"
+ },
+ "cnt-dsemi-few": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "a,b,c\n"
+ },
+ "cnt-r-cr": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "\nbcdef\n"
+ },
+ "cnt-r-cr-empty": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "    fo\n\n"
+ },
+ "cnt-r-cr-ws": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "a\ncd\n"
+ },
+ "cnt-semi-few": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "a,b,c\n"
+ },
+ "cnt-t-comma": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "a,b,c,d,e\n"
+ },
+ "cnt-t-semi": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "a,b,c,d,e\n"
+ },
+ "cnt-t-semi-2": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "a,b,c,d,e\n"
+ },
+ "cnt-t-semi-d": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": ",c,d,e\n"
+ },
+ "cnt-t-semi-far": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "ab,cd,ef,gh\n"
+ },
+ "cnt-v2f": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "c\n"
+ },
+ "cnt-v3f-few": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": ",b,c\n"
+ },
+ "cnt-y3f-few": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "a,b,c\n"
+ },
+ "comma": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "count-G-1dG": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "d\ne\n"
+ },
+ "count-G-2d2G": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "a\nb\ne\n"
+ },
+ "count-G-c1G": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "x\nd\ne\n"
+ },
+ "count-G-d1G": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "d\ne\n"
+ },
+ "count-G-d1G-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "b\nc\nd\ne\n"
+ },
+ "count-G-d2gg": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "a\nd\ne\n"
+ },
+ "count-G-d4G": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "a\nb\ne\n"
+ },
+ "count-G-d5gg": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "a\nb\n"
+ },
+ "count-G-indent1G": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "    a\n    b\n    c\nd\ne\n"
+ },
+ "count-G-y1GP": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "a\nb\nc\na\nb\nc\nd\ne\n"
+ },
+ "ct)": {
+  "cursor": [
+   2,
+   12
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (X) * 2\n\ny = 10\nz = 20\n"
+ },
+ "cw": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "foo f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "d2j": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "\ny = 10\nz = 20\n"
+ },
+ "d9j": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n"
+ },
+ "d9k": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "\ny = 10\nz = 20\n"
+ },
+ "dG": {
+  "cursor": [
+   1,
+   3
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n"
+ },
+ "dG-col": {
+  "cursor": [
+   1,
+   3
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n"
+ },
+ "dd": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "def f(a, b):\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "dd-last": {
+  "cursor": [
+   4,
+   3
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\n"
+ },
+ "dd-then-p": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "    x = \"hi there\"\ndef f(a, b):\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "dgg": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "\ny = 10\nz = 20\n"
+ },
+ "di(": {
+  "cursor": [
+   2,
+   12
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return () * 2\n\ny = 10\nz = 20\n"
+ },
+ "dj-last": {
+  "cursor": [
+   5,
+   0
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "dk-first": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "dot-2dd-count": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "ten\n"
+ },
+ "dot-3x": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "o three\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "dot-3x-2dot": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "three\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "dot-A": {
+  "cursor": [
+   1,
+   13
+  ],
+  "text": "one two three;\n    four five;\nsix seven\neight nine\nten\n"
+ },
+ "dot-J": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "a b\nc d\ne\n"
+ },
+ "dot-after-macro": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "ne two three\n   four five\nsix seven\night nine\nten\n"
+ },
+ "dot-after-undo": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "ne two three\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "dot-c-op": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "X X three\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "dot-cc": {
+  "cursor": [
+   1,
+   4
+  ],
+  "text": "X\n    X\nsix seven\neight nine\nten\n"
+ },
+ "dot-cc-count": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "X\nX\nten\n"
+ },
+ "dot-ciw": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "foo foo three\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "dot-count-after-op": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "f g h\n"
+ },
+ "dot-count-before-op": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "\n"
+ },
+ "dot-count-both": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "\n"
+ },
+ "dot-count-f-digit": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "a1b2c3\n"
+ },
+ "dot-count-insert-digit": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "333foo bar\n"
+ },
+ "dot-count-r-digit": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "3333r3r3\n"
+ },
+ "dot-count-sticks": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": " three\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "dot-dd": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "six seven\neight nine\nten\n"
+ },
+ "dot-dw": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "three\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "dot-gU": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "ONE TWO three\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "dot-indent": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "    one two three\n        four five\nsix seven\neight nine\nten\n"
+ },
+ "dot-o": {
+  "cursor": [
+   2,
+   3
+  ],
+  "text": "one two three\nline\nline\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "dot-p": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "one two three\none two three\none two three\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "dot-p-char": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "oneone  one two three\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "dot-r": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "XXe two three\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "dot-register": {
+  "cursor": [
+   0,
+   8
+  ],
+  "text": "threetwo \n    four five\nsix seven\neight nine\nten\n"
+ },
+ "dot-skips-motion": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "ne two three\n   four five\nsix seven\neight nine\nten\n"
+ },
+ "dot-skips-yank": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "three\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "dot-tilde": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "ONe two three\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "dot-visual-d": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "two three\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "dot-visual-line-d": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "ten\n"
+ },
+ "dot-x": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "e two three\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "dt=": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "def f(a, b):\n= \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "dw-end": {
+  "cursor": [
+   5,
+   3
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = \n"
+ },
+ "empty-2d0": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-J": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": ""
+ },
+ "empty-b-count-clamps": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "d\n"
+ },
+ "empty-b-from-emptyline": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "ab\n"
+ },
+ "empty-b-indent": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "ab\n"
+ },
+ "empty-c-0": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\nQxy\n"
+ },
+ "empty-c-0-normal": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "abc\nAZxy\n"
+ },
+ "empty-c-0-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "Qabc\nxy\n"
+ },
+ "empty-c-0-top-normal": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "AZabc\nxy\n"
+ },
+ "empty-c-B-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-c-B-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-c-T": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "xQy\n"
+ },
+ "empty-c-T-col0": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "ab\nxQy\n"
+ },
+ "empty-c-T-col0-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "ab\nxAZy\n"
+ },
+ "empty-c-T-normal": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "xAZy\n"
+ },
+ "empty-c-b-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-c-b-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-c-bar-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nQ\ncd\n"
+ },
+ "empty-c-bar-emptyline-normal": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "ab\nAZ\ncd\n"
+ },
+ "empty-c-bar-tab": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "aQ\tb\n"
+ },
+ "empty-c-bar-tab-normal": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "aAZ\tb\n"
+ },
+ "empty-c-bar1": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nQcd\nef\n"
+ },
+ "empty-c-bar1-normal": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "ab\nAZcd\nef\n"
+ },
+ "empty-c-bar2": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "aQb\ncd\nef\n"
+ },
+ "empty-c-bar2-normal": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "aAZb\ncd\nef\n"
+ },
+ "empty-c-brace-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "Qabc\nxy\n"
+ },
+ "empty-c-brace-top-normal": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "AZabc\nxy\n"
+ },
+ "empty-c-caret": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "  Qabc\n"
+ },
+ "empty-c-caret-col0": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\nQxy\n"
+ },
+ "empty-c-caret-col0-normal": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "abc\nAZxy\n"
+ },
+ "empty-c-caret-normal": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "  AZabc\n"
+ },
+ "empty-c-dollar-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nQ\ncd\n"
+ },
+ "empty-c-dollar-emptyline-normal": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "ab\nAZ\ncd\n"
+ },
+ "empty-c-gE-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-c-gE-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-c-g_-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nQ\ncd\n"
+ },
+ "empty-c-g_-emptyline-normal": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "ab\nAZ\ncd\n"
+ },
+ "empty-c-ge-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-c-ge-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-c-h": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\nQxy\n"
+ },
+ "empty-c-h-normal": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "abc\nAZxy\n"
+ },
+ "empty-c-l-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nQ\ncd\n"
+ },
+ "empty-c-l-emptyline-normal": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "ab\nAZ\ncd\n"
+ },
+ "empty-c-space-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nQ\ncd\n"
+ },
+ "empty-c-space-emptyline-normal": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "ab\nAZ\ncd\n"
+ },
+ "empty-c-w-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nQ\ncd\n"
+ },
+ "empty-c-w-emptyline-normal": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "ab\nAZ\ncd\n"
+ },
+ "empty-count-d3h": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-d-0": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-d-0-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "abc\nxyZ\n"
+ },
+ "empty-d-0-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-d-0-top-normal": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "abcZ\nxy\n"
+ },
+ "empty-d-B-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-d-B-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-d-T": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "xy\n"
+ },
+ "empty-d-T-col0": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "ab\nxy\n"
+ },
+ "empty-d-T-col0-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "ab\nxyZ\n"
+ },
+ "empty-d-T-normal": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "xyZ\n"
+ },
+ "empty-d-b-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-d-b-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-d-bar-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-d-bar-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-d-bar-tab": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "a\tb\n"
+ },
+ "empty-d-bar-tab-normal": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "a\tbZ\n"
+ },
+ "empty-d-bar1": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\ncd\nef\n"
+ },
+ "empty-d-bar1-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "ab\ncdZ\nef\n"
+ },
+ "empty-d-bar2": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "ab\ncd\nef\n"
+ },
+ "empty-d-bar2-normal": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "abZ\ncd\nef\n"
+ },
+ "empty-d-brace-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-d-brace-top-normal": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "abcZ\nxy\n"
+ },
+ "empty-d-caret": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "  abc\n"
+ },
+ "empty-d-caret-col0": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-d-caret-col0-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "abc\nxyZ\n"
+ },
+ "empty-d-caret-normal": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "  abcZ\n"
+ },
+ "empty-d-dollar-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-d-dollar-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-d-gE-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-d-gE-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-d-g_-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-d-g_-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-d-ge-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-d-ge-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-d-h": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-d-h-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "abc\nxyZ\n"
+ },
+ "empty-d-l-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-d-l-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-d-space-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\ncd\n"
+ },
+ "empty-d-space-emptyline-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "ab\ncdZ\n"
+ },
+ "empty-d-w-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\ncd\n"
+ },
+ "empty-d-w-emptyline-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "ab\ncdZ\n"
+ },
+ "empty-d0-keeps-register": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\naxy\n"
+ },
+ "empty-dd": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": ""
+ },
+ "empty-dot": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": ""
+ },
+ "empty-dot-d0": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gU-0": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\nXY\n"
+ },
+ "empty-gU-0-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "abc\nXYZ\n"
+ },
+ "empty-gU-0-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "Abc\nxy\n"
+ },
+ "empty-gU-0-top-normal": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "AbcZ\nxy\n"
+ },
+ "empty-gU-B-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gU-B-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gU-T": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "xy\n"
+ },
+ "empty-gU-T-col0": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "ab\nxy\n"
+ },
+ "empty-gU-T-col0-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "ab\nxyZ\n"
+ },
+ "empty-gU-T-normal": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "xyZ\n"
+ },
+ "empty-gU-b-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gU-b-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gU-bar-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-gU-bar-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-gU-bar-tab": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "a\tb\n"
+ },
+ "empty-gU-bar-tab-normal": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "a\tbZ\n"
+ },
+ "empty-gU-bar1": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nCD\nef\n"
+ },
+ "empty-gU-bar1-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "ab\nCDZ\nef\n"
+ },
+ "empty-gU-bar2": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "ab\ncd\nef\n"
+ },
+ "empty-gU-bar2-normal": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "abZ\ncd\nef\n"
+ },
+ "empty-gU-brace-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "Abc\nxy\n"
+ },
+ "empty-gU-brace-top-normal": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "AbcZ\nxy\n"
+ },
+ "empty-gU-caret": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "  abc\n"
+ },
+ "empty-gU-caret-col0": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\nXY\n"
+ },
+ "empty-gU-caret-col0-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "abc\nXYZ\n"
+ },
+ "empty-gU-caret-normal": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "  abcZ\n"
+ },
+ "empty-gU-dollar-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-gU-dollar-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-gU-gE-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gU-gE-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gU-g_-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-gU-g_-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-gU-ge-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gU-ge-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gU-h": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\nXY\n"
+ },
+ "empty-gU-h-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "abc\nXYZ\n"
+ },
+ "empty-gU-l-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-gU-l-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-gU-space-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-gU-space-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-gU-w-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-gU-w-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-g_-count": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "ef\n"
+ },
+ "empty-g_-count-change": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "aQ  \nef\n"
+ },
+ "empty-g_-count-last-line-fails": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\ncd\n"
+ },
+ "empty-g_-count-motion": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "ab  \ncd  \ne\n"
+ },
+ "empty-g_-count-yank": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "ab  \ncdb  \ncd  \nef\n"
+ },
+ "empty-g_-motion-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nX\ncd\n"
+ },
+ "empty-ge-count-fails": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "a b c\n"
+ },
+ "empty-ge-count-moves": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "a b c\n"
+ },
+ "empty-ge-count-moves-under-op": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": " b c\n"
+ },
+ "empty-ge-from-emptyline": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "b\n"
+ },
+ "empty-ge-indent": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "\n"
+ },
+ "empty-ge-line-above": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "a\n"
+ },
+ "empty-ge-motion-indent": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "X  ab\n"
+ },
+ "empty-gt-0": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\n    xy\n"
+ },
+ "empty-gt-0-normal": {
+  "cursor": [
+   1,
+   6
+  ],
+  "text": "abc\n    xyZ\n"
+ },
+ "empty-gt-0-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "    abc\nxy\n"
+ },
+ "empty-gt-0-top-normal": {
+  "cursor": [
+   0,
+   7
+  ],
+  "text": "    abcZ\nxy\n"
+ },
+ "empty-gt-B-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gt-B-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gt-T": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "    xy\n"
+ },
+ "empty-gt-T-col0": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "ab\n    xy\n"
+ },
+ "empty-gt-T-col0-normal": {
+  "cursor": [
+   1,
+   6
+  ],
+  "text": "ab\n    xyZ\n"
+ },
+ "empty-gt-T-normal": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "    xyZ\n"
+ },
+ "empty-gt-b-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gt-b-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gt-bar-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-gt-bar-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-gt-bar-tab": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "    a\tb\n"
+ },
+ "empty-gt-bar-tab-normal": {
+  "cursor": [
+   0,
+   7
+  ],
+  "text": "    a\tbZ\n"
+ },
+ "empty-gt-bar1": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n    cd\nef\n"
+ },
+ "empty-gt-bar1-normal": {
+  "cursor": [
+   1,
+   6
+  ],
+  "text": "ab\n    cdZ\nef\n"
+ },
+ "empty-gt-bar2": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "    ab\ncd\nef\n"
+ },
+ "empty-gt-bar2-normal": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "    abZ\ncd\nef\n"
+ },
+ "empty-gt-brace-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "    abc\nxy\n"
+ },
+ "empty-gt-brace-top-normal": {
+  "cursor": [
+   0,
+   7
+  ],
+  "text": "    abcZ\nxy\n"
+ },
+ "empty-gt-caret": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "      abc\n"
+ },
+ "empty-gt-caret-col0": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\n    xy\n"
+ },
+ "empty-gt-caret-col0-normal": {
+  "cursor": [
+   1,
+   6
+  ],
+  "text": "abc\n    xyZ\n"
+ },
+ "empty-gt-caret-normal": {
+  "cursor": [
+   0,
+   9
+  ],
+  "text": "      abcZ\n"
+ },
+ "empty-gt-dollar-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-gt-dollar-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-gt-gE-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gt-gE-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gt-g_-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-gt-g_-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-gt-ge-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gt-ge-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gt-h": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\n    xy\n"
+ },
+ "empty-gt-h-normal": {
+  "cursor": [
+   1,
+   6
+  ],
+  "text": "abc\n    xyZ\n"
+ },
+ "empty-gt-l-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-gt-l-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-gt-space-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-gt-space-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-gt-w-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-gt-w-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-gtilde-0": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\nXY\n"
+ },
+ "empty-gtilde-0-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "abc\nXYZ\n"
+ },
+ "empty-gtilde-0-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "Abc\nxy\n"
+ },
+ "empty-gtilde-0-top-normal": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "AbcZ\nxy\n"
+ },
+ "empty-gtilde-B-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gtilde-B-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gtilde-T": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "xy\n"
+ },
+ "empty-gtilde-T-col0": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "ab\nxy\n"
+ },
+ "empty-gtilde-T-col0-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "ab\nxyZ\n"
+ },
+ "empty-gtilde-T-normal": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "xyZ\n"
+ },
+ "empty-gtilde-b-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gtilde-b-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gtilde-bar-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-gtilde-bar-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-gtilde-bar-tab": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "a\tb\n"
+ },
+ "empty-gtilde-bar-tab-normal": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "a\tbZ\n"
+ },
+ "empty-gtilde-bar1": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nCD\nef\n"
+ },
+ "empty-gtilde-bar1-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "ab\nCDZ\nef\n"
+ },
+ "empty-gtilde-bar2": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "ab\ncd\nef\n"
+ },
+ "empty-gtilde-bar2-normal": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "abZ\ncd\nef\n"
+ },
+ "empty-gtilde-brace-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "Abc\nxy\n"
+ },
+ "empty-gtilde-brace-top-normal": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "AbcZ\nxy\n"
+ },
+ "empty-gtilde-caret": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "  abc\n"
+ },
+ "empty-gtilde-caret-col0": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\nXY\n"
+ },
+ "empty-gtilde-caret-col0-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "abc\nXYZ\n"
+ },
+ "empty-gtilde-caret-normal": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "  abcZ\n"
+ },
+ "empty-gtilde-dollar-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-gtilde-dollar-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-gtilde-gE-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gtilde-gE-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gtilde-g_-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-gtilde-g_-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-gtilde-ge-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gtilde-ge-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gtilde-h": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\nXY\n"
+ },
+ "empty-gtilde-h-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "abc\nXYZ\n"
+ },
+ "empty-gtilde-l-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-gtilde-l-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-gtilde-space-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-gtilde-space-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-gtilde-w-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-gtilde-w-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-gu-0": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gu-0-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "abc\nxyZ\n"
+ },
+ "empty-gu-0-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gu-0-top-normal": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "abcZ\nxy\n"
+ },
+ "empty-gu-B-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gu-B-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gu-T": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "xy\n"
+ },
+ "empty-gu-T-col0": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "ab\nxy\n"
+ },
+ "empty-gu-T-col0-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "ab\nxyZ\n"
+ },
+ "empty-gu-T-normal": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "xyZ\n"
+ },
+ "empty-gu-b-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gu-b-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gu-bar-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-gu-bar-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-gu-bar-tab": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "a\tb\n"
+ },
+ "empty-gu-bar-tab-normal": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "a\tbZ\n"
+ },
+ "empty-gu-bar1": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\ncd\nef\n"
+ },
+ "empty-gu-bar1-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "ab\ncdZ\nef\n"
+ },
+ "empty-gu-bar2": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "ab\ncd\nef\n"
+ },
+ "empty-gu-bar2-normal": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "abZ\ncd\nef\n"
+ },
+ "empty-gu-brace-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gu-brace-top-normal": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "abcZ\nxy\n"
+ },
+ "empty-gu-caret": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "  abc\n"
+ },
+ "empty-gu-caret-col0": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gu-caret-col0-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "abc\nxyZ\n"
+ },
+ "empty-gu-caret-normal": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "  abcZ\n"
+ },
+ "empty-gu-dollar-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-gu-dollar-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-gu-gE-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gu-gE-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gu-g_-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-gu-g_-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-gu-ge-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gu-ge-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gu-h": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-gu-h-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "abc\nxyZ\n"
+ },
+ "empty-gu-l-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-gu-l-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-gu-space-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-gu-space-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-gu-w-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-gu-w-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-lt-0": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-lt-0-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "abc\nxyZ\n"
+ },
+ "empty-lt-0-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-lt-0-top-normal": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "abcZ\nxy\n"
+ },
+ "empty-lt-B-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-lt-B-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-lt-T": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "xy\n"
+ },
+ "empty-lt-T-col0": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "ab\nxy\n"
+ },
+ "empty-lt-T-col0-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "ab\nxyZ\n"
+ },
+ "empty-lt-T-normal": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "xyZ\n"
+ },
+ "empty-lt-b-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-lt-b-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-lt-bar-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-lt-bar-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-lt-bar-tab": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "a\tb\n"
+ },
+ "empty-lt-bar-tab-normal": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "a\tbZ\n"
+ },
+ "empty-lt-bar1": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\ncd\nef\n"
+ },
+ "empty-lt-bar1-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "ab\ncdZ\nef\n"
+ },
+ "empty-lt-bar2": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "ab\ncd\nef\n"
+ },
+ "empty-lt-bar2-normal": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "abZ\ncd\nef\n"
+ },
+ "empty-lt-brace-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-lt-brace-top-normal": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "abcZ\nxy\n"
+ },
+ "empty-lt-caret": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "abc\n"
+ },
+ "empty-lt-caret-col0": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-lt-caret-col0-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "abc\nxyZ\n"
+ },
+ "empty-lt-caret-normal": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "abcZ\n"
+ },
+ "empty-lt-dollar-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-lt-dollar-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-lt-gE-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-lt-gE-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-lt-g_-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-lt-g_-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-lt-ge-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-lt-ge-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-lt-h": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-lt-h-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "abc\nxyZ\n"
+ },
+ "empty-lt-l-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-lt-l-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-lt-space-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-lt-space-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-lt-w-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-lt-w-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-macro-d0-goes-on": {
+  "cursor": [
+   2,
+   1
+  ],
+  "text": "abcZ\nyZ\nzz\n"
+ },
+ "empty-macro-db-aborts": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "ZZ\nxy\n"
+ },
+ "empty-normal-all-caret": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "  ab\n  cd\n"
+ },
+ "empty-normal-all-d0": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "ab\ncd\nef\n"
+ },
+ "empty-p": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": ""
+ },
+ "empty-x": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": ""
+ },
+ "empty-y-0": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-y-0-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "abc\nxyZ\n"
+ },
+ "empty-y-0-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-y-0-top-normal": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "abcZ\nxy\n"
+ },
+ "empty-y-B-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-y-B-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-y-T": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "xy\n"
+ },
+ "empty-y-T-col0": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "ab\nxy\n"
+ },
+ "empty-y-T-col0-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "ab\nxyZ\n"
+ },
+ "empty-y-T-normal": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "xyZ\n"
+ },
+ "empty-y-b-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-y-b-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-y-bar-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-y-bar-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-y-bar-tab": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "a\tb\n"
+ },
+ "empty-y-bar-tab-normal": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "a\tbZ\n"
+ },
+ "empty-y-bar1": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\ncd\nef\n"
+ },
+ "empty-y-bar1-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "ab\ncdZ\nef\n"
+ },
+ "empty-y-bar2": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "ab\ncd\nef\n"
+ },
+ "empty-y-bar2-normal": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "abZ\ncd\nef\n"
+ },
+ "empty-y-brace-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-y-brace-top-normal": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "abcZ\nxy\n"
+ },
+ "empty-y-caret": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "  abc\n"
+ },
+ "empty-y-caret-col0": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-y-caret-col0-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "abc\nxyZ\n"
+ },
+ "empty-y-caret-normal": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "  abcZ\n"
+ },
+ "empty-y-dollar-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-y-dollar-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-y-gE-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-y-gE-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-y-g_-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-y-g_-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-y-ge-top": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-y-ge-top-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-y-h": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-y-h-normal": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "abc\nxyZ\n"
+ },
+ "empty-y-l-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-y-l-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-y-space-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-y-space-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-y-w-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\n\ncd\n"
+ },
+ "empty-y-w-emptyline-normal": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nZ\ncd\n"
+ },
+ "empty-y0-append": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\nabc\n\nxy\n"
+ },
+ "empty-y0-keeps-register": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-y0-sets-register-0": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "abc\nxy\n"
+ },
+ "empty-yi-paren-yanks-empty": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "abc ()\n"
+ },
+ "eol-G-dd": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "a\nb\n"
+ },
+ "eol-p-last": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "a\nb\nc\na\n"
+ },
+ "ex-co-end": {
+  "cursor": [
+   5,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  b2\n"
+ },
+ "ex-co-end-undo": {
+  "cursor": [
+   4,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n"
+ },
+ "ex-copy-full": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "  a1\n  b2\n  c3\n  b2\n  d4\n  e5\n"
+ },
+ "ex-count-colon": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "  a1\n  d4\n  e5\n"
+ },
+ "ex-d-all": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "\n"
+ },
+ "ex-d-count": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "  a1\n  d4\n  e5\n"
+ },
+ "ex-d-dot-repeats-normal": {
+  "cursor": [
+   2,
+   2
+  ],
+  "text": "  1\n  b2\n  4\n  e5\n"
+ },
+ "ex-d-end-undo": {
+  "cursor": [
+   3,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n"
+ },
+ "ex-d-last-lines": {
+  "cursor": [
+   2,
+   2
+  ],
+  "text": "  a1\n  b2\n  c3\n"
+ },
+ "ex-d-mark-below": {
+  "cursor": [
+   2,
+   2
+  ],
+  "text": "  a1\n  c3\n  d4\n  e5\n"
+ },
+ "ex-d-marks": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "  a1\n  e5\n"
+ },
+ "ex-d-out-of-range": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n"
+ },
+ "ex-d-range": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "  a1\n  d4\n  e5\n"
+ },
+ "ex-d-register": {
+  "cursor": [
+   2,
+   2
+  ],
+  "text": "  a1\n  c3\n  b2\n  d4\n  e5\n"
+ },
+ "ex-d-then-p": {
+  "cursor": [
+   2,
+   2
+  ],
+  "text": "  a1\n  d4\n  b2\n  c3\n  e5\n"
+ },
+ "ex-d-undo": {
+  "cursor": [
+   1,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n"
+ },
+ "ex-d-visual": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "  a1\n  d4\n  e5\n"
+ },
+ "ex-d-visual-charwise": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "  a1\n  d4\n  e5\n"
+ },
+ "ex-delete-full": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "def f(a, b):\n\ny = 10\nz = 20\n"
+ },
+ "ex-empty-d": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": ""
+ },
+ "ex-empty-normal": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "x\n"
+ },
+ "ex-empty-t": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "\n\n"
+ },
+ "ex-goto": {
+  "cursor": [
+   4,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n"
+ },
+ "ex-goto-jump-mark": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n"
+ },
+ "ex-goto-last-minus": {
+  "cursor": [
+   3,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n"
+ },
+ "ex-goto-mark": {
+  "cursor": [
+   2,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n"
+ },
+ "ex-goto-relative": {
+  "cursor": [
+   2,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n"
+ },
+ "ex-goto-zero": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n"
+ },
+ "ex-leading-colons": {
+  "cursor": [
+   2,
+   2
+  ],
+  "text": "  a1\n  b2\n  d4\n  e5\n"
+ },
+ "ex-m-down": {
+  "cursor": [
+   3,
+   3
+  ],
+  "text": "  a1\n  d4\n  b2\n  c3\n  e5\n"
+ },
+ "ex-m-end": {
+  "cursor": [
+   4,
+   3
+  ],
+  "text": "  c3\n  d4\n  e5\n  a1\n  b2\n"
+ },
+ "ex-m-into-itself": {
+  "cursor": [
+   1,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n"
+ },
+ "ex-m-mark-follows": {
+  "cursor": [
+   4,
+   2
+  ],
+  "text": "  b2\n  c3\n  d4\n  e5\n  a1\n"
+ },
+ "ex-m-marks-range": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "  b2\n  c3\n  a1\n  d4\n  e5\n"
+ },
+ "ex-m-noop": {
+  "cursor": [
+   2,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n"
+ },
+ "ex-m-top": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "  d4\n  a1\n  b2\n  c3\n  e5\n"
+ },
+ "ex-m-undo": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n"
+ },
+ "ex-m-undo-redo": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "  c3\n  d4\n  e5\n  a1\n  b2\n"
+ },
+ "ex-m-up-undo": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n"
+ },
+ "ex-macro": {
+  "cursor": [
+   4,
+   0
+  ],
+  "text": "  c3\n  d4\n  e5\n  a1\n  b2\n"
+ },
+ "ex-macro-twice": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "  a1\n  e5\n"
+ },
+ "ex-noeol-d-last": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "a"
+ },
+ "ex-noeol-m": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "b\na"
+ },
+ "ex-normal-all": {
+  "cursor": [
+   4,
+   4
+  ],
+  "text": "  a1;\n  b2;\n  c3;\n  d4;\n  e5;\n"
+ },
+ "ex-normal-current": {
+  "cursor": [
+   2,
+   2
+  ],
+  "text": "  a1\n  b2\n  c\n  d4\n  e5\n"
+ },
+ "ex-normal-dd-all": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "\n"
+ },
+ "ex-normal-dj": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "  c3\n"
+ },
+ "ex-normal-dot": {
+  "cursor": [
+   1,
+   4
+  ],
+  "text": "  a1x\n  b2x\n  c3\n  d4\n  e5\n"
+ },
+ "ex-normal-noop-undo": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "a\nb\nc\n"
+ },
+ "ex-normal-noop-undo-twice": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "\nb\nc\n"
+ },
+ "ex-normal-o": {
+  "cursor": [
+   2,
+   2
+  ],
+  "text": "  a1\n  x\n  x\n  b2\n  c3\n  d4\n  e5\n"
+ },
+ "ex-normal-pending-op": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "  a1\n b2\n  c3\n  d4\n  e5\n"
+ },
+ "ex-normal-range": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "  a1\n b2\n c3\n d4\n  e5\n"
+ },
+ "ex-normal-u": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "a\nb\nc\n"
+ },
+ "ex-normal-u-redo": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "\nb\nc\n"
+ },
+ "ex-normal-u-then-u": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "a\nb\nc\n"
+ },
+ "ex-normal-undo": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n"
+ },
+ "ex-range-comma-default": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "  a1\n  e5\n"
+ },
+ "ex-range-dollar-minus": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "  a1\n  e5\n"
+ },
+ "ex-range-plus-minus": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "  a1\n  e5\n"
+ },
+ "ex-range-visual-y": {
+  "cursor": [
+   5,
+   2
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  a1\n  b2\n"
+ },
+ "ex-t-mark": {
+  "cursor": [
+   3,
+   2
+  ],
+  "text": "  a1\n  a1\n  b2\n  c3\n  d4\n  e5\n"
+ },
+ "ex-t-range": {
+  "cursor": [
+   5,
+   0
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  a1\n  b2\n  e5\n"
+ },
+ "ex-t-top": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "  a1\n  a1\n  b2\n  c3\n  d4\n  e5\n"
+ },
+ "ex-t-undo": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n"
+ },
+ "ex-undo-m-down-r0": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n"
+ },
+ "ex-undo-m-down-r2": {
+  "cursor": [
+   2,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n"
+ },
+ "ex-undo-m-down-r4": {
+  "cursor": [
+   1,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n"
+ },
+ "ex-undo-m-down-r6": {
+  "cursor": [
+   1,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n"
+ },
+ "ex-undo-m-end-r0": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n"
+ },
+ "ex-undo-m-end-r2": {
+  "cursor": [
+   2,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n"
+ },
+ "ex-undo-m-end-r4": {
+  "cursor": [
+   1,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n"
+ },
+ "ex-undo-m-end-r6": {
+  "cursor": [
+   1,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n"
+ },
+ "ex-undo-m-up-r0": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n"
+ },
+ "ex-undo-m-up-r2": {
+  "cursor": [
+   5,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n"
+ },
+ "ex-undo-m-up-r4": {
+  "cursor": [
+   4,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n"
+ },
+ "ex-undo-m-up-r6": {
+  "cursor": [
+   6,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n"
+ },
+ "ex-undo-m-up2-r0": {
+  "cursor": [
+   5,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n"
+ },
+ "ex-undo-m-up2-r2": {
+  "cursor": [
+   2,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n"
+ },
+ "ex-undo-m-up2-r4": {
+  "cursor": [
+   4,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n"
+ },
+ "ex-undo-m-up2-r6": {
+  "cursor": [
+   6,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n"
+ },
+ "ex-undo-t-r0": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n"
+ },
+ "ex-undo-t-r2": {
+  "cursor": [
+   1,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n"
+ },
+ "ex-undo-t-r4": {
+  "cursor": [
+   1,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n"
+ },
+ "ex-undo-t-r6": {
+  "cursor": [
+   1,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n"
+ },
+ "ex-unknown": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "  a\n  b2\n  c3\n  d4\n  e5\n"
+ },
+ "ex-visual-esc": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "  a\n  b2\n  c3\n  d4\n  e5\n"
+ },
+ "ex-visual-esc-down": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "  a1\n  b\n  c3\n  d4\n  e5\n"
+ },
+ "ex-visual-esc-up": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "  a1\n  2\n  c3\n  d4\n  e5\n"
+ },
+ "ex-visual-line-esc-down": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "  a1\n b2\n  c3\n  d4\n  e5\n"
+ },
+ "ex-visual-line-esc-up": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "  a1\n  b\n  c3\n  d4\n  e5\n"
+ },
+ "ex-w-range-rejected": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "\nb\nc\n"
+ },
+ "ex-y-cursor": {
+  "cursor": [
+   3,
+   3
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n"
+ },
+ "ex-y-register": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "  a1\n  b2\n  b2\n  c3\n  d4\n  e5\n"
+ },
+ "ex-y-then-P": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "  a1\n  b2\n  c3\n  d4\n  b2\n  c3\n  d4\n  e5\n"
+ },
+ "ex-y-zero-register": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "  b2\n  b2\n  c3\n  d4\n  e5\n"
+ },
+ "f": {
+  "cursor": [
+   0,
+   9
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "gUU": {
+  "cursor": [
+   1,
+   4
+  ],
+  "text": "def f(a, b):\n    X = \"HI THERE\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "gUU-ind0": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    RETURN (A + B) * 2\n\ny = 10\nz = 20\n"
+ },
+ "gUap": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "DEF F(A, B):\n    X = \"HI THERE\"\n    RETURN (A + B) * 2\n\ny = 10\nz = 20\n"
+ },
+ "gUb": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "gUiw": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "DEF f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "gUj-0": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "def f(a, b):\n    X = \"HI THERE\"\n    RETURN (A + B) * 2\n\ny = 10\nz = 20\n"
+ },
+ "g_-back-blank": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": " \n"
+ },
+ "g_-back-c": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "foQ \n"
+ },
+ "g_-back-count": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "ab  \ncd \ncd  \n"
+ },
+ "g_-back-d": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "fo\n"
+ },
+ "g_-back-gU": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "foO   \n"
+ },
+ "g_-back-normal": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "foZ\n"
+ },
+ "g_-back-trail5": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "trai \n"
+ },
+ "g_-back-trail6": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "trai\n"
+ },
+ "g_-back-words": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "a \n"
+ },
+ "g_-back-y": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "foo   o   \n"
+ },
+ "gg-col": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "global-adjacent": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "y\n"
+ },
+ "global-bang-d": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "  ax\n  cx\ndx\n"
+ },
+ "global-copy-here-2": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "x\nx\nx\nx\n"
+ },
+ "global-copy-here-4": {
+  "cursor": [
+   7,
+   0
+  ],
+  "text": "x\nx\nx\nx\nx\nx\nx\nx\n"
+ },
+ "global-d": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "b\n  e\n"
+ },
+ "global-d-jump": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "b\n  e\n"
+ },
+ "global-d-undo": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "  ax\nb\n  cx\ndx\n  e\n"
+ },
+ "global-deleted-not-visited": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "  e\n"
+ },
+ "global-empty-buffer": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": ""
+ },
+ "global-empty-buffer-s": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "a\n"
+ },
+ "global-empty-buffer-v": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": ""
+ },
+ "global-empty-pattern": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "  ax\nb\ndx\n  e\n"
+ },
+ "global-m-end": {
+  "cursor": [
+   4,
+   1
+  ],
+  "text": "b\n  e\n  ax\n  cx\ndx\n"
+ },
+ "global-m-end-each": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "y\nx1\nx2\nx3\n"
+ },
+ "global-m-plus": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "x\nx\ny\nx\n"
+ },
+ "global-m0": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "dx\n  cx\n  ax\nb\n  e\n"
+ },
+ "global-nested": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "b\n  cx\ndx\n  e\n"
+ },
+ "global-nested-range-error": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "  ax\nb\n  cx\ndx\n  e\n"
+ },
+ "global-next-d-2": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "x\n"
+ },
+ "global-next-d-4": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "x\nx\n"
+ },
+ "global-normal-3J": {
+  "cursor": [
+   3,
+   1
+  ],
+  "text": "x a x\nb\nc\nx d\n"
+ },
+ "global-normal-J-all": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "\na\n"
+ },
+ "global-normal-J-blanks": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "\n\n"
+ },
+ "global-normal-J-mixed": {
+  "cursor": [
+   5,
+   0
+  ],
+  "text": "a\n\nb\nc\n\nd\n"
+ },
+ "global-normal-J-x-or-blank": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "a\nx\nb\n"
+ },
+ "global-normal-VjJ": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "\nx\n\ny\n"
+ },
+ "global-normal-append": {
+  "cursor": [
+   2,
+   7
+  ],
+  "text": "def f()::\n  pass\ndef g():\n"
+ },
+ "global-normal-append-undo": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "def f()\nx\ndef g()\n"
+ },
+ "global-normal-dd-blank": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "a\nb\n"
+ },
+ "global-normal-dd-same": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "\n"
+ },
+ "global-normal-dj": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "x\n"
+ },
+ "global-normal-dk": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "\n"
+ },
+ "global-normal-gJ": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "x\nxy\n\nz\n"
+ },
+ "global-normal-jJ": {
+  "cursor": [
+   3,
+   1
+  ],
+  "text": "x\na x\nx\nb c\n"
+ },
+ "global-normal-jdd-2": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "x\n"
+ },
+ "global-normal-jdd-4": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "x\nx\n"
+ },
+ "global-normal-o": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "x\nx\nx\nx\n"
+ },
+ "global-normal-open": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "x\nxx\ny\n"
+ },
+ "global-normal-yyP": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "x\nx\nx\nx\ny\n"
+ },
+ "global-normal-yyp": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "x\nx\nx\nx\ny\n"
+ },
+ "global-prev-d": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "\n"
+ },
+ "global-range": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "b\ndx\n  e\n"
+ },
+ "global-range-2": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "  ax\nb\ndx\n  e\n"
+ },
+ "global-s": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "  ay\nb\n  cy\ndy\n  e\n"
+ },
+ "global-s-g": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "bx bb\nb a\nxb\n"
+ },
+ "global-s-no-line": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "  ax\nb\n  cx\ndx\n  e\n"
+ },
+ "global-s-redo": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "  ay\nb\n  cy\ndy\n  e\n"
+ },
+ "global-s-some-lines": {
+  "cursor": [
+   3,
+   2
+  ],
+  "text": "  bx\nb\n  cx\n  dx\n  e\n"
+ },
+ "global-s-split": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "a\n\nb\n\n"
+ },
+ "global-s-undo": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "  ax\nb\n  cx\ndx\n  e\n"
+ },
+ "global-t-end": {
+  "cursor": [
+   7,
+   1
+  ],
+  "text": "  ax\nb\n  cx\ndx\n  e\n  ax\n  cx\ndx\n"
+ },
+ "global-t-end-undo": {
+  "cursor": [
+   4,
+   1
+  ],
+  "text": "  ax\nb\n  cx\ndx\n  e\n"
+ },
+ "global-v-d": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "  ax\n  cx\ndx\n"
+ },
+ "global-y-a": {
+  "cursor": [
+   4,
+   0
+  ],
+  "text": "  ax\nb\n  cx\ndx\ndx\n  e\n"
+ },
+ "global-y-append": {
+  "cursor": [
+   5,
+   0
+  ],
+  "text": "  ax\nb\n  cx\ndx\n  e\n\n  ax\n  cx\ndx\n"
+ },
+ "goto-col-24": {
+  "cursor": [
+   2,
+   21
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "gt-j": {
+  "cursor": [
+   1,
+   6
+  ],
+  "text": "def f(a, b):\n        x = \"hi there\"\n        return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "gt-k": {
+  "cursor": [
+   1,
+   6
+  ],
+  "text": "def f(a, b):\n        x = \"hi there\"\n        return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "guu": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "g~2j": {
+  "cursor": [
+   1,
+   6
+  ],
+  "text": "def f(a, b):\n    X = \"HI THERE\"\n    RETURN (A + B) * 2\n\ny = 10\nz = 20\n"
+ },
+ "g~j": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "DEF F(A, B):\n    X = \"HI THERE\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "g~j-b": {
+  "cursor": [
+   1,
+   6
+  ],
+  "text": "def f(a, b):\n    X = \"HI THERE\"\n    RETURN (A + B) * 2\n\ny = 10\nz = 20\n"
+ },
+ "g~k": {
+  "cursor": [
+   1,
+   6
+  ],
+  "text": "def f(a, b):\n    X = \"HI THERE\"\n    RETURN (A + B) * 2\n\ny = 10\nz = 20\n"
+ },
+ "g~w": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "DEF f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "g~~": {
+  "cursor": [
+   1,
+   4
+  ],
+  "text": "def f(a, b):\n    X = \"HI THERE\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "g~~-0": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "DEF F(A, B):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "i": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "defX f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "indent-gt": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "    def f(a, b):\n        x = \"hi there\"\n        return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "indent-lt": {
+  "cursor": [
+   1,
+   4
+  ],
+  "text": "def f(a, b):\nx = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "join-1J": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "one two\nthree\nfour\nfive\n"
+ },
+ "join-2J": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "one two\nthree\nfour\nfive\n"
+ },
+ "join-2gJ": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "one  two\nthree\nfour\nfive\n"
+ },
+ "join-3J": {
+  "cursor": [
+   0,
+   7
+  ],
+  "text": "one two three\nfour\nfive\n"
+ },
+ "join-3J-short": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "a b\n"
+ },
+ "join-3gJ": {
+  "cursor": [
+   0,
+   8
+  ],
+  "text": "one  twothree\nfour\nfive\n"
+ },
+ "join-4J": {
+  "cursor": [
+   0,
+   13
+  ],
+  "text": "one two three four\nfive\n"
+ },
+ "join-9J": {
+  "cursor": [
+   1,
+   16
+  ],
+  "text": "one\n  two three four five\n"
+ },
+ "join-J": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "one two\nthree\nfour\nfive\n"
+ },
+ "join-J-blank": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "one\ntwo\n"
+ },
+ "join-J-cursor-mid": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "ab cd ef\n"
+ },
+ "join-J-dot": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "a .b\n"
+ },
+ "join-J-empty-twice": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "a\nb\n"
+ },
+ "join-J-from-blank": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "two\n"
+ },
+ "join-J-last": {
+  "cursor": [
+   4,
+   0
+  ],
+  "text": "one\n  two\nthree\nfour\nfive\n"
+ },
+ "join-J-next-ws-only": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "a\nb\n"
+ },
+ "join-J-paren": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "f(a)\n"
+ },
+ "join-J-paren-trail": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "f()\n"
+ },
+ "join-J-repeat": {
+  "cursor": [
+   0,
+   7
+  ],
+  "text": "one two three\nfour\nfive\n"
+ },
+ "join-J-tab": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "a b\n"
+ },
+ "join-J-trailing-ws": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "two  four\n"
+ },
+ "join-J-trailing-ws-3J": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "a  b c\n"
+ },
+ "join-J-undo": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "one\n  two\nthree\nfour\nfive\n"
+ },
+ "join-J-visual-single": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "a b\nc\n"
+ },
+ "join-VjJ": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "one two\nthree\nfour\nfive\n"
+ },
+ "join-VjgJ": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "one  two\nthree\nfour\nfive\n"
+ },
+ "join-VjjJ": {
+  "cursor": [
+   0,
+   7
+  ],
+  "text": "one two three\nfour\nfive\n"
+ },
+ "join-dJ-undo": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "a\nb\nc\n"
+ },
+ "join-gJ": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "one  two\nthree\nfour\nfive\n"
+ },
+ "join-gJ-last": {
+  "cursor": [
+   4,
+   0
+  ],
+  "text": "one\n  two\nthree\nfour\nfive\n"
+ },
+ "join-gJ-trailing-ws": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "two    four\n"
+ },
+ "join-gJ-visual": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "a bc\n"
+ },
+ "lt-j": {
+  "cursor": [
+   1,
+   6
+  ],
+  "text": "def f(a, b):\nx = \"hi there\"\nreturn (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "mac-append": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "ne two three\n   four five\nsix seven\neight nine\nten\n"
+ },
+ "mac-at-at-count": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "two three\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "mac-at-in-recording": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "e two three\n   four five\nsix seven\neight nine\nten\n"
+ },
+ "mac-at-recorded-as-keys": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "e two three\neight nine\nten\n"
+ },
+ "mac-count": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "two three\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "mac-dot-inside": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "e two three\n   four five\nsix seven\neight nine\nten\n"
+ },
+ "mac-empty": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": ""
+ },
+ "mac-enter": {
+  "cursor": [
+   4,
+   2
+  ],
+  "text": "one two three\nfoo\nbar\nfoo\nbar\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "mac-exec-yanked": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "dd\nline3\n"
+ },
+ "mac-insert-esc": {
+  "cursor": [
+   3,
+   9
+  ],
+  "text": "one two three!\n    four five!\nsix seven!\neight nine\nten\n"
+ },
+ "mac-paste-register": {
+  "cursor": [
+   0,
+   12
+  ],
+  "text": "ne two threex\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "mac-register-inside": {
+  "cursor": [
+   3,
+   4
+  ],
+  "text": "one two three\n    four five\nsix seven\n    four five\neight nine\nten\n"
+ },
+ "mac-repeat": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "ne two three\n   four five\nix seven\neight nine\nten\n"
+ },
+ "mac-unset": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "macro": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "f f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "mark-3G-backtick": {
+  "cursor": [
+   1,
+   6
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-G-backtick-twice": {
+  "cursor": [
+   7,
+   6
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-G-on-last-line": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-G-quote-quote": {
+  "cursor": [
+   1,
+   4
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-J-below": {
+  "cursor": [
+   2,
+   13
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22 z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-O-indented": {
+  "cursor": [
+   4,
+   6
+  ],
+  "text": "def f(a, b):\n    x = 1\n    new\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-O-moved": {
+  "cursor": [
+   3,
+   4
+  ],
+  "text": "new\ndef f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-O-moved-backtick": {
+  "cursor": [
+   3,
+   6
+  ],
+  "text": "new\ndef f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-P-indented": {
+  "cursor": [
+   4,
+   6
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-V-d-lt": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "def f(a, b):\n    x = 1\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-V-gt-backtick": {
+  "cursor": [
+   2,
+   9
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-V-gt-quote": {
+  "cursor": [
+   2,
+   4
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-V-lt-after-O": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "new\ndef f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-V-lt-backtick": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-V-lt-quote": {
+  "cursor": [
+   1,
+   4
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-V-quote-op": {
+  "cursor": [
+   1,
+   4
+  ],
+  "text": "def f(a, b):\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-Vk-gt-backtick": {
+  "cursor": [
+   3,
+   10
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-Vk-lt-backtick": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-backtick-backtick": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-brace-quote": {
+  "cursor": [
+   1,
+   4
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-c-quote": {
+  "cursor": [
+   1,
+   6
+  ],
+  "text": "def f(a, b):\n    new\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-d-backtick": {
+  "cursor": [
+   1,
+   6
+  ],
+  "text": "def f(a, b):\n    x 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-d-quote": {
+  "cursor": [
+   1,
+   6
+  ],
+  "text": "def f(a, b):\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-dd-above": {
+  "cursor": [
+   2,
+   4
+  ],
+  "text": "def f(a, b):\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-dd-above-backtick": {
+  "cursor": [
+   2,
+   6
+  ],
+  "text": "def f(a, b):\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-dd-deleted": {
+  "cursor": [
+   2,
+   6
+  ],
+  "text": "def f(a, b):\n    x = 1\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-dd-last-line": {
+  "cursor": [
+   6,
+   0
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\nprint(f(1, 2))\n"
+ },
+ "mark-dj-deleted": {
+  "cursor": [
+   2,
+   8
+  ],
+  "text": "def f(a, b):\n    x = 1\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-dot-jump": {
+  "cursor": [
+   1,
+   5
+  ],
+  "text": "def f(a, b):\n    x \n\nprint(f(1, 2))\n"
+ },
+ "mark-fresh-quote-quote": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-gg-quote-quote": {
+  "cursor": [
+   5,
+   4
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-gv-after-2O": {
+  "cursor": [
+   4,
+   6
+  ],
+  "text": "a\nb\ndef f(a, b):\n    x = 1\n    y 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-gv-after-O": {
+  "cursor": [
+   3,
+   6
+  ],
+  "text": "new\ndef f(a, b):\n    x = 1\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-gv-after-dd": {
+  "cursor": [
+   2,
+   6
+  ],
+  "text": "    x = 1\n    y = 22\n    z  4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-insert-bs-join": {
+  "cursor": [
+   2,
+   19
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-insert-cr-col0": {
+  "cursor": [
+   7,
+   0
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\n\nprint(f(1, 2))\n"
+ },
+ "mark-k-quote": {
+  "cursor": [
+   2,
+   4
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-macro-jump": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-o-indented": {
+  "cursor": [
+   4,
+   6
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    new\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-p-below": {
+  "cursor": [
+   4,
+   6
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-percent-quote": {
+  "cursor": [
+   7,
+   7
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-quote-quote": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-shorter-line": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\nx\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-split-above": {
+  "cursor": [
+   4,
+   9
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 2\n    2\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-split-same-line": {
+  "cursor": [
+   3,
+   3
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    \n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-u-restores": {
+  "cursor": [
+   3,
+   6
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-unset": {
+  "cursor": [
+   2,
+   6
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-unset-op": {
+  "cursor": [
+   2,
+   6
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-v-gt-backtick": {
+  "cursor": [
+   2,
+   7
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-v-lt-backtick": {
+  "cursor": [
+   1,
+   6
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-visual-jump": {
+  "cursor": [
+   1,
+   6
+  ],
+  "text": "def f(a, b):\n    x  333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-vk-lt-backtick": {
+  "cursor": [
+   2,
+   5
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-x-backtick": {
+  "cursor": [
+   1,
+   7
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w =4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-x-same-line": {
+  "cursor": [
+   3,
+   9
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n   z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-y-G-no-move": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-y-backtick-moves": {
+  "cursor": [
+   4,
+   6
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "mark-y-quote-P": {
+  "cursor": [
+   1,
+   4
+  ],
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n"
+ },
+ "motion-B": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "motion-B-count": {
+  "cursor": [
+   1,
+   12
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "motion-W": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "motion-W-count": {
+  "cursor": [
+   1,
+   12
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "motion-b": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "motion-b-count": {
+  "cursor": [
+   1,
+   17
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "motion-e": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "motion-e-count": {
+  "cursor": [
+   1,
+   10
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "motion-ge": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "motion-ge-count": {
+  "cursor": [
+   1,
+   17
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "motion-w": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "motion-w-count": {
+  "cursor": [
+   1,
+   9
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "noeol-yyp": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "a\nb\nc\nc"
+ },
+ "num-after-op": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "= 11\n"
+ },
+ "num-big": {
+  "cursor": [
+   0,
+   15
+  ],
+  "text": "n = 100000000000\n"
+ },
+ "num-bin-dec": {
+  "cursor": [
+   0,
+   8
+  ],
+  "text": "a = 0b011\n"
+ },
+ "num-bin-grow": {
+  "cursor": [
+   0,
+   9
+  ],
+  "text": "a = 0b1000\n"
+ },
+ "num-bin-inc": {
+  "cursor": [
+   0,
+   8
+  ],
+  "text": "a = 0b110\n"
+ },
+ "num-count-0": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "y = 11\n"
+ },
+ "num-cursor-end": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "x = 124\n"
+ },
+ "num-cursor-mid": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "x = 124\n"
+ },
+ "num-cursor-on-minus": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "x = -2\n"
+ },
+ "num-dec": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "y = 9\n"
+ },
+ "num-dec15": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "y = -5\n"
+ },
+ "num-dot": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "y = 16\n"
+ },
+ "num-dot-count": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "y = 18\n"
+ },
+ "num-dot-dec": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "y = 4\n"
+ },
+ "num-dot-other-line": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "a4\nb5\n"
+ },
+ "num-dot-twice": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "y = 19\n"
+ },
+ "num-first-after-cursor": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "a2 b22 c3\n"
+ },
+ "num-grow": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "x = 10\n"
+ },
+ "num-hex-cursor-on-x": {
+  "cursor": [
+   0,
+   7
+  ],
+  "text": "a = 0x10\n"
+ },
+ "num-hex-dec": {
+  "cursor": [
+   0,
+   7
+  ],
+  "text": "a = 0x0e\n"
+ },
+ "num-hex-grow": {
+  "cursor": [
+   0,
+   8
+  ],
+  "text": "a = 0x100\n"
+ },
+ "num-hex-inc": {
+  "cursor": [
+   0,
+   7
+  ],
+  "text": "a = 0x10\n"
+ },
+ "num-hex-lower-letters": {
+  "cursor": [
+   0,
+   7
+  ],
+  "text": "a = 0xb0\n"
+ },
+ "num-hex-upper": {
+  "cursor": [
+   0,
+   7
+  ],
+  "text": "a = 0x10\n"
+ },
+ "num-hex-upper-letters": {
+  "cursor": [
+   0,
+   7
+  ],
+  "text": "a = 0xB0\n"
+ },
+ "num-hex-upper-to-letters": {
+  "cursor": [
+   0,
+   7
+  ],
+  "text": "a = 0X0A\n"
+ },
+ "num-inc": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "y = 11\n"
+ },
+ "num-inc5": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "y = 15\n"
+ },
+ "num-last-line": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "x1\nx3\n"
+ },
+ "num-lead-zero-dec": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "a = 009\n"
+ },
+ "num-lead-zero-dec-to-zero": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "a = 000\n"
+ },
+ "num-lead-zero-grow": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "a = 100\n"
+ },
+ "num-lead-zero-neg": {
+  "cursor": [
+   0,
+   7
+  ],
+  "text": "a = -001\n"
+ },
+ "num-macro": {
+  "cursor": [
+   2,
+   4
+  ],
+  "text": "y = 2\ny = 2\ny = 2\n"
+ },
+ "num-neg-5": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "x = 2\n"
+ },
+ "num-neg-dec": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "x = -4\n"
+ },
+ "num-neg-inc": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "x = -2\n"
+ },
+ "num-neg-to-pos": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "x = 0\n"
+ },
+ "num-none": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "hello world\n"
+ },
+ "num-none-dec": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "hello world\n"
+ },
+ "num-number-before-cursor": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "10 abc\n"
+ },
+ "num-octalish": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "a = 008\n"
+ },
+ "num-octalish-9": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "a = 010\n"
+ },
+ "num-reg": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "y = 15y\n"
+ },
+ "num-second": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "a1 b23 c3\n"
+ },
+ "num-shrink": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "x = 9\n"
+ },
+ "num-space-minus": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "a - 4\n"
+ },
+ "num-two-lines": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "x2\nx3\n"
+ },
+ "num-undo": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "y = 10\n"
+ },
+ "num-undo-redo": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "y = 13\n"
+ },
+ "num-word-minus": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "foo-2\n"
+ },
+ "num-word-minus-2": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "a = b-2\n"
+ },
+ "num-zero-dec": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "x = -1\n"
+ },
+ "o": {
+  "cursor": [
+   2,
+   4
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    X\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "p-char": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "ddef ef f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "percent": {
+  "cursor": [
+   0,
+   10
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "percent-close": {
+  "cursor": [
+   2,
+   18
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "pipe-c-past-end": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "aXf\n"
+ },
+ "pipe-d-past-end": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "f\n"
+ },
+ "pipe-empty-line": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "\nab\n"
+ },
+ "pipe-tab-after": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "a\t\n"
+ },
+ "pipe-tab-d-backward": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "r\n"
+ },
+ "pipe-tab-d-forward": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": " bar\n"
+ },
+ "pipe-tab-indent": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "\t = 1\n"
+ },
+ "pipe-tab-inside": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "ab\n"
+ },
+ "pipe-tab-last-cell": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "ab\n"
+ },
+ "pipe-tab-visual": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "cd\n"
+ },
+ "pipe-tab-y": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "\ta\tab\tcd\n"
+ },
+ "r": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "Xef f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "redo-after-count": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "cd\n"
+ },
+ "redo-after-motion": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "bcd\nefgh\n"
+ },
+ "redo-count": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "d\n"
+ },
+ "redo-count-then-u": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "cd\n"
+ },
+ "redo-gone-after-change": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "abd\nefgh\n"
+ },
+ "redo-three-then-u": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "cd\n"
+ },
+ "reg-C": {
+  "cursor": [
+   1,
+   13
+  ],
+  "text": "one X\n    ftwo threeour five\nsix seven\neight nine\nten\n"
+ },
+ "reg-D": {
+  "cursor": [
+   1,
+   12
+  ],
+  "text": "one \n    two threefour five\nsix seven\neight nine\nten\n"
+ },
+ "reg-J": {
+  "cursor": [
+   0,
+   13
+  ],
+  "text": "one two three four five\nsix seven\neight nine\nten\n"
+ },
+ "reg-S": {
+  "cursor": [
+   3,
+   4
+  ],
+  "text": "one two three\n    X\nsix seven\n    four five\neight nine\nten\n"
+ },
+ "reg-S-zero": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "one two three\n    X\none two three\nsix seven\neight nine\nten\n"
+ },
+ "reg-X": {
+  "cursor": [
+   1,
+   6
+  ],
+  "text": "one o three\n    ftwour five\nsix seven\neight nine\nten\n"
+ },
+ "reg-acc-count": {
+  "cursor": [
+   4,
+   0
+  ],
+  "text": "X\nsix seven\neight nine\nten\none two three\n    four five\n"
+ },
+ "reg-add-last-line": {
+  "cursor": [
+   3,
+   1
+  ],
+  "text": "one two three\n    four five\nsix seven\neight nine\n"
+ },
+ "reg-add-last-line-put": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "ten\none two three\n    four five\nsix seven\neight nine\n"
+ },
+ "reg-append-char-line": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "one two three\none \none two three\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "reg-append-chars": {
+  "cursor": [
+   0,
+   20
+  ],
+  "text": "one two threeone one \n    four five\nsix seven\neight nine\nten\n"
+ },
+ "reg-append-line-char": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "one two three\none two three\none \n    four five\nsix seven\neight nine\nten\n"
+ },
+ "reg-append-lines": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "one two three\n    four five\none two three\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "reg-append-unnamed": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "one two three\n    four five\none two three\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "reg-before-dot": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "b\nc\n"
+ },
+ "reg-before-q": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "b\nc\n"
+ },
+ "reg-blackhole-dd": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "one two three\nsix seven\none two three\neight nine\nten\n"
+ },
+ "reg-blackhole-p": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "reg-c-dollar": {
+  "cursor": [
+   1,
+   13
+  ],
+  "text": "one X\n    ftwo threeour five\nsix seven\neight nine\nten\n"
+ },
+ "reg-cc": {
+  "cursor": [
+   2,
+   4
+  ],
+  "text": "one two three\n    new\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "reg-cc-zero": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "one two three\n    X\none two three\nsix seven\neight nine\nten\n"
+ },
+ "reg-count-after": {
+  "cursor": [
+   5,
+   0
+  ],
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\none two three\n    four five\nsix seven\n"
+ },
+ "reg-count-before": {
+  "cursor": [
+   5,
+   0
+  ],
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\none two three\n    four five\nsix seven\n"
+ },
+ "reg-count-paste": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "one two three\none two three\none two three\none two three\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "reg-cw": {
+  "cursor": [
+   0,
+   13
+  ],
+  "text": "X two threeone\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "reg-d2j": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "eight nine\none two three\n    four five\nsix seven\nten\n"
+ },
+ "reg-ddp-named-untouched": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "one two three\none two three\nsix seven\neight nine\nten\n"
+ },
+ "reg-del-put": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "    four five\none two three\nsix seven\neight nine\nten\n"
+ },
+ "reg-dw-P": {
+  "cursor": [
+   0,
+   7
+  ],
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "reg-empty-add": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": ""
+ },
+ "reg-esc-cancels": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "reg-explicit-unnamed": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "one two three\n    four five\none two three\nsix seven\neight nine\nten\n"
+ },
+ "reg-gU": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "ONE two three\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "reg-indent": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "    one two three\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "reg-rejected-before-q": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "b\nc\n"
+ },
+ "reg-s": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "Xe two three\n on   four five\nsix seven\neight nine\nten\n"
+ },
+ "reg-unnamed-follows-named": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "one two three\n    four five\none two three\nsix seven\neight nine\nten\n"
+ },
+ "reg-unsupported": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "one two three\none two three\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "reg-visual-prefix-d": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "   four five\nsix seven\neight nine\nten\n"
+ },
+ "reg-visual-y": {
+  "cursor": [
+   1,
+   3
+  ],
+  "text": "one two three\n one   four five\nsix seven\neight nine\nten\n"
+ },
+ "reg-x": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": " two three\none    four five\nsix seven\neight nine\nten\n"
+ },
+ "reg-y-motion": {
+  "cursor": [
+   1,
+   12
+  ],
+  "text": "one two three\n    two threefour five\nsix seven\neight nine\nten\n"
+ },
+ "reg-yank-put": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "one two three\n    four five\none two three\nsix seven\neight nine\nten\n"
+ },
+ "reg-zero-after-dd": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "one two three\nsix seven\none two three\neight nine\nten\n"
+ },
+ "reg-zero-dd-empty-line": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "\n"
+ },
+ "reg-zero-explicit": {
+  "cursor": [
+   1,
+   4
+  ],
+  "text": "one two three\n    four five\n    four five\nsix seven\neight nine\nten\n"
+ },
+ "reg-zero-not-named": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "one two three\n    four five\none two three\nsix seven\neight nine\nten\n"
+ },
+ "s": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "Xef f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "s-count-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nQ\ncd\n"
+ },
+ "s-count-inside": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "aQef\n"
+ },
+ "s-count-last-line": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "ab\ncQ\n"
+ },
+ "s-count-line-lost": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "Q\ncd\nef\n"
+ },
+ "s-count-past-end": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "aQ\ncd\nef\n"
+ },
+ "s-count-past-end-col0": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "Q\ncd\nef\n"
+ },
+ "s-dot": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "Qcdef\nQz\n"
+ },
+ "s-dot-count": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "Qbcdef\nQ\n"
+ },
+ "s-empty-buffer": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "Q\n"
+ },
+ "s-emptyline": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ab\nQ\ncd\n"
+ },
+ "s-normal": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "aQ\ncd\nef\n"
+ },
+ "s-register": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "aQ\ncbd\nef\n"
+ },
+ "s-undo": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "ab\ncd\nef\n"
+ },
+ "search-2d-count": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-N": {
+  "cursor": [
+   2,
+   12
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-V": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "z = 20\n"
+ },
+ "search-bs-cancels": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "df f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-bwd": {
+  "cursor": [
+   2,
+   12
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-c": {
+  "cursor": [
+   1,
+   7
+  ],
+  "text": "def f(a, b):\n    y = hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-caret": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-caret-empty-line": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-count": {
+  "cursor": [
+   0,
+   9
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-count-n": {
+  "cursor": [
+   5,
+   2
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-d": {
+  "cursor": [
+   1,
+   4
+  ],
+  "text": "def f(a, b):\n    there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-d-bwd": {
+  "cursor": [
+   1,
+   4
+  ],
+  "text": "def f(a, b):\n    (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-d-col0": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "y = 10\nz = 20\n"
+ },
+ "search-d-col0-mid": {
+  "cursor": [
+   1,
+   5
+  ],
+  "text": "def f(a, b):\n    x \ny = 10\nz = 20\n"
+ },
+ "search-d-count": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-d-dot": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "x x three x\n"
+ },
+ "search-d-dot-count": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "x d x\n"
+ },
+ "search-d-hash": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "oo\n"
+ },
+ "search-d-star": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "foo\n"
+ },
+ "search-d-star-mid": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "ffoo\n"
+ },
+ "search-d-star-nonblank": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "a b } c\n"
+ },
+ "search-d-undo": {
+  "cursor": [
+   1,
+   4
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-dn": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "def f(a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-dollar": {
+  "cursor": [
+   0,
+   11
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-dollar-n": {
+  "cursor": [
+   1,
+   17
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-dot-resolved-pattern": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "x b x d y\n"
+ },
+ "search-empty-buffer": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": ""
+ },
+ "search-empty-q-reuses": {
+  "cursor": [
+   0,
+   9
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-empty-reuses": {
+  "cursor": [
+   2,
+   16
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-esc-restores": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-f-slash": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "a/b/c\n"
+ },
+ "search-fwd": {
+  "cursor": [
+   2,
+   4
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-hash": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-hash-N": {
+  "cursor": [
+   0,
+   14
+  ],
+  "text": "foo bar foo x foo\n"
+ },
+ "search-hash-mid-word": {
+  "cursor": [
+   0,
+   8
+  ],
+  "text": "foo bar foo x foo\n"
+ },
+ "search-hash-n": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "foo bar foo x foo\n"
+ },
+ "search-hash-nonblank": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "x } y\n  }  \n"
+ },
+ "search-hash-nonblank-class": {
+  "cursor": [
+   1,
+   5
+  ],
+  "text": "q ab.. ..\nab.. ..\n"
+ },
+ "search-hash-nonblank-n": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "} x } y }\n"
+ },
+ "search-jump-backtick": {
+  "cursor": [
+   1,
+   6
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-jump-mark": {
+  "cursor": [
+   1,
+   4
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-literal-slash": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "a/b/c\n"
+ },
+ "search-macro": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "xx c x d x\n"
+ },
+ "search-macro-count": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "xxx d x e\n"
+ },
+ "search-macro-n": {
+  "cursor": [
+   0,
+   10
+  ],
+  "text": "a x b Y c Y d x\n"
+ },
+ "search-n": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-n-jump-mark": {
+  "cursor": [
+   2,
+   6
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-not-found": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-not-found-op": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "def f(a, b):\n   x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-notfound-keeps-mark": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-overlap": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "aaaa\n"
+ },
+ "search-overlap-bwd": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "aaaa\n"
+ },
+ "search-overlap-n": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "xaaaaa\n"
+ },
+ "search-q-N": {
+  "cursor": [
+   0,
+   9
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-q-jump-mark": {
+  "cursor": [
+   1,
+   6
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-q-n": {
+  "cursor": [
+   0,
+   9
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-regex-class": {
+  "cursor": [
+   2,
+   21
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-regex-plus": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-star": {
+  "cursor": [
+   2,
+   12
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-star-blank": {
+  "cursor": [
+   0,
+   10
+  ],
+  "text": "  foo bar foo\n"
+ },
+ "search-star-blank-rest": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "  ..  \n"
+ },
+ "search-star-count": {
+  "cursor": [
+   0,
+   10
+  ],
+  "text": "ab x ab x ab x ab\n"
+ },
+ "search-star-jump-mark": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-star-keyword-after-wins": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "a .. b ..\n"
+ },
+ "search-star-metachar": {
+  "cursor": [
+   0,
+   8
+  ],
+  "text": "a.b axb a.b\n"
+ },
+ "search-star-mid-word": {
+  "cursor": [
+   0,
+   8
+  ],
+  "text": "foo bar foo x foo\n"
+ },
+ "search-star-n": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-star-nonblank": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "  }  \nx } y\n"
+ },
+ "search-star-nonblank-class": {
+  "cursor": [
+   0,
+   7
+  ],
+  "text": "q ab.. ..\nab.. ..\n"
+ },
+ "search-star-nonblank-dots": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "  ..  \nx .. y\n"
+ },
+ "search-star-nonblank-n": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "  }  \nx } y\n"
+ },
+ "search-star-nonblank-run": {
+  "cursor": [
+   0,
+   7
+  ],
+  "text": "x }} } }}\n"
+ },
+ "search-star-only": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "foo bar\n"
+ },
+ "search-star-whole-word": {
+  "cursor": [
+   0,
+   11
+  ],
+  "text": "foo foobar foo\n"
+ },
+ "search-tabs": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "\tab x\n\t\tx y\n"
+ },
+ "search-v": {
+  "cursor": [
+   1,
+   4
+  ],
+  "text": "def f(a, b):\n    here\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-v-n": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": " + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-wrap-bwd": {
+  "cursor": [
+   5,
+   0
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-wrap-fwd": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "search-y-p": {
+  "cursor": [
+   1,
+   5
+  ],
+  "text": "def f(a, b):\n    x x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "semicolon": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "subst-amp-amp-keeps-flags": {
+  "cursor": [
+   2,
+   2
+  ],
+  "text": "  ay by\n  cc\n  yy y\n  dd\n"
+ },
+ "subst-amp-flag-keeps-flags": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "bxx\nyy\nxx\n"
+ },
+ "subst-amp-flag-then-g": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "bxx\nyx\nxx\n"
+ },
+ "subst-amp-flag-twice": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "bxx\nxx\nxx\n"
+ },
+ "subst-amp-flags": {
+  "cursor": [
+   2,
+   2
+  ],
+  "text": "  ay bx\n  cc\n  yy y\n  dd\n"
+ },
+ "subst-bol": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "#   ax bx\n#   xc\n#   xx x\n#   dx\n"
+ },
+ "subst-class": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "  Z Z\n  xc\n  xx x\n  dx\n"
+ },
+ "subst-confirm-a": {
+  "cursor": [
+   2,
+   2
+  ],
+  "text": "  ax by\n  cc\n  yy y\n  dd\n"
+ },
+ "subst-confirm-a-undo": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n"
+ },
+ "subst-confirm-all-n": {
+  "cursor": [
+   2,
+   5
+  ],
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n"
+ },
+ "subst-confirm-all-y": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "  ay by\n  cc\n  yy y\n  dd\n"
+ },
+ "subst-confirm-ctrl-c": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "  ay bx\n  cc\n  xx x\n  dd\n"
+ },
+ "subst-confirm-current-line": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "  ax by\n  cc\n  xx x\n  dd\n"
+ },
+ "subst-confirm-g-amp-keeps-c": {
+  "cursor": [
+   2,
+   3
+  ],
+  "text": "  ay by\n  yc\n  yx x\n  dx\n"
+ },
+ "subst-confirm-ignored-key": {
+  "cursor": [
+   2,
+   2
+  ],
+  "text": "  ay by\n  cc\n  xx x\n  dd\n"
+ },
+ "subst-confirm-keys-run-out": {
+  "cursor": [
+   2,
+   2
+  ],
+  "text": "  ay bx\n  cc\n  xx x\n  dd\n"
+ },
+ "subst-confirm-l": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "  ax by\n  cc\n  yx x\n  dd\n"
+ },
+ "subst-confirm-l-mid-line": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "  ax by\n  cc\n  xx x\n  dd\n"
+ },
+ "subst-confirm-last-n": {
+  "cursor": [
+   2,
+   5
+  ],
+  "text": "  ay by\n  cc\n  xx x\n  dd\n"
+ },
+ "subst-confirm-last-n-2": {
+  "cursor": [
+   3,
+   3
+  ],
+  "text": "  ay by\n  yc\n  yx y\n  dx\n"
+ },
+ "subst-confirm-last-search": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "  ax bx\n  cc\n  yx x\n  dd\n"
+ },
+ "subst-confirm-last-y": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "  ax bx\n  cc\n  xx y\n  dd\n"
+ },
+ "subst-confirm-macro": {
+  "cursor": [
+   2,
+   5
+  ],
+  "text": "  ax by\n  cc\n  xy x\n  dd\n"
+ },
+ "subst-confirm-macro-open": {
+  "cursor": [
+   2,
+   5
+  ],
+  "text": "  ax by\n  cc\n  xy x\n  dd\n"
+ },
+ "subst-confirm-no-g": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n"
+ },
+ "subst-confirm-q-first": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n"
+ },
+ "subst-confirm-split-a": {
+  "cursor": [
+   6,
+   0
+  ],
+  "text": "  ax bQ\nR\n  cc\n  Q\nRQ\nR Q\nR\n  dd\n"
+ },
+ "subst-confirm-split-jump": {
+  "cursor": [
+   4,
+   1
+  ],
+  "text": "  ax bQ\nR\n  cc\n  xx x\n  dd\n"
+ },
+ "subst-confirm-split-l": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "  ax bx\n  cc\n  xQ\nR x\n  dd\n"
+ },
+ "subst-confirm-split-last-n": {
+  "cursor": [
+   3,
+   5
+  ],
+  "text": "  aQ\nR bx\n  cc\n  xx x\n  dd\n"
+ },
+ "subst-confirm-split-last-y": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "  ax bx\n  cc\n  xx Q\nR\n  dd\n"
+ },
+ "subst-confirm-split-mark": {
+  "cursor": [
+   4,
+   1
+  ],
+  "text": "  ax bQ\nR\n  cc\n  xx x\n  dd\n"
+ },
+ "subst-confirm-split-q": {
+  "cursor": [
+   3,
+   2
+  ],
+  "text": "  ax bQ\nR\n  cc\n  xx x\n  dd\n"
+ },
+ "subst-confirm-undo": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n"
+ },
+ "subst-confirm-undo-first-row": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n"
+ },
+ "subst-confirm-undo-first-row-2": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "  ax bx\n  xc\n  xx x\n  dx\n"
+ },
+ "subst-confirm-ynyq": {
+  "cursor": [
+   2,
+   3
+  ],
+  "text": "  ay bx\n  cc\n  yx x\n  dd\n"
+ },
+ "subst-cr-split": {
+  "cursor": [
+   7,
+   0
+  ],
+  "text": "  aQ\nR bQ\nR\n  cc\n  Q\nRQ\nR Q\nR\n  dd\n"
+ },
+ "subst-cr-split-mark": {
+  "cursor": [
+   4,
+   2
+  ],
+  "text": "  aQ\nR bQ\nR\n  cc\n  Q\nRQ\nR Q\nR\n  dd\n"
+ },
+ "subst-cr-split-undo": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n"
+ },
+ "subst-dot": {
+  "cursor": [
+   2,
+   2
+  ],
+  "text": "  ax bx\n  xc\n  xZ\n  dx\n"
+ },
+ "subst-e-flag": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "  ax bx\n  xc\n  xx x\n  dx\n"
+ },
+ "subst-empty-buffer": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": ""
+ },
+ "subst-empty-buffer-amp": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": ""
+ },
+ "subst-empty-pattern": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "  ax Zx\n  cc\n  xx x\n  dd\n"
+ },
+ "subst-eol": {
+  "cursor": [
+   3,
+   2
+  ],
+  "text": "  ax bx;\n  xc;\n  xx x;\n  dx;\n"
+ },
+ "subst-first": {
+  "cursor": [
+   2,
+   2
+  ],
+  "text": "  ay bx\n  cc\n  yx x\n  dd\n"
+ },
+ "subst-g": {
+  "cursor": [
+   2,
+   2
+  ],
+  "text": "  ay by\n  cc\n  yy y\n  dd\n"
+ },
+ "subst-g-amp": {
+  "cursor": [
+   2,
+   2
+  ],
+  "text": "  ay by\n  cc\n  yy y\n  dd\n"
+ },
+ "subst-g-amp-after-amp": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "yy\nyy\nyx\nyx\n"
+ },
+ "subst-g-amp-last-search": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "  ay bx\n  xy\n  xx x\n  dx\n"
+ },
+ "subst-g-undo": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n"
+ },
+ "subst-gg": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "  ay bx\n  xc\n  xx x\n  dx\n"
+ },
+ "subst-hash-delim": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "  ay by\n  cc\n  xx x\n  dd\n"
+ },
+ "subst-i": {
+  "cursor": [
+   3,
+   2
+  ],
+  "text": "  aY bY\n  Yc\n  YY Y\n  dY\n"
+ },
+ "subst-jump-mark": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "  ay bx\n  cc\n  yx x\n  dd\n"
+ },
+ "subst-jump-mark-line": {
+  "cursor": [
+   1,
+   3
+  ],
+  "text": "  ax bx\n  cc\n  yx x\n  dd\n"
+ },
+ "subst-no-replacement": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "  a bx\n  cc\n  xx x\n  dd\n"
+ },
+ "subst-no-trailing-delim": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "  ay bx\n  cc\n  xx x\n  dd\n"
+ },
+ "subst-normal-amp": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "  ay bx\n  cc\n  xx x\n  dd\n"
+ },
+ "subst-normal-amp-count": {
+  "cursor": [
+   3,
+   2
+  ],
+  "text": "  ay bx\n  yc\n  yx x\n  dy\n"
+ },
+ "subst-normal-amp-count-past-end": {
+  "cursor": [
+   2,
+   2
+  ],
+  "text": "  ax bx\n  xc\n  yx x\n  dx\n"
+ },
+ "subst-normal-amp-count-undo": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "  ay bx\n  xc\n  xx x\n  dx\n"
+ },
+ "subst-normal-amp-forgets-flags": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "yy\nyx\nyx\nxx\n"
+ },
+ "subst-normal-amp-no-flags": {
+  "cursor": [
+   2,
+   2
+  ],
+  "text": "  ay by\n  cc\n  yx x\n  dd\n"
+ },
+ "subst-normal-amp-none": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "  ax bx\n  xc\n  xx x\n  dx\n"
+ },
+ "subst-normal-amp-not-dot": {
+  "cursor": [
+   2,
+   2
+  ],
+  "text": "  ay bx\n  yc\n  xx x\n  dx\n"
+ },
+ "subst-not-found": {
+  "cursor": [
+   3,
+   3
+  ],
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n"
+ },
+ "subst-percent-amp-amp": {
+  "cursor": [
+   3,
+   2
+  ],
+  "text": "  ay by\n  yc\n  yx x\n  dy\n"
+ },
+ "subst-range-redo": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "  ax bx\n  cc\n  yy y\n  dd\n"
+ },
+ "subst-range-undo": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n"
+ },
+ "subst-range-undo-on-line": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n"
+ },
+ "subst-repeat-drops-flags": {
+  "cursor": [
+   2,
+   2
+  ],
+  "text": "  ay by\n  cc\n  yx x\n  dd\n"
+ },
+ "subst-s-flags": {
+  "cursor": [
+   2,
+   2
+  ],
+  "text": "  ay bx\n  cc\n  yy y\n  dd\n"
+ },
+ "subst-sets-last-search": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "  ay bx\n  cc\n  yx x\n  dd\n"
+ },
+ "subst-split-mark-above": {
+  "cursor": [
+   1,
+   3
+  ],
+  "text": "  ax bx\n  xc\n  Q\nRQ\nR Q\nR\n  dx\n"
+ },
+ "subst-split-mark-below": {
+  "cursor": [
+   6,
+   1
+  ],
+  "text": "  ax bx\n  xc\n  Q\nRQ\nR Q\nR\n  dx\n"
+ },
+ "subst-split-mark-on": {
+  "cursor": [
+   2,
+   2
+  ],
+  "text": "  ax bx\n  xc\n  Q\nRQ\nR Q\nR\n  dx\n"
+ },
+ "subst-visual": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "  ay by\n  yc\n  xx x\n  dx\n"
+ },
+ "subst-x-eol": {
+  "cursor": [
+   3,
+   2
+  ],
+  "text": "  ax bE\n  xc\n  xx E\n  dE\n"
+ },
+ "t": {
+  "cursor": [
+   0,
+   8
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "tilde": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "DEF f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "tilde-count": {
+  "cursor": [
+   1,
+   5
+  ],
+  "text": "def f(a, b):\n    X = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "tilde-end": {
+  "cursor": [
+   4,
+   5
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "tobj-P-empty": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "abc\n"
+ },
+ "tobj-Vip": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "a1\na2\n\n\nc1\nc2\n"
+ },
+ "tobj-ca-dq-inside": {
+  "cursor": [
+   1,
+   7
+  ],
+  "text": "def f(a, b):\n    x =X\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "tobj-ci-angle": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "a<X>d\n"
+ },
+ "tobj-ci-brace-multi": {
+  "cursor": [
+   1,
+   4
+  ],
+  "text": "if x {\n    X\n}\nz\n"
+ },
+ "tobj-ci-dq-before": {
+  "cursor": [
+   1,
+   9
+  ],
+  "text": "def f(a, b):\n    x = \"X\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "tobj-ci-dq-between": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "\"a\"\"c\"\n"
+ },
+ "tobj-ci-dq-inside": {
+  "cursor": [
+   1,
+   9
+  ],
+  "text": "def f(a, b):\n    x = \"X\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "tobj-ci-dq-on-quote": {
+  "cursor": [
+   1,
+   9
+  ],
+  "text": "def f(a, b):\n    x = \"\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "tobj-ci-dq-other-line": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "tobj-ci-nested": {
+  "cursor": [
+   0,
+   6
+  ],
+  "text": "f(a, (X), d)\n"
+ },
+ "tobj-ci-nested-outer": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "f(X)\n"
+ },
+ "tobj-ci-paren-empty": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "f(X)\n"
+ },
+ "tobj-ci-paren-inside": {
+  "cursor": [
+   2,
+   12
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (X) * 2\n\ny = 10\nz = 20\n"
+ },
+ "tobj-ci-paren-on-close": {
+  "cursor": [
+   2,
+   12
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (X) * 2\n\ny = 10\nz = 20\n"
+ },
+ "tobj-ci-paren-on-open": {
+  "cursor": [
+   2,
+   12
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (X) * 2\n\ny = 10\nz = 20\n"
+ },
+ "tobj-cip-indent": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "  X\n\nc\n"
+ },
+ "tobj-cip-middle": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "a1\na2\n\nX\n\nc1\nc2\n"
+ },
+ "tobj-ciw-end-word": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "a X\n"
+ },
+ "tobj-ciw-indent-col0": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "foo:\nXbar baz\n  x\n"
+ },
+ "tobj-ciw-indent-col2": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "foo:\nXbar baz\n  x\n"
+ },
+ "tobj-cj-linewise": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "a1\na2\n\nX\n\nc1\nc2\n"
+ },
+ "tobj-d2ap": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "c1\nc2\n"
+ },
+ "tobj-d2aw": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "one four\n"
+ },
+ "tobj-d2i-paren": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "f()\n"
+ },
+ "tobj-d2ip": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "b1\nb2\n\nc1\nc2\n"
+ },
+ "tobj-d2iw": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "one three four\n"
+ },
+ "tobj-d3iw": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": " three four\n"
+ },
+ "tobj-da-brace-multi": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "if x \nz\n"
+ },
+ "tobj-da-dq-lead": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "x\n"
+ },
+ "tobj-da-paren": {
+  "cursor": [
+   2,
+   11
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return  * 2\n\ny = 10\nz = 20\n"
+ },
+ "tobj-daW": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "a.b  e\n"
+ },
+ "tobj-daW-gap": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "a.b\n"
+ },
+ "tobj-dap-blank": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "a1\na2\n\nc1\nc2\n"
+ },
+ "tobj-dap-first": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "b1\nb2\n\nc1\nc2\n"
+ },
+ "tobj-dap-last": {
+  "cursor": [
+   4,
+   0
+  ],
+  "text": "a1\na2\n\nb1\nb2\n"
+ },
+ "tobj-dap-last-noblank": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "a1\n"
+ },
+ "tobj-dap-middle": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "a1\na2\n\nc1\nc2\n"
+ },
+ "tobj-daw-eol": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "one\n"
+ },
+ "tobj-daw-eol-single": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "\n"
+ },
+ "tobj-daw-first": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "two three\n"
+ },
+ "tobj-daw-gap": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "one\n"
+ },
+ "tobj-daw-gap-end": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "one   \n"
+ },
+ "tobj-daw-indent-col0": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "foo:\n baz\n  x\n"
+ },
+ "tobj-daw-indent-col2": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "foo:\n baz\n  x\n"
+ },
+ "tobj-daw-middle": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "one three\n"
+ },
+ "tobj-daw-punct": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "ab(c)\n"
+ },
+ "tobj-daw-single-char": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "a c\n"
+ },
+ "tobj-di-brace-multi": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "if x {\n}\nz\n"
+ },
+ "tobj-di-bracket": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "x[]\n"
+ },
+ "tobj-di-dq-escaped": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "x \"\" y\n"
+ },
+ "tobj-di-paren-empty": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "f()\n"
+ },
+ "tobj-diW": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "a.b   e\n"
+ },
+ "tobj-dib-B": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "{}\n"
+ },
+ "tobj-dip-blank": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "a1\na2\nb1\nb2\n\nc1\nc2\n"
+ },
+ "tobj-dip-col1": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "a1\na2\n\n\nc1\nc2\n"
+ },
+ "tobj-dip-first": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "\nb1\nb2\n\nc1\nc2\n"
+ },
+ "tobj-dip-last": {
+  "cursor": [
+   5,
+   0
+  ],
+  "text": "a1\na2\n\nb1\nb2\n\n"
+ },
+ "tobj-dip-middle": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "a1\na2\n\n\nc1\nc2\n"
+ },
+ "tobj-diw-empty-line": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "a\n\nb\n"
+ },
+ "tobj-diw-eol": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "one \n"
+ },
+ "tobj-diw-gap": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "onetwo\n"
+ },
+ "tobj-diw-indent-col0": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "foo:\nbar baz\n  x\n"
+ },
+ "tobj-diw-indent-col2": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "foo:\nbar baz\n  x\n"
+ },
+ "tobj-diw-indent-col3": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "foo:\nbar baz\n  x\n"
+ },
+ "tobj-diw-multiline-trail": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "a c\n"
+ },
+ "tobj-diw-punct": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "ab(c)\n"
+ },
+ "tobj-gU-i-paren": {
+  "cursor": [
+   2,
+   12
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (A + B) * 2\n\ny = 10\nz = 20\n"
+ },
+ "tobj-gUip-col1": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "A1\nA2\n\nb1\nb2\n\nc1\nc2\n"
+ },
+ "tobj-gUiw-gap": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "one   two\n"
+ },
+ "tobj-gt-i-paren": {
+  "cursor": [
+   2,
+   13
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n        return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "tobj-gt-ip": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "a1\na2\n\n    b1\n    b2\n\nc1\nc2\n"
+ },
+ "tobj-nopair-ci-angle": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "no air here at all\nsecond line\n"
+ },
+ "tobj-nopair-ci-bracket": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "no air here at all\nsecond line\n"
+ },
+ "tobj-nopair-ci-bt": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "no air here at all\nsecond line\n"
+ },
+ "tobj-nopair-ci-dq": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "no air here at all\nsecond line\n"
+ },
+ "tobj-nopair-ci-paren": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "no air here at all\nsecond line\n"
+ },
+ "tobj-nopair-ci-sq": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "no air here at all\nsecond line\n"
+ },
+ "tobj-nopair-da-paren": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "no pair here at all\nsecond line\n"
+ },
+ "tobj-nopair-di-brace": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "no air here at all\nsecond line\n"
+ },
+ "tobj-nopair-yi-paren": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "no pair here at all\nsecond line\n"
+ },
+ "tobj-p-empty": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "abc\n"
+ },
+ "tobj-v2i-paren": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "f()\n"
+ },
+ "tobj-va-brace-multi": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "if x \nz\n"
+ },
+ "tobj-va-dq": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "x y\n"
+ },
+ "tobj-va-paren": {
+  "cursor": [
+   2,
+   11
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return  * 2\n\ny = 10\nz = 20\n"
+ },
+ "tobj-va-paren-twice": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "f\n"
+ },
+ "tobj-vap": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "a1\na2\n\nc1\nc2\n"
+ },
+ "tobj-vap-twice": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "c1\nc2\n"
+ },
+ "tobj-vaw": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "one three\n"
+ },
+ "tobj-vaw-gap": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "one\n"
+ },
+ "tobj-vawaw": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "three\n"
+ },
+ "tobj-vi-brace-multi": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "if x {\n}\nz\n"
+ },
+ "tobj-vi-dq-twice": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "x  y\n"
+ },
+ "tobj-vi-paren": {
+  "cursor": [
+   2,
+   12
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return () * 2\n\ny = 10\nz = 20\n"
+ },
+ "tobj-vi-paren-nopair": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "no pir here at all\nsecond line\n"
+ },
+ "tobj-vi-paren-onopen": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "f()\n"
+ },
+ "tobj-vi-paren-twice": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "f()\n"
+ },
+ "tobj-vip": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "a1\na2\n\n\nc1\nc2\n"
+ },
+ "tobj-vip-twice": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "b1\nb2\n\nc1\nc2\n"
+ },
+ "tobj-viw": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "one  three\n"
+ },
+ "tobj-viw-count": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": " three four\n"
+ },
+ "tobj-viw-gap": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "onetwo\n"
+ },
+ "tobj-viwiw": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "two three\n"
+ },
+ "tobj-y-ib": {
+  "cursor": [
+   2,
+   16
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + ba + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "tobj-yap-blank": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "a1\na2\n\nb1\nb2\n\nb1\nb2\n\nc1\nc2\n"
+ },
+ "tobj-yap-col1": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n"
+ },
+ "tobj-yap-first": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "a1\na2\n\na1\na2\n\nb1\nb2\n\nc1\nc2\n"
+ },
+ "tobj-yap-last": {
+  "cursor": [
+   5,
+   0
+  ],
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n\nc1\nc2\n"
+ },
+ "tobj-yap-middle": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "a1\na2\n\nb1\nb2\n\nb1\nb2\n\nc1\nc2\n"
+ },
+ "tobj-yip-blank": {
+  "cursor": [
+   2,
+   0
+  ],
+  "text": "a1\na2\n\n\nb1\nb2\n\nc1\nc2\n"
+ },
+ "tobj-yip-col1": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "a1\na2\n\nb1\nb2\nb1\nb2\n\nc1\nc2\n"
+ },
+ "tobj-yip-first": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "a1\na2\na1\na2\n\nb1\nb2\n\nc1\nc2\n"
+ },
+ "tobj-yip-last": {
+  "cursor": [
+   6,
+   0
+  ],
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\nc1\nc2\n"
+ },
+ "tobj-yip-middle": {
+  "cursor": [
+   3,
+   0
+  ],
+  "text": "a1\na2\n\nb1\nb2\nb1\nb2\n\nc1\nc2\n"
+ },
+ "tobj-yiw-gap": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "one      two\n"
+ },
+ "undo": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "undo-A-mid": {
+  "cursor": [
+   0,
+   10
+  ],
+  "text": "foo bar baz\n"
+ },
+ "undo-R": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "foo bar\n"
+ },
+ "undo-R-redo": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abo bar\n"
+ },
+ "undo-block-macro-redo": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "ef\n"
+ },
+ "undo-block-macro-xxu": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "bcdef\n"
+ },
+ "undo-block-normal-xxu": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abcd\n"
+ },
+ "undo-block-normal-xxuu": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "abcd\n"
+ },
+ "undo-cw": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "foo bar\n"
+ },
+ "undo-cw-redo": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "X bar\n"
+ },
+ "undo-dot-ciw": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "X bar baz\n"
+ },
+ "undo-dot-ciw-redo": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "X X baz\n"
+ },
+ "undo-dot-o": {
+  "cursor": [
+   1,
+   3
+  ],
+  "text": "foo bar\nline\n"
+ },
+ "undo-dot-o-redo": {
+  "cursor": [
+   1,
+   3
+  ],
+  "text": "foo bar\nline\nline\n"
+ },
+ "undo-insert": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "foo bar\n"
+ },
+ "undo-insert-redo": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "hellofoo bar\n"
+ },
+ "undo-insert-twice": {
+  "cursor": [
+   0,
+   8
+  ],
+  "text": "abfoo bar\n"
+ },
+ "undo-macro-count": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "b\nc\nd\ne\n"
+ },
+ "undo-macro-two-changes": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "b\nc\nd\ne\n"
+ },
+ "undo-x": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "f f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "undo-x-dot": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "oo bar\n"
+ },
+ "unknown-bang-op": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "a\nb\nc\n"
+ },
+ "unknown-bracket-q": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "bc\ndef\n"
+ },
+ "unknown-close-bracket-q": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "bc\ndef\n"
+ },
+ "unknown-count-cleared": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "bcdef\n"
+ },
+ "unknown-eq-i-brace": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "\nb\n"
+ },
+ "unknown-eq-ip": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "\nb\n\nc\n"
+ },
+ "unknown-g8": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "bcdefghij\n"
+ },
+ "unknown-ga": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "bc\n"
+ },
+ "unknown-gw": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n"
+ },
+ "unknown-op-pending-g": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": " b\nc\n"
+ },
+ "unknown-op-pending-i": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": " b\nc\n"
+ },
+ "unknown-op-pending-key": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": " b\nc\n"
+ },
+ "unknown-zj": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "bc\ndef\n"
+ },
+ "vis-3r-cr": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "a\nef\n"
+ },
+ "vis-3r-esc": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "acdef\n"
+ },
+ "vis-V-U-indent": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "  ABC\n  DEF\n"
+ },
+ "vis-V-to-v": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "alpha beta\ngammpha beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-VU": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "ALPHA BETA\nGAMMA DELTA\nzeta eta\n"
+ },
+ "vis-Vj<": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "alpha\n    beta\ngamma\n"
+ },
+ "vis-Vj>": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "    alpha beta\n    gamma delta\nzeta eta\n"
+ },
+ "vis-Vj>-undo": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "alpha beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-VjJ-undo": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "alpha beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-VjU-undo": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "alpha beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-Vjd-undo": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "alpha beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-Vjd-undo2": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "alpha beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-Vjy-cursor": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "alpha beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-Vjy-gv": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "zeta eta\n"
+ },
+ "vis-Vkd-undo": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "alpha beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-VrX": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "XXXXXXXXXX\ngamma delta\nzeta eta\n"
+ },
+ "vis-Vu": {
+  "cursor": [
+   1,
+   0
+  ],
+  "text": "ALPHA BETA\ngamma delta\nZETA\n"
+ },
+ "vis-Vy-single": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "alpha beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-V~": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "ALPHA BETA\ngamma delta\nzeta eta\n"
+ },
+ "vis-ctrl-v-noop": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "alha beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-gv-after-V": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "zeta eta\n"
+ },
+ "vis-gv-after-V-cursor": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "alpha beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-gv-after-d": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-gv-esc-cursor": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "alpha beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-gv-in-visual": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "ala beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-gv-none": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "alpha beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-gv-swap": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "zeta eta\n"
+ },
+ "vis-gv-swap-ends": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "alma delta\nzeta eta\n"
+ },
+ "vis-gv-twice": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "ala beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-j-last": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "a\nbc\n"
+ },
+ "vis-k-first": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "abd\nb\n"
+ },
+ "vis-o-V": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "ALPHA BETA\nGAMMA DELTA\nzeta eta\n"
+ },
+ "vis-r-cr-indent": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "  ab\n  def\n"
+ },
+ "vis-r-esc": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "acdef\n"
+ },
+ "vis-reg-yank": {
+  "cursor": [
+   1,
+   3
+  ],
+  "text": "alpha beta\ngappmma delta\nzeta eta\n"
+ },
+ "vis-v-Esc-gv-V": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "gamma delta\nzeta eta\n"
+ },
+ "vis-v-j-last": {
+  "cursor": [
+   1,
+   1
+  ],
+  "text": "a\nbc\n"
+ },
+ "vis-v-o-r": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "alXXa beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-v-to-V": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "gamma delta\nzeta eta\n"
+ },
+ "vis-v>": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "    alpha beta\n    gamma delta\nzeta eta\n"
+ },
+ "vis-vc-gv": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "al beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-vjJ": {
+  "cursor": [
+   0,
+   10
+  ],
+  "text": "alpha beta gamma delta\nzeta eta\n"
+ },
+ "vis-vjJ-undo": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "alpha beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-vjU": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "alPHA BETA\nGAMma delta\nzeta eta\n"
+ },
+ "vis-vjU-dot": {
+  "cursor": [
+   1,
+   2
+  ],
+  "text": "alPHa beta\ngaMMa delta\nzeta eta\n"
+ },
+ "vis-vjU-undo": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "alpha beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-vjc-undo": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "alpha beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-vjd-undo": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "alpha beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-vjgJ": {
+  "cursor": [
+   0,
+   10
+  ],
+  "text": "alpha betagamma delta\nzeta eta\n"
+ },
+ "vis-vjgU": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "alPHA BETA\nGAMma delta\nzeta eta\n"
+ },
+ "vis-vjo-h": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "ala delta\nzeta eta\n"
+ },
+ "vis-vjo-o-d": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "alpa delta\nzeta eta\n"
+ },
+ "vis-vjrX": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "alXXXXXXXX\nXXXma delta\nzeta eta\n"
+ },
+ "vis-vjrX-undo": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "alpha beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-vju": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "ALpha beta\ngamMA DELTA\n"
+ },
+ "vis-vjy-P-multiline": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "alpha beta\ngampha beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-vjy-cursor": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "alpha beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-vj~": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "alPHA BETA\nGAMma delta\nzeta eta\n"
+ },
+ "vis-vj~-back": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "alPHA BETA\nGAMMa delta\nzeta eta\n"
+ },
+ "vis-vj~-undo-redo": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "alpHA BETA\nGAMMa delta\nzeta eta\n"
+ },
+ "vis-vkU-undo": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "alpha beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-vlx-gv": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "albeta\ngamma delta\nzeta eta\n"
+ },
+ "vis-vlx-undo": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "alpha beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-vlyjgvd": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": "pha beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-vr-esc": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "ala beta\ngamma delta\nzeta eta\n"
+ },
+ "vis-yy-P-multiline": {
+  "cursor": [
+   0,
+   10
+  ],
+  "text": "alpha betapha beta\ngam\ngamma delta\nzeta eta\n"
+ },
+ "xp": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "edf f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "y$": {
+  "cursor": [
+   0,
+   11
+  ],
+  "text": "def f(a, b):f f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "yb": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "def f((a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "yiw": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "defdef f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "yj": {
+  "cursor": [
+   1,
+   4
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "yk": {
+  "cursor": [
+   1,
+   4
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "yw": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "def def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "yyP": {
+  "cursor": [
+   1,
+   4
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ },
+ "yyp": {
+  "cursor": [
+   2,
+   4
+  ],
+  "text": "def f(a, b):\n    x = \"hi there\"\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n"
+ }
+}

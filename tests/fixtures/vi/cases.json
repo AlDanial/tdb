@@ -1,0 +1,12436 @@
+[
+ {
+  "id": "cw",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "cwfoo<Esc>"
+ },
+ {
+  "id": "brace-close",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "}"
+ },
+ {
+  "id": "brace-open",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   5,
+   0
+  ],
+  "keys": "{"
+ },
+ {
+  "id": "f",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "fb"
+ },
+ {
+  "id": "F",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   10
+  ],
+  "keys": "Fa"
+ },
+ {
+  "id": "t",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "tb"
+ },
+ {
+  "id": "T",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   10
+  ],
+  "keys": "Ta"
+ },
+ {
+  "id": "semicolon",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "fa;"
+ },
+ {
+  "id": "comma",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "$Fa,"
+ },
+ {
+  "id": "goto-col-24",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   2,
+   0
+  ],
+  "keys": "24|"
+ },
+ {
+  "id": "dt=",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "dt="
+ },
+ {
+  "id": "ct)",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   2,
+   12
+  ],
+  "keys": "ct)X<Esc>"
+ },
+ {
+  "id": "percent",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   5
+  ],
+  "keys": "%"
+ },
+ {
+  "id": "percent-close",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   2,
+   18
+  ],
+  "keys": "%"
+ },
+ {
+  "id": "motion-w",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "w"
+ },
+ {
+  "id": "motion-w-count",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   1,
+   4
+  ],
+  "keys": "3w"
+ },
+ {
+  "id": "motion-W",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "W"
+ },
+ {
+  "id": "motion-W-count",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   1,
+   4
+  ],
+  "keys": "3W"
+ },
+ {
+  "id": "motion-b",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   6
+  ],
+  "keys": "b"
+ },
+ {
+  "id": "motion-b-count",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   2,
+   12
+  ],
+  "keys": "3b"
+ },
+ {
+  "id": "motion-B",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   6
+  ],
+  "keys": "B"
+ },
+ {
+  "id": "motion-B-count",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   2,
+   12
+  ],
+  "keys": "3B"
+ },
+ {
+  "id": "motion-e",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "e"
+ },
+ {
+  "id": "motion-e-count",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   1,
+   4
+  ],
+  "keys": "3e"
+ },
+ {
+  "id": "motion-ge",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   6
+  ],
+  "keys": "ge"
+ },
+ {
+  "id": "motion-ge-count",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   2,
+   12
+  ],
+  "keys": "3ge"
+ },
+ {
+  "id": "ci\"",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   1,
+   9
+  ],
+  "keys": "ci\"X<Esc>"
+ },
+ {
+  "id": "yiw",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "yiwP"
+ },
+ {
+  "id": "di(",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   2,
+   13
+  ],
+  "keys": "di("
+ },
+ {
+  "id": "r",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "rX"
+ },
+ {
+  "id": "R",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "RXY<Esc>"
+ },
+ {
+  "id": "s",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "sX<Esc>"
+ },
+ {
+  "id": "S",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "SX<Esc>"
+ },
+ {
+  "id": "cc",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "ccX<Esc>"
+ },
+ {
+  "id": "C",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "CX<Esc>"
+ },
+ {
+  "id": "D",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "D"
+ },
+ {
+  "id": "g~w",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "g~w"
+ },
+ {
+  "id": "gUiw",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "gUiw"
+ },
+ {
+  "id": "tilde",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3~"
+ },
+ {
+  "id": "indent-gt",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3>>"
+ },
+ {
+  "id": "Vj>",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "Vj>"
+ },
+ {
+  "id": "indent-lt",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   1,
+   4
+  ],
+  "keys": "<<"
+ },
+ {
+  "id": "dd",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "dd"
+ },
+ {
+  "id": "2dd",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "2dd"
+ },
+ {
+  "id": "d2j",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "d2j"
+ },
+ {
+  "id": "yyp",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "yyp"
+ },
+ {
+  "id": "yyP",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "yyP"
+ },
+ {
+  "id": "undo",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "ddu"
+ },
+ {
+  "id": "undo-x",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "xxxu"
+ },
+ {
+  "id": "macro",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qaxq@a"
+ },
+ {
+  "id": "o",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "oX<Esc>"
+ },
+ {
+  "id": "O",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "OX<Esc>"
+ },
+ {
+  "id": "i",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "iX<Esc>"
+ },
+ {
+  "id": "a",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "aX<Esc>"
+ },
+ {
+  "id": "I",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   1,
+   8
+  ],
+  "keys": "IX<Esc>"
+ },
+ {
+  "id": "A",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "AX<Esc>"
+ },
+ {
+  "id": "eol-G-dd",
+  "text": "a\nb\nc\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "Gdd"
+ },
+ {
+  "id": "eol-p-last",
+  "text": "a\nb\nc\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "yyGp"
+ },
+ {
+  "id": "noeol-yyp",
+  "text": "a\nb\nc",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "Gyyp"
+ },
+ {
+  "id": "empty-dd",
+  "text": "",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "dd"
+ },
+ {
+  "id": "empty-x",
+  "text": "",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "x"
+ },
+ {
+  "id": "empty-p",
+  "text": "",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "p"
+ },
+ {
+  "id": "empty-J",
+  "text": "",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "J"
+ },
+ {
+  "id": "empty-dot",
+  "text": "",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "."
+ },
+ {
+  "id": "yk",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   2,
+   6
+  ],
+  "keys": "ykP"
+ },
+ {
+  "id": "yb",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   6
+  ],
+  "keys": "ybP"
+ },
+ {
+  "id": "y$",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "y$P"
+ },
+ {
+  "id": "yj",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "yjP"
+ },
+ {
+  "id": "yw",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "ywP"
+ },
+ {
+  "id": "g~~",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "g~~"
+ },
+ {
+  "id": "gUU",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "gUU"
+ },
+ {
+  "id": "guu",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "guu"
+ },
+ {
+  "id": "g~j",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "g~j"
+ },
+ {
+  "id": "gUb",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   6
+  ],
+  "keys": "gUb"
+ },
+ {
+  "id": "gt-j",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": ">j"
+ },
+ {
+  "id": "lt-j",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "<j"
+ },
+ {
+  "id": "Vj<",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "Vj<"
+ },
+ {
+  "id": "Vk>",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   2,
+   6
+  ],
+  "keys": "jVk>"
+ },
+ {
+  "id": "gt-k",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   2,
+   6
+  ],
+  "keys": ">k"
+ },
+ {
+  "id": "2p-lines",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "yj2p"
+ },
+ {
+  "id": "p-char",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "ywp"
+ },
+ {
+  "id": "dd-last",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   5,
+   3
+  ],
+  "keys": "Gdd"
+ },
+ {
+  "id": "3dd-near-end",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   4,
+   2
+  ],
+  "keys": "3dd"
+ },
+ {
+  "id": "tilde-end",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   4,
+   2
+  ],
+  "keys": "9~"
+ },
+ {
+  "id": "tilde-count",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   1,
+   2
+  ],
+  "keys": "3~"
+ },
+ {
+  "id": "dd-then-p",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "ddp"
+ },
+ {
+  "id": "xp",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "xp"
+ },
+ {
+  "id": "dw-end",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   5,
+   4
+  ],
+  "keys": "dw"
+ },
+ {
+  "id": "dj-last",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   5,
+   0
+  ],
+  "keys": "dj"
+ },
+ {
+  "id": "g~j-b",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "g~j"
+ },
+ {
+  "id": "g~k",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   2,
+   6
+  ],
+  "keys": "g~k"
+ },
+ {
+  "id": "gUj-0",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "gUj"
+ },
+ {
+  "id": "g~~-0",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   6
+  ],
+  "keys": "g~~"
+ },
+ {
+  "id": "g~2j",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "g~2j"
+ },
+ {
+  "id": "gUU-ind0",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   2,
+   0
+  ],
+  "keys": "gUU"
+ },
+ {
+  "id": "gUap",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "gUap"
+ },
+ {
+  "id": "d9j",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   3,
+   0
+  ],
+  "keys": "d9j"
+ },
+ {
+  "id": "dk-first",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "dk"
+ },
+ {
+  "id": "d9k",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   2,
+   0
+  ],
+  "keys": "d9k"
+ },
+ {
+  "id": "9j",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   1,
+   3
+  ],
+  "keys": "9j"
+ },
+ {
+  "id": "3G",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   5
+  ],
+  "keys": "3G"
+ },
+ {
+  "id": "G-col",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   5
+  ],
+  "keys": "G"
+ },
+ {
+  "id": "gg-col",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   4,
+   3
+  ],
+  "keys": "gg"
+ },
+ {
+  "id": "dG",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   2,
+   3
+  ],
+  "keys": "dG"
+ },
+ {
+  "id": "dgg",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   2,
+   3
+  ],
+  "keys": "dgg"
+ },
+ {
+  "id": "dG-col",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   1,
+   3
+  ],
+  "keys": "jdG"
+ },
+ {
+  "id": "G-short",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   9
+  ],
+  "keys": "G"
+ },
+ {
+  "id": "2dj",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "2dj"
+ },
+ {
+  "id": "tobj-nopair-ci-paren",
+  "text": "no pair here at all\nsecond line\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "ci(X<Esc>"
+ },
+ {
+  "id": "tobj-nopair-di-brace",
+  "text": "no pair here at all\nsecond line\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "di{X<Esc>"
+ },
+ {
+  "id": "tobj-nopair-ci-bracket",
+  "text": "no pair here at all\nsecond line\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "ci[X<Esc>"
+ },
+ {
+  "id": "tobj-nopair-ci-angle",
+  "text": "no pair here at all\nsecond line\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "ci<X<Esc>"
+ },
+ {
+  "id": "tobj-nopair-ci-dq",
+  "text": "no pair here at all\nsecond line\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "ci\"X<Esc>"
+ },
+ {
+  "id": "tobj-nopair-ci-sq",
+  "text": "no pair here at all\nsecond line\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "ci'X<Esc>"
+ },
+ {
+  "id": "tobj-nopair-ci-bt",
+  "text": "no pair here at all\nsecond line\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "ci`X<Esc>"
+ },
+ {
+  "id": "tobj-nopair-da-paren",
+  "text": "no pair here at all\nsecond line\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "da("
+ },
+ {
+  "id": "tobj-nopair-yi-paren",
+  "text": "no pair here at all\nsecond line\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "yi(P"
+ },
+ {
+  "id": "tobj-ci-paren-on-open",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   2,
+   11
+  ],
+  "keys": "ci(X<Esc>"
+ },
+ {
+  "id": "tobj-ci-paren-on-close",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   2,
+   17
+  ],
+  "keys": "ci(X<Esc>"
+ },
+ {
+  "id": "tobj-ci-paren-inside",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   2,
+   13
+  ],
+  "keys": "ci(X<Esc>"
+ },
+ {
+  "id": "tobj-da-paren",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   2,
+   13
+  ],
+  "keys": "da("
+ },
+ {
+  "id": "tobj-ci-paren-empty",
+  "text": "f()\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "ci(X<Esc>"
+ },
+ {
+  "id": "tobj-di-paren-empty",
+  "text": "f()\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "di("
+ },
+ {
+  "id": "tobj-ci-dq-inside",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   1,
+   10
+  ],
+  "keys": "ci\"X<Esc>"
+ },
+ {
+  "id": "tobj-ca-dq-inside",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   1,
+   10
+  ],
+  "keys": "ca\"X<Esc>"
+ },
+ {
+  "id": "tobj-ci-dq-before",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "ci\"X<Esc>"
+ },
+ {
+  "id": "tobj-ci-dq-on-quote",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   1,
+   8
+  ],
+  "keys": "di\""
+ },
+ {
+  "id": "tobj-ci-dq-other-line",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "ci\"X<Esc>"
+ },
+ {
+  "id": "tobj-di-brace-multi",
+  "text": "if x {\n    a\n    b\n}\nz\n",
+  "cursor": [
+   1,
+   4
+  ],
+  "keys": "di{"
+ },
+ {
+  "id": "tobj-ci-brace-multi",
+  "text": "if x {\n    a\n    b\n}\nz\n",
+  "cursor": [
+   1,
+   4
+  ],
+  "keys": "ci{X<Esc>"
+ },
+ {
+  "id": "tobj-da-brace-multi",
+  "text": "if x {\n    a\n    b\n}\nz\n",
+  "cursor": [
+   1,
+   4
+  ],
+  "keys": "da{"
+ },
+ {
+  "id": "tobj-ci-nested",
+  "text": "f(a, (b, c), d)\n",
+  "cursor": [
+   0,
+   7
+  ],
+  "keys": "ci(X<Esc>"
+ },
+ {
+  "id": "tobj-ci-nested-outer",
+  "text": "f(a, (b, c), d)\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "ci(X<Esc>"
+ },
+ {
+  "id": "tobj-vi-paren",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   2,
+   13
+  ],
+  "keys": "vi(d"
+ },
+ {
+  "id": "tobj-va-paren",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   2,
+   13
+  ],
+  "keys": "va(d"
+ },
+ {
+  "id": "tobj-vi-paren-nopair",
+  "text": "no pair here at all\nsecond line\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "vi(d"
+ },
+ {
+  "id": "tobj-y-ib",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   2,
+   13
+  ],
+  "keys": "yibP"
+ },
+ {
+  "id": "tobj-gU-i-paren",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   2,
+   13
+  ],
+  "keys": "gUi("
+ },
+ {
+  "id": "tobj-gt-i-paren",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   2,
+   13
+  ],
+  "keys": ">i("
+ },
+ {
+  "id": "tobj-di-bracket",
+  "text": "x[1, 2]\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "di["
+ },
+ {
+  "id": "tobj-ci-angle",
+  "text": "a<b c>d\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "ci<X<Esc>"
+ },
+ {
+  "id": "tobj-dib-B",
+  "text": "{a (b) c}\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "diB"
+ },
+ {
+  "id": "tobj-diw-indent-col0",
+  "text": "foo:\n    bar baz\n  x\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "diw"
+ },
+ {
+  "id": "tobj-diw-indent-col3",
+  "text": "foo:\n    bar baz\n  x\n",
+  "cursor": [
+   1,
+   3
+  ],
+  "keys": "diw"
+ },
+ {
+  "id": "tobj-diw-indent-col2",
+  "text": "foo:\n    bar baz\n  x\n",
+  "cursor": [
+   1,
+   2
+  ],
+  "keys": "diw"
+ },
+ {
+  "id": "tobj-daw-indent-col0",
+  "text": "foo:\n    bar baz\n  x\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "daw"
+ },
+ {
+  "id": "tobj-daw-indent-col2",
+  "text": "foo:\n    bar baz\n  x\n",
+  "cursor": [
+   1,
+   2
+  ],
+  "keys": "daw"
+ },
+ {
+  "id": "tobj-ciw-indent-col0",
+  "text": "foo:\n    bar baz\n  x\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "ciwX<Esc>"
+ },
+ {
+  "id": "tobj-ciw-indent-col2",
+  "text": "foo:\n    bar baz\n  x\n",
+  "cursor": [
+   1,
+   2
+  ],
+  "keys": "ciwX<Esc>"
+ },
+ {
+  "id": "tobj-diw-gap",
+  "text": "one   two\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "diw"
+ },
+ {
+  "id": "tobj-daw-gap",
+  "text": "one   two\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "daw"
+ },
+ {
+  "id": "tobj-daw-gap-end",
+  "text": "one   \n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "daw"
+ },
+ {
+  "id": "tobj-diw-eol",
+  "text": "one two\n",
+  "cursor": [
+   0,
+   6
+  ],
+  "keys": "diw"
+ },
+ {
+  "id": "tobj-daw-eol",
+  "text": "one two\n",
+  "cursor": [
+   0,
+   6
+  ],
+  "keys": "daw"
+ },
+ {
+  "id": "tobj-daw-eol-single",
+  "text": "one\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "daw"
+ },
+ {
+  "id": "tobj-daw-middle",
+  "text": "one two three\n",
+  "cursor": [
+   0,
+   5
+  ],
+  "keys": "daw"
+ },
+ {
+  "id": "tobj-daw-first",
+  "text": "one two three\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "daw"
+ },
+ {
+  "id": "tobj-diw-punct",
+  "text": "a.b(c)\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "diw"
+ },
+ {
+  "id": "tobj-daw-punct",
+  "text": "a.b(c)\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "daw"
+ },
+ {
+  "id": "tobj-d2aw",
+  "text": "one two three four\n",
+  "cursor": [
+   0,
+   5
+  ],
+  "keys": "d2aw"
+ },
+ {
+  "id": "tobj-d2iw",
+  "text": "one two three four\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "d2iw"
+ },
+ {
+  "id": "tobj-d3iw",
+  "text": "one two three four\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "d3iw"
+ },
+ {
+  "id": "tobj-diW",
+  "text": "a.b  c.d e\n",
+  "cursor": [
+   0,
+   5
+  ],
+  "keys": "diW"
+ },
+ {
+  "id": "tobj-daW",
+  "text": "a.b  c.d e\n",
+  "cursor": [
+   0,
+   5
+  ],
+  "keys": "daW"
+ },
+ {
+  "id": "tobj-daW-gap",
+  "text": "a.b   c.d\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "daW"
+ },
+ {
+  "id": "tobj-diw-empty-line",
+  "text": "a\n\nb\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "diw"
+ },
+ {
+  "id": "tobj-yiw-gap",
+  "text": "one   two\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "yiwP"
+ },
+ {
+  "id": "tobj-gUiw-gap",
+  "text": "one   two\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "gUiw"
+ },
+ {
+  "id": "tobj-viw",
+  "text": "one two three\n",
+  "cursor": [
+   0,
+   5
+  ],
+  "keys": "viwd"
+ },
+ {
+  "id": "tobj-vaw",
+  "text": "one two three\n",
+  "cursor": [
+   0,
+   5
+  ],
+  "keys": "vawd"
+ },
+ {
+  "id": "tobj-viw-gap",
+  "text": "one   two\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "viwd"
+ },
+ {
+  "id": "tobj-vaw-gap",
+  "text": "one   two\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "vawd"
+ },
+ {
+  "id": "tobj-viwiw",
+  "text": "one two three\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "viwiwd"
+ },
+ {
+  "id": "tobj-vawaw",
+  "text": "one two three\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "vawawd"
+ },
+ {
+  "id": "tobj-dap-first",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "dap"
+ },
+ {
+  "id": "tobj-dip-first",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "dip"
+ },
+ {
+  "id": "tobj-yap-first",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "yapP"
+ },
+ {
+  "id": "tobj-yip-first",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "yipP"
+ },
+ {
+  "id": "tobj-dap-middle",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   3,
+   0
+  ],
+  "keys": "dap"
+ },
+ {
+  "id": "tobj-dip-middle",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   3,
+   0
+  ],
+  "keys": "dip"
+ },
+ {
+  "id": "tobj-yap-middle",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   3,
+   0
+  ],
+  "keys": "yapP"
+ },
+ {
+  "id": "tobj-yip-middle",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   3,
+   0
+  ],
+  "keys": "yipP"
+ },
+ {
+  "id": "tobj-dap-last",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   6,
+   0
+  ],
+  "keys": "dap"
+ },
+ {
+  "id": "tobj-dip-last",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   6,
+   0
+  ],
+  "keys": "dip"
+ },
+ {
+  "id": "tobj-yap-last",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   6,
+   0
+  ],
+  "keys": "yapP"
+ },
+ {
+  "id": "tobj-yip-last",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   6,
+   0
+  ],
+  "keys": "yipP"
+ },
+ {
+  "id": "tobj-dap-blank",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   2,
+   0
+  ],
+  "keys": "dap"
+ },
+ {
+  "id": "tobj-dip-blank",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   2,
+   0
+  ],
+  "keys": "dip"
+ },
+ {
+  "id": "tobj-yap-blank",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   2,
+   0
+  ],
+  "keys": "yapP"
+ },
+ {
+  "id": "tobj-yip-blank",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   2,
+   0
+  ],
+  "keys": "yipP"
+ },
+ {
+  "id": "tobj-d2ap",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "d2ap"
+ },
+ {
+  "id": "tobj-d2ip",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "d2ip"
+ },
+ {
+  "id": "tobj-dap-last-noblank",
+  "text": "a1\n\nb1\nb2\n",
+  "cursor": [
+   2,
+   0
+  ],
+  "keys": "dap"
+ },
+ {
+  "id": "tobj-cip-middle",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   3,
+   0
+  ],
+  "keys": "cipX<Esc>"
+ },
+ {
+  "id": "tobj-vap",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   3,
+   0
+  ],
+  "keys": "vapd"
+ },
+ {
+  "id": "tobj-vip",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   3,
+   0
+  ],
+  "keys": "vipd"
+ },
+ {
+  "id": "tobj-gt-ip",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   3,
+   0
+  ],
+  "keys": ">ip"
+ },
+ {
+  "id": "join-J",
+  "text": "one\n  two\nthree\nfour\nfive\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "J"
+ },
+ {
+  "id": "join-2J",
+  "text": "one\n  two\nthree\nfour\nfive\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "2J"
+ },
+ {
+  "id": "join-3J",
+  "text": "one\n  two\nthree\nfour\nfive\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3J"
+ },
+ {
+  "id": "join-4J",
+  "text": "one\n  two\nthree\nfour\nfive\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "4J"
+ },
+ {
+  "id": "join-9J",
+  "text": "one\n  two\nthree\nfour\nfive\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "9J"
+ },
+ {
+  "id": "join-1J",
+  "text": "one\n  two\nthree\nfour\nfive\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "1J"
+ },
+ {
+  "id": "join-J-last",
+  "text": "one\n  two\nthree\nfour\nfive\n",
+  "cursor": [
+   4,
+   0
+  ],
+  "keys": "J"
+ },
+ {
+  "id": "join-J-blank",
+  "text": "one\n\ntwo\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "J"
+ },
+ {
+  "id": "join-J-from-blank",
+  "text": "\ntwo\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "J"
+ },
+ {
+  "id": "join-J-paren",
+  "text": "f(a\n  )\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "J"
+ },
+ {
+  "id": "join-J-trailing-ws",
+  "text": "two  \nfour\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "J"
+ },
+ {
+  "id": "join-J-trailing-ws-3J",
+  "text": "a  \nb \nc\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3J"
+ },
+ {
+  "id": "join-J-tab",
+  "text": "a\n\tb\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "J"
+ },
+ {
+  "id": "join-J-next-ws-only",
+  "text": "a\n   \nb\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "J"
+ },
+ {
+  "id": "join-J-dot",
+  "text": "a\n.b\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "J"
+ },
+ {
+  "id": "join-gJ",
+  "text": "one\n  two\nthree\nfour\nfive\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "gJ"
+ },
+ {
+  "id": "join-2gJ",
+  "text": "one\n  two\nthree\nfour\nfive\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "2gJ"
+ },
+ {
+  "id": "join-3gJ",
+  "text": "one\n  two\nthree\nfour\nfive\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3gJ"
+ },
+ {
+  "id": "join-gJ-last",
+  "text": "one\n  two\nthree\nfour\nfive\n",
+  "cursor": [
+   4,
+   0
+  ],
+  "keys": "gJ"
+ },
+ {
+  "id": "join-gJ-trailing-ws",
+  "text": "two  \n  four\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "gJ"
+ },
+ {
+  "id": "join-VjJ",
+  "text": "one\n  two\nthree\nfour\nfive\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "VjJ"
+ },
+ {
+  "id": "join-VjjJ",
+  "text": "one\n  two\nthree\nfour\nfive\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "VjjJ"
+ },
+ {
+  "id": "join-VjgJ",
+  "text": "one\n  two\nthree\nfour\nfive\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "VjgJ"
+ },
+ {
+  "id": "join-J-undo",
+  "text": "one\n  two\nthree\nfour\nfive\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3Ju"
+ },
+ {
+  "id": "join-J-repeat",
+  "text": "one\n  two\nthree\nfour\nfive\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "J."
+ },
+ {
+  "id": "tobj-dip-col1",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   4,
+   1
+  ],
+  "keys": "dip"
+ },
+ {
+  "id": "tobj-yip-col1",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   4,
+   1
+  ],
+  "keys": "yipP"
+ },
+ {
+  "id": "tobj-yap-col1",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   1,
+   1
+  ],
+  "keys": "yap"
+ },
+ {
+  "id": "tobj-gUip-col1",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   1,
+   1
+  ],
+  "keys": "gUip"
+ },
+ {
+  "id": "tobj-cj-linewise",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   3,
+   1
+  ],
+  "keys": "cjX<Esc>"
+ },
+ {
+  "id": "tobj-cip-indent",
+  "text": "  a\n  b\n\nc\n",
+  "cursor": [
+   1,
+   3
+  ],
+  "keys": "cipX<Esc>"
+ },
+ {
+  "id": "tobj-vi-brace-multi",
+  "text": "if x {\n    a\n    b\n}\nz\n",
+  "cursor": [
+   1,
+   4
+  ],
+  "keys": "vi{d"
+ },
+ {
+  "id": "tobj-va-brace-multi",
+  "text": "if x {\n    a\n    b\n}\nz\n",
+  "cursor": [
+   1,
+   4
+  ],
+  "keys": "va{d"
+ },
+ {
+  "id": "tobj-vi-paren-twice",
+  "text": "f(a, (b, c), d)\n",
+  "cursor": [
+   0,
+   8
+  ],
+  "keys": "vi(i(d"
+ },
+ {
+  "id": "tobj-va-paren-twice",
+  "text": "f(a, (b, c), d)\n",
+  "cursor": [
+   0,
+   8
+  ],
+  "keys": "va(a(d"
+ },
+ {
+  "id": "tobj-vi-paren-onopen",
+  "text": "f(a, (b, c), d)\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "vi(d"
+ },
+ {
+  "id": "tobj-v2i-paren",
+  "text": "f(a, (b, c), d)\n",
+  "cursor": [
+   0,
+   8
+  ],
+  "keys": "v2i(d"
+ },
+ {
+  "id": "tobj-d2i-paren",
+  "text": "f(a, (b, c), d)\n",
+  "cursor": [
+   0,
+   8
+  ],
+  "keys": "d2i("
+ },
+ {
+  "id": "tobj-vi-dq-twice",
+  "text": "x \"a b\" y\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "vi\"i\"d"
+ },
+ {
+  "id": "tobj-va-dq",
+  "text": "x \"a b\" y\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "va\"d"
+ },
+ {
+  "id": "tobj-da-dq-lead",
+  "text": "x \"a b\"\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "da\""
+ },
+ {
+  "id": "tobj-di-dq-escaped",
+  "text": "x \"a \\\" b\" y\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "di\""
+ },
+ {
+  "id": "tobj-ci-dq-between",
+  "text": "\"a\" b \"c\"\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "di\""
+ },
+ {
+  "id": "tobj-vip-twice",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "vipipd"
+ },
+ {
+  "id": "tobj-vap-twice",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "vapapd"
+ },
+ {
+  "id": "tobj-Vip",
+  "text": "a1\na2\n\nb1\nb2\n\nc1\nc2\n",
+  "cursor": [
+   3,
+   0
+  ],
+  "keys": "Vipd"
+ },
+ {
+  "id": "tobj-viw-count",
+  "text": "one two three four\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "v3iwd"
+ },
+ {
+  "id": "tobj-ciw-end-word",
+  "text": "a bc\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "ciwX<Esc>"
+ },
+ {
+  "id": "tobj-daw-single-char",
+  "text": "a b c\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "daw"
+ },
+ {
+  "id": "tobj-diw-multiline-trail",
+  "text": "a  \nb c\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "d2iw"
+ },
+ {
+  "id": "tobj-P-empty",
+  "text": "abc\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "P"
+ },
+ {
+  "id": "tobj-p-empty",
+  "text": "abc\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "p"
+ },
+ {
+  "id": "join-3J-short",
+  "text": "a\nb\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "5J"
+ },
+ {
+  "id": "join-J-paren-trail",
+  "text": "f(\n  )\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "J"
+ },
+ {
+  "id": "join-J-visual-single",
+  "text": "a\nb\nc\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "VJ"
+ },
+ {
+  "id": "join-gJ-visual",
+  "text": "a\n b\nc\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "VjjgJ"
+ },
+ {
+  "id": "join-J-cursor-mid",
+  "text": "ab cd\nef\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "J"
+ },
+ {
+  "id": "join-J-empty-twice",
+  "text": "a\n\n\nb\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3J"
+ },
+ {
+  "id": "join-dJ-undo",
+  "text": "a\nb\nc\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "Ju"
+ },
+ {
+  "id": "reg-yank-put",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"ayyj\"ap"
+ },
+ {
+  "id": "reg-del-put",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"add\"ap"
+ },
+ {
+  "id": "reg-cc",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "\"accnew<Esc>\"ap"
+ },
+ {
+  "id": "reg-append-lines",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"ayyj\"Ayy\"ap"
+ },
+ {
+  "id": "reg-append-chars",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"ayw\"Ayw$\"ap"
+ },
+ {
+  "id": "reg-append-line-char",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"ayy\"Ayw\"ap"
+ },
+ {
+  "id": "reg-append-char-line",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"ayw\"Ayy\"ap"
+ },
+ {
+  "id": "reg-append-unnamed",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"ayyj\"Ayyp"
+ },
+ {
+  "id": "reg-dw-P",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "\"adw\"aP"
+ },
+ {
+  "id": "reg-d2j",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"ad2j\"ap"
+ },
+ {
+  "id": "reg-blackhole-dd",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "yyj\"_ddp"
+ },
+ {
+  "id": "reg-blackhole-p",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "yy\"_p"
+ },
+ {
+  "id": "reg-zero-after-dd",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "yyjdd\"0p"
+ },
+ {
+  "id": "reg-zero-not-named",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "yyj\"ayy\"0p"
+ },
+ {
+  "id": "reg-zero-explicit",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "yyj\"0yy\"0P"
+ },
+ {
+  "id": "reg-explicit-unnamed",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"\"yyjp"
+ },
+ {
+  "id": "reg-unnamed-follows-named",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"ayyjp"
+ },
+ {
+  "id": "reg-count-before",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3\"ayyG\"ap"
+ },
+ {
+  "id": "reg-count-after",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"a3yyG\"ap"
+ },
+ {
+  "id": "reg-count-paste",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"ayy3\"ap"
+ },
+ {
+  "id": "reg-add-last-line",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   4,
+   1
+  ],
+  "keys": "\"add"
+ },
+ {
+  "id": "reg-add-last-line-put",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   4,
+   1
+  ],
+  "keys": "\"addgg\"aP"
+ },
+ {
+  "id": "reg-cw",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"acwX<Esc>$\"ap"
+ },
+ {
+  "id": "reg-c-dollar",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "\"ac$X<Esc>j\"ap"
+ },
+ {
+  "id": "reg-x",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"a3xj\"aP"
+ },
+ {
+  "id": "reg-X",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   6
+  ],
+  "keys": "\"a2Xj\"ap"
+ },
+ {
+  "id": "reg-D",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "\"aDj\"ap"
+ },
+ {
+  "id": "reg-C",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "\"aCX<Esc>j\"ap"
+ },
+ {
+  "id": "reg-s",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"a2sX<Esc>j\"ap"
+ },
+ {
+  "id": "reg-S",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "\"aSX<Esc>j\"ap"
+ },
+ {
+  "id": "reg-y-motion",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "\"ay$j\"aP"
+ },
+ {
+  "id": "reg-visual-y",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "vll\"ayj\"ap"
+ },
+ {
+  "id": "reg-visual-prefix-d",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"avjd\"ap"
+ },
+ {
+  "id": "reg-gU",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"agUiw"
+ },
+ {
+  "id": "reg-indent",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"a>>"
+ },
+ {
+  "id": "reg-J",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"aJ"
+ },
+ {
+  "id": "reg-ddp-named-untouched",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"ayyjddk\"ap"
+ },
+ {
+  "id": "reg-empty-add",
+  "text": "",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"add\"ap"
+ },
+ {
+  "id": "reg-esc-cancels",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "yy\"<Esc>j\"ap"
+ },
+ {
+  "id": "dot-dw",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "dw."
+ },
+ {
+  "id": "dot-x",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "x."
+ },
+ {
+  "id": "dot-3x",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3x."
+ },
+ {
+  "id": "dot-3x-2dot",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3x.2."
+ },
+ {
+  "id": "dot-count-sticks",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3x2.."
+ },
+ {
+  "id": "dot-ciw",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "ciwfoo<Esc>w."
+ },
+ {
+  "id": "dot-A",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "A;<Esc>j."
+ },
+ {
+  "id": "dot-indent",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ">>j."
+ },
+ {
+  "id": "dot-r",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "rXl."
+ },
+ {
+  "id": "dot-J",
+  "text": "a\nb\nc\nd\ne\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "Jj."
+ },
+ {
+  "id": "dot-p",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "yyp."
+ },
+ {
+  "id": "dot-p-char",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "ywP."
+ },
+ {
+  "id": "dot-o",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "oline<Esc>."
+ },
+ {
+  "id": "dot-dd",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "dd."
+ },
+ {
+  "id": "dot-2dd-count",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "2dd."
+ },
+ {
+  "id": "dot-cc",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "ccX<Esc>j."
+ },
+ {
+  "id": "dot-after-undo",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "xu."
+ },
+ {
+  "id": "dot-skips-yank",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "dwyw."
+ },
+ {
+  "id": "dot-skips-motion",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "xjl."
+ },
+ {
+  "id": "dot-register",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"adw.$\"ap"
+ },
+ {
+  "id": "dot-gU",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "gUiww."
+ },
+ {
+  "id": "dot-tilde",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "~."
+ },
+ {
+  "id": "dot-c-op",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "cwX<Esc>w."
+ },
+ {
+  "id": "dot-visual-d",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "vld."
+ },
+ {
+  "id": "dot-visual-line-d",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "Vjd."
+ },
+ {
+  "id": "dot-after-macro",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qaxjq@aj."
+ },
+ {
+  "id": "mac-repeat",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qaxjq@a@@"
+ },
+ {
+  "id": "mac-count",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qaxq3@a"
+ },
+ {
+  "id": "mac-at-in-recording",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qaxqqb@ajq@b"
+ },
+ {
+  "id": "mac-at-recorded-as-keys",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qaxqqb@ajqqaddq@b"
+ },
+ {
+  "id": "mac-append",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qaxqqAjq@a"
+ },
+ {
+  "id": "mac-insert-esc",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qaA!<Esc>jq2@a"
+ },
+ {
+  "id": "mac-enter",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qaofoo<CR>bar<Esc>q@a"
+ },
+ {
+  "id": "mac-register-inside",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qa\"byyjq@a\"bp"
+ },
+ {
+  "id": "mac-paste-register",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qaxq$\"ap"
+ },
+ {
+  "id": "mac-exec-yanked",
+  "text": "dd\nline2\nline3\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"ay$j@a"
+ },
+ {
+  "id": "mac-at-at-count",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qaxq@a2@@"
+ },
+ {
+  "id": "mac-dot-inside",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "xqa.jq@a"
+ },
+ {
+  "id": "mac-empty",
+  "text": "",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qaxq@a"
+ },
+ {
+  "id": "mac-unset",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "@z"
+ },
+ {
+  "id": "reg-cc-zero",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "yyjccX<Esc>\"0p"
+ },
+ {
+  "id": "reg-S-zero",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "yyjSX<Esc>\"0p"
+ },
+ {
+  "id": "cc-count",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "2ccX<Esc>p"
+ },
+ {
+  "id": "cc-count-past-end",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   3,
+   0
+  ],
+  "keys": "5ccX<Esc>"
+ },
+ {
+  "id": "reg-acc-count",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"a2ccX<Esc>G\"ap"
+ },
+ {
+  "id": "dot-cc-count",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "2ccX<Esc>j."
+ },
+ {
+  "id": "reg-unsupported",
+  "text": "one two three\n    four five\nsix seven\neight nine\nten\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "yy\"%ddp"
+ },
+ {
+  "id": "dot-count-after-op",
+  "text": "a b c d e f g h\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "d3w2."
+ },
+ {
+  "id": "dot-count-before-op",
+  "text": "a b c d e f g h\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "2d3w."
+ },
+ {
+  "id": "dot-count-both",
+  "text": "a b c d e f g h\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "2d3w3."
+ },
+ {
+  "id": "dot-count-r-digit",
+  "text": "r3r3r3r3\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "r3l2."
+ },
+ {
+  "id": "dot-count-f-digit",
+  "text": "a1b2c3a1b2c3\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "df32."
+ },
+ {
+  "id": "dot-count-insert-digit",
+  "text": "foo bar\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "i3<Esc>2."
+ },
+ {
+  "id": "undo-insert",
+  "text": "foo bar\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "ihello<Esc>u"
+ },
+ {
+  "id": "undo-insert-redo",
+  "text": "foo bar\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "ihello<Esc>u<C-r>"
+ },
+ {
+  "id": "undo-cw",
+  "text": "foo bar\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "cwX<Esc>u"
+ },
+ {
+  "id": "undo-cw-redo",
+  "text": "foo bar\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "cwX<Esc>u<C-r>"
+ },
+ {
+  "id": "undo-dot-ciw",
+  "text": "foo bar baz\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "ciwX<Esc>w.u"
+ },
+ {
+  "id": "undo-dot-ciw-redo",
+  "text": "foo bar baz\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "ciwX<Esc>w.u<C-r>"
+ },
+ {
+  "id": "undo-R",
+  "text": "foo bar\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "Rab<Esc>u"
+ },
+ {
+  "id": "undo-R-redo",
+  "text": "foo bar\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "Rab<Esc>u<C-r>"
+ },
+ {
+  "id": "undo-dot-o",
+  "text": "foo bar\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "oline<Esc>.u"
+ },
+ {
+  "id": "undo-dot-o-redo",
+  "text": "foo bar\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "oline<Esc>.u<C-r>"
+ },
+ {
+  "id": "undo-insert-twice",
+  "text": "foo bar\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "iab<Esc>Acd<Esc>u"
+ },
+ {
+  "id": "undo-A-mid",
+  "text": "foo bar baz\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "wAxy<Esc>u"
+ },
+ {
+  "id": "undo-macro-count",
+  "text": "a\nb\nc\nd\ne\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qaddq3@au"
+ },
+ {
+  "id": "undo-macro-two-changes",
+  "text": "a\nb\nc\nd\ne\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qaddjq@au"
+ },
+ {
+  "id": "undo-x-dot",
+  "text": "foo bar\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "x.u"
+ },
+ {
+  "id": "reg-before-q",
+  "text": "a\nb\nc\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"aqbddq\"ap"
+ },
+ {
+  "id": "reg-before-dot",
+  "text": "a\nb\nc\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"a.ddj\"ap"
+ },
+ {
+  "id": "reg-rejected-before-q",
+  "text": "a\nb\nc\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"+qaddq"
+ },
+ {
+  "id": "reg-zero-dd-empty-line",
+  "text": "\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "dd\"0p"
+ },
+ {
+  "id": "vis-vlyjgvd",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "vlyjgvd"
+ },
+ {
+  "id": "vis-gv-after-V",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "Vj<Esc>Ggvd"
+ },
+ {
+  "id": "vis-gv-after-V-cursor",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "Vj<Esc>Ggv<Esc>"
+ },
+ {
+  "id": "vis-gv-twice",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "vl<Esc>jgv<Esc>gvd"
+ },
+ {
+  "id": "vis-gv-swap-ends",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "vjo<Esc>Ggvd"
+ },
+ {
+  "id": "vis-gv-none",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   1,
+   2
+  ],
+  "keys": "gvd"
+ },
+ {
+  "id": "vis-gv-in-visual",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "vl<Esc>jvgvd"
+ },
+ {
+  "id": "vis-gv-after-d",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "vlld<Esc>gvd"
+ },
+ {
+  "id": "vis-vjU",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "vjU"
+ },
+ {
+  "id": "vis-vju",
+  "text": "ALPHA BETA\nGAMMA DELTA\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "vju"
+ },
+ {
+  "id": "vis-vj~",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "vj~"
+ },
+ {
+  "id": "vis-vj~-back",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   1,
+   3
+  ],
+  "keys": "vkh~"
+ },
+ {
+  "id": "vis-VU",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "VjU"
+ },
+ {
+  "id": "vis-Vu",
+  "text": "ALPHA BETA\nGAMMA DELTA\nZETA\n",
+  "cursor": [
+   1,
+   2
+  ],
+  "keys": "Vu"
+ },
+ {
+  "id": "vis-V~",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "V~"
+ },
+ {
+  "id": "vis-vjgU",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "vjgU"
+ },
+ {
+  "id": "vis-vjJ",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "vjJ"
+ },
+ {
+  "id": "vis-vjgJ",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "vjgJ"
+ },
+ {
+  "id": "vis-vjo-h",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "vjohd"
+ },
+ {
+  "id": "vis-vjo-o-d",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "vjoood"
+ },
+ {
+  "id": "vis-Vj>",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "Vj>"
+ },
+ {
+  "id": "vis-Vj<",
+  "text": "    alpha\n        beta\ngamma\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "Vj<"
+ },
+ {
+  "id": "vis-v>",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "vj>"
+ },
+ {
+  "id": "vis-vjrX",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "vjrX"
+ },
+ {
+  "id": "vis-VrX",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "VrX"
+ },
+ {
+  "id": "vis-v-to-V",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "vlVd"
+ },
+ {
+  "id": "vis-V-to-v",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "VjvlyP"
+ },
+ {
+  "id": "vis-v-Esc-gv-V",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "vl<Esc>gvVd"
+ },
+ {
+  "id": "vis-vjU-undo",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "vjUu"
+ },
+ {
+  "id": "vis-vjU-dot",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "vlUj."
+ },
+ {
+  "id": "vis-vlx-gv",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "vlxgvd"
+ },
+ {
+  "id": "vis-Vjy-gv",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "VjyGgvd"
+ },
+ {
+  "id": "vis-vc-gv",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "vlcX<Esc>gvd"
+ },
+ {
+  "id": "vis-reg-yank",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "v\"ayjP\"ap"
+ },
+ {
+  "id": "num-inc",
+  "text": "y = 10\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-a>"
+ },
+ {
+  "id": "num-dec",
+  "text": "y = 10\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-x>"
+ },
+ {
+  "id": "num-inc5",
+  "text": "y = 10\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "5<C-a>"
+ },
+ {
+  "id": "num-dec15",
+  "text": "y = 10\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "15<C-x>"
+ },
+ {
+  "id": "num-neg-inc",
+  "text": "x = -3\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-a>"
+ },
+ {
+  "id": "num-neg-dec",
+  "text": "x = -3\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-x>"
+ },
+ {
+  "id": "num-neg-5",
+  "text": "x = -3\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "5<C-a>"
+ },
+ {
+  "id": "num-neg-to-pos",
+  "text": "x = -3\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3<C-a>"
+ },
+ {
+  "id": "num-zero-dec",
+  "text": "x = 0\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-x>"
+ },
+ {
+  "id": "num-hex-inc",
+  "text": "a = 0x0f\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-a>"
+ },
+ {
+  "id": "num-hex-dec",
+  "text": "a = 0x0f\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-x>"
+ },
+ {
+  "id": "num-hex-upper",
+  "text": "a = 0x0F\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-a>"
+ },
+ {
+  "id": "num-hex-upper-letters",
+  "text": "a = 0xAF\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-a>"
+ },
+ {
+  "id": "num-hex-lower-letters",
+  "text": "a = 0xaf\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-a>"
+ },
+ {
+  "id": "num-hex-grow",
+  "text": "a = 0xff\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-a>"
+ },
+ {
+  "id": "num-hex-upper-to-letters",
+  "text": "a = 0X09\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-a>"
+ },
+ {
+  "id": "num-hex-cursor-on-x",
+  "text": "a = 0x0f\n",
+  "cursor": [
+   0,
+   5
+  ],
+  "keys": "<C-a>"
+ },
+ {
+  "id": "num-bin-inc",
+  "text": "a = 0b101\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-a>"
+ },
+ {
+  "id": "num-bin-dec",
+  "text": "a = 0b100\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-x>"
+ },
+ {
+  "id": "num-bin-grow",
+  "text": "a = 0b111\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-a>"
+ },
+ {
+  "id": "num-octalish",
+  "text": "a = 007\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-a>"
+ },
+ {
+  "id": "num-octalish-9",
+  "text": "a = 009\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-a>"
+ },
+ {
+  "id": "num-lead-zero-grow",
+  "text": "a = 099\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-a>"
+ },
+ {
+  "id": "num-lead-zero-dec",
+  "text": "a = 010\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-x>"
+ },
+ {
+  "id": "num-lead-zero-dec-to-zero",
+  "text": "a = 001\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-x>"
+ },
+ {
+  "id": "num-lead-zero-neg",
+  "text": "a = 000\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-x>"
+ },
+ {
+  "id": "num-none",
+  "text": "hello world\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-a>"
+ },
+ {
+  "id": "num-none-dec",
+  "text": "hello world\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-x>"
+ },
+ {
+  "id": "num-number-before-cursor",
+  "text": "10 abc\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "<C-a>"
+ },
+ {
+  "id": "num-cursor-mid",
+  "text": "x = 123\n",
+  "cursor": [
+   0,
+   5
+  ],
+  "keys": "<C-a>"
+ },
+ {
+  "id": "num-cursor-end",
+  "text": "x = 123\n",
+  "cursor": [
+   0,
+   6
+  ],
+  "keys": "<C-a>"
+ },
+ {
+  "id": "num-cursor-on-minus",
+  "text": "x = -3\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "<C-a>"
+ },
+ {
+  "id": "num-grow",
+  "text": "x = 9\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-a>"
+ },
+ {
+  "id": "num-shrink",
+  "text": "x = 10\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-x>"
+ },
+ {
+  "id": "num-second",
+  "text": "a1 b22 c3\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "<C-a>"
+ },
+ {
+  "id": "num-first-after-cursor",
+  "text": "a1 b22 c3\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "<C-a>"
+ },
+ {
+  "id": "num-word-minus",
+  "text": "foo-3\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-a>"
+ },
+ {
+  "id": "num-word-minus-2",
+  "text": "a = b-3\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-a>"
+ },
+ {
+  "id": "num-space-minus",
+  "text": "a - 3\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-a>"
+ },
+ {
+  "id": "num-two-lines",
+  "text": "x1\nx2\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-a>j<C-a>"
+ },
+ {
+  "id": "num-last-line",
+  "text": "x1\nx2\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "<C-a>"
+ },
+ {
+  "id": "num-dot",
+  "text": "y = 10\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3<C-a>."
+ },
+ {
+  "id": "num-dot-dec",
+  "text": "y = 10\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3<C-x>."
+ },
+ {
+  "id": "num-dot-count",
+  "text": "y = 10\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3<C-a>5."
+ },
+ {
+  "id": "num-dot-twice",
+  "text": "y = 10\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3<C-a>.."
+ },
+ {
+  "id": "num-dot-other-line",
+  "text": "a1\nb2\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3<C-a>j."
+ },
+ {
+  "id": "num-undo",
+  "text": "y = 10\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3<C-a>u"
+ },
+ {
+  "id": "num-undo-redo",
+  "text": "y = 10\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3<C-a>u<C-r>"
+ },
+ {
+  "id": "num-big",
+  "text": "n = 99999999999\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-a>"
+ },
+ {
+  "id": "num-reg",
+  "text": "y = 10\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"ayiw5<C-a>\"ap"
+ },
+ {
+  "id": "num-macro",
+  "text": "y = 1\ny = 1\ny = 1\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qa<C-a>jq2@a"
+ },
+ {
+  "id": "num-after-op",
+  "text": "y = 10\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "dw<C-a>"
+ },
+ {
+  "id": "num-count-0",
+  "text": "y = 10\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<C-a><C-a>u"
+ },
+ {
+  "id": "cnt-3rx",
+  "text": "abcdef\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3rx"
+ },
+ {
+  "id": "cnt-3rx-exact",
+  "text": "abcdef\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "3rx"
+ },
+ {
+  "id": "cnt-3rx-fewer",
+  "text": "abcdef\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "3rx"
+ },
+ {
+  "id": "cnt-5rx-fewer",
+  "text": "abc\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "5rx"
+ },
+ {
+  "id": "cnt-2r-then-dot",
+  "text": "abcdefgh\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "2rx.l."
+ },
+ {
+  "id": "cnt-2r-dot-count",
+  "text": "abcdefgh\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "2rx3."
+ },
+ {
+  "id": "cnt-3r-undo",
+  "text": "abcdef\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3rxu"
+ },
+ {
+  "id": "cnt-r-cr",
+  "text": "abcdef\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "1r<CR>"
+ },
+ {
+  "id": "cnt-5i",
+  "text": "foo\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "5i-<Esc>"
+ },
+ {
+  "id": "cnt-3ab",
+  "text": "foo\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3ab<Esc>"
+ },
+ {
+  "id": "cnt-3a-end",
+  "text": "foo\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "3ab<Esc>"
+ },
+ {
+  "id": "cnt-2oX",
+  "text": "foo\nbar\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "2oX<Esc>"
+ },
+ {
+  "id": "cnt-3Ox",
+  "text": "foo\nbar\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "3Ox<Esc>"
+ },
+ {
+  "id": "cnt-2Ihi",
+  "text": "  foo\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "2Ihi<Esc>"
+ },
+ {
+  "id": "cnt-3Ahi",
+  "text": "foo\nbar\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3Ahi<Esc>"
+ },
+ {
+  "id": "cnt-3i-undo",
+  "text": "foo\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3ix<Esc>u"
+ },
+ {
+  "id": "cnt-3i-undo-redo",
+  "text": "foo\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3ix<Esc>u<C-r>"
+ },
+ {
+  "id": "cnt-3a-undo",
+  "text": "foo\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3ab<Esc>u"
+ },
+ {
+  "id": "cnt-2oX-undo",
+  "text": "foo\nbar\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "2oX<Esc>u"
+ },
+ {
+  "id": "cnt-3i-dot",
+  "text": "foo bar\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "2ix<Esc>w."
+ },
+ {
+  "id": "cnt-3i-dot-count",
+  "text": "foo bar\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "2ix<Esc>w5."
+ },
+ {
+  "id": "cnt-2i-multiline",
+  "text": "foo\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "2ia<CR>b<Esc>"
+ },
+ {
+  "id": "cnt-2o-dot",
+  "text": "foo\nbar\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "2oX<Esc>j."
+ },
+ {
+  "id": "cnt-1i",
+  "text": "foo\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "1ix<Esc>"
+ },
+ {
+  "id": "cnt-2i-bs",
+  "text": "foo\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "2iab<BS>c<Esc>"
+ },
+ {
+  "id": "cnt-2i-empty",
+  "text": "foo\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "2i<Esc>"
+ },
+ {
+  "id": "cnt-2i-esc-cursor",
+  "text": "foo bar\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "2iab<Esc>"
+ },
+ {
+  "id": "cnt-2a-reg",
+  "text": "foo\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "2ab<Esc>p"
+ },
+ {
+  "id": "cnt-2s",
+  "text": "abcdef\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "2sX<Esc>"
+ },
+ {
+  "id": "cnt-3i-macro",
+  "text": "foo\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qa2ix<Esc>q@a"
+ },
+ {
+  "id": "cnt-3i-esc-esc",
+  "text": "foo\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3ix<Esc><Esc>"
+ },
+ {
+  "id": "cnt-2I-undo",
+  "text": "  foo\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "2Ix<Esc>u"
+ },
+ {
+  "id": "cnt-2fz",
+  "text": "a,b,c\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "2f,"
+ },
+ {
+  "id": "cnt-2fz-few",
+  "text": "a,b,c\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3f,"
+ },
+ {
+  "id": "cnt-2tz-few",
+  "text": "a,b,c\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3t,"
+ },
+ {
+  "id": "cnt-2Fz-few",
+  "text": "a,b,c\n",
+  "cursor": [
+   0,
+   5
+  ],
+  "keys": "3F,"
+ },
+ {
+  "id": "cnt-2Tz-few",
+  "text": "a,b,c\n",
+  "cursor": [
+   0,
+   5
+  ],
+  "keys": "3T,"
+ },
+ {
+  "id": "cnt-2Fz",
+  "text": "a,b,c\n",
+  "cursor": [
+   0,
+   5
+  ],
+  "keys": "2F,"
+ },
+ {
+  "id": "cnt-2Tz",
+  "text": "a,b,c\n",
+  "cursor": [
+   0,
+   5
+  ],
+  "keys": "2T,"
+ },
+ {
+  "id": "cnt-2tz",
+  "text": "a,b,c\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "2t,"
+ },
+ {
+  "id": "cnt-d3f-few",
+  "text": "a,b,c\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "d3f,"
+ },
+ {
+  "id": "cnt-d3t-few",
+  "text": "a,b,c\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "d3t,"
+ },
+ {
+  "id": "cnt-d3F-few",
+  "text": "a,b,c\n",
+  "cursor": [
+   0,
+   5
+  ],
+  "keys": "d3F,"
+ },
+ {
+  "id": "cnt-d3T-few",
+  "text": "a,b,c\n",
+  "cursor": [
+   0,
+   5
+  ],
+  "keys": "d3T,"
+ },
+ {
+  "id": "cnt-d2f",
+  "text": "a,b,c\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "d2f,"
+ },
+ {
+  "id": "cnt-c3f-few",
+  "text": "a,b,c\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "c3f,X<Esc>"
+ },
+ {
+  "id": "cnt-y3f-few",
+  "text": "a,b,c\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "y3f,P"
+ },
+ {
+  "id": "cnt-d3f-few-then-x",
+  "text": "a,b,c\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "d3f,x"
+ },
+ {
+  "id": "cnt-v3f-few",
+  "text": "a,b,c\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "v3f,d"
+ },
+ {
+  "id": "cnt-v2f",
+  "text": "a,b,c\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "v2f,d"
+ },
+ {
+  "id": "cnt-semi-few",
+  "text": "a,b,c\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "f,;;"
+ },
+ {
+  "id": "cnt-3semi",
+  "text": "a,b,c,d,e\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "f,3;"
+ },
+ {
+  "id": "cnt-3semi-few",
+  "text": "a,b,c\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "f,3;"
+ },
+ {
+  "id": "cnt-dsemi-few",
+  "text": "a,b,c\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "f,d5;"
+ },
+ {
+  "id": "cnt-3comma-few",
+  "text": "a,b,c\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "$F,5,"
+ },
+ {
+  "id": "cnt-d3f-nomatch",
+  "text": "abc\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "d3fz"
+ },
+ {
+  "id": "vis-gv-swap",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "Vjyggvgvd"
+ },
+ {
+  "id": "vis-vr-esc",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "vlr<Esc>d"
+ },
+ {
+  "id": "vis-vjd-undo",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "vjdu"
+ },
+ {
+  "id": "vis-Vjd-undo",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   1,
+   2
+  ],
+  "keys": "Vkdu"
+ },
+ {
+  "id": "vis-vjc-undo",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "vjcX<Esc>u"
+ },
+ {
+  "id": "vis-vjrX-undo",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "vjrXu"
+ },
+ {
+  "id": "vis-Vjy-cursor",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   1,
+   3
+  ],
+  "keys": "Vky"
+ },
+ {
+  "id": "vis-vjy-cursor",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   1,
+   3
+  ],
+  "keys": "vky"
+ },
+ {
+  "id": "vis-vjy-P-multiline",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "vjyP"
+ },
+ {
+  "id": "vis-yy-P-multiline",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "vjy$p"
+ },
+ {
+  "id": "vis-j-last",
+  "text": "a\nbcd\n",
+  "cursor": [
+   1,
+   2
+  ],
+  "keys": "jx"
+ },
+ {
+  "id": "vis-k-first",
+  "text": "abcd\nb\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "kx"
+ },
+ {
+  "id": "vis-v-j-last",
+  "text": "a\nbcd\n",
+  "cursor": [
+   1,
+   2
+  ],
+  "keys": "vjd"
+ },
+ {
+  "id": "vis-r-cr-indent",
+  "text": "  abcdef\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "r<CR>"
+ },
+ {
+  "id": "vis-3r-cr",
+  "text": "abcdef\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "3r<CR>"
+ },
+ {
+  "id": "vis-r-esc",
+  "text": "abcdef\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "r<Esc>x"
+ },
+ {
+  "id": "vis-3r-esc",
+  "text": "abcdef\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "3r<Esc>x"
+ },
+ {
+  "id": "vis-V-U-indent",
+  "text": "  abc\n  def\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "VjU"
+ },
+ {
+  "id": "vis-gv-esc-cursor",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "vjo<Esc>gv<Esc>"
+ },
+ {
+  "id": "vis-o-V",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "VjoU"
+ },
+ {
+  "id": "vis-v-o-r",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "vlorX"
+ },
+ {
+  "id": "vis-ctrl-v-noop",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "<C-v>x"
+ },
+ {
+  "id": "vis-Vy-single",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "Vy"
+ },
+ {
+  "id": "vis-VjU-undo",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "VjUu"
+ },
+ {
+  "id": "vis-Vkd-undo",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   1,
+   3
+  ],
+  "keys": "Vkdu"
+ },
+ {
+  "id": "vis-VjJ-undo",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "VjJu"
+ },
+ {
+  "id": "vis-Vj>-undo",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "Vj>u"
+ },
+ {
+  "id": "vis-vjJ-undo",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "vjJu"
+ },
+ {
+  "id": "vis-vkU-undo",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   1,
+   3
+  ],
+  "keys": "vkUu"
+ },
+ {
+  "id": "vis-Vjd-undo2",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "Vjdu"
+ },
+ {
+  "id": "vis-vj~-undo-redo",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "vj~u<C-r>"
+ },
+ {
+  "id": "vis-vlx-undo",
+  "text": "alpha beta\ngamma delta\nzeta eta\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "vlxu"
+ },
+ {
+  "id": "cnt-t-semi",
+  "text": "a,b,c,d,e\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "t,;"
+ },
+ {
+  "id": "cnt-T-semi",
+  "text": "a,b,c,d,e\n",
+  "cursor": [
+   0,
+   8
+  ],
+  "keys": "T,;"
+ },
+ {
+  "id": "cnt-t-semi-d",
+  "text": "a,b,c,d,e\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "t,d;"
+ },
+ {
+  "id": "cnt-t-semi-2",
+  "text": "a,b,c,d,e\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "t,2;"
+ },
+ {
+  "id": "cnt-t-comma",
+  "text": "a,b,c,d,e\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "t,;;,"
+ },
+ {
+  "id": "cnt-T-comma",
+  "text": "a,b,c,d,e\n",
+  "cursor": [
+   0,
+   8
+  ],
+  "keys": "T,;;,"
+ },
+ {
+  "id": "cnt-t-semi-far",
+  "text": "ab,cd,ef,gh\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "t,;"
+ },
+ {
+  "id": "cnt-T-comma-d",
+  "text": "a,b,c,d,e\n",
+  "cursor": [
+   0,
+   8
+  ],
+  "keys": "T,d,"
+ },
+ {
+  "id": "cnt-r-cr-ws",
+  "text": "ab  cd\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "r<CR>"
+ },
+ {
+  "id": "cnt-r-cr-empty",
+  "text": "    foo\n",
+  "cursor": [
+   0,
+   6
+  ],
+  "keys": "r<CR>"
+ },
+ {
+  "id": "cnt-3i-left",
+  "text": "foo\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3ia<Left>b<Esc>"
+ },
+ {
+  "id": "cnt-3i-end",
+  "text": "foo\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3ia<End>b<Esc>"
+ },
+ {
+  "id": "mark-d-quote",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "majjd'a"
+ },
+ {
+  "id": "mark-d-backtick",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "majjlld`a"
+ },
+ {
+  "id": "mark-y-quote-P",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "majjy'aP"
+ },
+ {
+  "id": "mark-k-quote",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   2,
+   6
+  ],
+  "keys": "mak'a"
+ },
+ {
+  "id": "mark-x-backtick",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   1,
+   7
+  ],
+  "keys": "ma3jx`a"
+ },
+ {
+  "id": "mark-quote-quote",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "majj''"
+ },
+ {
+  "id": "mark-backtick-backtick",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "majj``"
+ },
+ {
+  "id": "mark-O-moved",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   2,
+   6
+  ],
+  "keys": "maggOnew<Esc>j'a"
+ },
+ {
+  "id": "mark-O-moved-backtick",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   2,
+   6
+  ],
+  "keys": "maggOnew<Esc>j`a"
+ },
+ {
+  "id": "mark-dd-deleted",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   2,
+   6
+  ],
+  "keys": "madd'a"
+ },
+ {
+  "id": "mark-dd-above",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   3,
+   6
+  ],
+  "keys": "makkdd'a"
+ },
+ {
+  "id": "mark-dd-above-backtick",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   3,
+   6
+  ],
+  "keys": "makkdd`a"
+ },
+ {
+  "id": "mark-G-quote-quote",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "G''"
+ },
+ {
+  "id": "mark-G-backtick-twice",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "G````"
+ },
+ {
+  "id": "mark-gg-quote-quote",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   5,
+   6
+  ],
+  "keys": "gg''"
+ },
+ {
+  "id": "mark-3G-backtick",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "3G``"
+ },
+ {
+  "id": "mark-brace-quote",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "}''"
+ },
+ {
+  "id": "mark-percent-quote",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   7,
+   7
+  ],
+  "keys": "%``"
+ },
+ {
+  "id": "mark-unset",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   2,
+   6
+  ],
+  "keys": "'z"
+ },
+ {
+  "id": "mark-unset-op",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   2,
+   6
+  ],
+  "keys": "d'z"
+ },
+ {
+  "id": "mark-fresh-quote-quote",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   3,
+   6
+  ],
+  "keys": "''"
+ },
+ {
+  "id": "mark-shorter-line",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   3,
+   10
+  ],
+  "keys": "ma0d$ix<Esc>gg`a"
+ },
+ {
+  "id": "mark-J-below",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   3,
+   6
+  ],
+  "keys": "makJ`a"
+ },
+ {
+  "id": "mark-u-restores",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   3,
+   6
+  ],
+  "keys": "maggdd`au`a"
+ },
+ {
+  "id": "mark-c-quote",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "majjc'anew<Esc>"
+ },
+ {
+  "id": "mark-V-lt-backtick",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "Vj<Esc>gg`<"
+ },
+ {
+  "id": "mark-V-gt-backtick",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "Vj<Esc>gg`>"
+ },
+ {
+  "id": "mark-V-gt-quote",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "Vj<Esc>gg'>"
+ },
+ {
+  "id": "mark-V-lt-quote",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "Vj<Esc>G'<"
+ },
+ {
+  "id": "mark-Vk-gt-backtick",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   3,
+   6
+  ],
+  "keys": "Vk<Esc>gg`>"
+ },
+ {
+  "id": "mark-Vk-lt-backtick",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   3,
+   6
+  ],
+  "keys": "Vk<Esc>gg`<"
+ },
+ {
+  "id": "mark-v-gt-backtick",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "vjl<Esc>gg`>"
+ },
+ {
+  "id": "mark-v-lt-backtick",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "vjl<Esc>gg`<"
+ },
+ {
+  "id": "mark-vk-lt-backtick",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   3,
+   6
+  ],
+  "keys": "vkh<Esc>gg`<"
+ },
+ {
+  "id": "mark-V-lt-after-O",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   2,
+   6
+  ],
+  "keys": "Vj<Esc>ggOnew<Esc>`<"
+ },
+ {
+  "id": "mark-V-d-lt",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   2,
+   6
+  ],
+  "keys": "Vjd`<"
+ },
+ {
+  "id": "mark-gv-after-O",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   2,
+   6
+  ],
+  "keys": "Vj<Esc>ggOnew<Esc>gvd"
+ },
+ {
+  "id": "mark-gv-after-dd",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   3,
+   6
+  ],
+  "keys": "vj<Esc>ggddgvd"
+ },
+ {
+  "id": "mark-gv-after-2O",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   2,
+   6
+  ],
+  "keys": "vjl<Esc>ggOa<CR>b<Esc>gvd"
+ },
+ {
+  "id": "mark-macro-jump",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "qqGqgg@q``"
+ },
+ {
+  "id": "mark-dot-jump",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   3,
+   6
+  ],
+  "keys": "d}uggj.``"
+ },
+ {
+  "id": "mark-x-same-line",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   3,
+   9
+  ],
+  "keys": "ma0x`a"
+ },
+ {
+  "id": "mark-split-same-line",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   3,
+   9
+  ],
+  "keys": "ma0fzi<CR><Esc>`a"
+ },
+ {
+  "id": "mark-split-above",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   3,
+   9
+  ],
+  "keys": "mak$i<CR><Esc>`a"
+ },
+ {
+  "id": "mark-dj-deleted",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   3,
+   9
+  ],
+  "keys": "makdj`a"
+ },
+ {
+  "id": "mark-G-on-last-line",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   7,
+   6
+  ],
+  "keys": "G``"
+ },
+ {
+  "id": "mark-dd-last-line",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   7,
+   3
+  ],
+  "keys": "makdd'a"
+ },
+ {
+  "id": "mark-p-below",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   3,
+   6
+  ],
+  "keys": "makyyp`a"
+ },
+ {
+  "id": "mark-visual-jump",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "majjv`ad"
+ },
+ {
+  "id": "mark-V-quote-op",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   3,
+   6
+  ],
+  "keys": "makkV'ad"
+ },
+ {
+  "id": "mark-O-indented",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   3,
+   6
+  ],
+  "keys": "makOnew<Esc>`a"
+ },
+ {
+  "id": "mark-o-indented",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   3,
+   6
+  ],
+  "keys": "makonew<Esc>`a"
+ },
+ {
+  "id": "mark-insert-cr-col0",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   7,
+   9
+  ],
+  "keys": "ma0i<CR><Esc>`a"
+ },
+ {
+  "id": "mark-insert-bs-join",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   3,
+   9
+  ],
+  "keys": "ma0i<BS><Esc>`a"
+ },
+ {
+  "id": "mark-P-indented",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   3,
+   6
+  ],
+  "keys": "makyyjP`a"
+ },
+ {
+  "id": "mark-y-G-no-move",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "y4G``"
+ },
+ {
+  "id": "mark-y-backtick-moves",
+  "text": "def f(a, b):\n    x = 1\n    y = 22\n    z = 333\n    w = 4\n    return x\n\nprint(f(1, 2))\n",
+  "cursor": [
+   2,
+   6
+  ],
+  "keys": "majjy`a``"
+ },
+ {
+  "id": "search-fwd",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "/return<CR>"
+ },
+ {
+  "id": "search-bwd",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   5,
+   0
+  ],
+  "keys": "?a<CR>"
+ },
+ {
+  "id": "search-wrap-fwd",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   4,
+   0
+  ],
+  "keys": "/def<CR>"
+ },
+ {
+  "id": "search-wrap-bwd",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "?z<CR>"
+ },
+ {
+  "id": "search-n",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "/a<CR>nn"
+ },
+ {
+  "id": "search-N",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "/a<CR>nnN"
+ },
+ {
+  "id": "search-q-n",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   5,
+   0
+  ],
+  "keys": "?b<CR>n"
+ },
+ {
+  "id": "search-q-N",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   5,
+   0
+  ],
+  "keys": "?b<CR>N"
+ },
+ {
+  "id": "search-count",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3/b<CR>"
+ },
+ {
+  "id": "search-count-n",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "/=<CR>2n"
+ },
+ {
+  "id": "search-regex-class",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "/[0-9]<CR>"
+ },
+ {
+  "id": "search-regex-plus",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "/a.*b<CR>"
+ },
+ {
+  "id": "search-dollar",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "/$<CR>"
+ },
+ {
+  "id": "search-dollar-n",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "/$<CR>n"
+ },
+ {
+  "id": "search-caret",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "/^<CR>"
+ },
+ {
+  "id": "search-caret-empty-line",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   2,
+   0
+  ],
+  "keys": "/^$<CR>"
+ },
+ {
+  "id": "search-overlap",
+  "text": "aaaa\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "/aa<CR>"
+ },
+ {
+  "id": "search-overlap-bwd",
+  "text": "aaaa\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "?aa<CR>"
+ },
+ {
+  "id": "search-overlap-n",
+  "text": "xaaaaa\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "/aa<CR>n"
+ },
+ {
+  "id": "search-esc-restores",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "/return<Esc>"
+ },
+ {
+  "id": "search-bs-cancels",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "/r<BS><BS>x"
+ },
+ {
+  "id": "search-empty-reuses",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "/b<CR>/<CR>"
+ },
+ {
+  "id": "search-empty-q-reuses",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "/b<CR>/<CR>?<CR>"
+ },
+ {
+  "id": "search-not-found",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   1,
+   2
+  ],
+  "keys": "/zzz<CR>"
+ },
+ {
+  "id": "search-not-found-op",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   1,
+   2
+  ],
+  "keys": "d/zzz<CR>x"
+ },
+ {
+  "id": "search-d",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   1,
+   4
+  ],
+  "keys": "d/there<CR>"
+ },
+ {
+  "id": "search-d-col0",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "d/y<CR>"
+ },
+ {
+  "id": "search-d-col0-mid",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "d/y<CR>"
+ },
+ {
+  "id": "search-d-bwd",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   2,
+   11
+  ],
+  "keys": "d?x<CR>"
+ },
+ {
+  "id": "search-c",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   1,
+   4
+  ],
+  "keys": "c/hi<CR>y = <Esc>"
+ },
+ {
+  "id": "search-y-p",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   1,
+   4
+  ],
+  "keys": "y/=<CR>P"
+ },
+ {
+  "id": "search-d-count",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "d2/a<CR>"
+ },
+ {
+  "id": "search-2d-count",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "2d/a<CR>"
+ },
+ {
+  "id": "search-d-dot",
+  "text": "one x two x three x\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "d/x<CR>w."
+ },
+ {
+  "id": "search-d-dot-count",
+  "text": "a x b x c x d x\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "d/x<CR>2."
+ },
+ {
+  "id": "search-d-undo",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   1,
+   4
+  ],
+  "keys": "d/there<CR>u"
+ },
+ {
+  "id": "search-macro",
+  "text": "a x b x c x d x\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qqd/x<CR>lq@q"
+ },
+ {
+  "id": "search-macro-count",
+  "text": "a x b x c x d x e\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qqd/x<CR>lq2@q"
+ },
+ {
+  "id": "search-macro-n",
+  "text": "a x b x c x d x\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "/x<CR>qqnrYq@q"
+ },
+ {
+  "id": "search-v",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   1,
+   4
+  ],
+  "keys": "v/there<CR>d"
+ },
+ {
+  "id": "search-V",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "V/y<CR>d"
+ },
+ {
+  "id": "search-v-n",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "v/a<CR>nd"
+ },
+ {
+  "id": "search-jump-mark",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   1,
+   4
+  ],
+  "keys": "/z<CR>''"
+ },
+ {
+  "id": "search-jump-backtick",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "/z<CR>``"
+ },
+ {
+  "id": "search-q-jump-mark",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   1,
+   6
+  ],
+  "keys": "?def<CR>``"
+ },
+ {
+  "id": "search-n-jump-mark",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "/a<CR>jjn``"
+ },
+ {
+  "id": "search-star-jump-mark",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   6
+  ],
+  "keys": "*``"
+ },
+ {
+  "id": "search-notfound-keeps-mark",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "G/zzz<CR>''"
+ },
+ {
+  "id": "search-star",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   6
+  ],
+  "keys": "*"
+ },
+ {
+  "id": "search-star-n",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   6
+  ],
+  "keys": "*n"
+ },
+ {
+  "id": "search-star-mid-word",
+  "text": "foo bar foo x foo\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "*"
+ },
+ {
+  "id": "search-star-blank",
+  "text": "  foo bar foo\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "*"
+ },
+ {
+  "id": "search-star-whole-word",
+  "text": "foo foobar foo\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "*"
+ },
+ {
+  "id": "search-star-only",
+  "text": "foo bar\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "*"
+ },
+ {
+  "id": "search-star-count",
+  "text": "ab x ab x ab x ab\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "2*"
+ },
+ {
+  "id": "search-hash",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   2,
+   12
+  ],
+  "keys": "#"
+ },
+ {
+  "id": "search-hash-mid-word",
+  "text": "foo bar foo x foo\n",
+  "cursor": [
+   0,
+   15
+  ],
+  "keys": "#"
+ },
+ {
+  "id": "search-hash-n",
+  "text": "foo bar foo x foo\n",
+  "cursor": [
+   0,
+   15
+  ],
+  "keys": "#n"
+ },
+ {
+  "id": "search-hash-N",
+  "text": "foo bar foo x foo\n",
+  "cursor": [
+   0,
+   15
+  ],
+  "keys": "#N"
+ },
+ {
+  "id": "search-star-metachar",
+  "text": "a.b axb a.b\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "*"
+ },
+ {
+  "id": "search-d-star",
+  "text": "foo bar foo\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "d*"
+ },
+ {
+  "id": "search-d-star-mid",
+  "text": "foo bar foo\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "d*"
+ },
+ {
+  "id": "search-d-hash",
+  "text": "foo bar foo\n",
+  "cursor": [
+   0,
+   9
+  ],
+  "keys": "d#"
+ },
+ {
+  "id": "search-dn",
+  "text": "def f(a, b):\n    x = \"hi there\"\n    return (a + b) * 2\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "/a<CR>dn"
+ },
+ {
+  "id": "search-tabs",
+  "text": "\tab x\n\t\tx y\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "/x<CR>n"
+ },
+ {
+  "id": "search-empty-buffer",
+  "text": "",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "/x<CR>"
+ },
+ {
+  "id": "search-f-slash",
+  "text": "a/b/c\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "f/;"
+ },
+ {
+  "id": "search-literal-slash",
+  "text": "a/b/c\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "/c<CR>"
+ },
+ {
+  "id": "search-star-nonblank",
+  "text": "  }  \nx } y\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "*"
+ },
+ {
+  "id": "search-star-nonblank-n",
+  "text": "  }  \nx } y\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "*n"
+ },
+ {
+  "id": "search-star-nonblank-dots",
+  "text": "  ..  \nx .. y\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "*"
+ },
+ {
+  "id": "search-hash-nonblank",
+  "text": "x } y\n  }  \n",
+  "cursor": [
+   1,
+   2
+  ],
+  "keys": "#"
+ },
+ {
+  "id": "search-hash-nonblank-n",
+  "text": "} x } y }\n",
+  "cursor": [
+   0,
+   8
+  ],
+  "keys": "#n"
+ },
+ {
+  "id": "search-star-keyword-after-wins",
+  "text": "a .. b ..\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "*"
+ },
+ {
+  "id": "search-star-nonblank-class",
+  "text": "q ab.. ..\nab.. ..\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "*"
+ },
+ {
+  "id": "search-hash-nonblank-class",
+  "text": "q ab.. ..\nab.. ..\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "#"
+ },
+ {
+  "id": "search-star-nonblank-run",
+  "text": "x }} } }}\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "*"
+ },
+ {
+  "id": "search-star-blank-rest",
+  "text": "  ..  \n",
+  "cursor": [
+   0,
+   5
+  ],
+  "keys": "*"
+ },
+ {
+  "id": "search-d-star-nonblank",
+  "text": "a } b } c\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "d*"
+ },
+ {
+  "id": "search-dot-resolved-pattern",
+  "text": "a x b y c x d y\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "/x<CR>0d/<Up><CR>/y<CR>."
+ },
+ {
+  "id": "ex-d-range",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":2,3d<CR>"
+ },
+ {
+  "id": "ex-d-last-lines",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   1,
+   3
+  ],
+  "keys": ":4,5d<CR>"
+ },
+ {
+  "id": "ex-d-then-p",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":2,3d<CR>p"
+ },
+ {
+  "id": "ex-d-register",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":2d a<CR>\"ap"
+ },
+ {
+  "id": "ex-d-count",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":2d 2<CR>"
+ },
+ {
+  "id": "ex-d-all",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   2,
+   1
+  ],
+  "keys": ":%d<CR>"
+ },
+ {
+  "id": "ex-d-dot-repeats-normal",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "x:3d<CR>."
+ },
+ {
+  "id": "ex-d-undo",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":2,3d<CR>u"
+ },
+ {
+  "id": "ex-d-marks",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "jmajjmb:'a,'bd<CR>"
+ },
+ {
+  "id": "ex-d-mark-below",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "4Gmegg:2d<CR>'e"
+ },
+ {
+  "id": "ex-d-out-of-range",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":9d<CR>"
+ },
+ {
+  "id": "ex-d-visual",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "jVj:d<CR>"
+ },
+ {
+  "id": "ex-d-visual-charwise",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "jvjl:d<CR>"
+ },
+ {
+  "id": "ex-y-cursor",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   3,
+   3
+  ],
+  "keys": ":2y<CR>"
+ },
+ {
+  "id": "ex-y-register",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":2y a<CR>\"ap"
+ },
+ {
+  "id": "ex-y-then-P",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   1,
+   3
+  ],
+  "keys": ":.,$-1y<CR>P"
+ },
+ {
+  "id": "ex-y-zero-register",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":2y<CR>dd\"0p"
+ },
+ {
+  "id": "ex-m-end",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":1,2m$<CR>"
+ },
+ {
+  "id": "ex-m-top",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":4m0<CR>"
+ },
+ {
+  "id": "ex-m-noop",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   1,
+   3
+  ],
+  "keys": ":2,3m3<CR>"
+ },
+ {
+  "id": "ex-m-down",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   1,
+   3
+  ],
+  "keys": ":2,3m4<CR>"
+ },
+ {
+  "id": "ex-m-into-itself",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   1,
+   3
+  ],
+  "keys": ":2,4m3<CR>"
+ },
+ {
+  "id": "ex-m-mark-follows",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "ma:1m$<CR>gg'a"
+ },
+ {
+  "id": "ex-m-marks-range",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "jmajmb:'a,'bm0<CR>G'b"
+ },
+ {
+  "id": "ex-m-undo",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":1,2m$<CR>u"
+ },
+ {
+  "id": "ex-m-undo-redo",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":1,2m$<CR>u<C-r>"
+ },
+ {
+  "id": "ex-t-top",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   2,
+   3
+  ],
+  "keys": ":1t0<CR>"
+ },
+ {
+  "id": "ex-co-end",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   1,
+   3
+  ],
+  "keys": ":co$<CR>"
+ },
+ {
+  "id": "ex-t-range",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":1,2t4<CR>"
+ },
+ {
+  "id": "ex-t-mark",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "jjmagg:1t0<CR>'a"
+ },
+ {
+  "id": "ex-copy-full",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":2copy 3<CR>"
+ },
+ {
+  "id": "ex-t-undo",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   2,
+   3
+  ],
+  "keys": ":1t0<CR>u"
+ },
+ {
+  "id": "ex-normal-all",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   1,
+   3
+  ],
+  "keys": ":%normal A;<CR>"
+ },
+ {
+  "id": "ex-normal-undo",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   1,
+   3
+  ],
+  "keys": ":%normal A;<CR>u"
+ },
+ {
+  "id": "ex-normal-dd-all",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   1,
+   3
+  ],
+  "keys": ":%normal dd<CR>"
+ },
+ {
+  "id": "ex-normal-range",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":2,4norm 0x<CR>"
+ },
+ {
+  "id": "ex-normal-current",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   2,
+   3
+  ],
+  "keys": ":normal 2x<CR>"
+ },
+ {
+  "id": "ex-normal-dj",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":%normal dj<CR>"
+ },
+ {
+  "id": "ex-normal-o",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":1,2normal ox<CR>"
+ },
+ {
+  "id": "ex-normal-dot",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":1normal Ax<CR>j."
+ },
+ {
+  "id": "ex-normal-pending-op",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   1,
+   1
+  ],
+  "keys": ":normal d<CR>x"
+ },
+ {
+  "id": "ex-goto",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   1,
+   3
+  ],
+  "keys": ":5<CR>"
+ },
+ {
+  "id": "ex-goto-relative",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":.+2<CR>"
+ },
+ {
+  "id": "ex-goto-last-minus",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":$-1<CR>"
+ },
+ {
+  "id": "ex-goto-mark",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "jjmagg:'a<CR>"
+ },
+ {
+  "id": "ex-goto-jump-mark",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":4<CR>''"
+ },
+ {
+  "id": "ex-goto-zero",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   3,
+   3
+  ],
+  "keys": ":0<CR>"
+ },
+ {
+  "id": "ex-range-dollar-minus",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":2,$-1d<CR>"
+ },
+ {
+  "id": "ex-range-plus-minus",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   2,
+   3
+  ],
+  "keys": ":.-1,.+1d<CR>"
+ },
+ {
+  "id": "ex-range-comma-default",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   1,
+   3
+  ],
+  "keys": ":,4d<CR>"
+ },
+ {
+  "id": "ex-range-visual-y",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "Vj:y<CR>Gp"
+ },
+ {
+  "id": "ex-count-colon",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   1,
+   3
+  ],
+  "keys": "2:d<CR>"
+ },
+ {
+  "id": "ex-macro",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qq:1m$<CR>q@q"
+ },
+ {
+  "id": "ex-macro-twice",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qq:2d<CR>q2@q"
+ },
+ {
+  "id": "ex-visual-esc",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "vj:<Esc>x"
+ },
+ {
+  "id": "ex-unknown",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":bogus<CR>x"
+ },
+ {
+  "id": "ex-leading-colons",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "::  3d<CR>"
+ },
+ {
+  "id": "ex-delete-full",
+  "text": "def f(a, b):\n    x = 1\n    return x\n\ny = 10\nz = 20\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":2,3delete<CR>"
+ },
+ {
+  "id": "ex-empty-d",
+  "text": "",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":d<CR>"
+ },
+ {
+  "id": "ex-empty-t",
+  "text": "",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":t0<CR>"
+ },
+ {
+  "id": "ex-empty-normal",
+  "text": "",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":normal ix<CR>",
+  "difference": "pre-existing: text typed into an empty buffer gets no final newline (nvim adds one)"
+ },
+ {
+  "id": "ex-noeol-m",
+  "text": "a\nb",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":1m$<CR>"
+ },
+ {
+  "id": "ex-noeol-d-last",
+  "text": "a\nb",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":2d<CR>"
+ },
+ {
+  "id": "ex-visual-line-esc-down",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "jVj:<Esc>x"
+ },
+ {
+  "id": "ex-visual-line-esc-up",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "jjVk:<Esc>x"
+ },
+ {
+  "id": "ex-visual-esc-up",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "jjlvk:<Esc>x"
+ },
+ {
+  "id": "ex-visual-esc-down",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "jjlvkl:<Esc>x"
+ },
+ {
+  "id": "ex-d-end-undo",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   1,
+   3
+  ],
+  "keys": ":4,5d<CR>u"
+ },
+ {
+  "id": "ex-co-end-undo",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   1,
+   3
+  ],
+  "keys": ":1co$<CR>u"
+ },
+ {
+  "id": "ex-m-up-undo",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":4,5m1<CR>u"
+ },
+ {
+  "id": "ex-undo-m-up-r0",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":4,5m1<CR>u"
+ },
+ {
+  "id": "ex-undo-m-up2-r0",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":4,5m2<CR>u"
+ },
+ {
+  "id": "ex-undo-m-down-r0",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":2,3m5<CR>u"
+ },
+ {
+  "id": "ex-undo-m-end-r0",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":2,3m$<CR>u"
+ },
+ {
+  "id": "ex-undo-t-r0",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":5t1<CR>u"
+ },
+ {
+  "id": "ex-undo-m-up-r2",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n",
+  "cursor": [
+   2,
+   3
+  ],
+  "keys": ":4,5m1<CR>u"
+ },
+ {
+  "id": "ex-undo-m-up2-r2",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n",
+  "cursor": [
+   2,
+   3
+  ],
+  "keys": ":4,5m2<CR>u"
+ },
+ {
+  "id": "ex-undo-m-down-r2",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n",
+  "cursor": [
+   2,
+   3
+  ],
+  "keys": ":2,3m5<CR>u"
+ },
+ {
+  "id": "ex-undo-m-end-r2",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n",
+  "cursor": [
+   2,
+   3
+  ],
+  "keys": ":2,3m$<CR>u"
+ },
+ {
+  "id": "ex-undo-t-r2",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n",
+  "cursor": [
+   2,
+   3
+  ],
+  "keys": ":5t1<CR>u"
+ },
+ {
+  "id": "ex-undo-m-up-r4",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n",
+  "cursor": [
+   4,
+   3
+  ],
+  "keys": ":4,5m1<CR>u"
+ },
+ {
+  "id": "ex-undo-m-up2-r4",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n",
+  "cursor": [
+   4,
+   3
+  ],
+  "keys": ":4,5m2<CR>u"
+ },
+ {
+  "id": "ex-undo-m-down-r4",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n",
+  "cursor": [
+   4,
+   3
+  ],
+  "keys": ":2,3m5<CR>u"
+ },
+ {
+  "id": "ex-undo-m-end-r4",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n",
+  "cursor": [
+   4,
+   3
+  ],
+  "keys": ":2,3m$<CR>u"
+ },
+ {
+  "id": "ex-undo-t-r4",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n",
+  "cursor": [
+   4,
+   3
+  ],
+  "keys": ":5t1<CR>u"
+ },
+ {
+  "id": "ex-undo-m-up-r6",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n",
+  "cursor": [
+   6,
+   3
+  ],
+  "keys": ":4,5m1<CR>u"
+ },
+ {
+  "id": "ex-undo-m-up2-r6",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n",
+  "cursor": [
+   6,
+   3
+  ],
+  "keys": ":4,5m2<CR>u"
+ },
+ {
+  "id": "ex-undo-m-down-r6",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n",
+  "cursor": [
+   6,
+   3
+  ],
+  "keys": ":2,3m5<CR>u"
+ },
+ {
+  "id": "ex-undo-m-end-r6",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n",
+  "cursor": [
+   6,
+   3
+  ],
+  "keys": ":2,3m$<CR>u"
+ },
+ {
+  "id": "ex-undo-t-r6",
+  "text": "  a1\n  b2\n  c3\n  d4\n  e5\n  f6\n  g7\n",
+  "cursor": [
+   6,
+   3
+  ],
+  "keys": ":5t1<CR>u"
+ },
+ {
+  "id": "ex-normal-noop-undo",
+  "text": "a\nb\nc\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":normal ddP<CR>u"
+ },
+ {
+  "id": "ex-normal-noop-undo-twice",
+  "text": "a\nb\nc\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "x:normal ddP<CR>u",
+  "difference": "nvim keeps an undo step for a :normal that changes nothing (u then does nothing visible); the engine adds no step, so u undoes the change before it"
+ },
+ {
+  "id": "ex-normal-u",
+  "text": "a\nb\nc\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "x:normal u<CR>"
+ },
+ {
+  "id": "ex-normal-u-redo",
+  "text": "a\nb\nc\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "x:normal u<CR><C-r>"
+ },
+ {
+  "id": "ex-normal-u-then-u",
+  "text": "a\nb\nc\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "xjx:normal u<CR>u"
+ },
+ {
+  "id": "ex-w-range-rejected",
+  "text": "a\nb\nc\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":1,2w<CR>x"
+ },
+ {
+  "id": "subst-first",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   3,
+   1
+  ],
+  "keys": ":%s/x/y/<CR>"
+ },
+ {
+  "id": "subst-g",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   3,
+   1
+  ],
+  "keys": ":%s/x/y/g<CR>"
+ },
+ {
+  "id": "subst-g-undo",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   2,
+   3
+  ],
+  "keys": ":%s/x/y/g<CR>u"
+ },
+ {
+  "id": "subst-range-undo",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   3,
+   3
+  ],
+  "keys": ":2,3s/x/y/g<CR>u"
+ },
+ {
+  "id": "subst-range-undo-on-line",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   2,
+   4
+  ],
+  "keys": ":2,3s/x/y/g<CR>u"
+ },
+ {
+  "id": "subst-range-redo",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   2,
+   4
+  ],
+  "keys": ":2,3s/x/y/g<CR>u<C-r>"
+ },
+ {
+  "id": "subst-i",
+  "text": "  ax bx\n  xc\n  xx x\n  dx\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/X/Y/gi<CR>"
+ },
+ {
+  "id": "subst-gg",
+  "text": "  ax bx\n  xc\n  xx x\n  dx\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":s/x/y/gg<CR>"
+ },
+ {
+  "id": "subst-hash-delim",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":s#x#y#g<CR>"
+ },
+ {
+  "id": "subst-no-trailing-delim",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":s/x/y<CR>"
+ },
+ {
+  "id": "subst-no-replacement",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":s/x<CR>"
+ },
+ {
+  "id": "subst-cr-split",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/x/Q\\rR/g<CR>"
+ },
+ {
+  "id": "subst-cr-split-undo",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/x/Q\\rR/g<CR>u"
+ },
+ {
+  "id": "subst-cr-split-mark",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   2,
+   3
+  ],
+  "keys": "ma:%s/x/Q\\rR/g<CR>gg'a"
+ },
+ {
+  "id": "subst-split-mark-above",
+  "text": "  ax bx\n  xc\n  xx x\n  dx\n",
+  "cursor": [
+   1,
+   3
+  ],
+  "keys": "mb:3s/x/Q\\rR/g<CR>`b"
+ },
+ {
+  "id": "subst-split-mark-on",
+  "text": "  ax bx\n  xc\n  xx x\n  dx\n",
+  "cursor": [
+   2,
+   4
+  ],
+  "keys": "mb:3s/x/Q\\rR/g<CR>`b"
+ },
+ {
+  "id": "subst-split-mark-below",
+  "text": "  ax bx\n  xc\n  xx x\n  dx\n",
+  "cursor": [
+   3,
+   1
+  ],
+  "keys": "mb:3s/x/Q\\rR/g<CR>`b"
+ },
+ {
+  "id": "subst-not-found",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   3,
+   3
+  ],
+  "keys": ":%s/q/y/<CR>"
+ },
+ {
+  "id": "subst-e-flag",
+  "text": "  ax bx\n  xc\n  xx x\n  dx\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/q/Y/ge<CR>"
+ },
+ {
+  "id": "subst-bol",
+  "text": "  ax bx\n  xc\n  xx x\n  dx\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/^/# /<CR>"
+ },
+ {
+  "id": "subst-eol",
+  "text": "  ax bx\n  xc\n  xx x\n  dx\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/$/;/<CR>"
+ },
+ {
+  "id": "subst-x-eol",
+  "text": "  ax bx\n  xc\n  xx x\n  dx\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/x$/E/<CR>"
+ },
+ {
+  "id": "subst-class",
+  "text": "  ax bx\n  xc\n  xx x\n  dx\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/[ab]x/Z/g<CR>"
+ },
+ {
+  "id": "subst-dot",
+  "text": "  ax bx\n  xc\n  xx x\n  dx\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/x.x/Z/g<CR>"
+ },
+ {
+  "id": "subst-visual",
+  "text": "  ax bx\n  xc\n  xx x\n  dx\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "Vj:s/x/y/g<CR>"
+ },
+ {
+  "id": "subst-repeat-drops-flags",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":s/x/y/g<CR>:3<CR>:s<CR>"
+ },
+ {
+  "id": "subst-amp-amp-keeps-flags",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":s/x/y/g<CR>:3<CR>:&&<CR>"
+ },
+ {
+  "id": "subst-amp-flags",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":s/x/y/<CR>:3<CR>:&g<CR>"
+ },
+ {
+  "id": "subst-s-flags",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":s/x/y/<CR>:3<CR>:s g<CR>"
+ },
+ {
+  "id": "subst-percent-amp-amp",
+  "text": "  ax bx\n  xc\n  xx x\n  dx\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":s/x/y/<CR>:%&&<CR>"
+ },
+ {
+  "id": "subst-empty-pattern",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "/b<CR>:s//Z/<CR>"
+ },
+ {
+  "id": "subst-sets-last-search",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   3,
+   3
+  ],
+  "keys": ":%s/x/y/<CR>gg0n"
+ },
+ {
+  "id": "subst-jump-mark",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/x/y/<CR>``"
+ },
+ {
+  "id": "subst-jump-mark-line",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   1,
+   3
+  ],
+  "keys": ":3s/x/y/<CR>``"
+ },
+ {
+  "id": "subst-normal-amp",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":s/x/y/<CR>j&"
+ },
+ {
+  "id": "subst-normal-amp-no-flags",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":s/x/y/g<CR>jj&"
+ },
+ {
+  "id": "subst-normal-amp-count",
+  "text": "  ax bx\n  xc\n  xx x\n  dx\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":s/x/y/<CR>j3&"
+ },
+ {
+  "id": "subst-normal-amp-count-undo",
+  "text": "  ax bx\n  xc\n  xx x\n  dx\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":s/x/y/<CR>j3&u"
+ },
+ {
+  "id": "subst-normal-amp-count-past-end",
+  "text": "  ax bx\n  xc\n  xx x\n  dx\n",
+  "cursor": [
+   2,
+   1
+  ],
+  "keys": ":s/x/y/<CR>3&"
+ },
+ {
+  "id": "subst-normal-amp-not-dot",
+  "text": "  ax bx\n  xc\n  xx x\n  dx\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":s/x/y/<CR>j&j."
+ },
+ {
+  "id": "subst-normal-amp-none",
+  "text": "  ax bx\n  xc\n  xx x\n  dx\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "&"
+ },
+ {
+  "id": "subst-normal-amp-forgets-flags",
+  "text": "xx\nxx\nxx\nxx\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":s/x/y/g<CR>j&j:&&<CR>"
+ },
+ {
+  "id": "subst-g-amp",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":s/x/y/g<CR>jjg&"
+ },
+ {
+  "id": "subst-g-amp-last-search",
+  "text": "  ax bx\n  xc\n  xx x\n  dx\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":s/x/y/<CR>/c<CR>g&"
+ },
+ {
+  "id": "subst-g-amp-after-amp",
+  "text": "xx\nxx\nxx\nxx\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":s/x/y/g<CR>j&jg&"
+ },
+ {
+  "id": "subst-empty-buffer",
+  "text": "",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":%s/a/b/<CR>"
+ },
+ {
+  "id": "subst-empty-buffer-amp",
+  "text": "",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "&"
+ },
+ {
+  "id": "subst-confirm-ynyq",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/x/y/gc<CR>ynyq"
+ },
+ {
+  "id": "subst-confirm-keys-run-out",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/x/y/gc<CR>yn"
+ },
+ {
+  "id": "subst-confirm-all-n",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/x/y/gc<CR>nnnnn"
+ },
+ {
+  "id": "subst-confirm-all-y",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/x/y/gc<CR>yyyyy"
+ },
+ {
+  "id": "subst-confirm-last-y",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/x/y/gc<CR>nnnny"
+ },
+ {
+  "id": "subst-confirm-last-n",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/x/y/gc<CR>yynnn"
+ },
+ {
+  "id": "subst-confirm-last-n-2",
+  "text": "  ax bx\n  xc\n  xx x\n  dx\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/x/y/gc<CR>yyyynyn"
+ },
+ {
+  "id": "subst-confirm-l",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/x/y/gc<CR>nyl"
+ },
+ {
+  "id": "subst-confirm-l-mid-line",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/x/y/gc<CR>nl"
+ },
+ {
+  "id": "subst-confirm-a",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/x/y/gc<CR>na"
+ },
+ {
+  "id": "subst-confirm-a-undo",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/x/y/gc<CR>na<Esc>u"
+ },
+ {
+  "id": "subst-confirm-ignored-key",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/x/y/gc<CR>yzy<Esc>"
+ },
+ {
+  "id": "subst-confirm-ctrl-c",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/x/y/gc<CR>y<C-c>"
+ },
+ {
+  "id": "subst-confirm-undo",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/x/y/gc<CR>yy<Esc>u"
+ },
+ {
+  "id": "subst-confirm-undo-first-row",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": ":%s/x/y/gc<CR>nnyq<Esc>u"
+ },
+ {
+  "id": "subst-confirm-undo-first-row-2",
+  "text": "  ax bx\n  xc\n  xx x\n  dx\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/x/y/gc<CR>nnnnnyn<Esc>u"
+ },
+ {
+  "id": "subst-confirm-q-first",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": ":%s/x/y/gc<CR>q"
+ },
+ {
+  "id": "subst-confirm-no-g",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   3,
+   4
+  ],
+  "keys": ":%s/x/y/c<CR>q"
+ },
+ {
+  "id": "subst-confirm-last-search",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": ":%s/x/y/gc<CR>nnyq<Esc>gg0n"
+ },
+ {
+  "id": "subst-confirm-current-line",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":s/x/y/gc<CR>ny"
+ },
+ {
+  "id": "subst-confirm-split-last-y",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/x/Q\\rR/gc<CR>nnnny"
+ },
+ {
+  "id": "subst-confirm-split-q",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/x/Q\\rR/gc<CR>nyq"
+ },
+ {
+  "id": "subst-confirm-split-last-n",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/x/Q\\rR/gc<CR>ynnnn"
+ },
+ {
+  "id": "subst-confirm-split-l",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/x/Q\\rR/gc<CR>nnnl"
+ },
+ {
+  "id": "subst-confirm-split-a",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/x/Q\\rR/gc<CR>na"
+ },
+ {
+  "id": "subst-confirm-split-jump",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   3,
+   1
+  ],
+  "keys": ":%s/x/Q\\rR/gc<CR>nyq``"
+ },
+ {
+  "id": "subst-confirm-split-mark",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   3,
+   1
+  ],
+  "keys": "md:%s/x/Q\\rR/gc<CR>nyq`d"
+ },
+ {
+  "id": "subst-confirm-g-amp-keeps-c",
+  "text": "  ax bx\n  xc\n  xx x\n  dx\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": ":%s/x/y/gc<CR>yyyyn<Esc>g&"
+ },
+ {
+  "id": "subst-confirm-macro",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "qa:s/x/y/gc<CR>nyq:3<CR>@a"
+ },
+ {
+  "id": "subst-confirm-macro-open",
+  "text": "  ax bx\n  cc\n  xx x\n  dd\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "qa:s/x/y/gc<CR>nyq:3<CR>@au"
+ },
+ {
+  "id": "subst-amp-flag-keeps-flags",
+  "text": "axx\nxx\nxx\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":s/a/b/g<CR>j:s/x/y/&<CR>"
+ },
+ {
+  "id": "subst-amp-flag-then-g",
+  "text": "axx\nxx\nxx\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":s/a/b/g<CR>j:s/x/y/&g<CR>"
+ },
+ {
+  "id": "subst-amp-flag-twice",
+  "text": "axx\nxx\nxx\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":s/a/b/g<CR>j:s/x/y/&&<CR>"
+ },
+ {
+  "id": "global-d",
+  "text": "  ax\nb\n  cx\ndx\n  e\n",
+  "cursor": [
+   4,
+   1
+  ],
+  "keys": ":g/x/d<CR>"
+ },
+ {
+  "id": "global-d-undo",
+  "text": "  ax\nb\n  cx\ndx\n  e\n",
+  "cursor": [
+   4,
+   1
+  ],
+  "keys": ":g/x/d<CR>u"
+ },
+ {
+  "id": "global-d-jump",
+  "text": "  ax\nb\n  cx\ndx\n  e\n",
+  "cursor": [
+   4,
+   1
+  ],
+  "keys": ":g/x/d<CR>``"
+ },
+ {
+  "id": "global-v-d",
+  "text": "  ax\nb\n  cx\ndx\n  e\n",
+  "cursor": [
+   4,
+   1
+  ],
+  "keys": ":v/x/d<CR>"
+ },
+ {
+  "id": "global-bang-d",
+  "text": "  ax\nb\n  cx\ndx\n  e\n",
+  "cursor": [
+   4,
+   1
+  ],
+  "keys": ":g!/x/d<CR>"
+ },
+ {
+  "id": "global-s",
+  "text": "  ax\nb\n  cx\ndx\n  e\n",
+  "cursor": [
+   4,
+   1
+  ],
+  "keys": ":g/x/s/x/y/<CR>"
+ },
+ {
+  "id": "global-s-undo",
+  "text": "  ax\nb\n  cx\ndx\n  e\n",
+  "cursor": [
+   4,
+   1
+  ],
+  "keys": ":g/x/s/x/y/<CR>u"
+ },
+ {
+  "id": "global-s-redo",
+  "text": "  ax\nb\n  cx\ndx\n  e\n",
+  "cursor": [
+   4,
+   1
+  ],
+  "keys": ":g/x/s/x/y/<CR>u<C-r>"
+ },
+ {
+  "id": "global-s-g",
+  "text": "ax aa\nb a\nxa\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/x/s/a/b/g<CR>"
+ },
+ {
+  "id": "global-s-some-lines",
+  "text": "  ax\nb\n  cx\n  dx\n  e\n",
+  "cursor": [
+   4,
+   1
+  ],
+  "keys": ":g/x/s/a/b/<CR>"
+ },
+ {
+  "id": "global-s-no-line",
+  "text": "  ax\nb\n  cx\ndx\n  e\n",
+  "cursor": [
+   4,
+   1
+  ],
+  "keys": ":g/x/s/zz/y/<CR>"
+ },
+ {
+  "id": "global-s-split",
+  "text": "ax\nbx\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/x/s/x/\\r/<CR>"
+ },
+ {
+  "id": "global-normal-append",
+  "text": "def f():\n  pass\ndef g()\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/def/normal A:<CR>"
+ },
+ {
+  "id": "global-normal-append-undo",
+  "text": "def f()\nx\ndef g()\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":g/def/normal A:<CR>u"
+ },
+ {
+  "id": "global-normal-open",
+  "text": "x\ny\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/x/normal oxx<CR>"
+ },
+ {
+  "id": "global-m0",
+  "text": "  ax\nb\n  cx\ndx\n  e\n",
+  "cursor": [
+   4,
+   1
+  ],
+  "keys": ":g/x/m0<CR>"
+ },
+ {
+  "id": "global-m-end",
+  "text": "  ax\nb\n  cx\ndx\n  e\n",
+  "cursor": [
+   4,
+   1
+  ],
+  "keys": ":g/x/m$<CR>"
+ },
+ {
+  "id": "global-m-end-each",
+  "text": "x1\nx2\nx3\ny\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/x/m$<CR>"
+ },
+ {
+  "id": "global-t-end",
+  "text": "  ax\nb\n  cx\ndx\n  e\n",
+  "cursor": [
+   4,
+   1
+  ],
+  "keys": ":g/x/t$<CR>"
+ },
+ {
+  "id": "global-t-end-undo",
+  "text": "  ax\nb\n  cx\ndx\n  e\n",
+  "cursor": [
+   4,
+   1
+  ],
+  "keys": ":g/x/t$<CR>u"
+ },
+ {
+  "id": "global-y-a",
+  "text": "  ax\nb\n  cx\ndx\n  e\n",
+  "cursor": [
+   4,
+   1
+  ],
+  "keys": ":g/x/y a<CR>\"ap"
+ },
+ {
+  "id": "global-y-append",
+  "text": "  ax\nb\n  cx\ndx\n  e\n",
+  "cursor": [
+   4,
+   1
+  ],
+  "keys": "qaq:g/x/y A<CR>G\"ap"
+ },
+ {
+  "id": "global-range",
+  "text": "  ax\nb\n  cx\ndx\n  e\n",
+  "cursor": [
+   4,
+   1
+  ],
+  "keys": ":1,3g/x/d<CR>"
+ },
+ {
+  "id": "global-range-2",
+  "text": "  ax\nb\n  cx\ndx\n  e\n",
+  "cursor": [
+   4,
+   1
+  ],
+  "keys": ":2,3g/x/d<CR>"
+ },
+ {
+  "id": "global-adjacent",
+  "text": "x\nx\nx\ny\nx\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/x/d<CR>"
+ },
+ {
+  "id": "global-deleted-not-visited",
+  "text": "  ax\nb\n  cx\ndx\n  e\n",
+  "cursor": [
+   4,
+   1
+  ],
+  "keys": ":g/x/.,+1d<CR>"
+ },
+ {
+  "id": "global-empty-pattern",
+  "text": "  ax\nb\n  cx\ndx\n  e\n",
+  "cursor": [
+   4,
+   1
+  ],
+  "keys": "/c<CR>:g//d<CR>"
+ },
+ {
+  "id": "global-nested",
+  "text": "  ax\nb\n  cx\ndx\n  e\n",
+  "cursor": [
+   4,
+   1
+  ],
+  "keys": ":g/x/g/a/d<CR>"
+ },
+ {
+  "id": "global-nested-range-error",
+  "text": "  ax\nb\n  cx\ndx\n  e\n",
+  "cursor": [
+   4,
+   1
+  ],
+  "keys": ":g/x/1,2g/a/d<CR>",
+  "difference": "vim stops :g at the first error, with the cursor on that line; the headless golden run turns errors into exceptions, so nvim goes on to the other lines"
+ },
+ {
+  "id": "global-empty-buffer",
+  "text": "",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/x/d<CR>"
+ },
+ {
+  "id": "global-empty-buffer-v",
+  "text": "",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":v/x/d<CR>"
+ },
+ {
+  "id": "global-empty-buffer-s",
+  "text": "",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/^/s/^/a/<CR>"
+ },
+ {
+  "id": "global-next-d-2",
+  "text": "x\nx\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/x/+1d<CR>"
+ },
+ {
+  "id": "global-next-d-4",
+  "text": "x\nx\nx\nx\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/x/+1d<CR>"
+ },
+ {
+  "id": "global-normal-jdd-2",
+  "text": "x\nx\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/x/normal jdd<CR>"
+ },
+ {
+  "id": "global-normal-jdd-4",
+  "text": "x\nx\nx\nx\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/x/normal jdd<CR>"
+ },
+ {
+  "id": "global-copy-here-2",
+  "text": "x\nx\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/x/t.<CR>"
+ },
+ {
+  "id": "global-copy-here-4",
+  "text": "x\nx\nx\nx\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/x/t.<CR>"
+ },
+ {
+  "id": "global-normal-dd-same",
+  "text": "x\nx\nx\nx\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/x/normal dd<CR>"
+ },
+ {
+  "id": "global-normal-dd-blank",
+  "text": "a\n\n\n\nb\n\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/^$/normal dd<CR>"
+ },
+ {
+  "id": "global-normal-dk",
+  "text": "x\nx\nx\nx\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/x/normal dk<CR>"
+ },
+ {
+  "id": "global-normal-dj",
+  "text": "x\nx\nx\nx\nx\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/x/normal dj<CR>"
+ },
+ {
+  "id": "global-normal-yyp",
+  "text": "x\nx\ny\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/x/normal yyp<CR>"
+ },
+ {
+  "id": "global-normal-yyP",
+  "text": "x\nx\ny\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/x/normal yyP<CR>"
+ },
+ {
+  "id": "global-normal-o",
+  "text": "x\nx\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/x/normal ox<CR>"
+ },
+ {
+  "id": "global-prev-d",
+  "text": "x\nx\nx\nx\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/x/-1d<CR>"
+ },
+ {
+  "id": "global-m-plus",
+  "text": "x\nx\nx\ny\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/x/m+1<CR>"
+ },
+ {
+  "id": "global-normal-J-blanks",
+  "text": "\n\n\n\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/^$/normal J<CR>"
+ },
+ {
+  "id": "global-normal-J-all",
+  "text": "\n\na\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/^/normal J<CR>"
+ },
+ {
+  "id": "global-normal-J-x-or-blank",
+  "text": "a\n\nx\nb\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/^x*$/normal J<CR>"
+ },
+ {
+  "id": "global-normal-gJ",
+  "text": "x\n\nx\ny\n\n\nz\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/^x*$/normal gJ<CR>"
+ },
+ {
+  "id": "global-normal-3J",
+  "text": "x\na\nx\nb\nc\nx\nd\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/x/normal 3J<CR>"
+ },
+ {
+  "id": "global-normal-jJ",
+  "text": "x\na\nx\nx\nb\nc\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/x/normal jJ<CR>"
+ },
+ {
+  "id": "global-normal-VjJ",
+  "text": "\n\nx\n\n\ny\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/^$/normal VjJ<CR>"
+ },
+ {
+  "id": "global-normal-J-mixed",
+  "text": "a\n\n\nb\n\nc\n\n\n\nd\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/^$/normal J<CR>"
+ },
+ {
+  "id": "count-G-d1G",
+  "text": "a\nb\nc\nd\ne\n",
+  "cursor": [
+   2,
+   0
+  ],
+  "keys": "d1G"
+ },
+ {
+  "id": "count-G-d4G",
+  "text": "a\nb\nc\nd\ne\n",
+  "cursor": [
+   2,
+   0
+  ],
+  "keys": "d4G"
+ },
+ {
+  "id": "count-G-d2gg",
+  "text": "a\nb\nc\nd\ne\n",
+  "cursor": [
+   2,
+   0
+  ],
+  "keys": "d2gg"
+ },
+ {
+  "id": "count-G-d5gg",
+  "text": "a\nb\nc\nd\ne\n",
+  "cursor": [
+   2,
+   0
+  ],
+  "keys": "d5gg"
+ },
+ {
+  "id": "count-G-1dG",
+  "text": "a\nb\nc\nd\ne\n",
+  "cursor": [
+   2,
+   0
+  ],
+  "keys": "1dG"
+ },
+ {
+  "id": "count-G-y1GP",
+  "text": "a\nb\nc\nd\ne\n",
+  "cursor": [
+   2,
+   0
+  ],
+  "keys": "y1GP"
+ },
+ {
+  "id": "count-G-c1G",
+  "text": "a\nb\nc\nd\ne\n",
+  "cursor": [
+   2,
+   0
+  ],
+  "keys": "c1Gx<Esc>"
+ },
+ {
+  "id": "count-G-indent1G",
+  "text": "a\nb\nc\nd\ne\n",
+  "cursor": [
+   2,
+   0
+  ],
+  "keys": ">1G"
+ },
+ {
+  "id": "count-G-2d2G",
+  "text": "a\nb\nc\nd\ne\n",
+  "cursor": [
+   2,
+   0
+  ],
+  "keys": "2d2G"
+ },
+ {
+  "id": "count-G-d1G-top",
+  "text": "a\nb\nc\nd\ne\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "d1G"
+ },
+ {
+  "id": "abort-macro-jdd",
+  "text": "1\n2\n3\n4\n5\n6\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qajddq99@a"
+ },
+ {
+  "id": "abort-macro-comma",
+  "text": "a\nb\nc\nd\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qaA,<Esc>jq99@a"
+ },
+ {
+  "id": "abort-normal-jdd-last",
+  "text": "a\nb\nc\n",
+  "cursor": [
+   2,
+   0
+  ],
+  "keys": ":normal jdd<CR>"
+ },
+ {
+  "id": "abort-2dd-last",
+  "text": "a\nb\nc\n",
+  "cursor": [
+   2,
+   0
+  ],
+  "keys": "2dd"
+ },
+ {
+  "id": "abort-2dd-last-then-x",
+  "text": "a\nb\nc\n",
+  "cursor": [
+   2,
+   0
+  ],
+  "keys": "2ddx"
+ },
+ {
+  "id": "abort-2yy-last",
+  "text": "a\nb\nc\n",
+  "cursor": [
+   2,
+   0
+  ],
+  "keys": "2yyP"
+ },
+ {
+  "id": "abort-2cc-last",
+  "text": "a\nb\nc\n",
+  "cursor": [
+   2,
+   0
+  ],
+  "keys": "2ccx<Esc>"
+ },
+ {
+  "id": "abort-2indent-last",
+  "text": "a\nb\nc\n",
+  "cursor": [
+   2,
+   0
+  ],
+  "keys": "2>>"
+ },
+ {
+  "id": "abort-J-last",
+  "text": "a\nb\nc\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "qaJjq@a"
+ },
+ {
+  "id": "abort-dot-after-failed-j",
+  "text": "1x\n2x\n3x\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "xqaj.q5@a"
+ },
+ {
+  "id": "abort-dot-replay-fails",
+  "text": "a,b\nc\nd\ne\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "df,jqa.jq@a"
+ },
+ {
+  "id": "abort-3at-second-run",
+  "text": "a\nb\nc\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qaAZ<Esc>jq3@a"
+ },
+ {
+  "id": "abort-global-normal-jdd",
+  "text": "x\nx\nx\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/x/normal jdd<CR>"
+ },
+ {
+  "id": "abort-global-normal-continues",
+  "text": "x1\na\nx2\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":g/x/normal kAZ<CR>"
+ },
+ {
+  "id": "abort-macro-fz",
+  "text": "a,b\nc,d\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qaf,xjq5@a"
+ },
+ {
+  "id": "abort-macro-l-end",
+  "text": "ab\nab\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qalxq5@a"
+ },
+ {
+  "id": "abort-macro-w-end",
+  "text": "a b c\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qawxq9@a"
+ },
+ {
+  "id": "abort-macro-dk-top",
+  "text": "a\nb\nc\n",
+  "cursor": [
+   2,
+   0
+  ],
+  "keys": "qadkAZ<Esc>q3@a"
+ },
+ {
+  "id": "abort-macro-ci-paren",
+  "text": "(a)\nb\nc\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qaci(X<Esc>jq3@a"
+ },
+ {
+  "id": "abort-macro-3rx",
+  "text": "abc\nab\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qa3rxjq3@a"
+ },
+ {
+  "id": "abort-macro-ctrl-a",
+  "text": "1\n2\nx\n3\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qa<C-a>jq9@a"
+ },
+ {
+  "id": "abort-macro-tilde-empty",
+  "text": "a\n\nb\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qa~jq3@a"
+ },
+ {
+  "id": "abort-macro-percent",
+  "text": "(a)\nb\n(c)\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qa%xjq3@a"
+ },
+ {
+  "id": "abort-macro-vjd",
+  "text": "a\nb\nc\nd\ne\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qaVjdq3@a"
+ },
+ {
+  "id": "abort-x-empty-line-continues",
+  "text": "a\n\n\nb\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "qaxjq3@a"
+ },
+ {
+  "id": "unknown-eq-ip",
+  "text": "a\nb\n\nc\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "=ipx"
+ },
+ {
+  "id": "unknown-eq-i-brace",
+  "text": "a\nb\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "=i{x"
+ },
+ {
+  "id": "unknown-g8",
+  "text": "abcdefghij\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "g8x"
+ },
+ {
+  "id": "unknown-ga",
+  "text": "abc\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "gax"
+ },
+ {
+  "id": "unknown-gw",
+  "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "gwjx"
+ },
+ {
+  "id": "unknown-zj",
+  "text": "abc\ndef\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "zjx"
+ },
+ {
+  "id": "unknown-bracket-q",
+  "text": "abc\ndef\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "[qx"
+ },
+ {
+  "id": "unknown-close-bracket-q",
+  "text": "abc\ndef\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "]qx"
+ },
+ {
+  "id": "unknown-count-cleared",
+  "text": "abcdef\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3<C-g>x"
+ },
+ {
+  "id": "unknown-op-pending-key",
+  "text": "a b\nc\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "dQx"
+ },
+ {
+  "id": "unknown-op-pending-g",
+  "text": "a b\nc\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "dg8x"
+ },
+ {
+  "id": "unknown-op-pending-i",
+  "text": "a b\nc\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "diqx"
+ },
+ {
+  "id": "unknown-bang-op",
+  "text": "a\nb\nc\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "!jx"
+ },
+ {
+  "id": "undo-block-normal-xxu",
+  "text": "abcd\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":normal xxu<CR>"
+ },
+ {
+  "id": "undo-block-normal-xxuu",
+  "text": "abcd\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "x:normal xxuu<CR>"
+ },
+ {
+  "id": "undo-block-macro-xxu",
+  "text": "abcdef\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qaxxuq@a"
+ },
+ {
+  "id": "undo-block-macro-redo",
+  "text": "abcdef\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qaxxu<C-r>q@a"
+ },
+ {
+  "id": "redo-count",
+  "text": "abcd\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "xxxuuu3<C-r>"
+ },
+ {
+  "id": "redo-count-then-u",
+  "text": "abcd\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "xxxuuu3<C-r>u"
+ },
+ {
+  "id": "redo-three-then-u",
+  "text": "abcd\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "xxxuuu<C-r><C-r><C-r>u"
+ },
+ {
+  "id": "redo-after-motion",
+  "text": "abcd\nefgh\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "xuj<C-r>"
+ },
+ {
+  "id": "redo-after-count",
+  "text": "abcd\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "xxuu2<C-r>"
+ },
+ {
+  "id": "redo-gone-after-change",
+  "text": "abcd\nefgh\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "lxulx<C-r>"
+ },
+ {
+  "id": "pipe-tab-inside",
+  "text": "a\tb\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3|x"
+ },
+ {
+  "id": "pipe-tab-last-cell",
+  "text": "a\tb\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "8|x"
+ },
+ {
+  "id": "pipe-tab-after",
+  "text": "a\tb\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "9|x"
+ },
+ {
+  "id": "pipe-tab-indent",
+  "text": "\tx = 1\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "9|x"
+ },
+ {
+  "id": "pipe-tab-d-forward",
+  "text": "\t\tfoo bar\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "d20|"
+ },
+ {
+  "id": "pipe-tab-d-backward",
+  "text": "\t\tfoo bar\n",
+  "cursor": [
+   0,
+   8
+  ],
+  "keys": "d5|"
+ },
+ {
+  "id": "pipe-tab-visual",
+  "text": "ab\tcd\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "v5|d"
+ },
+ {
+  "id": "pipe-tab-y",
+  "text": "\tab\tcd\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "y10|P"
+ },
+ {
+  "id": "pipe-d-past-end",
+  "text": "abcdef\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "d99|"
+ },
+ {
+  "id": "pipe-c-past-end",
+  "text": "abcdef\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "c99|X<Esc>"
+ },
+ {
+  "id": "pipe-empty-line",
+  "text": "\nab\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "5|x"
+ },
+ {
+  "id": "empty-d-0",
+  "text": "abc\nxy\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "d0"
+ },
+ {
+  "id": "empty-d-0-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal d0AZ<CR>"
+ },
+ {
+  "id": "empty-d-0-top",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "d0"
+ },
+ {
+  "id": "empty-d-0-top-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":normal d0AZ<CR>"
+ },
+ {
+  "id": "empty-d-h",
+  "text": "abc\nxy\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "dh"
+ },
+ {
+  "id": "empty-d-h-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal dhAZ<CR>"
+ },
+ {
+  "id": "empty-d-caret",
+  "text": "  abc\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "d^"
+ },
+ {
+  "id": "empty-d-caret-normal",
+  "text": "  abc\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": ":normal d^AZ<CR>"
+ },
+ {
+  "id": "empty-d-caret-col0",
+  "text": "abc\nxy\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "d^"
+ },
+ {
+  "id": "empty-d-caret-col0-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal d^AZ<CR>"
+ },
+ {
+  "id": "empty-d-bar1",
+  "text": "ab\ncd\nef\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "d1|"
+ },
+ {
+  "id": "empty-d-bar1-normal",
+  "text": "ab\ncd\nef\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal d1|AZ<CR>"
+ },
+ {
+  "id": "empty-d-bar2",
+  "text": "ab\ncd\nef\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "d2|"
+ },
+ {
+  "id": "empty-d-bar2-normal",
+  "text": "ab\ncd\nef\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": ":normal d2|AZ<CR>"
+ },
+ {
+  "id": "empty-d-bar-tab",
+  "text": "a\tb\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "d5|"
+ },
+ {
+  "id": "empty-d-bar-tab-normal",
+  "text": "a\tb\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": ":normal d5|AZ<CR>"
+ },
+ {
+  "id": "empty-d-bar-emptyline",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "d3|"
+ },
+ {
+  "id": "empty-d-bar-emptyline-normal",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal d3|AZ<CR>"
+ },
+ {
+  "id": "empty-d-T",
+  "text": "xy\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "dTx"
+ },
+ {
+  "id": "empty-d-T-normal",
+  "text": "xy\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": ":normal dTxAZ<CR>"
+ },
+ {
+  "id": "empty-d-T-col0",
+  "text": "ab\nxy\n",
+  "cursor": [
+   1,
+   1
+  ],
+  "keys": "dTx"
+ },
+ {
+  "id": "empty-d-T-col0-normal",
+  "text": "ab\nxy\n",
+  "cursor": [
+   1,
+   1
+  ],
+  "keys": ":normal dTxAZ<CR>"
+ },
+ {
+  "id": "empty-d-b-top",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "db"
+ },
+ {
+  "id": "empty-d-b-top-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":normal dbAZ<CR>"
+ },
+ {
+  "id": "empty-d-B-top",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "dB"
+ },
+ {
+  "id": "empty-d-B-top-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":normal dBAZ<CR>"
+ },
+ {
+  "id": "empty-d-ge-top",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "dge"
+ },
+ {
+  "id": "empty-d-ge-top-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":normal dgeAZ<CR>"
+ },
+ {
+  "id": "empty-d-gE-top",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "dgE"
+ },
+ {
+  "id": "empty-d-gE-top-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":normal dgEAZ<CR>"
+ },
+ {
+  "id": "empty-d-l-emptyline",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "dl"
+ },
+ {
+  "id": "empty-d-l-emptyline-normal",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal dlAZ<CR>"
+ },
+ {
+  "id": "empty-d-dollar-emptyline",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "d$"
+ },
+ {
+  "id": "empty-d-dollar-emptyline-normal",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal d$AZ<CR>"
+ },
+ {
+  "id": "empty-d-g_-emptyline",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "dg_"
+ },
+ {
+  "id": "empty-d-g_-emptyline-normal",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal dg_AZ<CR>"
+ },
+ {
+  "id": "empty-d-w-emptyline",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "dw"
+ },
+ {
+  "id": "empty-d-w-emptyline-normal",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal dwAZ<CR>"
+ },
+ {
+  "id": "empty-d-space-emptyline",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "d<Space>",
+  "difference": "pre-existing: <Space> and <BS> do not wrap to the next or previous line (nvim's whichwrap=b,s), so d<Space> on an empty line is an empty region"
+ },
+ {
+  "id": "empty-d-space-emptyline-normal",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal d<Space>AZ<CR>",
+  "difference": "pre-existing: <Space> and <BS> do not wrap to the next or previous line (nvim's whichwrap=b,s), so d<Space> on an empty line is an empty region"
+ },
+ {
+  "id": "empty-d-brace-top",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "d{"
+ },
+ {
+  "id": "empty-d-brace-top-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":normal d{AZ<CR>"
+ },
+ {
+  "id": "empty-c-0",
+  "text": "abc\nxy\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "c0Q<Esc>"
+ },
+ {
+  "id": "empty-c-0-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal c0AZ<CR>"
+ },
+ {
+  "id": "empty-c-0-top",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "c0Q<Esc>"
+ },
+ {
+  "id": "empty-c-0-top-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":normal c0AZ<CR>"
+ },
+ {
+  "id": "empty-c-h",
+  "text": "abc\nxy\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "chQ<Esc>"
+ },
+ {
+  "id": "empty-c-h-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal chAZ<CR>"
+ },
+ {
+  "id": "empty-c-caret",
+  "text": "  abc\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "c^Q<Esc>"
+ },
+ {
+  "id": "empty-c-caret-normal",
+  "text": "  abc\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": ":normal c^AZ<CR>"
+ },
+ {
+  "id": "empty-c-caret-col0",
+  "text": "abc\nxy\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "c^Q<Esc>"
+ },
+ {
+  "id": "empty-c-caret-col0-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal c^AZ<CR>"
+ },
+ {
+  "id": "empty-c-bar1",
+  "text": "ab\ncd\nef\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "c1|Q<Esc>"
+ },
+ {
+  "id": "empty-c-bar1-normal",
+  "text": "ab\ncd\nef\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal c1|AZ<CR>"
+ },
+ {
+  "id": "empty-c-bar2",
+  "text": "ab\ncd\nef\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "c2|Q<Esc>"
+ },
+ {
+  "id": "empty-c-bar2-normal",
+  "text": "ab\ncd\nef\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": ":normal c2|AZ<CR>"
+ },
+ {
+  "id": "empty-c-bar-tab",
+  "text": "a\tb\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "c5|Q<Esc>"
+ },
+ {
+  "id": "empty-c-bar-tab-normal",
+  "text": "a\tb\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": ":normal c5|AZ<CR>"
+ },
+ {
+  "id": "empty-c-bar-emptyline",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "c3|Q<Esc>"
+ },
+ {
+  "id": "empty-c-bar-emptyline-normal",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal c3|AZ<CR>"
+ },
+ {
+  "id": "empty-c-T",
+  "text": "xy\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "cTxQ<Esc>"
+ },
+ {
+  "id": "empty-c-T-normal",
+  "text": "xy\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": ":normal cTxAZ<CR>"
+ },
+ {
+  "id": "empty-c-T-col0",
+  "text": "ab\nxy\n",
+  "cursor": [
+   1,
+   1
+  ],
+  "keys": "cTxQ<Esc>"
+ },
+ {
+  "id": "empty-c-T-col0-normal",
+  "text": "ab\nxy\n",
+  "cursor": [
+   1,
+   1
+  ],
+  "keys": ":normal cTxAZ<CR>"
+ },
+ {
+  "id": "empty-c-b-top",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "cbQ<Esc>"
+ },
+ {
+  "id": "empty-c-b-top-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":normal cbAZ<CR>"
+ },
+ {
+  "id": "empty-c-B-top",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "cBQ<Esc>"
+ },
+ {
+  "id": "empty-c-B-top-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":normal cBAZ<CR>"
+ },
+ {
+  "id": "empty-c-ge-top",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "cgeQ<Esc>"
+ },
+ {
+  "id": "empty-c-ge-top-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":normal cgeAZ<CR>"
+ },
+ {
+  "id": "empty-c-gE-top",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "cgEQ<Esc>"
+ },
+ {
+  "id": "empty-c-gE-top-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":normal cgEAZ<CR>"
+ },
+ {
+  "id": "empty-c-l-emptyline",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "clQ<Esc>"
+ },
+ {
+  "id": "empty-c-l-emptyline-normal",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal clAZ<CR>"
+ },
+ {
+  "id": "empty-c-dollar-emptyline",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "c$Q<Esc>"
+ },
+ {
+  "id": "empty-c-dollar-emptyline-normal",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal c$AZ<CR>"
+ },
+ {
+  "id": "empty-c-g_-emptyline",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "cg_Q<Esc>"
+ },
+ {
+  "id": "empty-c-g_-emptyline-normal",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal cg_AZ<CR>"
+ },
+ {
+  "id": "empty-c-w-emptyline",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "cwQ<Esc>"
+ },
+ {
+  "id": "empty-c-w-emptyline-normal",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal cwAZ<CR>"
+ },
+ {
+  "id": "empty-c-space-emptyline",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "c<Space>Q<Esc>"
+ },
+ {
+  "id": "empty-c-space-emptyline-normal",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal c<Space>AZ<CR>"
+ },
+ {
+  "id": "empty-c-brace-top",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "c{Q<Esc>"
+ },
+ {
+  "id": "empty-c-brace-top-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":normal c{AZ<CR>"
+ },
+ {
+  "id": "empty-y-0",
+  "text": "abc\nxy\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "y0"
+ },
+ {
+  "id": "empty-y-0-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal y0AZ<CR>"
+ },
+ {
+  "id": "empty-y-0-top",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "y0"
+ },
+ {
+  "id": "empty-y-0-top-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":normal y0AZ<CR>"
+ },
+ {
+  "id": "empty-y-h",
+  "text": "abc\nxy\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "yh"
+ },
+ {
+  "id": "empty-y-h-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal yhAZ<CR>"
+ },
+ {
+  "id": "empty-y-caret",
+  "text": "  abc\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "y^"
+ },
+ {
+  "id": "empty-y-caret-normal",
+  "text": "  abc\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": ":normal y^AZ<CR>"
+ },
+ {
+  "id": "empty-y-caret-col0",
+  "text": "abc\nxy\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "y^"
+ },
+ {
+  "id": "empty-y-caret-col0-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal y^AZ<CR>"
+ },
+ {
+  "id": "empty-y-bar1",
+  "text": "ab\ncd\nef\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "y1|"
+ },
+ {
+  "id": "empty-y-bar1-normal",
+  "text": "ab\ncd\nef\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal y1|AZ<CR>"
+ },
+ {
+  "id": "empty-y-bar2",
+  "text": "ab\ncd\nef\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "y2|"
+ },
+ {
+  "id": "empty-y-bar2-normal",
+  "text": "ab\ncd\nef\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": ":normal y2|AZ<CR>"
+ },
+ {
+  "id": "empty-y-bar-tab",
+  "text": "a\tb\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "y5|"
+ },
+ {
+  "id": "empty-y-bar-tab-normal",
+  "text": "a\tb\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": ":normal y5|AZ<CR>"
+ },
+ {
+  "id": "empty-y-bar-emptyline",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "y3|"
+ },
+ {
+  "id": "empty-y-bar-emptyline-normal",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal y3|AZ<CR>"
+ },
+ {
+  "id": "empty-y-T",
+  "text": "xy\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "yTx"
+ },
+ {
+  "id": "empty-y-T-normal",
+  "text": "xy\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": ":normal yTxAZ<CR>"
+ },
+ {
+  "id": "empty-y-T-col0",
+  "text": "ab\nxy\n",
+  "cursor": [
+   1,
+   1
+  ],
+  "keys": "yTx"
+ },
+ {
+  "id": "empty-y-T-col0-normal",
+  "text": "ab\nxy\n",
+  "cursor": [
+   1,
+   1
+  ],
+  "keys": ":normal yTxAZ<CR>"
+ },
+ {
+  "id": "empty-y-b-top",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "yb"
+ },
+ {
+  "id": "empty-y-b-top-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":normal ybAZ<CR>"
+ },
+ {
+  "id": "empty-y-B-top",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "yB"
+ },
+ {
+  "id": "empty-y-B-top-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":normal yBAZ<CR>"
+ },
+ {
+  "id": "empty-y-ge-top",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "yge"
+ },
+ {
+  "id": "empty-y-ge-top-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":normal ygeAZ<CR>"
+ },
+ {
+  "id": "empty-y-gE-top",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "ygE"
+ },
+ {
+  "id": "empty-y-gE-top-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":normal ygEAZ<CR>"
+ },
+ {
+  "id": "empty-y-l-emptyline",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "yl"
+ },
+ {
+  "id": "empty-y-l-emptyline-normal",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal ylAZ<CR>"
+ },
+ {
+  "id": "empty-y-dollar-emptyline",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "y$"
+ },
+ {
+  "id": "empty-y-dollar-emptyline-normal",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal y$AZ<CR>"
+ },
+ {
+  "id": "empty-y-g_-emptyline",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "yg_"
+ },
+ {
+  "id": "empty-y-g_-emptyline-normal",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal yg_AZ<CR>"
+ },
+ {
+  "id": "empty-y-w-emptyline",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "yw"
+ },
+ {
+  "id": "empty-y-w-emptyline-normal",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal ywAZ<CR>"
+ },
+ {
+  "id": "empty-y-space-emptyline",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "y<Space>"
+ },
+ {
+  "id": "empty-y-space-emptyline-normal",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal y<Space>AZ<CR>"
+ },
+ {
+  "id": "empty-y-brace-top",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "y{"
+ },
+ {
+  "id": "empty-y-brace-top-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":normal y{AZ<CR>"
+ },
+ {
+  "id": "empty-lt-0",
+  "text": "abc\nxy\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "<0"
+ },
+ {
+  "id": "empty-lt-0-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal <0AZ<CR>"
+ },
+ {
+  "id": "empty-lt-0-top",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<0"
+ },
+ {
+  "id": "empty-lt-0-top-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":normal <0AZ<CR>"
+ },
+ {
+  "id": "empty-lt-h",
+  "text": "abc\nxy\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "<h"
+ },
+ {
+  "id": "empty-lt-h-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal <hAZ<CR>"
+ },
+ {
+  "id": "empty-lt-caret",
+  "text": "  abc\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "<^"
+ },
+ {
+  "id": "empty-lt-caret-normal",
+  "text": "  abc\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": ":normal <^AZ<CR>"
+ },
+ {
+  "id": "empty-lt-caret-col0",
+  "text": "abc\nxy\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "<^"
+ },
+ {
+  "id": "empty-lt-caret-col0-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal <^AZ<CR>"
+ },
+ {
+  "id": "empty-lt-bar1",
+  "text": "ab\ncd\nef\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "<1|"
+ },
+ {
+  "id": "empty-lt-bar1-normal",
+  "text": "ab\ncd\nef\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal <1|AZ<CR>"
+ },
+ {
+  "id": "empty-lt-bar2",
+  "text": "ab\ncd\nef\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "<2|"
+ },
+ {
+  "id": "empty-lt-bar2-normal",
+  "text": "ab\ncd\nef\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": ":normal <2|AZ<CR>"
+ },
+ {
+  "id": "empty-lt-bar-tab",
+  "text": "a\tb\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "<5|"
+ },
+ {
+  "id": "empty-lt-bar-tab-normal",
+  "text": "a\tb\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": ":normal <5|AZ<CR>"
+ },
+ {
+  "id": "empty-lt-bar-emptyline",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "<3|"
+ },
+ {
+  "id": "empty-lt-bar-emptyline-normal",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal <3|AZ<CR>"
+ },
+ {
+  "id": "empty-lt-T",
+  "text": "xy\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "<Tx"
+ },
+ {
+  "id": "empty-lt-T-normal",
+  "text": "xy\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": ":normal <TxAZ<CR>"
+ },
+ {
+  "id": "empty-lt-T-col0",
+  "text": "ab\nxy\n",
+  "cursor": [
+   1,
+   1
+  ],
+  "keys": "<Tx"
+ },
+ {
+  "id": "empty-lt-T-col0-normal",
+  "text": "ab\nxy\n",
+  "cursor": [
+   1,
+   1
+  ],
+  "keys": ":normal <TxAZ<CR>"
+ },
+ {
+  "id": "empty-lt-b-top",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<b"
+ },
+ {
+  "id": "empty-lt-b-top-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":normal <bAZ<CR>"
+ },
+ {
+  "id": "empty-lt-B-top",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<B"
+ },
+ {
+  "id": "empty-lt-B-top-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":normal <BAZ<CR>"
+ },
+ {
+  "id": "empty-lt-ge-top",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<ge"
+ },
+ {
+  "id": "empty-lt-ge-top-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":normal <geAZ<CR>"
+ },
+ {
+  "id": "empty-lt-gE-top",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<gE"
+ },
+ {
+  "id": "empty-lt-gE-top-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":normal <gEAZ<CR>"
+ },
+ {
+  "id": "empty-lt-l-emptyline",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "<l"
+ },
+ {
+  "id": "empty-lt-l-emptyline-normal",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal <lAZ<CR>"
+ },
+ {
+  "id": "empty-lt-dollar-emptyline",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "<$"
+ },
+ {
+  "id": "empty-lt-dollar-emptyline-normal",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal <$AZ<CR>"
+ },
+ {
+  "id": "empty-lt-g_-emptyline",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "<g_"
+ },
+ {
+  "id": "empty-lt-g_-emptyline-normal",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal <g_AZ<CR>"
+ },
+ {
+  "id": "empty-lt-w-emptyline",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "<w"
+ },
+ {
+  "id": "empty-lt-w-emptyline-normal",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal <wAZ<CR>"
+ },
+ {
+  "id": "empty-lt-space-emptyline",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "<<Space>"
+ },
+ {
+  "id": "empty-lt-space-emptyline-normal",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal <<Space>AZ<CR>"
+ },
+ {
+  "id": "empty-lt-brace-top",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "<{"
+ },
+ {
+  "id": "empty-lt-brace-top-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":normal <{AZ<CR>"
+ },
+ {
+  "id": "empty-gt-0",
+  "text": "abc\nxy\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ">0"
+ },
+ {
+  "id": "empty-gt-0-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal >0AZ<CR>"
+ },
+ {
+  "id": "empty-gt-0-top",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ">0"
+ },
+ {
+  "id": "empty-gt-0-top-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":normal >0AZ<CR>"
+ },
+ {
+  "id": "empty-gt-h",
+  "text": "abc\nxy\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ">h"
+ },
+ {
+  "id": "empty-gt-h-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal >hAZ<CR>"
+ },
+ {
+  "id": "empty-gt-caret",
+  "text": "  abc\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": ">^"
+ },
+ {
+  "id": "empty-gt-caret-normal",
+  "text": "  abc\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": ":normal >^AZ<CR>"
+ },
+ {
+  "id": "empty-gt-caret-col0",
+  "text": "abc\nxy\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ">^"
+ },
+ {
+  "id": "empty-gt-caret-col0-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal >^AZ<CR>"
+ },
+ {
+  "id": "empty-gt-bar1",
+  "text": "ab\ncd\nef\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ">1|"
+ },
+ {
+  "id": "empty-gt-bar1-normal",
+  "text": "ab\ncd\nef\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal >1|AZ<CR>"
+ },
+ {
+  "id": "empty-gt-bar2",
+  "text": "ab\ncd\nef\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": ">2|"
+ },
+ {
+  "id": "empty-gt-bar2-normal",
+  "text": "ab\ncd\nef\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": ":normal >2|AZ<CR>"
+ },
+ {
+  "id": "empty-gt-bar-tab",
+  "text": "a\tb\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": ">5|",
+  "difference": "after a shift nvim puts the cursor on the motion's screen column (curswant); the engine keeps the character column"
+ },
+ {
+  "id": "empty-gt-bar-tab-normal",
+  "text": "a\tb\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": ":normal >5|AZ<CR>"
+ },
+ {
+  "id": "empty-gt-bar-emptyline",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ">3|"
+ },
+ {
+  "id": "empty-gt-bar-emptyline-normal",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal >3|AZ<CR>"
+ },
+ {
+  "id": "empty-gt-T",
+  "text": "xy\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": ">Tx"
+ },
+ {
+  "id": "empty-gt-T-normal",
+  "text": "xy\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": ":normal >TxAZ<CR>"
+ },
+ {
+  "id": "empty-gt-T-col0",
+  "text": "ab\nxy\n",
+  "cursor": [
+   1,
+   1
+  ],
+  "keys": ">Tx"
+ },
+ {
+  "id": "empty-gt-T-col0-normal",
+  "text": "ab\nxy\n",
+  "cursor": [
+   1,
+   1
+  ],
+  "keys": ":normal >TxAZ<CR>"
+ },
+ {
+  "id": "empty-gt-b-top",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ">b"
+ },
+ {
+  "id": "empty-gt-b-top-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":normal >bAZ<CR>"
+ },
+ {
+  "id": "empty-gt-B-top",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ">B"
+ },
+ {
+  "id": "empty-gt-B-top-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":normal >BAZ<CR>"
+ },
+ {
+  "id": "empty-gt-ge-top",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ">ge"
+ },
+ {
+  "id": "empty-gt-ge-top-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":normal >geAZ<CR>"
+ },
+ {
+  "id": "empty-gt-gE-top",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ">gE"
+ },
+ {
+  "id": "empty-gt-gE-top-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":normal >gEAZ<CR>"
+ },
+ {
+  "id": "empty-gt-l-emptyline",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ">l"
+ },
+ {
+  "id": "empty-gt-l-emptyline-normal",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal >lAZ<CR>"
+ },
+ {
+  "id": "empty-gt-dollar-emptyline",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ">$"
+ },
+ {
+  "id": "empty-gt-dollar-emptyline-normal",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal >$AZ<CR>"
+ },
+ {
+  "id": "empty-gt-g_-emptyline",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ">g_"
+ },
+ {
+  "id": "empty-gt-g_-emptyline-normal",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal >g_AZ<CR>"
+ },
+ {
+  "id": "empty-gt-w-emptyline",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ">w"
+ },
+ {
+  "id": "empty-gt-w-emptyline-normal",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal >wAZ<CR>"
+ },
+ {
+  "id": "empty-gt-space-emptyline",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "><Space>"
+ },
+ {
+  "id": "empty-gt-space-emptyline-normal",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal ><Space>AZ<CR>"
+ },
+ {
+  "id": "empty-gt-brace-top",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ">{"
+ },
+ {
+  "id": "empty-gt-brace-top-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":normal >{AZ<CR>"
+ },
+ {
+  "id": "empty-gu-0",
+  "text": "abc\nxy\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "gu0"
+ },
+ {
+  "id": "empty-gu-0-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal gu0AZ<CR>"
+ },
+ {
+  "id": "empty-gu-0-top",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "gu0"
+ },
+ {
+  "id": "empty-gu-0-top-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":normal gu0AZ<CR>"
+ },
+ {
+  "id": "empty-gu-h",
+  "text": "abc\nxy\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "guh"
+ },
+ {
+  "id": "empty-gu-h-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal guhAZ<CR>"
+ },
+ {
+  "id": "empty-gu-caret",
+  "text": "  abc\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "gu^"
+ },
+ {
+  "id": "empty-gu-caret-normal",
+  "text": "  abc\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": ":normal gu^AZ<CR>"
+ },
+ {
+  "id": "empty-gu-caret-col0",
+  "text": "abc\nxy\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "gu^"
+ },
+ {
+  "id": "empty-gu-caret-col0-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal gu^AZ<CR>"
+ },
+ {
+  "id": "empty-gu-bar1",
+  "text": "ab\ncd\nef\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "gu1|"
+ },
+ {
+  "id": "empty-gu-bar1-normal",
+  "text": "ab\ncd\nef\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal gu1|AZ<CR>"
+ },
+ {
+  "id": "empty-gu-bar2",
+  "text": "ab\ncd\nef\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "gu2|"
+ },
+ {
+  "id": "empty-gu-bar2-normal",
+  "text": "ab\ncd\nef\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": ":normal gu2|AZ<CR>"
+ },
+ {
+  "id": "empty-gu-bar-tab",
+  "text": "a\tb\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "gu5|"
+ },
+ {
+  "id": "empty-gu-bar-tab-normal",
+  "text": "a\tb\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": ":normal gu5|AZ<CR>"
+ },
+ {
+  "id": "empty-gu-bar-emptyline",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "gu3|"
+ },
+ {
+  "id": "empty-gu-bar-emptyline-normal",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal gu3|AZ<CR>"
+ },
+ {
+  "id": "empty-gu-T",
+  "text": "xy\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "guTx"
+ },
+ {
+  "id": "empty-gu-T-normal",
+  "text": "xy\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": ":normal guTxAZ<CR>"
+ },
+ {
+  "id": "empty-gu-T-col0",
+  "text": "ab\nxy\n",
+  "cursor": [
+   1,
+   1
+  ],
+  "keys": "guTx"
+ },
+ {
+  "id": "empty-gu-T-col0-normal",
+  "text": "ab\nxy\n",
+  "cursor": [
+   1,
+   1
+  ],
+  "keys": ":normal guTxAZ<CR>"
+ },
+ {
+  "id": "empty-gu-b-top",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "gub"
+ },
+ {
+  "id": "empty-gu-b-top-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":normal gubAZ<CR>"
+ },
+ {
+  "id": "empty-gu-B-top",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "guB"
+ },
+ {
+  "id": "empty-gu-B-top-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":normal guBAZ<CR>"
+ },
+ {
+  "id": "empty-gu-ge-top",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "guge"
+ },
+ {
+  "id": "empty-gu-ge-top-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":normal gugeAZ<CR>"
+ },
+ {
+  "id": "empty-gu-gE-top",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "gugE"
+ },
+ {
+  "id": "empty-gu-gE-top-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":normal gugEAZ<CR>"
+ },
+ {
+  "id": "empty-gu-l-emptyline",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "gul"
+ },
+ {
+  "id": "empty-gu-l-emptyline-normal",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal gulAZ<CR>"
+ },
+ {
+  "id": "empty-gu-dollar-emptyline",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "gu$"
+ },
+ {
+  "id": "empty-gu-dollar-emptyline-normal",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal gu$AZ<CR>"
+ },
+ {
+  "id": "empty-gu-g_-emptyline",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "gug_"
+ },
+ {
+  "id": "empty-gu-g_-emptyline-normal",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal gug_AZ<CR>"
+ },
+ {
+  "id": "empty-gu-w-emptyline",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "guw"
+ },
+ {
+  "id": "empty-gu-w-emptyline-normal",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal guwAZ<CR>"
+ },
+ {
+  "id": "empty-gu-space-emptyline",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "gu<Space>"
+ },
+ {
+  "id": "empty-gu-space-emptyline-normal",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal gu<Space>AZ<CR>"
+ },
+ {
+  "id": "empty-gu-brace-top",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "gu{"
+ },
+ {
+  "id": "empty-gu-brace-top-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":normal gu{AZ<CR>"
+ },
+ {
+  "id": "empty-gU-0",
+  "text": "abc\nxy\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "gU0",
+  "difference": "nvim's gU/g~ over an empty region at column 0 changes text (op_tilde steps the exclusive end back before the start); the engine changes nothing, as for every other empty region"
+ },
+ {
+  "id": "empty-gU-0-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal gU0AZ<CR>",
+  "difference": "nvim's gU/g~ over an empty region at column 0 changes text (op_tilde steps the exclusive end back before the start); the engine changes nothing, as for every other empty region"
+ },
+ {
+  "id": "empty-gU-0-top",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "gU0",
+  "difference": "nvim's gU/g~ over an empty region at column 0 changes text (op_tilde steps the exclusive end back before the start); the engine changes nothing, as for every other empty region"
+ },
+ {
+  "id": "empty-gU-0-top-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":normal gU0AZ<CR>",
+  "difference": "nvim's gU/g~ over an empty region at column 0 changes text (op_tilde steps the exclusive end back before the start); the engine changes nothing, as for every other empty region"
+ },
+ {
+  "id": "empty-gU-h",
+  "text": "abc\nxy\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "gUh",
+  "difference": "nvim's gU/g~ over an empty region at column 0 changes text (op_tilde steps the exclusive end back before the start); the engine changes nothing, as for every other empty region"
+ },
+ {
+  "id": "empty-gU-h-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal gUhAZ<CR>",
+  "difference": "nvim's gU/g~ over an empty region at column 0 changes text (op_tilde steps the exclusive end back before the start); the engine changes nothing, as for every other empty region"
+ },
+ {
+  "id": "empty-gU-caret",
+  "text": "  abc\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "gU^"
+ },
+ {
+  "id": "empty-gU-caret-normal",
+  "text": "  abc\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": ":normal gU^AZ<CR>"
+ },
+ {
+  "id": "empty-gU-caret-col0",
+  "text": "abc\nxy\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "gU^",
+  "difference": "nvim's gU/g~ over an empty region at column 0 changes text (op_tilde steps the exclusive end back before the start); the engine changes nothing, as for every other empty region"
+ },
+ {
+  "id": "empty-gU-caret-col0-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal gU^AZ<CR>",
+  "difference": "nvim's gU/g~ over an empty region at column 0 changes text (op_tilde steps the exclusive end back before the start); the engine changes nothing, as for every other empty region"
+ },
+ {
+  "id": "empty-gU-bar1",
+  "text": "ab\ncd\nef\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "gU1|",
+  "difference": "nvim's gU/g~ over an empty region at column 0 changes text (op_tilde steps the exclusive end back before the start); the engine changes nothing, as for every other empty region"
+ },
+ {
+  "id": "empty-gU-bar1-normal",
+  "text": "ab\ncd\nef\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal gU1|AZ<CR>",
+  "difference": "nvim's gU/g~ over an empty region at column 0 changes text (op_tilde steps the exclusive end back before the start); the engine changes nothing, as for every other empty region"
+ },
+ {
+  "id": "empty-gU-bar2",
+  "text": "ab\ncd\nef\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "gU2|"
+ },
+ {
+  "id": "empty-gU-bar2-normal",
+  "text": "ab\ncd\nef\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": ":normal gU2|AZ<CR>"
+ },
+ {
+  "id": "empty-gU-bar-tab",
+  "text": "a\tb\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "gU5|"
+ },
+ {
+  "id": "empty-gU-bar-tab-normal",
+  "text": "a\tb\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": ":normal gU5|AZ<CR>"
+ },
+ {
+  "id": "empty-gU-bar-emptyline",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "gU3|"
+ },
+ {
+  "id": "empty-gU-bar-emptyline-normal",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal gU3|AZ<CR>"
+ },
+ {
+  "id": "empty-gU-T",
+  "text": "xy\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "gUTx"
+ },
+ {
+  "id": "empty-gU-T-normal",
+  "text": "xy\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": ":normal gUTxAZ<CR>"
+ },
+ {
+  "id": "empty-gU-T-col0",
+  "text": "ab\nxy\n",
+  "cursor": [
+   1,
+   1
+  ],
+  "keys": "gUTx"
+ },
+ {
+  "id": "empty-gU-T-col0-normal",
+  "text": "ab\nxy\n",
+  "cursor": [
+   1,
+   1
+  ],
+  "keys": ":normal gUTxAZ<CR>"
+ },
+ {
+  "id": "empty-gU-b-top",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "gUb"
+ },
+ {
+  "id": "empty-gU-b-top-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":normal gUbAZ<CR>"
+ },
+ {
+  "id": "empty-gU-B-top",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "gUB"
+ },
+ {
+  "id": "empty-gU-B-top-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":normal gUBAZ<CR>"
+ },
+ {
+  "id": "empty-gU-ge-top",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "gUge"
+ },
+ {
+  "id": "empty-gU-ge-top-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":normal gUgeAZ<CR>"
+ },
+ {
+  "id": "empty-gU-gE-top",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "gUgE"
+ },
+ {
+  "id": "empty-gU-gE-top-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":normal gUgEAZ<CR>"
+ },
+ {
+  "id": "empty-gU-l-emptyline",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "gUl"
+ },
+ {
+  "id": "empty-gU-l-emptyline-normal",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal gUlAZ<CR>"
+ },
+ {
+  "id": "empty-gU-dollar-emptyline",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "gU$"
+ },
+ {
+  "id": "empty-gU-dollar-emptyline-normal",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal gU$AZ<CR>"
+ },
+ {
+  "id": "empty-gU-g_-emptyline",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "gUg_"
+ },
+ {
+  "id": "empty-gU-g_-emptyline-normal",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal gUg_AZ<CR>"
+ },
+ {
+  "id": "empty-gU-w-emptyline",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "gUw"
+ },
+ {
+  "id": "empty-gU-w-emptyline-normal",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal gUwAZ<CR>"
+ },
+ {
+  "id": "empty-gU-space-emptyline",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "gU<Space>"
+ },
+ {
+  "id": "empty-gU-space-emptyline-normal",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal gU<Space>AZ<CR>"
+ },
+ {
+  "id": "empty-gU-brace-top",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "gU{",
+  "difference": "nvim's gU/g~ over an empty region at column 0 changes text (op_tilde steps the exclusive end back before the start); the engine changes nothing, as for every other empty region"
+ },
+ {
+  "id": "empty-gU-brace-top-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":normal gU{AZ<CR>",
+  "difference": "nvim's gU/g~ over an empty region at column 0 changes text (op_tilde steps the exclusive end back before the start); the engine changes nothing, as for every other empty region"
+ },
+ {
+  "id": "empty-gtilde-0",
+  "text": "abc\nxy\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "g~0",
+  "difference": "nvim's gU/g~ over an empty region at column 0 changes text (op_tilde steps the exclusive end back before the start); the engine changes nothing, as for every other empty region"
+ },
+ {
+  "id": "empty-gtilde-0-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal g~0AZ<CR>",
+  "difference": "nvim's gU/g~ over an empty region at column 0 changes text (op_tilde steps the exclusive end back before the start); the engine changes nothing, as for every other empty region"
+ },
+ {
+  "id": "empty-gtilde-0-top",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "g~0",
+  "difference": "nvim's gU/g~ over an empty region at column 0 changes text (op_tilde steps the exclusive end back before the start); the engine changes nothing, as for every other empty region"
+ },
+ {
+  "id": "empty-gtilde-0-top-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":normal g~0AZ<CR>",
+  "difference": "nvim's gU/g~ over an empty region at column 0 changes text (op_tilde steps the exclusive end back before the start); the engine changes nothing, as for every other empty region"
+ },
+ {
+  "id": "empty-gtilde-h",
+  "text": "abc\nxy\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "g~h",
+  "difference": "nvim's gU/g~ over an empty region at column 0 changes text (op_tilde steps the exclusive end back before the start); the engine changes nothing, as for every other empty region"
+ },
+ {
+  "id": "empty-gtilde-h-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal g~hAZ<CR>",
+  "difference": "nvim's gU/g~ over an empty region at column 0 changes text (op_tilde steps the exclusive end back before the start); the engine changes nothing, as for every other empty region"
+ },
+ {
+  "id": "empty-gtilde-caret",
+  "text": "  abc\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "g~^"
+ },
+ {
+  "id": "empty-gtilde-caret-normal",
+  "text": "  abc\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": ":normal g~^AZ<CR>"
+ },
+ {
+  "id": "empty-gtilde-caret-col0",
+  "text": "abc\nxy\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "g~^",
+  "difference": "nvim's gU/g~ over an empty region at column 0 changes text (op_tilde steps the exclusive end back before the start); the engine changes nothing, as for every other empty region"
+ },
+ {
+  "id": "empty-gtilde-caret-col0-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal g~^AZ<CR>",
+  "difference": "nvim's gU/g~ over an empty region at column 0 changes text (op_tilde steps the exclusive end back before the start); the engine changes nothing, as for every other empty region"
+ },
+ {
+  "id": "empty-gtilde-bar1",
+  "text": "ab\ncd\nef\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "g~1|",
+  "difference": "nvim's gU/g~ over an empty region at column 0 changes text (op_tilde steps the exclusive end back before the start); the engine changes nothing, as for every other empty region"
+ },
+ {
+  "id": "empty-gtilde-bar1-normal",
+  "text": "ab\ncd\nef\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal g~1|AZ<CR>",
+  "difference": "nvim's gU/g~ over an empty region at column 0 changes text (op_tilde steps the exclusive end back before the start); the engine changes nothing, as for every other empty region"
+ },
+ {
+  "id": "empty-gtilde-bar2",
+  "text": "ab\ncd\nef\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "g~2|"
+ },
+ {
+  "id": "empty-gtilde-bar2-normal",
+  "text": "ab\ncd\nef\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": ":normal g~2|AZ<CR>"
+ },
+ {
+  "id": "empty-gtilde-bar-tab",
+  "text": "a\tb\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "g~5|"
+ },
+ {
+  "id": "empty-gtilde-bar-tab-normal",
+  "text": "a\tb\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": ":normal g~5|AZ<CR>"
+ },
+ {
+  "id": "empty-gtilde-bar-emptyline",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "g~3|"
+ },
+ {
+  "id": "empty-gtilde-bar-emptyline-normal",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal g~3|AZ<CR>"
+ },
+ {
+  "id": "empty-gtilde-T",
+  "text": "xy\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "g~Tx"
+ },
+ {
+  "id": "empty-gtilde-T-normal",
+  "text": "xy\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": ":normal g~TxAZ<CR>"
+ },
+ {
+  "id": "empty-gtilde-T-col0",
+  "text": "ab\nxy\n",
+  "cursor": [
+   1,
+   1
+  ],
+  "keys": "g~Tx"
+ },
+ {
+  "id": "empty-gtilde-T-col0-normal",
+  "text": "ab\nxy\n",
+  "cursor": [
+   1,
+   1
+  ],
+  "keys": ":normal g~TxAZ<CR>"
+ },
+ {
+  "id": "empty-gtilde-b-top",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "g~b"
+ },
+ {
+  "id": "empty-gtilde-b-top-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":normal g~bAZ<CR>"
+ },
+ {
+  "id": "empty-gtilde-B-top",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "g~B"
+ },
+ {
+  "id": "empty-gtilde-B-top-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":normal g~BAZ<CR>"
+ },
+ {
+  "id": "empty-gtilde-ge-top",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "g~ge"
+ },
+ {
+  "id": "empty-gtilde-ge-top-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":normal g~geAZ<CR>"
+ },
+ {
+  "id": "empty-gtilde-gE-top",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "g~gE"
+ },
+ {
+  "id": "empty-gtilde-gE-top-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":normal g~gEAZ<CR>"
+ },
+ {
+  "id": "empty-gtilde-l-emptyline",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "g~l"
+ },
+ {
+  "id": "empty-gtilde-l-emptyline-normal",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal g~lAZ<CR>"
+ },
+ {
+  "id": "empty-gtilde-dollar-emptyline",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "g~$"
+ },
+ {
+  "id": "empty-gtilde-dollar-emptyline-normal",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal g~$AZ<CR>"
+ },
+ {
+  "id": "empty-gtilde-g_-emptyline",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "g~g_"
+ },
+ {
+  "id": "empty-gtilde-g_-emptyline-normal",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal g~g_AZ<CR>"
+ },
+ {
+  "id": "empty-gtilde-w-emptyline",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "g~w"
+ },
+ {
+  "id": "empty-gtilde-w-emptyline-normal",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal g~wAZ<CR>"
+ },
+ {
+  "id": "empty-gtilde-space-emptyline",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "g~<Space>"
+ },
+ {
+  "id": "empty-gtilde-space-emptyline-normal",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal g~<Space>AZ<CR>"
+ },
+ {
+  "id": "empty-gtilde-brace-top",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "g~{",
+  "difference": "nvim's gU/g~ over an empty region at column 0 changes text (op_tilde steps the exclusive end back before the start); the engine changes nothing, as for every other empty region"
+ },
+ {
+  "id": "empty-gtilde-brace-top-normal",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":normal g~{AZ<CR>",
+  "difference": "nvim's gU/g~ over an empty region at column 0 changes text (op_tilde steps the exclusive end back before the start); the engine changes nothing, as for every other empty region"
+ },
+ {
+  "id": "empty-normal-all-d0",
+  "text": "ab\ncd\nef\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":%normal d0<CR>"
+ },
+ {
+  "id": "empty-normal-all-caret",
+  "text": "  ab\n  cd\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": ":%normal ^d^<CR>"
+ },
+ {
+  "id": "empty-y0-keeps-register",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "ylj0y0P"
+ },
+ {
+  "id": "empty-macro-db-aborts",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qadbAZ<Esc>q@a"
+ },
+ {
+  "id": "empty-macro-d0-goes-on",
+  "text": "abc\nxy\nzz\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "qad0AZ<Esc>jq@a"
+ },
+ {
+  "id": "empty-dot-d0",
+  "text": "abc\nxy\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "d0."
+ },
+ {
+  "id": "empty-count-d3h",
+  "text": "abc\nxy\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "d3h"
+ },
+ {
+  "id": "empty-2d0",
+  "text": "abc\nxy\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "2d0"
+ },
+ {
+  "id": "empty-ge-indent",
+  "text": "  ab\n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "dge"
+ },
+ {
+  "id": "empty-ge-count-fails",
+  "text": "a b c\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": ":normal d3geAZ<CR>"
+ },
+ {
+  "id": "empty-ge-count-moves",
+  "text": "a b c\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": ":normal 5geAZ<CR>"
+ },
+ {
+  "id": "empty-b-count-clamps",
+  "text": "ab cd\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "d3b"
+ },
+ {
+  "id": "empty-b-indent",
+  "text": "  ab\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "db"
+ },
+ {
+  "id": "empty-b-from-emptyline",
+  "text": "\nab\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "db"
+ },
+ {
+  "id": "empty-ge-from-emptyline",
+  "text": "\nab\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "dge"
+ },
+ {
+  "id": "empty-ge-line-above",
+  "text": "ab\ncd\n",
+  "cursor": [
+   1,
+   1
+  ],
+  "keys": "dge"
+ },
+ {
+  "id": "empty-ge-motion-indent",
+  "text": "  ab\n",
+  "cursor": [
+   0,
+   2
+  ],
+  "keys": "geiX<Esc>"
+ },
+ {
+  "id": "empty-g_-motion-emptyline",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "g_iX<Esc>"
+ },
+ {
+  "id": "empty-g_-count",
+  "text": "ab  \ncd  \nef\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "d2g_",
+  "difference": "pre-existing: vim's rule that a multi-line charwise delete started in the indent and ending before only blanks is linewise (op_delete) is not implemented (also d2e)"
+ },
+ {
+  "id": "empty-yi-paren-yanks-empty",
+  "text": "abc ()\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "ylf(yi(P"
+ },
+ {
+  "id": "empty-y0-sets-register-0",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "ylj0y0\"0P"
+ },
+ {
+  "id": "empty-y0-append",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "\"ayyj0\"Ay0\"aP"
+ },
+ {
+  "id": "empty-d0-keeps-register",
+  "text": "abc\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "ylj0d0P"
+ },
+ {
+  "id": "empty-g_-count-yank",
+  "text": "ab  \ncd  \nef\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "y2g_P"
+ },
+ {
+  "id": "empty-g_-count-change",
+  "text": "ab  \ncd  \nef\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "c2g_Q<Esc>"
+ },
+ {
+  "id": "empty-g_-count-motion",
+  "text": "ab  \ncd  \nef\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "9g_x"
+ },
+ {
+  "id": "empty-g_-count-last-line-fails",
+  "text": "ab\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": ":normal 2g_AZ<CR>"
+ },
+ {
+  "id": "empty-ge-count-moves-under-op",
+  "text": "a b c\n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "d3gex"
+ },
+ {
+  "id": "g_-back-d",
+  "text": "foo   \n",
+  "cursor": [
+   0,
+   5
+  ],
+  "keys": "dg_"
+ },
+ {
+  "id": "g_-back-c",
+  "text": "foo   \n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "cg_Q<Esc>"
+ },
+ {
+  "id": "g_-back-y",
+  "text": "foo   \n",
+  "cursor": [
+   0,
+   5
+  ],
+  "keys": "yg_P"
+ },
+ {
+  "id": "g_-back-gU",
+  "text": "foo   \n",
+  "cursor": [
+   0,
+   5
+  ],
+  "keys": "gUg_"
+ },
+ {
+  "id": "g_-back-normal",
+  "text": "foo   \n",
+  "cursor": [
+   0,
+   5
+  ],
+  "keys": ":normal dg_AZ<CR>"
+ },
+ {
+  "id": "g_-back-trail5",
+  "text": "trail  \n",
+  "cursor": [
+   0,
+   5
+  ],
+  "keys": "dg_"
+ },
+ {
+  "id": "g_-back-trail6",
+  "text": "trail  \n",
+  "cursor": [
+   0,
+   6
+  ],
+  "keys": "dg_"
+ },
+ {
+  "id": "g_-back-words",
+  "text": "a b  \n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "dg_"
+ },
+ {
+  "id": "g_-back-blank",
+  "text": "   \n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "dg_"
+ },
+ {
+  "id": "g_-back-count",
+  "text": "ab  \ncd  \n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "y2g_P"
+ },
+ {
+  "id": "s-emptyline",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "sQ<Esc>"
+ },
+ {
+  "id": "s-count-past-end",
+  "text": "ab\ncd\nef\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "3sQ<Esc>"
+ },
+ {
+  "id": "s-count-past-end-col0",
+  "text": "ab\ncd\nef\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "3sQ<Esc>"
+ },
+ {
+  "id": "s-count-emptyline",
+  "text": "ab\n\ncd\n",
+  "cursor": [
+   1,
+   0
+  ],
+  "keys": "3sQ<Esc>"
+ },
+ {
+  "id": "s-count-line-lost",
+  "text": "ab\ncd\nef\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "5sQ<Esc>"
+ },
+ {
+  "id": "s-count-last-line",
+  "text": "ab\ncd\n",
+  "cursor": [
+   1,
+   1
+  ],
+  "keys": "5sQ<Esc>"
+ },
+ {
+  "id": "s-count-inside",
+  "text": "abcdef\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "3sQ<Esc>"
+ },
+ {
+  "id": "s-normal",
+  "text": "ab\ncd\nef\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": ":normal 3sQ<CR>"
+ },
+ {
+  "id": "s-register",
+  "text": "ab\ncd\nef\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "\"a3sQ<Esc>j\"aP"
+ },
+ {
+  "id": "s-dot",
+  "text": "abcdef\nxyz\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "2sQ<Esc>j0."
+ },
+ {
+  "id": "s-dot-count",
+  "text": "abcdef\nxy\n",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "sQ<Esc>j05."
+ },
+ {
+  "id": "s-undo",
+  "text": "ab\ncd\nef\n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "3sQ<Esc>u"
+ },
+ {
+  "id": "s-empty-buffer",
+  "text": "",
+  "cursor": [
+   0,
+   0
+  ],
+  "keys": "sQ<Esc>",
+  "difference": "pre-existing: text typed into an empty buffer gets no final newline (nvim adds one)"
+ }
+]

@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [ "main" ]
 
+permissions:
+  contents: read
+
 jobs:
   test:
     name: Run Pytest via Docker
@@ -31,3 +34,32 @@ jobs:
         run: |
           docker run --rm --cap-add=SYS_PTRACE --security-opt seccomp=unconfined \
             tdb-test uv run pytest
+
+  windows-vi:
+    # The vi engine is pure Python and must work on Windows; the golden
+    # tests read only the committed golden.json (no nvim needed).
+    name: Vim Edit mode tests on Windows
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Run vi tests
+        # --no-cov: coverage is not collected here, and its line tracer
+        # (on Python 3.12; 3.14 uses sys.monitoring) slows the timing tests 2x.
+        run: >
+          uv run --with pytest --with pytest-asyncio --with pytest-cov pytest --no-cov
+          tests/unit/test_vi_engine.py
+          tests/unit/test_vi_textedit.py
+          tests/unit/test_vi_compat.py
+          tests/unit/test_vi_marks.py
+          tests/unit/test_vi_search.py
+          tests/unit/test_vi_ex.py
+          tests/unit/test_vi_substitute.py
+          tests/unit/test_vi_global.py
+          tests/unit/test_vi_textobjects.py
+          tests/unit/test_code_editor_vim.py

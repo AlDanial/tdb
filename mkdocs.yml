@@ -83,6 +83,7 @@ nav:
   - Using tdb:
       - Layout: using/layout.md
       - Navigation and Keybindings: using/keybindings.md
+      - Vim Edit Mode: using/vim-edit-mode.md
       - Debugging Controls: using/debugging-controls.md
       - Breakpoints: using/breakpoints.md
       - Variables: using/variables.md

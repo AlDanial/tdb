@@ -63,6 +63,100 @@ async def test_title_reflects_edit_state(tmp_path):
         assert "Edit*" in cv.border_title and "INSERT" not in cv.border_title
 
 
+async def test_mode_label_vi_submodes(tmp_path):
+    app = TdbApp(program="", config=TdbConfig(keybindings="vim"))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        cv = await _enter_edit(app, pilot, _write(tmp_path))
+        steps = [
+            (("i",), "Edit:INSERT"),
+            (("escape",), "Edit"),
+            (("v",), "Edit:VISUAL"),
+            (("V",), "Edit:V-LINE"),
+            (("escape", "2", "d"), "Edit 2d"),
+            (("escape", ":", "w", "q"), "Edit :wq"),
+            (("escape", "slash", "x"), "Edit /x"),
+            (("escape", "question_mark"), "Edit ?"),
+            (("escape", "x"), "Edit*"),
+            (("R",), "Edit:REPLACE*"),
+            (("escape", "v"), "Edit:VISUAL*"),
+        ]
+        for keys, label in steps:
+            await pilot.press(*keys)
+            await pilot.pause()
+            assert cv.mode_label() == label, keys
+            assert f"[yellow]{label}[/yellow]" in cv.border_title
+
+
+async def test_revert_to_disk_resyncs_engine(tmp_path):
+    app = TdbApp(program="", config=TdbConfig(keybindings="vim"))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        path = _write(tmp_path)
+        cv = await _enter_edit(app, pilot, path)
+        ed = app.query_one(CodeEditor)
+        engine = ed._layer.engine
+        await pilot.press("j", "x")
+        edited = "x = 1\n = 2\nz = 3\n"
+        assert ed.text == engine.text == edited
+        # The file changed on disk meanwhile, losing its final newline.
+        disk = "a = 1\nb = 2"
+        Path(path).write_text(disk, encoding="utf-8")
+        assert cv.revert_to_disk()
+        await pilot.pause()
+        assert engine.text == ed.text == disk and not cv.is_dirty
+        assert ed.cursor_location == engine.cursor == (0, 0)
+        await pilot.press("u")  # undoes the revert, final newline included
+        await pilot.pause()
+        assert engine.text == ed.text == edited and cv.is_dirty
+        await pilot.press("ctrl+r")
+        await pilot.pause()
+        assert engine.text == ed.text == disk
+
+
+async def test_vi_engine_starts_on_code_view_cursor_line(tmp_path):
+    app = TdbApp(program="", config=TdbConfig(keybindings="vim"))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        cv = app.query_one("#code-view", CodeView)
+        cv.load_file(_write(tmp_path))
+        cv.cursor_line = 3
+        cv.focus()
+        await pilot.press("escape", "escape")
+        await pilot.pause()
+        ed = app.query_one(CodeEditor)
+        assert ed._layer.engine.cursor == ed.cursor_location == (2, 0)
+        await pilot.press("x")
+        assert ed.text == "x = 1\ny = 2\n = 3\n"
+
+
+async def test_marks_survive_leave_and_file_switch(tmp_path):
+    app = TdbApp(program="", config=TdbConfig(keybindings="vim"))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        a = _write(tmp_path)
+        b = str(Path(tmp_path) / "other.py")
+        Path(b).write_text("a = 1\nb = 2\nc = 3\n", encoding="utf-8")
+        cv = await _enter_edit(app, pilot, a)
+        await pilot.press("j", "j", "l", "m", "a", "g", "g")
+        await pilot.press("escape")  # leave Edit mode (buffer is clean)
+        await pilot.pause()
+        assert not cv.is_editing
+        await _enter_edit(app, pilot, b)
+        engine = app.query_one(CodeEditor)._layer.engine
+        assert engine.marks.get("a") is None
+        await pilot.press("escape")
+        await pilot.pause()
+        await _enter_edit(app, pilot, a)
+        ed = app.query_one(CodeEditor)
+        assert ed._layer.engine.cursor == (0, 0)
+        await pilot.press("`", "a")
+        await pilot.pause()
+        assert ed._layer.engine.cursor == ed.cursor_location == (2, 1)
+        await pilot.press("g", "g", "'", "a")
+        assert ed.cursor_location == (2, 0)
+
+
 async def test_save_remaps_breakpoints_and_notifies(tmp_path):
     app = TdbApp(program="", config=TdbConfig(keybindings="default"))
     async with app.run_test() as pilot:

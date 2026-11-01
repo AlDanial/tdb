@@ -122,3 +122,22 @@ def test_format_bindings_edit_mode_per_scheme():
     assert ":w" in keys(vim) and "i a I A o O" in keys(vim)
     for rows in (notepad, emacs, vim):
         assert all(isinstance(k, str) and isinstance(d, str) for k, d in rows)
+
+
+def test_vim_edit_help_mentions_core_features():
+    from tdb.keybindings import edit_help
+
+    text = "\n".join(f"{k} {d}" for k, d in edit_help("vim"))
+    for needle in (
+        "ci(",
+        "ciw",
+        "dap",
+        ". ",
+        "ma",
+        "'a",
+        ":s",
+        ":g",
+        ":v",
+        "/ ? n N * #",
+    ):
+        assert needle in text, needle
