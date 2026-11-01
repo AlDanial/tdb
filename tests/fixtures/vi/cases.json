@@ -12224,5 +12224,95 @@
    4
   ],
   "keys": "d3gex"
+ },
+ {
+  "id": "g_-back-d",
+  "text": "foo   \n",
+  "cursor": [
+   0,
+   5
+  ],
+  "keys": "dg_"
+ },
+ {
+  "id": "g_-back-c",
+  "text": "foo   \n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "cg_Q<Esc>"
+ },
+ {
+  "id": "g_-back-y",
+  "text": "foo   \n",
+  "cursor": [
+   0,
+   5
+  ],
+  "keys": "yg_P"
+ },
+ {
+  "id": "g_-back-gU",
+  "text": "foo   \n",
+  "cursor": [
+   0,
+   5
+  ],
+  "keys": "gUg_"
+ },
+ {
+  "id": "g_-back-normal",
+  "text": "foo   \n",
+  "cursor": [
+   0,
+   5
+  ],
+  "keys": ":normal dg_AZ<CR>"
+ },
+ {
+  "id": "g_-back-trail5",
+  "text": "trail  \n",
+  "cursor": [
+   0,
+   5
+  ],
+  "keys": "dg_"
+ },
+ {
+  "id": "g_-back-trail6",
+  "text": "trail  \n",
+  "cursor": [
+   0,
+   6
+  ],
+  "keys": "dg_"
+ },
+ {
+  "id": "g_-back-words",
+  "text": "a b  \n",
+  "cursor": [
+   0,
+   4
+  ],
+  "keys": "dg_"
+ },
+ {
+  "id": "g_-back-blank",
+  "text": "   \n",
+  "cursor": [
+   0,
+   1
+  ],
+  "keys": "dg_"
+ },
+ {
+  "id": "g_-back-count",
+  "text": "ab  \ncd  \n",
+  "cursor": [
+   0,
+   3
+  ],
+  "keys": "y2g_P"
  }
 ]

@@ -1626,3 +1626,19 @@ async def test_empty_region_does_not_abort_but_a_failed_b_does():
     e = ViEngine("abc\nxy\n")
     e.feed_keys(":normal dbAZ<CR>")  # b at the start of the buffer fails
     assert e.text == "abc\nxy\n"
+
+
+@pytest.mark.parametrize(
+    ("keys", "cursor", "expected"),
+    [
+        ("dg_", (0, 5), "fo\n"),
+        ("cg_Q<Esc>", (0, 4), "foQ \n"),
+        ("gUg_", (0, 5), "foO   \n"),
+    ],
+)
+async def test_last_nonblank_backward_under_an_operator(keys, cursor, expected):
+    """``g_`` from trailing white space goes back to the last non-blank:
+    the operator takes it through the cursor (it did nothing)."""
+    e = ViEngine("foo   \n", cursor=cursor)
+    e.feed_keys(keys)
+    assert e.text == expected

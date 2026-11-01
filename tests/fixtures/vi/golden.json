@@ -4577,6 +4577,76 @@
   ],
   "text": "def f(a, b):\n    X = \"HI THERE\"\n    RETURN (A + B) * 2\n\ny = 10\nz = 20\n"
  },
+ "g_-back-blank": {
+  "cursor": [
+   0,
+   0
+  ],
+  "text": " \n"
+ },
+ "g_-back-c": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "foQ \n"
+ },
+ "g_-back-count": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "ab  \ncd \ncd  \n"
+ },
+ "g_-back-d": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "fo\n"
+ },
+ "g_-back-gU": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "foO   \n"
+ },
+ "g_-back-normal": {
+  "cursor": [
+   0,
+   2
+  ],
+  "text": "foZ\n"
+ },
+ "g_-back-trail5": {
+  "cursor": [
+   0,
+   4
+  ],
+  "text": "trai \n"
+ },
+ "g_-back-trail6": {
+  "cursor": [
+   0,
+   3
+  ],
+  "text": "trai\n"
+ },
+ "g_-back-words": {
+  "cursor": [
+   0,
+   1
+  ],
+  "text": "a \n"
+ },
+ "g_-back-y": {
+  "cursor": [
+   0,
+   5
+  ],
+  "text": "foo   o   \n"
+ },
  "gg-col": {
   "cursor": [
    0,

@@ -759,7 +759,8 @@ def _add_backward_words(kb: KeyBindings, engine: ViEngine) -> None:
             return None
         doc = event.current_buffer.document
         pos = (doc.cursor_position_row, doc.cursor_position_col)
-        return _charwise(doc.lines, doc.cursor_position, pos, to, True)
+        start, end = sorted((pos, to))  # (back, from trailing white space)
+        return _charwise(doc.lines, doc.cursor_position, start, end, True)
 
     @kb.add("g", "_", filter=movable)
     def _move_last_nonblank(event: KeyPressEvent) -> None:
