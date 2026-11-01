@@ -128,5 +128,16 @@ def test_vim_edit_help_mentions_core_features():
     from tdb.keybindings import edit_help
 
     text = "\n".join(f"{k} {d}" for k, d in edit_help("vim"))
-    for needle in ("ci(", "ciw", "dap", ". ", "ma", "'a", ":s", ":g", ":v", "/ ? n N * #"):
+    for needle in (
+        "ci(",
+        "ciw",
+        "dap",
+        ". ",
+        "ma",
+        "'a",
+        ":s",
+        ":g",
+        ":v",
+        "/ ? n N * #",
+    ):
         assert needle in text, needle

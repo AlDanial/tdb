@@ -220,4 +220,6 @@ def test_vim_edit_mode_page_is_stitched_into_tdb_doc():
     docs = load_docs()
     assert docs is not None
     assert "Differences from vim" in docs
-    assert "vim-lite" not in (DOCS / "using" / "keybindings.md").read_text(encoding="utf-8")
+    assert "vim-lite" not in (DOCS / "using" / "keybindings.md").read_text(
+        encoding="utf-8"
+    )
