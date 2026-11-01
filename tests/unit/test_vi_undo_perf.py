@@ -20,37 +20,42 @@ def _numbered(n: int) -> str:
     return "".join(f"line {i} = value_{i}\n" for i in range(n))
 
 
-def _timed(keys: str, text: str, limit: float, mem_limit: int | None = None):
-    """Run *keys* on *text* (one retry, as test_global_performance)."""
-    for attempt in range(2):
-        e = ViEngine(text)
-        if mem_limit is not None:
-            tracemalloc.start()
-        start = time.perf_counter()
-        try:
-            e.feed_keys(keys)
-            took = time.perf_counter() - start
-            peak = tracemalloc.get_traced_memory()[1] if mem_limit is not None else 0
-        finally:
-            if mem_limit is not None:
-                tracemalloc.stop()
-        if took < limit and (mem_limit is None or peak < mem_limit):
+def _seconds(keys: str, text: str) -> tuple[float, ViEngine]:
+    e = ViEngine(text)
+    start = time.perf_counter()
+    e.feed_keys(keys)
+    return time.perf_counter() - start, e
+
+
+def _growth(keys: str, limit: float) -> ViEngine:
+    """How much longer *keys* takes on 8,000 lines than on 1,000, which is
+    the same on any machine (seconds are not: musl's allocator and a CI
+    runner made a 1.9 s run 10.9 s).  Linear is 8x and quadratic 64x; the
+    per-change text copies these tests guard against measured 29-56x, and
+    the fix 12-21x (glibc and Alpine).  Prompt_toolkit's own per-edit text
+    copy and hash keep it above 8x.  One retry, for a busy runner."""
+    for _ in range(2):
+        small = min(_seconds(keys, _numbered(1_000))[0] for _ in range(3))
+        took, e = _seconds(keys, _numbered(8_000))
+        if took / small < limit:
             break
-    assert took < limit, f"{keys!r} took {took:.2f}s"
-    if mem_limit is not None:
-        assert peak < mem_limit, f"{keys!r} peaked at {peak / 2**20:.0f} MB"
+    assert took / small < limit, (
+        f"{keys!r}: 8,000 lines took {took / small:.1f}x as long as 1,000"
+        f" ({took:.2f}s / {small:.3f}s)"
+    )
     return e
 
 
-def test_percent_normal_on_10k_lines_time():
-    text = _numbered(10_000)
-    e = _timed(":%normal Ax<CR>", text, 2.0)
-    assert e.text == text.replace("\n", "x\n")
+def test_percent_normal_time_grows_linearly():
+    # (2026-10-31, 10,000 lines: 6.4 s before the fix, 1.85 s after)
+    e = _growth(":%normal Ax<CR>", 22.0)
+    assert e.text == _numbered(8_000).replace("\n", "x\n")
 
 
-def test_global_normal_on_20k_lines_time():
-    text = _numbered(20_000)
-    e = _timed(":g/7/normal Ax<CR>", text, 3.0)
+def test_global_normal_time_grows_linearly():
+    # (2026-10-31, 20,000 lines: 13.6 s before the fix, 2.26 s after)
+    e = _growth(":g/7/normal Ax<CR>", 32.0)
+    text = _numbered(8_000)
     want = "".join(
         line + ("x" if "7" in line else "") + "\n" for line in text.splitlines()
     )
