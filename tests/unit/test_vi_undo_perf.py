@@ -30,10 +30,11 @@ def _seconds(keys: str, text: str) -> tuple[float, ViEngine]:
 def _growth(keys: str, limit: float) -> ViEngine:
     """How much longer *keys* takes on 8,000 lines than on 1,000, which is
     the same on any machine (seconds are not: musl's allocator and a CI
-    runner made a 1.9 s run 10.9 s).  Linear is 8x and quadratic 64x; the
-    per-change text copies these tests guard against measured 29-56x, and
-    the fix 12-21x (glibc and Alpine).  Prompt_toolkit's own per-edit text
-    copy and hash keep it above 8x.  One retry, for a busy runner."""
+    runner made a 1.9 s run 10.9 s).  Linear is 8x and quadratic 64x; for
+    ``:g ... normal`` the per-change text copies this guards against
+    measured 43-56x, and the fix 16-21x (glibc and Alpine).
+    Prompt_toolkit's own per-edit text copy and hash keep it above 8x.
+    One retry, for a busy runner."""
     for _ in range(2):
         small = min(_seconds(keys, _numbered(1_000))[0] for _ in range(3))
         took, e = _seconds(keys, _numbered(8_000))
@@ -46,10 +47,34 @@ def _growth(keys: str, limit: float) -> ViEngine:
     return e
 
 
-def test_percent_normal_time_grows_linearly():
-    # (2026-10-31, 10,000 lines: 6.4 s before the fix, 1.85 s after)
-    e = _growth(":%normal Ax<CR>", 22.0)
-    assert e.text == _numbered(8_000).replace("\n", "x\n")
+def test_percent_normal_keeps_line_tables_incremental(monkeypatch):
+    """``:%normal`` on 8,000 lines builds the whole line-start table a fixed
+    number of times, not once per change: every other change derives its
+    table from the one before (``_derive_cache``).  Counted, not timed: on
+    the Alpine CI runner the growth of this run in seconds came within a
+    few percent of the slow path's (22x against 26x)."""
+    from tdb.vi import engine
+
+    assert engine._PTK is not None  # the fast path is active
+    counts = {"build": 0, "derive": 0}
+    accumulate, derive = engine.accumulate, engine._derive_cache
+
+    def counting_accumulate(*args, **kwargs):
+        counts["build"] += 1
+        return accumulate(*args, **kwargs)
+
+    def counting_derive(*args, **kwargs):
+        counts["derive"] += 1
+        return derive(*args, **kwargs)
+
+    monkeypatch.setattr(engine, "accumulate", counting_accumulate)
+    monkeypatch.setattr(engine, "_derive_cache", counting_derive)
+    text = _numbered(8_000)
+    e = ViEngine(text)
+    e.feed_keys(":%normal Ax<CR>")
+    assert e.text == text.replace("\n", "x\n")
+    assert counts["build"] <= 2, counts
+    assert counts["derive"] >= 8_000 - 1, counts
 
 
 def test_global_normal_time_grows_linearly():
