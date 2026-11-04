@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import sys
 from typing import Any
@@ -17,6 +18,7 @@ from tdb.languages.base import (
     ProfileCapabilities,
 )
 from tdb.languages.errors import parse_python_error
+from tdb.languages.python_attach import TargetInfo, free_port, inject, probe_target
 
 
 class DebugpyAdapter(AdapterSpec):
@@ -99,6 +101,31 @@ class DebugpyAdapter(AdapterSpec):
         return ["userUnhandled"]
 
 
+class PidAttachDebugpyAdapter(DebugpyAdapter):
+    """Attach to a running process by pid. tdb spawns the adapter, which
+    waits on `listen_port`; code injected into the target dials back, so
+    nothing stays open in the target after tdb quits."""
+
+    quirks = AdapterQuirks(pre_arm_pause_on_attach=True, attach_via_adapter=True)
+
+    def __init__(self, target: TargetInfo, listen_port: int) -> None:
+        self.target = target
+        self.listen_port = listen_port
+
+    def attach_body(
+        self, *, host: str, port: int, opts: dict[str, Any]
+    ) -> dict[str, Any]:
+        arguments = super().attach_body(host=host, port=port, opts=opts)
+        del arguments["connect"]
+        arguments["listen"] = {"host": "127.0.0.1", "port": self.listen_port}
+        arguments["redirectOutput"] = True
+        arguments["subProcess"] = False
+        return arguments
+
+    async def after_attach_request(self, initialized: asyncio.Event) -> str | None:
+        return await inject(self.target, self.listen_port, initialized)
+
+
 def _is_breakpoint_hook_frame(frame) -> bool:
     """`tdb.breakpoint()` pauses inside tdb/breakpoint_hook.py."""
     src = frame.source.path if frame.source else None
@@ -120,20 +147,26 @@ def build_python_profile(
     adapter: str | None = None,
     adapter_paths: dict[str, str] | None = None,
     program: str | None = None,
+    attach_pid: int | None = None,
+    python: str | None = None,
 ) -> LanguageProfile:
     """Registry builder. `adapter`/`adapter_paths`/`program` exist for
     signature parity with other languages; Python has exactly one
-    adapter and it always runs on tdb's own interpreter."""
+    adapter and it always runs on tdb's own interpreter. `attach_pid`
+    selects pid attach, and `python` names the target's interpreter."""
     if adapter not in (None, "debugpy"):
         raise LanguageNotSupportedError(
             f"unknown adapter {adapter!r} for python (known: debugpy)"
         )
     from tdb.source_analysis import compute_step_units
 
+    spec: AdapterSpec = DebugpyAdapter()
+    if attach_pid is not None:
+        spec = PidAttachDebugpyAdapter(probe_target(attach_pid, python), free_port())
     return LanguageProfile(
         id="python",
         display_name="Python",
-        adapter=DebugpyAdapter(),
+        adapter=spec,
         presentation=Presentation(lexer="python", parse_error=parse_python_error),
         capabilities=ProfileCapabilities(
             compute_step_units=compute_step_units,

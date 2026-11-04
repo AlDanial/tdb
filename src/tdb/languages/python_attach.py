@@ -13,6 +13,7 @@ import os
 import re
 import shutil
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
@@ -135,6 +136,13 @@ def probe_target(pid: int, python: str | None = None) -> TargetInfo:
             f"Python {MINIMUM_VERSION[0]}.{MINIMUM_VERSION[1]} or newer"
         )
     return TargetInfo(pid, path, remote_exec == "True")
+
+
+def free_port() -> int:
+    """An unused localhost port for the adapter to wait on."""
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
 
 
 def build_remote_exec_script(

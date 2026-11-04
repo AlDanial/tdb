@@ -64,6 +64,10 @@ class DebugController:
         # (debugpy launches without --terminal); see supports_stdin.
         self._pipe_launcher: PipeLauncher | None = None
         self._launch_params: dict[str, Any] = {}
+        # How an injected target was reached (Python pid attach), and
+        # the signal that it got there.
+        self.attach_method: str | None = None
+        self._initialized_seen = asyncio.Event()
         # Future for the launch/attach response (set by start() /
         # remote_attach()) and an event marking that the request itself
         # has been written — do_configure must not send configurationDone
@@ -443,6 +447,9 @@ class DebugController:
             pause_on_attach=pre_arm_pause,
         )
         self._launch_sent.set()
+        self.attach_method = await self.profile.adapter.after_attach_request(
+            self._initialized_seen
+        )
 
     async def do_configure(self) -> None:
         """Called after 'initialized' event. Sends breakpoints + configurationDone.
@@ -1531,6 +1538,7 @@ class DebugController:
     # They delegate to the event_handler — all async work happens elsewhere.
 
     def _on_initialized(self, event: Event) -> None:
+        self._initialized_seen.set()
         self.event_handler.on_initialized()
 
     def _on_stopped(self, event: Event) -> None:

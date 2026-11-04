@@ -12,6 +12,7 @@ import uvicorn
 
 from tdb.dap.client import DAPError
 from tdb.languages.base import AdapterNotFoundError
+from tdb.languages.python_attach import PidAttachError
 from tdb.session.controller import DebugController
 from .app import create_app
 from .event_handler import ServerEventHandler
@@ -75,9 +76,9 @@ async def setup_headless_session(
         except AdapterNotFoundError as exc:
             print(f"tdb: {exc.hint}", file=sys.stderr)
             sys.exit(2)
-        except ConnectionError as exc:
-            # Adapter spawned but died before serving DAP; the message
-            # carries its stderr tail and any adapter diagnosis.
+        except (ConnectionError, PidAttachError) as exc:
+            # Adapter spawned but died before serving DAP, or injection
+            # into a Python target failed; either way the message says why.
             print(f"tdb: {exc}", file=sys.stderr)
             sys.exit(2)
         except OSError as exc:
@@ -90,6 +91,8 @@ async def setup_headless_session(
                 file=sys.stderr,
             )
             sys.exit(2)
+        if controller.attach_method is not None:
+            print(f"Attached using {controller.attach_method}", file=sys.stderr)
     else:
         assert program is not None
         try:

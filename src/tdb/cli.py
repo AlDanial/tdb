@@ -89,10 +89,11 @@ def build_parser() -> argparse.ArgumentParser:
         dest="attach_pid",
         type=int,
         metavar="PID",
-        help="Attach to a running local process by pid: Go (Delve) or a "
-        "native C/C++, Rust, or OCaml program (gdb or lldb-dap). Linux "
-        "identifies the language from /proc/PID/exe; elsewhere pass "
-        "--lang and, for native programs, the executable path.",
+        help="Attach to a running local process by pid: Python 3.11+, Go "
+        "(Delve), or a native C/C++, Rust, or OCaml program (gdb or "
+        "lldb-dap). Linux identifies the language from /proc/PID/exe; "
+        "elsewhere pass --lang and, for native programs, the executable "
+        "path.",
     )
     parser.add_argument(
         "--run",
@@ -557,7 +558,7 @@ def _resolve_program_path(
         args.program = str(program_path)
 
 
-PID_ATTACH_LANGUAGES = ("go", "cpp", "rust", "ocaml")
+PID_ATTACH_LANGUAGES = ("python", "go", "cpp", "rust", "ocaml")
 
 
 def _pid_exe(pid: int) -> str:
@@ -616,6 +617,15 @@ def _resolve_language(
                 test=args.test,
                 attach_pid=args.attach_pid,
             )
+        elif lang_id == "python" and args.attach_pid is not None:
+            from tdb.languages.python import build_python_profile
+
+            profile = build_python_profile(
+                adapter=adapter,
+                adapter_paths=config.adapters,
+                attach_pid=args.attach_pid,
+                python=args.python,
+            )
         else:
             profile = registry.resolve(
                 lang_id,
@@ -645,17 +655,17 @@ def _resolve_language(
                 f"--test applies only to Go debuggees (detected language: {profile.id})"
             )
 
-    if profile.id == "go" and args.attach_pid is not None and args.program:
-        # Delve pid attach reads the running binary directly — a local
-        # program path is meaningless (unlike native pid attach below,
-        # which needs one for symbols).
+    if profile.id in ("go", "python") and args.attach_pid is not None and args.program:
+        # Delve reads the running binary directly and debugpy runs inside
+        # the target — a local program path is meaningless (unlike native
+        # pid attach below, which needs one for symbols).
         parser.error(
             "-a/--attach cannot be combined with a positional PROGRAM argument"
         )
 
     if args.attach_pid is not None and profile.id not in PID_ATTACH_LANGUAGES:
         parser.error(
-            f"-a/--attach applies to Go, C/C++, Rust, and OCaml debuggees "
+            f"-a/--attach applies to Python, Go, C/C++, Rust, and OCaml debuggees "
             f"(detected language: {profile.id})"
         )
     if (
