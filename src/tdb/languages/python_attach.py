@@ -50,10 +50,6 @@ _CLAIMED_NAME = "claimed"
 METHOD_REMOTE_EXEC = "sys.remote_exec"
 METHOD_DEBUGPY = "debugpy injection"
 
-# Holds helpers that outlive inject(): tasks are otherwise weakly held.
-_background: set[asyncio.Task] = set()
-
-
 class PidAttachError(Exception):
     """Injection failed; `str()` is the message shown to the user."""
 
@@ -309,22 +305,6 @@ async def _terminate(proc: asyncio.subprocess.Process) -> None:
     await proc.wait()
 
 
-async def _reap(proc: asyncio.subprocess.Process, output: asyncio.Future) -> None:
-    """Let a helper finish after the target connected."""
-    try:
-        await asyncio.wait_for(output, _timeouts.PID_ATTACH_TOTAL)
-    except TimeoutError:
-        await _terminate(proc)
-
-
-def _reap_in_background(
-    proc: asyncio.subprocess.Process, output: asyncio.Future
-) -> None:
-    task = asyncio.create_task(_reap(proc, output))
-    _background.add(task)
-    task.add_done_callback(_background.discard)
-
-
 async def _wait_for_connection(
     pid: int, connected: asyncio.Event, until: float, helper=None
 ) -> bool:
@@ -398,9 +378,9 @@ async def inject(target: TargetInfo, port: int, connected: asyncio.Event) -> str
     """Make the target connect to the adapter waiting on `port`.
 
     `connected` is set when the session starts. Injection blocks until the
-    DAP handshake finishes, so this runs alongside it, not before it.
-    Returns the method used; raises PidAttachError with a message for the
-    user.
+    DAP handshake finishes, so this runs alongside it, not before it, and
+    returns only once the helper is gone. Returns the method used; raises
+    PidAttachError with a message for the user.
     """
     pid = target.pid
     deadline = time.monotonic() + _timeouts.PID_ATTACH_TOTAL
@@ -429,7 +409,12 @@ async def inject(target: TargetInfo, port: int, connected: asyncio.Event) -> str
     output = asyncio.ensure_future(proc.communicate())
     try:
         if await _wait_for_connection(pid, connected, deadline, helper=proc):
-            _reap_in_background(proc, output)
+            # The injected call stays open until the handshake ends, with
+            # gdb inside the target. Wait so a session never has gdb in it.
+            try:
+                await asyncio.wait_for(output, deadline - time.monotonic())
+            except TimeoutError:
+                pass
             return METHOD_DEBUGPY
         if proc.returncode not in (None, 0):
             stdout, _ = await output
@@ -440,5 +425,5 @@ async def inject(target: TargetInfo, port: int, connected: asyncio.Event) -> str
             "stuck in native code holding the GIL"
         )
     finally:
-        if not connected.is_set() and proc.returncode is None:
+        if proc.returncode is None:
             await _terminate(proc)

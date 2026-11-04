@@ -14,6 +14,7 @@ import logging
 import os
 from typing import TYPE_CHECKING
 
+from tdb.languages.python_attach import PidAttachError
 from tdb.session.messages import DapOutput, DapStopped
 from tdb.widgets.console_view import ConsoleView
 from tdb.widgets.modals import DEFAULT_TRACEBACK_HEADER, _TracebackModal
@@ -57,6 +58,10 @@ class DapEventCoordinator:
             await self.app.controller.do_configure()
             log.info("do_configure completed")
             self.app._update_ui_state()
+            self.app.announce_pid_attach()
+        except PidAttachError as exc:
+            self.app._startup_error = f"tdb: {exc}"
+            self.app.exit(return_code=2)
         except Exception as exc:
             log.exception("Failed to launch")
             self.app.sub_title = "Launch failed"

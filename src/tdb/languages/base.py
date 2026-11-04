@@ -157,10 +157,11 @@ class AdapterSpec:
         raise NotImplementedError
 
     async def after_attach_request(self, initialized: asyncio.Event) -> str | None:
-        """Runs once the attach request is sent. An adapter that has to
-        make the debuggee reach it (Python pid attach) does that here,
-        and returns a name for how it did; `initialized` is set when the
-        session starts."""
+        """Runs alongside the session from the moment the attach request
+        is sent. An adapter that has to make the debuggee reach it (Python
+        pid attach) does that here and returns a name for how it did.
+        `initialized` is set when the session starts; the handshake only
+        completes after that, so this must not rely on returning first."""
         return None
 
     def pre_configuration_commands(

@@ -83,6 +83,9 @@ RPC_STEP_WAIT = 600.0
 PID_ATTACH_REMOTE_EXEC = 5.0
 # Ceiling for injection as a whole, whichever method is used.
 PID_ATTACH_TOTAL = 30.0
+# An injected target must answer `threads` within this; if it can't, no
+# later request will get a reply either.
+PID_ATTACH_RESPONSE = 5.0
 # With no stop by this long after attaching, the program isn't running
 # Python code and a pause can't land; the TUI says so.
 PID_ATTACH_BLOCKED_NOTICE = 3.0

@@ -91,8 +91,6 @@ async def setup_headless_session(
                 file=sys.stderr,
             )
             sys.exit(2)
-        if controller.attach_method is not None:
-            print(f"Attached using {controller.attach_method}", file=sys.stderr)
     else:
         assert program is not None
         try:
@@ -129,6 +127,11 @@ async def setup_headless_session(
         # the attach failure modes above instead of dumping a traceback.
         print(f"tdb: adapter configuration failed — {exc}", file=sys.stderr)
         sys.exit(2)
+    except PidAttachError as exc:
+        print(f"tdb: {exc}", file=sys.stderr)
+        sys.exit(2)
+    if controller.attach_method is not None:
+        print(f"Attached using {controller.attach_method}", file=sys.stderr)
 
     # Wait for the debuggee to actually stop. State (is_running,
     # stop_reason, current_thread_id) is set synchronously by

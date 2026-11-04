@@ -106,7 +106,8 @@ class PidAttachDebugpyAdapter(DebugpyAdapter):
     waits on `listen_port`; code injected into the target dials back, so
     nothing stays open in the target after tdb quits."""
 
-    quirks = AdapterQuirks(pre_arm_pause_on_attach=True, attach_via_adapter=True)
+    # No pre-armed pause: see DebugController._finish_attach_hook.
+    quirks = AdapterQuirks(attach_via_adapter=True)
 
     def __init__(self, target: TargetInfo, listen_port: int) -> None:
         self.target = target

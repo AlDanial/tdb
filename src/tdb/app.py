@@ -676,7 +676,6 @@ class TdbApp(_AppMessageRoutes, App):
                     terminal=self._terminal,
                     sub_process=self._sub_process,
                 )
-            self._announce_pid_attach()
             self._sync_stdin_input()
         except AdapterNotFoundError as exc:
             # The adapter couldn't be located (e.g. lldb-dap / gdb not
@@ -699,7 +698,7 @@ class TdbApp(_AppMessageRoutes, App):
             log.exception("Failed to start debug session")
             self.sub_title = "Failed to start"
 
-    def _announce_pid_attach(self) -> None:
+    def announce_pid_attach(self) -> None:
         """Say how a Python target was reached, and warn later if it
         never stops: a blocked program can't be paused."""
         method = self.controller.attach_method

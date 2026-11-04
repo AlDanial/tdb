@@ -84,7 +84,8 @@ def test_attach_body_shape():
 def test_quirks():
     quirks = PidAttachDebugpyAdapter(TARGET, 6000).quirks
     assert quirks.attach_via_adapter
-    assert quirks.pre_arm_pause_on_attach
+    # A pre-armed pause lands inside the injected call, with gdb attached.
+    assert not quirks.pre_arm_pause_on_attach
     assert quirks.stdin_route is None
 
 

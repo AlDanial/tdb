@@ -379,9 +379,9 @@ async def test_inject_cancel_silences_queued_script(helpers):
     assert not os.path.exists(os.path.join(helpers.workdir, "marker"))
 
 
-async def test_inject_reaps_helper_after_connect(helpers, tmp_path):
-    # The helper outlives the connection (it exits once the handshake is
-    # done). It must be finished later, not killed and not left a zombie.
+async def test_inject_returns_only_after_helper_exits(helpers, tmp_path):
+    # gdb stays attached until the helper exits; returning sooner lets a
+    # debug session start with gdb inside the target.
     pidfile = tmp_path / "pid"
     helpers.debugpy = recording_pid(pidfile, seconds=0.5)
     connected = asyncio.Event()
@@ -389,11 +389,18 @@ async def test_inject_reaps_helper_after_connect(helpers, tmp_path):
     pid = await read_pid(pidfile)
     connected.set()
     await task
-    assert alive(pid)
-    deadline = time.monotonic() + 3
-    while alive(pid) and time.monotonic() < deadline:
-        await asyncio.sleep(0.02)
     assert not alive(pid)
+
+
+async def test_inject_terminates_helper_stuck_after_connect(
+    helpers, short_timeouts, tmp_path
+):
+    pidfile = tmp_path / "pid"
+    helpers.debugpy = recording_pid(pidfile)
+    connected = asyncio.Event()
+    connect_soon(connected)
+    assert await inject(TARGET_OLD, 5678, connected) == "debugpy injection"
+    assert not alive(await read_pid(pidfile))
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX signals")
