@@ -75,3 +75,14 @@ EXAMINE_CHILD = 2.0
 # arbitrary-but-comfortable for typical interactive sessions.
 RPC_STEP_WAIT = 600.0
 """How long the RPC `_step_action` blocks awaiting the next stop."""
+
+# `tdb -a PID` on Python. `sys.remote_exec` reports success as soon as the
+# script is queued, and the script never runs while the main thread is
+# blocked, so tdb waits this long for it to connect and then falls back.
+# The slowest success measured was 3.9s, behind a C call holding the GIL.
+PID_ATTACH_REMOTE_EXEC = 5.0
+# Ceiling for injection as a whole, whichever method is used.
+PID_ATTACH_TOTAL = 30.0
+# With no stop by this long after attaching, the program isn't running
+# Python code and a pause can't land; the TUI says so.
+PID_ATTACH_BLOCKED_NOTICE = 3.0
