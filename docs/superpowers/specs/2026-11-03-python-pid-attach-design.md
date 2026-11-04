@@ -1,6 +1,6 @@
 # Attach to a running Python program by PID
 
-Date: 2026-11-03. Status: awaiting approval.
+Date: 2026-11-03. Status: implemented.
 
 ## Intent
 
@@ -156,6 +156,22 @@ Exit code 2, on stderr, using `_startup_error`:
 not be reported as a permissions problem without the `ptrace_scope` check.
 tdb does not refuse up front on `ptrace_scope`: a target may have opted in
 with `PR_SET_PTRACER`, so it tries first and classifies the failure.
+
+## Changes found while building
+
+Real-process tests changed three things above:
+
+- **No pre-armed pause.** The injected call stays open until the handshake ends,
+  so a pause before `configurationDone` stopped the program inside it with gdb
+  attached, and quitting there segfaulted the target. tdb now runs injection as
+  a task, waits for the helper to exit, and only then pauses. gdb is never
+  attached during a session.
+- **Refuse targets already using debugpy (Linux).** Injection tears down that
+  session and can leave a silent one. tdb checks first for a `debugpy/launcher`
+  parent, or a connection to a `debugpy/adapter` process (`debugpy.listen()`
+  daemonizes the adapter, so it is not a child). Other platforms rely on a
+  responsiveness check after injection.
+- **debugpy floor is 1.8.20**, for `--disable-sys-remote-exec`.
 
 ## Evidence from the spike
 

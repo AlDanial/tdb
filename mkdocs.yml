@@ -98,6 +98,7 @@ nav:
   - Python:
       - Post-Mortem Exception Hook: python/post-mortem.md
       - Live Breakpoint Hook: python/breakpoint-hook.md
+      - Attach to a Running Program: python/attach-to-process.md
       - pytest Integration: python/pytest.md
       - Async Task Inspector: python/async-tasks.md
       - Thread Inspector: python/threads.md

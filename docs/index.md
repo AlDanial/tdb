@@ -45,6 +45,8 @@ It specifically supports modules
     - `threading` (with a thread inspector)
     - `multiprocessing` / `concurrent.futures` (with automatic child process attachment and a process inspector)
 
+- attaches to a running Python 3.11+ program by pid, with no preparation
+
 - supports remote attachment to Python, Perl, Ruby, Rust, C/C++, and Go programs
 
 - includes a JSON-RPC server mode, an MCP (v2) mode, and a `SKILL.md` file that enable
