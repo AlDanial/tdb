@@ -240,8 +240,9 @@ async def test_inject_uses_remote_exec_when_it_connects(helpers):
 
 
 async def test_inject_falls_back_when_blocked(helpers, short_timeouts):
+    helpers.debugpy = [sys.executable, "-c", "import time; time.sleep(0.5)"]
     connected = asyncio.Event()
-    connect_soon(connected, 0.5)
+    connect_soon(connected, 0.4)
     assert await inject(TARGET_314, 5678, connected) == "debugpy injection"
     argv = helpers.debugpy_calls[0]
     assert "--disable-sys-remote-exec" in argv
@@ -315,16 +316,18 @@ async def test_inject_gdb_not_needed_elsewhere(helpers, monkeypatch):
     assert await inject(TARGET_OLD, 5678, connected) == "debugpy injection"
 
 
-async def test_inject_total_timeout(helpers, short_timeouts, tmp_path):
+async def test_inject_timeout_never_signals_helper(helpers, short_timeouts, tmp_path):
+    # gdb may be inside the target; killing it there segfaults the program.
     pidfile = tmp_path / "pid"
-    helpers.debugpy = recording_pid(pidfile)
-    with pytest.raises(PidAttachError, match=str(os.getpid())):
+    helpers.debugpy = recording_pid(pidfile, seconds=3)
+    with pytest.raises(PidAttachError, match="pending") as exc_info:
         await inject(TARGET_OLD, 5678, asyncio.Event())
-    assert not alive(await read_pid(pidfile))
+    assert str(os.getpid()) in str(exc_info.value)
+    assert alive(await read_pid(pidfile))
 
 
 async def test_inject_target_exits_mid_injection(helpers, monkeypatch, short_timeouts):
-    helpers.debugpy = SLEEP
+    helpers.debugpy = [sys.executable, "-c", "import time; time.sleep(1)"]
     monkeypatch.setattr(_timeouts, "PID_ATTACH_TOTAL", 30.0)
     monkeypatch.setattr(f"{MODULE}.pid_exists", lambda pid: False)
     started = time.monotonic()
@@ -333,42 +336,19 @@ async def test_inject_target_exits_mid_injection(helpers, monkeypatch, short_tim
     assert time.monotonic() - started < 5
 
 
-async def test_inject_cancel_kills_helper(helpers, tmp_path):
+async def test_inject_cancel_never_signals_helper(helpers, tmp_path):
     pidfile = tmp_path / "pid"
-    helpers.debugpy = recording_pid(pidfile)
+    helpers.debugpy = recording_pid(pidfile, seconds=3)
     task = asyncio.create_task(inject(TARGET_OLD, 5678, asyncio.Event()))
     pid = await read_pid(pidfile)
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
-    assert not alive(pid)
-
-
-async def test_inject_cancel_kills_helpers_children(helpers, tmp_path):
-    # `python -m debugpy` runs gdb as a child; killing only the helper
-    # would leave gdb injecting into the target.
-    pidfile = tmp_path / "child"
-    helpers.debugpy = [
-        sys.executable,
-        "-c",
-        "import subprocess, sys, time\n"
-        "c = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])\n"
-        f"open({str(pidfile)!r}, 'w').write(str(c.pid))\n"
-        "time.sleep(60)\n",
-    ]
-    task = asyncio.create_task(inject(TARGET_OLD, 5678, asyncio.Event()))
-    child = await read_pid(pidfile)
-    task.cancel()
-    with pytest.raises(asyncio.CancelledError):
-        await task
-    deadline = time.monotonic() + 3
-    while alive(child) and time.monotonic() < deadline:
-        await asyncio.sleep(0.02)
-    assert not alive(child)
+    assert alive(pid)
 
 
 async def test_inject_cancel_silences_queued_script(helpers):
-    helpers.debugpy = SLEEP
+    helpers.debugpy = [sys.executable, "-c", "import time; time.sleep(1)"]
     task = asyncio.create_task(inject(TARGET_314, 5678, asyncio.Event()))
     while not helpers.remote_exec_scripts:
         await asyncio.sleep(0.01)
@@ -392,45 +372,15 @@ async def test_inject_returns_only_after_helper_exits(helpers, tmp_path):
     assert not alive(pid)
 
 
-async def test_inject_terminates_helper_stuck_after_connect(
+async def test_inject_leaves_helper_stuck_after_connect(
     helpers, short_timeouts, tmp_path
 ):
     pidfile = tmp_path / "pid"
-    helpers.debugpy = recording_pid(pidfile)
+    helpers.debugpy = recording_pid(pidfile, seconds=3)
     connected = asyncio.Event()
     connect_soon(connected)
     assert await inject(TARGET_OLD, 5678, connected) == "debugpy injection"
-    assert not alive(await read_pid(pidfile))
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="POSIX signals")
-async def test_cancel_gives_helpers_child_time_to_detach(helpers, tmp_path):
-    # gdb detaches on SIGTERM. The helper dies at once, so the grace
-    # period must cover the child, not just the helper.
-    ready, detached = tmp_path / "ready", tmp_path / "detached"
-    child = (
-        "import pathlib, signal, sys, time\n"
-        "def bye(*a):\n"
-        "    time.sleep(0.3)\n"
-        f"    pathlib.Path({str(detached)!r}).write_text('yes')\n"
-        "    sys.exit(0)\n"
-        "signal.signal(signal.SIGTERM, bye)\n"
-        f"pathlib.Path({str(ready)!r}).write_text('1')\n"
-        "time.sleep(60)\n"
-    )
-    helpers.debugpy = [
-        sys.executable,
-        "-c",
-        "import subprocess, sys, time\n"
-        f"subprocess.Popen([sys.executable, '-c', {child!r}])\n"
-        "time.sleep(60)\n",
-    ]
-    task = asyncio.create_task(inject(TARGET_OLD, 5678, asyncio.Event()))
-    await read_pid(ready)
-    task.cancel()
-    with pytest.raises(asyncio.CancelledError):
-        await task
-    assert detached.exists()
+    assert alive(await read_pid(pidfile))
 
 
 async def test_inject_cancel_kills_remote_exec_helper(helpers, tmp_path):
@@ -442,3 +392,29 @@ async def test_inject_cancel_kills_remote_exec_helper(helpers, tmp_path):
     with pytest.raises(asyncio.CancelledError):
         await task
     assert not alive(pid)
+
+
+def test_classify_drops_debugpy_command_echo():
+    output = "Error: gdb exited\nRunning: gdb -p 42 " + "1, " * 600 + "\n"
+    msg = classify(inject_output=output)
+    assert "Running:" not in msg
+    assert "gdb exited" in msg
+    assert len(msg) < 400
+
+
+def test_classify_explains_quote_in_install_path(monkeypatch):
+    monkeypatch.setattr(f"{MODULE}.sys.platform", "linux")
+    monkeypatch.setattr(f"{MODULE}.sys.executable", "/opt/it's/bin/python")
+    msg = classify(inject_output="Running: gdb\n")
+    assert "path" in msg
+
+
+async def test_inject_helper_exit_without_connection_fails_soon(helpers, monkeypatch):
+    # Injection blocks through the handshake, so a helper that exits 0
+    # without a connection found no interpreter to run in.
+    monkeypatch.setattr(_timeouts, "PID_ATTACH_TOTAL", 30.0)
+    monkeypatch.setattr(f"{MODULE}._HELPER_EXIT_GRACE", 0.2)
+    started = time.monotonic()
+    with pytest.raises(PidAttachError, match="Python"):
+        await inject(TARGET_OLD, 5678, asyncio.Event())
+    assert time.monotonic() - started < 5

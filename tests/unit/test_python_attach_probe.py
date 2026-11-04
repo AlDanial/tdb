@@ -271,3 +271,8 @@ def test_probe_refuses_already_debugged_target(monkeypatch, alive):
     monkeypatch.setattr(f"{MODULE}.already_debugged", lambda pid: True)
     with pytest.raises(LanguageNotSupportedError, match="tdb -r"):
         probe_target(4242)
+
+
+def test_detect_deleted_interpreter_is_python():
+    # After a package upgrade /proc/PID/exe names a file that is gone.
+    assert registry.detect_executable("/usr/bin/python3.12 (deleted)") == "python"

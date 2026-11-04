@@ -172,6 +172,12 @@ Real-process tests changed three things above:
   daemonizes the adapter, so it is not a child). Other platforms rely on a
   responsiveness check after injection.
 - **debugpy floor is 1.8.20**, for `--disable-sys-remote-exec`.
+- **The gdb helper is never signalled.** It runs detached and finishes on its
+  own, even past tdb's exit. Killing gdb mid-call segfaulted the target, and the
+  call can last as long as native code holds the GIL.
+- **Quitting settles the handshake first.** pydevd waits for `configurationDone`
+  with no timeout, so `stop()` finishes the handshake, bounded by 5 seconds,
+  before tearing anything down.
 
 ## Evidence from the spike
 

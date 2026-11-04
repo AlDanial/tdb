@@ -6,6 +6,9 @@ ptrace_scope=1 with no system changes. Every target is killed in teardown.
 
 from __future__ import annotations
 
+import asyncio
+import ctypes
+import dataclasses
 import glob
 import os
 import shutil
@@ -17,6 +20,12 @@ from pathlib import Path
 
 import httpx
 import pytest
+
+from tdb import _timeouts
+from tdb.languages.python import build_python_profile
+from tdb.languages.python_attach import PidAttachError
+from tdb.server.event_handler import ServerEventHandler
+from tdb.session.controller import DebugController
 
 from .conftest import RpcClient, SRC_DIR, _free_port
 
@@ -394,6 +403,112 @@ def test_target_already_using_debugpy(make_target, attach):
     assert session.proc.wait(timeout=10) == 2
     assert "tdb -r" in session.errors()
     target.assert_running()
+
+
+class _ConfiguringHandler(ServerEventHandler):
+    """Configures on `initialized`, as the TUI does."""
+
+    controller: DebugController
+    configure: asyncio.Task | None = None
+
+    def on_initialized(self):
+        super().on_initialized()
+        self.configure = asyncio.ensure_future(self.controller.do_configure())
+
+
+async def _quit_at(target, delay, *, use_gdb):
+    """Attach in-process and call stop() `delay` seconds in."""
+    profile = build_python_profile(attach_pid=target.pid)
+    if use_gdb:
+        profile.adapter.target = dataclasses.replace(
+            profile.adapter.target, has_remote_exec=False
+        )
+    handler = _ConfiguringHandler()
+    controller = DebugController(handler, profile=profile)
+    handler.controller = controller
+    attach = asyncio.ensure_future(controller.remote_attach("127.0.0.1", 0))
+    await asyncio.sleep(delay)
+    await controller.stop()
+    for task in (attach, handler.configure):
+        if task is not None:
+            await asyncio.wait({task}, timeout=5)
+            task.cancel()
+
+
+# Spans injection and the handshake, where quitting used to hurt the target.
+QUIT_DELAYS = (0.2, 0.3, 0.4, 0.5, 0.6, 0.7)
+
+
+@linux_only
+@pytest.mark.parametrize("delay", QUIT_DELAYS)
+def test_quit_during_gdb_injection_leaves_program_running(make_target, delay):
+    target = make_target("busy")
+    asyncio.run(_quit_at(target, delay, use_gdb=True))
+    time.sleep(0.5)
+    target.assert_running()
+
+
+@linux_only
+@needs_314
+@pytest.mark.parametrize("delay", (0.1, 0.2, 0.3, 0.4))
+def test_quit_during_remote_exec_leaves_program_running(make_target, delay):
+    target = make_target("busy", PY_314)
+    asyncio.run(_quit_at(target, delay, use_gdb=False))
+    time.sleep(0.5)
+    target.assert_running()
+
+
+@linux_only
+def test_quit_while_gil_is_held_leaves_program_alive(make_target):
+    target = make_target("gil")
+    asyncio.run(_quit_at(target, 1.5, use_gdb=True))
+    assert target.proc.wait(timeout=20) == 0
+
+
+@linux_only
+def test_injection_timeout_leaves_program_alive(make_target, monkeypatch):
+    monkeypatch.setattr(_timeouts, "PID_ATTACH_TOTAL", 2.0)
+    target = make_target("gil")
+
+    async def attach():
+        profile = build_python_profile(attach_pid=target.pid)
+        controller = DebugController(ServerEventHandler(), profile=profile)
+        with pytest.raises(PidAttachError, match="pending"):
+            await controller.remote_attach("127.0.0.1", 0)
+
+    asyncio.run(attach())
+    assert target.proc.wait(timeout=20) == 0
+
+
+@linux_only
+@pytest.mark.parametrize("delay", (0.7, 0.9, 1.1, 1.3, 1.5))
+def test_ctrl_c_during_headless_attach_leaves_program_running(
+    make_target, tmp_path, delay
+):
+    target = make_target("busy")
+    session = Session(target.pid, tmp_path)
+    time.sleep(delay)
+    session.proc.send_signal(signal.SIGINT)
+    session.proc.wait(timeout=15)
+    session.close()
+    time.sleep(0.5)
+    target.assert_running()
+
+
+@linux_only
+def test_process_without_python_fails_quickly(tmp_path):
+    def opt_in():  # PR_SET_PTRACER, PR_SET_PTRACER_ANY
+        ctypes.CDLL(None).prctl(0x59616D61, ctypes.c_ulong(-1).value, 0, 0, 0)
+
+    sleeper = subprocess.Popen(["sleep", "60"], preexec_fn=opt_in)
+    try:
+        session = Session(sleeper.pid, tmp_path, "--lang", "python")
+        assert session.proc.wait(timeout=15) == 2
+        assert "Python" in session.errors()
+        session.close()
+    finally:
+        sleeper.kill()
+        sleeper.wait()
 
 
 def _ptrace_denied() -> bool:

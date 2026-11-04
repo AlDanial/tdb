@@ -44,6 +44,13 @@ code running. tdb still attaches, but a pause can't land: the status stays
 Running and a notification explains why. Breakpoints fire as soon as the program
 next runs Python, and threads that are running Python can still be paused.
 
+If native code holds the GIL, injection can't finish. tdb gives up after 30
+seconds and says so, but it leaves the injection running rather than risk
+crashing the program: its helper ends by itself once the GIL is released, and
+the program may then print a harmless connection error to its stderr. Quitting
+during injection works the same way. If the program has already connected, tdb
+first finishes the handshake, which can delay quitting by a few seconds.
+
 ## Permission denied
 
 Most Linux distributions restrict debugging to a process's own children with

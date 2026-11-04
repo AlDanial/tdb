@@ -72,6 +72,8 @@ class DebugController:
         self.attach_method: str | None = None
         self._initialized_seen = asyncio.Event()
         self._attach_hook: asyncio.Future[str | None] | None = None
+        self._quitting_attach = False
+        self._configuration_done_sent = False
         # Future for the launch/attach response (set by start() /
         # remote_attach()) and an event marking that the request itself
         # has been written — do_configure must not send configurationDone
@@ -471,7 +473,7 @@ class DebugController:
             await asyncio.wait(
                 {hook, initialized}, return_when=asyncio.FIRST_COMPLETED
             )
-            if hook.done():
+            if hook.done() and not hook.cancelled():
                 hook.result()
         except Exception:
             # Nothing else will stop the adapter, which is still waiting
@@ -480,6 +482,37 @@ class DebugController:
             raise
         finally:
             initialized.cancel()
+
+    async def _send_configuration_done(self) -> None:
+        if not self._configuration_done_sent:
+            self._configuration_done_sent = True
+            await self.client.configuration_done()
+
+    async def _settle_attach_hook(self) -> None:
+        """Quitting during injection: finish the handshake before anything
+        is torn down. Once the target has connected, pydevd waits for
+        configurationDone with no timeout, so losing the adapter there
+        freezes the program for good. A target that hasn't connected by
+        the limit (GIL held, or main thread blocked) is left alone.
+        """
+        hook = self._attach_hook
+        if hook is None or hook.done():
+            return
+        self._quitting_attach = True
+        deadline = time.monotonic() + _timeouts.PID_ATTACH_QUIT
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(
+                self._initialized_seen.wait(), _timeouts.PID_ATTACH_QUIT
+            )
+        if self._initialized_seen.is_set():
+            with contextlib.suppress(Exception):
+                await asyncio.wait_for(
+                    self._send_configuration_done(), _timeouts.PID_ATTACH_QUIT
+                )
+            await asyncio.wait({hook}, timeout=max(0.0, deadline - time.monotonic()))
+        if not hook.done():
+            hook.cancel()
+            await asyncio.wait({hook})
 
     async def _finish_attach_hook(self) -> None:
         """Collect the hook once configuration is done, then pause.
@@ -490,10 +523,10 @@ class DebugController:
         gdb still attached. Quitting there kills gdb mid-call and the
         program segfaults.
         """
-        if self._attach_hook is None:
+        if self._attach_hook is None or self._quitting_attach:
             return
         self.attach_method = await self._attach_hook
-        if self.attach_method is None:
+        if self.attach_method is None or self._quitting_attach:
             return
         # Injection replaces a debugpy server already in the target, and
         # that can leave a session that answers at first, then goes
@@ -642,7 +675,7 @@ class DebugController:
             self._suppress_next_stop = True
 
         # Signal configuration complete — this unblocks the launch response
-        await self.client.configuration_done()
+        await self._send_configuration_done()
 
         # Now await the launch response
         # External terminal needs more time: terminal startup + debuggee connect
@@ -726,9 +759,7 @@ class DebugController:
         # ChildProcessManager.close_all for the per-child loop.
         from tdb._timeouts import DAP_DISCONNECT_PARENT
 
-        if self._attach_hook is not None and not self._attach_hook.done():
-            self._attach_hook.cancel()
-            await asyncio.wait({self._attach_hook})
+        await self._settle_attach_hook()
         await self._children.close_all()
         try:
             await asyncio.wait_for(

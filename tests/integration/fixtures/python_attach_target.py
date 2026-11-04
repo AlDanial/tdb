@@ -46,6 +46,12 @@ elif mode == "stdin":
 elif mode == "recv":
     left, right = socket.socketpair()
     left.recv(1)
+elif mode == "gil":
+    # A worker holds the GIL in native code; PyDLL does not release it.
+    worker = threading.Thread(target=ctypes.PyDLL(None).sleep, args=(6,))
+    worker.start()
+    worker.join()
+    print("done", flush=True)
 elif mode == "debugpy_listen":
     import debugpy
 

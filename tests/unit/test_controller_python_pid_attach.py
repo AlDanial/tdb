@@ -45,6 +45,9 @@ class _Client:
     async def stop(self):
         self.log.append("stop")
 
+    async def disconnect(self, terminate=True):
+        self.log.append("disconnect")
+
     async def initialize(self):
         self.log.append("initialize")
 
@@ -231,7 +234,8 @@ async def test_responsiveness_is_checked_after_the_pause():
     assert "pause" in log
 
 
-async def test_stop_during_injection_cancels_it():
+async def test_stop_before_target_connects_gives_up_after_the_limit(monkeypatch):
+    monkeypatch.setattr(_timeouts, "PID_ATTACH_QUIT", 0.05)
     log: list[str] = []
     adapter = _HookAdapter(log)
     ctrl = _controller(adapter, log)
@@ -239,7 +243,49 @@ async def test_stop_during_injection_cancels_it():
     await asyncio.sleep(0.01)
     await ctrl.stop()
     assert adapter.cancelled
-    task.cancel()
+    assert "configurationDone" not in log
+    await asyncio.wait({task}, timeout=1)
+
+
+async def test_stop_mid_handshake_finishes_it_before_disconnecting(monkeypatch):
+    # pydevd waits for configurationDone with no timeout: dropping the
+    # adapter here would leave the program frozen for good.
+    log: list[str] = []
+    adapter = _HookAdapter(log)
+    ctrl = _controller(adapter, log)
+    await _attached(ctrl)
+    asyncio.get_running_loop().call_later(0.05, adapter.finish.set)
+    await ctrl.stop()
+    assert log.index("configurationDone") < log.index("hook done") < log.index("stop")
+    assert not adapter.cancelled
+
+
+async def test_stop_does_not_repeat_configuration_done():
+    log: list[str] = []
+    adapter = _HookAdapter(log)
+    ctrl = _controller(adapter, log)
+    await _attached(ctrl)
+    configure = asyncio.create_task(ctrl.do_configure())
+    while "configurationDone" not in log:
+        await asyncio.sleep(0)
+    asyncio.get_running_loop().call_later(0.05, adapter.finish.set)
+    await ctrl.stop()
+    await configure
+    assert log.count("configurationDone") == 1
+
+
+async def test_no_pause_when_quitting_mid_injection():
+    log: list[str] = []
+    adapter = _HookAdapter(log)
+    ctrl = _controller(adapter, log)
+    await _attached(ctrl)
+    configure = asyncio.create_task(ctrl.do_configure())
+    while "configurationDone" not in log:
+        await asyncio.sleep(0)
+    asyncio.get_running_loop().call_later(0.05, adapter.finish.set)
+    await ctrl.stop()
+    await configure
+    assert "pause" not in log
 
 
 async def test_default_hook_does_nothing_for_other_adapters():

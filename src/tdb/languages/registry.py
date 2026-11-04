@@ -214,13 +214,15 @@ def detect_executable(path: str) -> str:
     from tdb.languages.python_attach import is_python_executable
     from tdb.languages.rust import is_rust_binary
 
+    # By name, and first: a long-running program's interpreter is often
+    # gone after an upgrade, leaving "python3.12 (deleted)".
+    if is_python_executable(path.removesuffix(" (deleted)")):
+        return "python"
     try:
         with open(path, "rb") as f:
             magic = f.read(4)
     except OSError as exc:
         raise LanguageNotSupportedError(f"cannot read {path}: {exc}") from exc
-    if is_python_executable(path):
-        return "python"
     if is_go_binary(path):
         return "go"
     if ocaml_flavor(path) == "native":

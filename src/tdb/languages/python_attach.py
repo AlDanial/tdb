@@ -12,7 +12,6 @@ import asyncio
 import os
 import re
 import shutil
-import signal
 import socket
 import subprocess
 import sys
@@ -20,6 +19,7 @@ import tempfile
 import textwrap
 import time
 from dataclasses import dataclass
+from typing import IO
 
 from tdb import _timeouts
 from tdb.languages.base import LanguageNotSupportedError
@@ -42,8 +42,10 @@ _PROBE_CODE = (
 _REMOTE_EXEC_HELPER_TIMEOUT = 10.0
 # How often a wait re-checks the target and the helper.
 _POLL = 0.25
-# gdb detaches from the target on SIGTERM; give it time to do that.
-_TERMINATE_GRACE = 2.0
+# Injection blocks through the handshake, so a helper that exits cleanly
+# with no connection soon after found nothing to run in.
+_HELPER_EXIT_GRACE = 2.0
+_MAX_REASON_LENGTH = 300
 
 _SCRIPT_NAME = "attach.py"
 _MARKER_NAME = "marker"
@@ -295,6 +297,19 @@ def _permission_message(ptrace_scope: int | None) -> str:
     )
 
 
+def _last_useful_line(text: str) -> str:
+    """The line of helper output most worth showing. debugpy echoes its gdb
+    command, kilobytes of byte values, after the error."""
+    lines = [
+        line.strip()
+        for line in text.splitlines()
+        if line.strip() and not line.startswith(("Running:", "PYDEVD_GDB_SCAN"))
+    ]
+    errors = [line for line in lines if "error" in line.lower()]
+    best = (errors or lines or ["injection failed"])[-1]
+    return best[:_MAX_REASON_LENGTH]
+
+
 def classify_failure(
     *,
     inject_output: str,
@@ -327,8 +342,12 @@ def classify_failure(
             "install gdb: it is needed for Python below 3.14 and for programs "
             "whose main thread is blocked"
         )
-    lines = (inject_output or remote_exec_error).strip().splitlines()
-    return lines[-1] if lines else "injection failed"
+    if sys.platform != "win32" and any(c in sys.executable for c in "'\"\\"):
+        return (
+            f"debugpy's injection can't handle a quote or backslash in the path "
+            f"tdb is installed under ({sys.executable})"
+        )
+    return _last_useful_line(inject_output or remote_exec_error)
 
 
 def _remote_exec_argv(target: TargetInfo, script_path: str) -> list[str]:
@@ -352,66 +371,72 @@ def _debugpy_argv(pid: int, port: int) -> list[str]:
     ]
 
 
-async def _spawn(argv: list[str]) -> asyncio.subprocess.Process:
+async def _spawn_remote_exec(argv: list[str]) -> asyncio.subprocess.Process:
     return await asyncio.create_subprocess_exec(
         *argv,
         stdin=asyncio.subprocess.DEVNULL,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,
-        # Its own session, so _terminate reaches gdb too.
+    )
+
+
+def _spawn_detached(argv: list[str], output: IO[bytes]) -> subprocess.Popen:
+    """Start the injection helper so that nothing can stop it.
+
+    Its gdb runs a call inside the target and must see that through: a
+    gdb killed mid-call leaves the target to return into nothing, and it
+    segfaults. That call can last as long as native code holds the GIL,
+    so the helper may well outlive tdb. So not asyncio (its transports
+    kill their process on shutdown), and its own session, out of reach of
+    the terminal's Ctrl-C.
+    """
+    return subprocess.Popen(
+        argv,
+        stdin=subprocess.DEVNULL,
+        stdout=output,
+        stderr=subprocess.STDOUT,
         start_new_session=sys.platform != "win32",
     )
 
 
-def _signal_helper(proc: asyncio.subprocess.Process, sig: int) -> None:
-    try:
-        if sys.platform == "win32":
-            proc.kill()
-        else:
-            os.killpg(proc.pid, sig)
-    except (ProcessLookupError, PermissionError):
-        pass
-
-
-def _group_alive(pgid: int) -> bool:
-    try:
-        os.killpg(pgid, 0)
-    except (ProcessLookupError, PermissionError):
-        return False
-    return True
-
-
-async def _terminate(proc: asyncio.subprocess.Process) -> None:
-    """Stop a helper and its children. gdb gets a chance to detach: killed
-    outright, it could leave the target stopped. The helper itself dies at
-    once, so the grace period is measured on the whole group."""
-    _signal_helper(proc, signal.SIGTERM)
-    until = time.monotonic() + _TERMINATE_GRACE
-    if sys.platform != "win32":
-        while _group_alive(proc.pid) and time.monotonic() < until:
-            await asyncio.sleep(0.05)
-        _signal_helper(proc, signal.SIGKILL)
-    await proc.wait()
+def _read_output(output: IO[bytes]) -> str:
+    output.seek(0)
+    return output.read().decode(errors="replace")
 
 
 async def _wait_for_connection(
-    pid: int, connected: asyncio.Event, until: float, helper=None
+    pid: int,
+    connected: asyncio.Event,
+    until: float,
+    helper: subprocess.Popen | None = None,
 ) -> bool:
-    """True once the target connects, False at `until` or if `helper`
-    fails. Raises if the target exits first."""
+    """True once the target connects. False at `until`, if `helper` fails,
+    or if it exits cleanly and no connection follows. Raises if the target
+    exits first."""
+    helper_exited_at = None
     while not connected.is_set():
         if not pid_exists(pid):
             raise PidAttachError(f"cannot attach to pid {pid}: the process exited")
-        if helper is not None and helper.returncode not in (None, 0):
+        now = time.monotonic()
+        code = helper.poll() if helper is not None else None
+        if code not in (None, 0):
             return False
-        remaining = until - time.monotonic()
-        if remaining <= 0:
+        if code == 0:
+            helper_exited_at = helper_exited_at or now
+            if now - helper_exited_at >= _HELPER_EXIT_GRACE:
+                return False
+        if now >= until:
             return False
         try:
-            await asyncio.wait_for(connected.wait(), min(_POLL, remaining))
+            await asyncio.wait_for(connected.wait(), min(_POLL, until - now))
         except TimeoutError:
             pass
     return True
+
+
+async def _wait_for_exit(helper: subprocess.Popen, until: float) -> None:
+    while helper.poll() is None and time.monotonic() < until:
+        await asyncio.sleep(0.05)
 
 
 def _claim(marker: str, claimed: str) -> bool:
@@ -438,7 +463,7 @@ async def _try_remote_exec(
     with open(script_path, "w", encoding="utf-8") as f:
         f.write(build_remote_exec_script(server_dir, port, marker, claimed))
 
-    proc = await _spawn(_remote_exec_argv(target, script_path))
+    proc = await _spawn_remote_exec(_remote_exec_argv(target, script_path))
     try:
         output, _ = await asyncio.wait_for(
             proc.communicate(), _REMOTE_EXEC_HELPER_TIMEOUT
@@ -457,7 +482,9 @@ async def _try_remote_exec(
         return False, ""
     finally:
         if proc.returncode is None:
-            await _terminate(proc)
+            # Safe, unlike the gdb helper: it only writes to the target.
+            proc.kill()
+            await proc.wait()
         if not connected.is_set():
             # Silences a script left queued in the target.
             _claim(marker, claimed)
@@ -494,25 +521,24 @@ async def inject(target: TargetInfo, port: int, connected: asyncio.Event) -> str
     if sys.platform == "linux" and shutil.which("gdb") is None:
         raise failure(gdb_missing=True)
 
-    proc = await _spawn(_debugpy_argv(pid, port))
-    output = asyncio.ensure_future(proc.communicate())
-    try:
-        if await _wait_for_connection(pid, connected, deadline, helper=proc):
+    with tempfile.TemporaryFile() as output:
+        helper = _spawn_detached(_debugpy_argv(pid, port), output)
+        if await _wait_for_connection(pid, connected, deadline, helper):
             # The injected call stays open until the handshake ends, with
             # gdb inside the target. Wait so a session never has gdb in it.
-            try:
-                await asyncio.wait_for(output, deadline - time.monotonic())
-            except TimeoutError:
-                pass
+            await _wait_for_exit(helper, deadline)
             return METHOD_DEBUGPY
-        if proc.returncode not in (None, 0):
-            stdout, _ = await output
-            raise failure(stdout.decode(errors="replace"))
+        code = helper.poll()
+        if code is None:
+            raise PidAttachError(
+                f"cannot attach to pid {pid}: injection did not finish within "
+                f"{_timeouts.PID_ATTACH_TOTAL:.0f} seconds, probably because "
+                "native code is holding the GIL. It is still pending, and ends "
+                "by itself when the program releases the GIL"
+            )
+        if code != 0:
+            raise failure(_read_output(output))
         raise PidAttachError(
-            f"cannot attach to pid {pid}: injection did not finish within "
-            f"{_timeouts.PID_ATTACH_TOTAL:.0f} seconds; the process may be "
-            "stuck in native code holding the GIL"
+            f"cannot attach to pid {pid}: injection ended with no connection; "
+            "the process doesn't seem to be running a Python tdb can reach"
         )
-    finally:
-        if proc.returncode is None:
-            await _terminate(proc)
