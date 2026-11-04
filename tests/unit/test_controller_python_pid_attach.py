@@ -260,6 +260,60 @@ async def test_stop_mid_handshake_finishes_it_before_disconnecting(monkeypatch):
     assert not adapter.cancelled
 
 
+async def test_stop_finishes_handshake_when_hook_already_returned():
+    # remote_exec's hook returns at `initialized`, before configurationDone.
+    log: list[str] = []
+    adapter = _HookAdapter(log)
+    adapter.finish.set()
+    ctrl = _controller(adapter, log)
+    await _attached(ctrl)
+    await asyncio.sleep(0)
+    assert ctrl._attach_hook.done()
+    ctrl._launch_future = asyncio.get_running_loop().create_future()
+    await_response = asyncio.get_running_loop().call_later(
+        0.05,
+        ctrl._launch_future.set_result,
+        Response(seq=1, request_seq=1, command="attach", success=True, body={}),
+    )
+    await ctrl.stop()
+    await_response.cancel()
+    assert log.index("configurationDone") < log.index("disconnect")
+
+
+async def test_stop_waits_for_attach_response_before_disconnecting():
+    # The response is the only sign the target took configurationDone.
+    log: list[str] = []
+    adapter = _HookAdapter(log)
+    adapter.finish.set()
+    ctrl = _controller(adapter, log)
+    await _attached(ctrl)
+    pending = asyncio.get_running_loop().create_future()
+    ctrl._launch_future = pending
+
+    def respond():
+        log.append("attach response")
+        pending.set_result(
+            Response(seq=1, request_seq=1, command="attach", success=True, body={})
+        )
+
+    asyncio.get_running_loop().call_later(0.05, respond)
+    await ctrl.stop()
+    assert log.index("attach response") < log.index("disconnect")
+
+
+async def test_restart_sends_configuration_done_again():
+    # A restarted session reuses the controller, with no attach hook.
+    log: list[str] = []
+    ctrl = _controller(log=log)
+    ctrl._launch_future = asyncio.get_running_loop().create_future()
+    ctrl._launch_future.set_result(
+        Response(seq=1, request_seq=1, command="launch", success=True, body={})
+    )
+    await ctrl.do_configure()
+    await ctrl.do_configure()
+    assert log.count("configurationDone") == 2
+
+
 async def test_stop_does_not_repeat_configuration_done():
     log: list[str] = []
     adapter = _HookAdapter(log)

@@ -464,6 +464,7 @@ class DebugController:
         only calls do_configure after this returns, so that would
         deadlock. do_configure collects it in _finish_attach_hook.
         """
+        self._configuration_done_sent = False
         hook = asyncio.ensure_future(
             self.profile.adapter.after_attach_request(self._initialized_seen)
         )
@@ -484,7 +485,9 @@ class DebugController:
             initialized.cancel()
 
     async def _send_configuration_done(self) -> None:
-        if not self._configuration_done_sent:
+        """Once per injected session (quitting may race do_configure to
+        it), and always otherwise: a restart reuses this controller."""
+        if self._attach_hook is None or not self._configuration_done_sent:
             self._configuration_done_sent = True
             await self.client.configuration_done()
 
@@ -492,24 +495,34 @@ class DebugController:
         """Quitting during injection: finish the handshake before anything
         is torn down. Once the target has connected, pydevd waits for
         configurationDone with no timeout, so losing the adapter there
-        freezes the program for good. A target that hasn't connected by
-        the limit (GIL held, or main thread blocked) is left alone.
+        freezes the program for good. The attach response shows it arrived:
+        the hook alone can't, as remote_exec's returns on connecting. A
+        target that hasn't connected by the limit (GIL held, or main thread
+        blocked) is left alone.
         """
         hook = self._attach_hook
-        if hook is None or hook.done():
+        if hook is None:
+            return
+        response = self._launch_future
+        connected = self._initialized_seen.is_set()
+        if hook.done() and (not connected or response is None or response.done()):
             return
         self._quitting_attach = True
         deadline = time.monotonic() + _timeouts.PID_ATTACH_QUIT
-        with contextlib.suppress(TimeoutError):
-            await asyncio.wait_for(
-                self._initialized_seen.wait(), _timeouts.PID_ATTACH_QUIT
-            )
+
+        def remaining() -> float:
+            return max(0.0, deadline - time.monotonic())
+
+        if not hook.done():
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(self._initialized_seen.wait(), remaining())
         if self._initialized_seen.is_set():
             with contextlib.suppress(Exception):
-                await asyncio.wait_for(
-                    self._send_configuration_done(), _timeouts.PID_ATTACH_QUIT
-                )
-            await asyncio.wait({hook}, timeout=max(0.0, deadline - time.monotonic()))
+                await asyncio.wait_for(self._send_configuration_done(), remaining())
+            if response is not None:
+                await asyncio.wait({response}, timeout=remaining())
+            if not hook.done():
+                await asyncio.wait({hook}, timeout=remaining())
         if not hook.done():
             hook.cancel()
             await asyncio.wait({hook})
