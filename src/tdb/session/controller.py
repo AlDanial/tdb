@@ -495,16 +495,16 @@ class DebugController:
         self.attach_method = await self._attach_hook
         if self.attach_method is None:
             return
-        if self._pre_arm_pause:
-            await self.pause()
         # Injection replaces a debugpy server already in the target, and
-        # the session then goes silent: it answers at first and stops at
-        # the pause, so check after it. A merely blocked program still
-        # answers here.
+        # that can leave a session that answers at first, then goes
+        # silent. A merely blocked program still answers these, even
+        # though its pause can't land, so an unanswered request is decisive.
+        limit = _timeouts.PID_ATTACH_RESPONSE
         try:
-            await asyncio.wait_for(
-                self.client.threads(), _timeouts.PID_ATTACH_RESPONSE
-            )
+            threads = await asyncio.wait_for(self.client.threads(), limit)
+            if self._pre_arm_pause and threads:
+                await asyncio.wait_for(self.client.pause(threads[0].id), limit)
+                await asyncio.wait_for(self.client.threads(), limit)
         except TimeoutError:
             await self.client.stop()
             raise PidAttachError(

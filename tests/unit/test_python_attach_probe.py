@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from unittest.mock import Mock
@@ -12,6 +13,7 @@ from tdb.languages import registry
 from tdb.languages.base import LanguageNotSupportedError
 from tdb.languages.python_attach import (
     TargetInfo,
+    already_debugged,
     is_python_executable,
     pid_exists,
     probe_target,
@@ -23,6 +25,7 @@ MODULE = "tdb.languages.python_attach"
 @pytest.fixture
 def alive(monkeypatch):
     monkeypatch.setattr(f"{MODULE}.pid_exists", lambda pid: True)
+    monkeypatch.setattr(f"{MODULE}.already_debugged", lambda pid: False)
 
 
 def _stub_probe_output(monkeypatch, tmp_path, stdout):
@@ -148,3 +151,123 @@ def test_pid_exists_false_for_missing_process(monkeypatch):
     monkeypatch.setattr(f"{MODULE}.sys.platform", "linux")
     monkeypatch.setattr(f"{MODULE}.os.kill", Mock(side_effect=ProcessLookupError))
     assert pid_exists(4242) is False
+
+
+TCP_HEADER = "  sl  local_address rem_address   st tx:rx tr:when retrnsmt uid timeout inode\n"
+
+
+def _tcp_row(local, remote, state, inode):
+    return (
+        f"   0: 0100007F:{local:04X} 0100007F:{remote:04X} {state} "
+        f"00000000:00000000 00:00000000 00000000  1000 0 {inode} 1\n"
+    )
+
+
+def _fake_proc(tmp_path, monkeypatch, *, processes, rows=(), parent=""):
+    """A /proc with `processes` ({pid: (cmdline, socket inodes)}), a TCP
+    table, and pid 4242 whose parent has command line `parent`."""
+    proc = tmp_path / "proc"
+    (proc / "net").mkdir(parents=True)
+    (proc / "net" / "tcp").write_text(TCP_HEADER + "".join(rows))
+    (proc / "net" / "tcp6").write_text(TCP_HEADER)
+    for pid, (cmdline, inodes) in {4000: (parent, []), **processes}.items():
+        (proc / str(pid) / "fd").mkdir(parents=True)
+        (proc / str(pid) / "cmdline").write_bytes(cmdline.replace(" ", "\0").encode())
+        for n, inode in enumerate(inodes):
+            os.symlink(f"socket:[{inode}]", proc / str(pid) / "fd" / str(n))
+    (proc / "4242" / "stat").write_text("4242 (a) b) S 4000 1 1 0")
+    monkeypatch.setattr(f"{MODULE}.sys.platform", "linux")
+    monkeypatch.setattr(f"{MODULE}._PROC", str(proc))
+
+
+needs_symlinks = pytest.mark.skipif(sys.platform == "win32", reason="POSIX symlinks")
+ADAPTER = "/usr/bin/python /x/debugpy/adapter --for-server 1"
+
+
+@needs_symlinks
+def test_connection_to_adapter_means_already_debugged(tmp_path, monkeypatch):
+    # debugpy.listen() daemonizes its adapter: it is no child of the target,
+    # so the open connection between them is what ties them together.
+    _fake_proc(
+        tmp_path,
+        monkeypatch,
+        processes={4242: ("python app.py", [11]), 7000: (ADAPTER, [22])},
+        rows=[_tcp_row(40000, 50000, "01", 11), _tcp_row(50000, 40000, "01", 22)],
+    )
+    assert already_debugged(4242)
+
+
+@needs_symlinks
+def test_module_style_adapter_detected(tmp_path, monkeypatch):
+    _fake_proc(
+        tmp_path,
+        monkeypatch,
+        processes={
+            4242: ("python app.py", [11]),
+            7000: ("python -m debugpy.adapter", [22]),
+        },
+        rows=[_tcp_row(40000, 50000, "01", 11), _tcp_row(50000, 40000, "01", 22)],
+    )
+    assert already_debugged(4242)
+
+
+@needs_symlinks
+def test_launcher_parent_means_already_debugged(tmp_path, monkeypatch):
+    _fake_proc(
+        tmp_path,
+        monkeypatch,
+        processes={4242: ("python app.py", [])},
+        parent="python /x/debugpy/launcher 5678",
+    )
+    assert already_debugged(4242)
+
+
+@needs_symlinks
+def test_connection_to_other_program_is_not_debugged(tmp_path, monkeypatch):
+    _fake_proc(
+        tmp_path,
+        monkeypatch,
+        processes={4242: ("python app.py", [11]), 7000: ("redis-server", [22])},
+        rows=[_tcp_row(40000, 6379, "01", 11), _tcp_row(6379, 40000, "01", 22)],
+    )
+    assert not already_debugged(4242)
+
+
+@needs_symlinks
+def test_unrelated_adapter_is_not_ours(tmp_path, monkeypatch):
+    # Another session's adapter on this machine must not trip the check.
+    _fake_proc(
+        tmp_path,
+        monkeypatch,
+        processes={4242: ("python app.py", [11]), 7000: (ADAPTER, [22])},
+        rows=[_tcp_row(40000, 6379, "01", 11), _tcp_row(50000, 40001, "01", 22)],
+    )
+    assert not already_debugged(4242)
+
+
+@needs_symlinks
+def test_after_detach_target_can_be_attached_again(tmp_path, monkeypatch):
+    # tdb's adapter is gone and the socket with it: re-attach must work.
+    _fake_proc(
+        tmp_path,
+        monkeypatch,
+        processes={4242: ("python app.py", [])},
+    )
+    assert not already_debugged(4242)
+
+
+def test_vanished_process_is_not_debugged(tmp_path, monkeypatch):
+    monkeypatch.setattr(f"{MODULE}.sys.platform", "linux")
+    monkeypatch.setattr(f"{MODULE}._PROC", str(tmp_path / "missing"))
+    assert not already_debugged(4242)
+
+
+def test_not_checked_without_proc(monkeypatch):
+    monkeypatch.setattr(f"{MODULE}.sys.platform", "darwin")
+    assert not already_debugged(4242)
+
+
+def test_probe_refuses_already_debugged_target(monkeypatch, alive):
+    monkeypatch.setattr(f"{MODULE}.already_debugged", lambda pid: True)
+    with pytest.raises(LanguageNotSupportedError, match="tdb -r"):
+        probe_target(4242)

@@ -192,6 +192,25 @@ async def test_unresponsive_target_fails_clearly(monkeypatch):
     assert "stop" in log
 
 
+async def test_unanswered_pause_fails_clearly(monkeypatch):
+    # The broken session can answer `threads` and still ignore a pause.
+    # A blocked program answers the pause even though it can't stop.
+    monkeypatch.setattr(_timeouts, "PID_ATTACH_RESPONSE", 0.05)
+    log: list[str] = []
+    adapter = _HookAdapter(log)
+    adapter.finish.set()
+    ctrl = _controller(adapter, log)
+
+    async def silent(thread_id):
+        await asyncio.sleep(60)
+
+    ctrl.client.pause = silent
+    await _attached(ctrl)
+    with pytest.raises(PidAttachError, match="debugpy"):
+        await ctrl.do_configure()
+    assert "stop" in log
+
+
 async def test_responsiveness_is_checked_after_the_pause():
     # A broken target answers `threads` at first and goes silent at the
     # pause; checking before the pause would miss it.

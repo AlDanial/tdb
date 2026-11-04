@@ -391,14 +391,9 @@ def test_queued_script_stays_silent_after_fallback(make_target, attach, tmp_path
 def test_target_already_using_debugpy(make_target, attach):
     target = make_target("debugpy_listen")
     session = attach(target, ready=False)
-    # Replacing the existing server sometimes leaves a silent session.
-    # Either outcome is fine; a slow or dead session is not.
-    if session.wait_ready(timeout=20):
-        assert session.client.ok("get_stack_trace")
-    else:
-        assert session.proc.returncode == 2
-        assert "debugpy" in session.errors()
-    assert target.alive()
+    assert session.proc.wait(timeout=10) == 2
+    assert "tdb -r" in session.errors()
+    target.assert_running()
 
 
 def _ptrace_denied() -> bool:

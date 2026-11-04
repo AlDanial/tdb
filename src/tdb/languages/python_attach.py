@@ -28,6 +28,8 @@ MINIMUM_VERSION = (3, 11)
 
 _PYTHON_NAME = re.compile(r"^(python|pypy)(\d+(\.\d+)?t?)?(\.exe)?$", re.IGNORECASE)
 
+_PROC = "/proc"
+_TCP_ESTABLISHED = "01"
 _PROBE_TIMEOUT = 10.0
 _PROBE_CODE = (
     "import sys;"
@@ -87,6 +89,87 @@ def pid_exists(pid: int) -> bool:
     return True
 
 
+def _cmdline(pid: str) -> str:
+    try:
+        with open(f"{_PROC}/{pid}/cmdline", "rb") as f:
+            return f.read().replace(b"\0", b" ").decode(errors="replace")
+    except OSError:
+        return ""
+
+
+def _socket_inodes(pid: str) -> set[str]:
+    try:
+        fds = os.listdir(f"{_PROC}/{pid}/fd")
+    except OSError:
+        return set()
+    inodes = set()
+    for fd in fds:
+        try:
+            link = os.readlink(f"{_PROC}/{pid}/fd/{fd}")
+        except OSError:
+            continue
+        if link.startswith("socket:["):
+            inodes.add(link[8:-1])
+    return inodes
+
+
+def _tcp_connections() -> list[tuple[str, str, str]]:
+    """(local port, remote port, inode) of each established connection."""
+    connections = []
+    for table in ("tcp", "tcp6"):
+        try:
+            with open(f"{_PROC}/net/{table}") as f:
+                rows = f.readlines()[1:]
+        except OSError:
+            continue
+        for row in rows:
+            cols = row.split()
+            if cols[3] == _TCP_ESTABLISHED:
+                local, remote = cols[1], cols[2]
+                connections.append(
+                    (local.rpartition(":")[2], remote.rpartition(":")[2], cols[9])
+                )
+    return connections
+
+
+def _connected_to_adapter(pid: int) -> bool:
+    """True if `pid` holds a connection to a debugpy adapter process."""
+    inodes = _socket_inodes(str(pid))
+    connections = _tcp_connections()
+    peer_ports = {remote for _, remote, inode in connections if inode in inodes}
+    if not peer_ports:
+        return False
+    peer_inodes = {inode for local, _, inode in connections if local in peer_ports}
+    try:
+        pids = [name for name in os.listdir(_PROC) if name.isdigit()]
+    except OSError:
+        return False
+    return any(
+        ("debugpy/adapter" in cmdline or "debugpy.adapter" in cmdline)
+        and _socket_inodes(other) & peer_inodes
+        for other, cmdline in ((p, _cmdline(p)) for p in pids)
+    )
+
+
+def already_debugged(pid: int) -> bool:
+    """True if debugpy is already running this process, as far as Linux
+    can show. Injecting there would tear down that session.
+
+    A launched program has debugpy's launcher as its parent. After
+    debugpy.listen() the adapter is daemonized, so it isn't a child; the
+    connection between them is the link. A target tdb detached from has
+    neither, and can be attached again.
+    """
+    if sys.platform != "linux":
+        return False
+    try:
+        with open(f"{_PROC}/{pid}/stat") as f:
+            parent = f.read().rpartition(")")[2].split()[1]
+    except (OSError, IndexError):
+        return False
+    return "debugpy/launcher" in _cmdline(parent) or _connected_to_adapter(pid)
+
+
 def _exe_of_pid(pid: int) -> str | None:
     if sys.platform != "linux":
         return None
@@ -107,6 +190,12 @@ def probe_target(pid: int, python: str | None = None) -> TargetInfo:
     """
     if not pid_exists(pid):
         raise LanguageNotSupportedError(f"no process with pid {pid}")
+    if already_debugged(pid):
+        raise LanguageNotSupportedError(
+            f"pid {pid} is already being debugged with debugpy; attaching "
+            "would end that session. If it called debugpy.listen(), connect "
+            "with `tdb -r PORT` instead"
+        )
     unknown = TargetInfo(pid, None, False)
     path = python or _exe_of_pid(pid)
     if path is None or not os.path.isfile(path) or not is_python_executable(path):
