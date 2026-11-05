@@ -17,6 +17,7 @@ from tdb.languages.python_attach import (
     is_python_executable,
     pid_exists,
     probe_target,
+    uses_musl,
 )
 
 MODULE = "tdb.languages.python_attach"
@@ -265,6 +266,35 @@ def test_vanished_process_is_not_debugged(tmp_path, monkeypatch):
 def test_not_checked_without_proc(monkeypatch):
     monkeypatch.setattr(f"{MODULE}.sys.platform", "darwin")
     assert not already_debugged(4242)
+
+
+def _fake_maps(tmp_path, monkeypatch, text):
+    (tmp_path / "4242").mkdir()
+    (tmp_path / "4242" / "maps").write_text(text)
+    monkeypatch.setattr(f"{MODULE}._PROC", str(tmp_path))
+
+
+def test_musl_target_detected(tmp_path, monkeypatch):
+    _fake_maps(
+        tmp_path,
+        monkeypatch,
+        "7f00-7f01 r-xp 00000000 08:01 12 /lib/ld-musl-x86_64.so.1\n",
+    )
+    assert uses_musl(4242)
+
+
+def test_glibc_target_is_not_musl(tmp_path, monkeypatch):
+    _fake_maps(
+        tmp_path,
+        monkeypatch,
+        "7f00-7f01 r-xp 00000000 08:01 12 /usr/lib/libc.so.6\n",
+    )
+    assert not uses_musl(4242)
+
+
+def test_unreadable_maps_is_not_musl(tmp_path, monkeypatch):
+    monkeypatch.setattr(f"{MODULE}._PROC", str(tmp_path))
+    assert not uses_musl(4242)
 
 
 def test_probe_refuses_already_debugged_target(monkeypatch, alive):

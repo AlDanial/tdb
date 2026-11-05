@@ -172,6 +172,16 @@ def already_debugged(pid: int) -> bool:
     return "debugpy/launcher" in _cmdline(parent) or _connected_to_adapter(pid)
 
 
+def uses_musl(pid: int) -> bool:
+    """True if `pid` runs on musl libc (Alpine). debugpy's injection library
+    is built for glibc and can't load there."""
+    try:
+        with open(f"{_PROC}/{pid}/maps") as f:
+            return any("/ld-musl-" in line or "/libc.musl-" in line for line in f)
+    except OSError:
+        return False
+
+
 def _exe_of_pid(pid: int) -> str | None:
     if sys.platform != "linux":
         return None
@@ -317,6 +327,7 @@ def classify_failure(
     gdb_missing: bool,
     ptrace_scope: int | None,
     is_root: bool,
+    musl: bool = False,
 ) -> str:
     """The user-facing reason injection failed.
 
@@ -329,8 +340,15 @@ def classify_failure(
         and (ptrace_scope or 0) >= 1
         and not is_root
     )
-    if "ptrace" in inject_output.lower() or blocked_by_yama:
+    denied = "PermissionError" in remote_exec_error or blocked_by_yama
+    if "ptrace" in inject_output.lower() or denied:
         return _permission_message(ptrace_scope)
+    if musl:
+        return (
+            "this program uses musl libc, and debugpy's gdb injection needs "
+            "glibc. Only sys.remote_exec can attach here, which needs Python "
+            "3.14 or newer and a main thread that is running Python code"
+        )
     if gdb_missing and "not enabled" in remote_exec_error:
         return (
             "remote debugging is disabled in the target "
@@ -346,6 +364,11 @@ def classify_failure(
         return (
             f"debugpy's injection can't handle a quote or backslash in the path "
             f"tdb is installed under ({sys.executable})"
+        )
+    if 'No symbol "DoAttach"' in inject_output:
+        return (
+            "gdb reached the process, but it could not load debugpy's injection "
+            "library. The target may not be a standard CPython build"
         )
     return _last_useful_line(inject_output or remote_exec_error)
 
@@ -508,18 +531,24 @@ async def inject(target: TargetInfo, port: int, connected: asyncio.Event) -> str
         if reached:
             return METHOD_REMOTE_EXEC
 
-    def failure(inject_output: str = "", gdb_missing: bool = False) -> PidAttachError:
+    def failure(
+        inject_output: str = "", gdb_missing: bool = False, musl: bool = False
+    ) -> PidAttachError:
         reason = classify_failure(
             inject_output=inject_output,
             remote_exec_error=remote_exec_error,
             gdb_missing=gdb_missing,
             ptrace_scope=read_ptrace_scope(),
             is_root=hasattr(os, "geteuid") and os.geteuid() == 0,
+            musl=musl,
         )
         return PidAttachError(f"cannot attach to pid {pid}: {reason}")
 
-    if sys.platform == "linux" and shutil.which("gdb") is None:
-        raise failure(gdb_missing=True)
+    if sys.platform == "linux":
+        if uses_musl(pid):
+            raise failure(musl=True)
+        if shutil.which("gdb") is None:
+            raise failure(gdb_missing=True)
 
     with tempfile.TemporaryFile() as output:
         helper = _spawn_detached(_debugpy_argv(pid, port), output)

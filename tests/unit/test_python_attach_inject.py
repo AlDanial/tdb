@@ -74,6 +74,8 @@ class Helpers:
         self.real_debugpy_argv = mod._debugpy_argv
         monkeypatch.setattr(f"{MODULE}._debugpy_argv", self._debugpy_argv)
         monkeypatch.setattr(f"{MODULE}.shutil.which", lambda name: "/usr/bin/gdb")
+        # The suite itself may run on musl (CI is Alpine).
+        monkeypatch.setattr(f"{MODULE}.uses_musl", lambda pid: False)
 
     def _remote_exec_argv(self, target, script_path):
         self.remote_exec_scripts.append(script_path)
@@ -173,6 +175,7 @@ def classify(**kw):
         gdb_missing=False,
         ptrace_scope=None,
         is_root=False,
+        musl=False,
     )
     return classify_failure(**{**defaults, **kw})
 
@@ -204,6 +207,14 @@ def test_classify_runtime_lookup_as_root_not_permission():
     assert "ptrace_scope" not in msg
 
 
+def test_classify_remote_exec_permission_error_is_permission():
+    reason = classify(
+        remote_exec_error="PermissionError: [Errno 1] Operation not permitted",
+        ptrace_scope=1,
+    )
+    assert "ptrace_scope" in reason
+
+
 def test_classify_scope_3_mentions_reboot():
     msg = classify(inject_output="ptrace: Operation not permitted", ptrace_scope=3)
     assert "reboot" in msg
@@ -227,6 +238,30 @@ def test_classify_remote_debug_disabled_no_gdb():
 
 def test_classify_unknown_keeps_last_output_line():
     assert "boom" in classify(inject_output="noise\nboom\n")
+
+
+def test_classify_injection_library_failed_to_load():
+    output = 'noise\nNo symbol "DoAttach" in current context.\nCalledProcessError: gdb\n'
+    assert "could not load" in classify(inject_output=output)
+
+
+def test_classify_musl_explains_what_can_attach():
+    reason = classify(musl=True)
+    assert "musl" in reason
+    assert "Python 3.14" in reason
+
+
+def test_classify_musl_wins_over_gdb_missing():
+    assert "install gdb" not in classify(musl=True, gdb_missing=True)
+
+
+def test_classify_permission_wins_over_musl():
+    reason = classify(
+        musl=True,
+        remote_exec_error="PyRuntime address lookup failed",
+        ptrace_scope=1,
+    )
+    assert "ptrace_scope" in reason
 
 
 # --- strategy order -----------------------------------------------------
@@ -306,6 +341,22 @@ async def test_inject_gdb_missing_on_linux(helpers, monkeypatch):
     with pytest.raises(PidAttachError, match="gdb"):
         await inject(TARGET_OLD, 5678, asyncio.Event())
     assert helpers.debugpy_calls == []
+
+
+async def test_inject_never_runs_gdb_on_musl(helpers, monkeypatch):
+    monkeypatch.setattr(f"{MODULE}.sys.platform", "linux")
+    monkeypatch.setattr(f"{MODULE}.uses_musl", lambda pid: True)
+    with pytest.raises(PidAttachError, match="musl"):
+        await inject(TARGET_OLD, 5678, asyncio.Event())
+    assert helpers.debugpy_calls == []
+
+
+async def test_inject_tries_remote_exec_on_musl(helpers, monkeypatch):
+    monkeypatch.setattr(f"{MODULE}.sys.platform", "linux")
+    monkeypatch.setattr(f"{MODULE}.uses_musl", lambda pid: True)
+    connected = asyncio.Event()
+    connect_soon(connected)
+    assert await inject(TARGET_314, 5678, connected) == "sys.remote_exec"
 
 
 async def test_inject_gdb_not_needed_elsewhere(helpers, monkeypatch):

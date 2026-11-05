@@ -178,6 +178,9 @@ Real-process tests changed three things above:
 - **Quitting settles the handshake first.** pydevd waits for `configurationDone`
   with no timeout, so `stop()` finishes the handshake, bounded by 5 seconds,
   before tearing anything down.
+- **musl targets only get `sys.remote_exec`.** debugpy ships one glibc-built
+  `attach_linux_amd64.so` in a `py3-none-any` wheel, so on Alpine `dlopen`
+  returns NULL. tdb checks `/proc/PID/maps` and explains instead of running gdb.
 
 ## Evidence from the spike
 

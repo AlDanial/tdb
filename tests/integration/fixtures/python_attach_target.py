@@ -31,6 +31,13 @@ def loop():
         time.sleep(0.05)
 
 
+if mode == "debugpy_listen":
+    # Before "ready": importing debugpy can take over a second, and a test
+    # that attached sooner would find a target not yet using it.
+    import debugpy
+
+    debugpy.listen(("127.0.0.1", 0))
+
 print("ready", flush=True)
 if mode == "busy":
     loop()
@@ -53,7 +60,4 @@ elif mode == "gil":
     worker.join()
     print("done", flush=True)
 elif mode == "debugpy_listen":
-    import debugpy
-
-    debugpy.listen(("127.0.0.1", 0))
     loop()

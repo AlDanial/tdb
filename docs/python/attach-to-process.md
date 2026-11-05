@@ -20,6 +20,8 @@ port or helper process behind, and you can attach again later.
 - On Linux, `gdb` for Python below 3.14 and for programs whose main thread is
   blocked. Python 3.14 attaches without it when the program is running Python
   code.
+- On Alpine and other musl systems, Python 3.14 and a program running Python
+  code: debugpy's gdb injection needs glibc, so tdb can't reach anything else.
 
 On macOS and Windows, pass `--python /path/to/python` to name the program's
 interpreter if you want tdb to try the Python 3.14 method first. Attaching on

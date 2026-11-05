@@ -23,7 +23,7 @@ import pytest
 
 from tdb import _timeouts
 from tdb.languages.python import build_python_profile
-from tdb.languages.python_attach import PidAttachError
+from tdb.languages.python_attach import PidAttachError, uses_musl
 from tdb.server.event_handler import ServerEventHandler
 from tdb.session.controller import DebugController
 
@@ -68,6 +68,10 @@ PYTHONS = {v: _find_python(v) for v in ("3.11", "3.12", "3.14")}
 PY_314 = PYTHONS["3.14"]
 needs_314 = pytest.mark.skipif(PY_314 is None, reason="Python 3.14 not found")
 linux_only = pytest.mark.skipif(not LINUX, reason="Linux process inspection")
+MUSL = LINUX and uses_musl(os.getpid())
+needs_gdb_injection = pytest.mark.skipif(
+    MUSL, reason="debugpy's injection library needs glibc"
+)
 
 
 @pytest.fixture(params=list(PYTHONS))
@@ -75,6 +79,8 @@ def python(request):
     path = PYTHONS[request.param]
     if path is None:
         pytest.skip(f"Python {request.param} not found")
+    if MUSL and request.param != "3.14":
+        pytest.skip("only sys.remote_exec works on musl")
     return path
 
 
@@ -281,6 +287,7 @@ def test_running_frame_breakpoint(make_target, attach, python):
 
 
 @linux_only
+@needs_gdb_injection
 def test_main_in_join_worker_breakpoint(make_target, attach, python):
     target = make_target("join", python)
     session = attach(target)
@@ -288,6 +295,7 @@ def test_main_in_join_worker_breakpoint(make_target, attach, python):
 
 
 @linux_only
+@needs_gdb_injection
 def test_blocked_main_attaches_and_quits(make_target, attach, python):
     target = make_target("sleep", python)
     session = attach(target)
@@ -299,6 +307,7 @@ def test_blocked_main_attaches_and_quits(make_target, attach, python):
 
 @linux_only
 @needs_314
+@needs_gdb_injection
 def test_blocked_314_falls_back_to_debugpy(make_target, attach):
     target = make_target("recv", PY_314)
     started = time.monotonic()
@@ -338,6 +347,7 @@ def test_quit_while_paused_at_attach_leaves_program_running(make_target, attach,
 
 
 @linux_only
+@needs_gdb_injection
 def test_gdb_is_gone_once_session_starts(make_target, attach):
     target = make_target("sleep")
     attach(target)
@@ -382,6 +392,7 @@ def test_no_pause_on_attach_leaves_program_running(make_target, attach):
 
 @linux_only
 @needs_314
+@needs_gdb_injection
 def test_queued_script_stays_silent_after_fallback(make_target, attach, tmp_path):
     target = make_target("stdin", PY_314)
     session = attach(target)
@@ -440,6 +451,7 @@ QUIT_DELAYS = (0.2, 0.3, 0.4, 0.5, 0.6, 0.7)
 
 
 @linux_only
+@needs_gdb_injection
 @pytest.mark.parametrize("delay", QUIT_DELAYS)
 def test_quit_during_gdb_injection_leaves_program_running(make_target, delay):
     target = make_target("busy")
@@ -459,6 +471,7 @@ def test_quit_during_remote_exec_leaves_program_running(make_target, delay):
 
 
 @linux_only
+@needs_gdb_injection
 def test_quit_while_gil_is_held_leaves_program_alive(make_target):
     target = make_target("gil")
     asyncio.run(_quit_at(target, 1.5, use_gdb=True))
@@ -466,6 +479,7 @@ def test_quit_while_gil_is_held_leaves_program_alive(make_target):
 
 
 @linux_only
+@needs_gdb_injection
 def test_injection_timeout_leaves_program_alive(make_target, monkeypatch):
     monkeypatch.setattr(_timeouts, "PID_ATTACH_TOTAL", 2.0)
     target = make_target("gil")
@@ -509,6 +523,17 @@ def test_process_without_python_fails_quickly(tmp_path):
     finally:
         sleeper.kill()
         sleeper.wait()
+
+
+@linux_only
+@pytest.mark.skipif(not MUSL, reason="musl only")
+@needs_314
+def test_blocked_on_musl_explains_and_leaves_target_alone(make_target, attach):
+    target = make_target("sleep", PY_314)
+    session = attach(target, ready=False)
+    assert session.proc.wait(timeout=20) == 2
+    assert "musl" in session.errors()
+    assert target.alive()
 
 
 def _ptrace_denied() -> bool:
