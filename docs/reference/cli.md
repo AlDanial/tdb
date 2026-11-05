@@ -15,7 +15,7 @@ usage: tdb [-h] [-v] [-r [HOST:]PORT] [--cwd CWD] [--no-stop-on-entry]
 | Flag | Description |
 |------|-------------|
 | `-r HOST:PORT` | Attach to a remote debugpy server |
-| `-a`, `--attach PID` | Attach to a running local process by pid: Go (Delve) or a native C/C++, Fortran, Rust, or OCaml program (gdb or lldb-dap). Linux identifies the language from `/proc/PID/exe`; elsewhere pass `--lang` and, for native programs, the executable path. |
+| `-a`, `--attach PID` | Attach to a running local process by pid: [Python 3.11+](../python/attach-to-process.md), Go (Delve), or a native C/C++, Fortran, Rust, or OCaml program (gdb or lldb-dap). Linux identifies the language from `/proc/PID/exe`; elsewhere pass `--lang` and, for native programs, the executable path. |
 | `--local-root PATH` | Local directory containing a copy of remote code (repeat to mirror multiple trees). Pair with `--remote-root`; counts must match. Required when `-k` sets a breakpoint against a remote debuggee whose code lives at a different path. |
 | `--remote-root PATH` | Remote directory matched to `--local-root` (same CLI position via `zip()`). |
 | `-k`, `--breakpoint FILE:LINE|LINE` | Set a breakpoint (may be repeated). Passing `-k` implies `--no-stop-on-entry` so the program runs straight to the first breakpoint. |

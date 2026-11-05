@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from tdb import _timeouts
 from tdb.dap.client import DAPClient
 from tdb.dap.messages import Event, Response
 from tdb.dap.types import (
@@ -19,6 +20,8 @@ from tdb.dap.types import (
     SourceBreakpoint,
     Variable,
 )
+from tdb.languages.python_attach import PidAttachError
+
 from .breakpoint_sync import parse_breakpoint_listing, reconcile
 from .event_bus import DebugEventHandler
 from .state import DISPLAY_SCOPE_REF, INTERACTIVE_SCOPE_REF, DebugState, SessionPhase
@@ -64,6 +67,13 @@ class DebugController:
         # (debugpy launches without --terminal); see supports_stdin.
         self._pipe_launcher: PipeLauncher | None = None
         self._launch_params: dict[str, Any] = {}
+        # How an injected target was reached (Python pid attach), and
+        # the signal that it got there.
+        self.attach_method: str | None = None
+        self._initialized_seen = asyncio.Event()
+        self._attach_hook: asyncio.Future[str | None] | None = None
+        self._quitting_attach = asyncio.Event()
+        self._configuration_done_sent = False
         # Future for the launch/attach response (set by start() /
         # remote_attach()) and an event marking that the request itself
         # has been written — do_configure must not send configurationDone
@@ -443,6 +453,113 @@ class DebugController:
             pause_on_attach=pre_arm_pause,
         )
         self._launch_sent.set()
+        await self._start_attach_hook()
+
+    async def _start_attach_hook(self) -> None:
+        """Run the adapter's post-attach hook, returning once it finishes
+        or the session starts, whichever is first.
+
+        The hook itself can't be awaited here: injection into a Python
+        target outlasts `initialized` by the whole handshake, and headless
+        only calls do_configure after this returns, so that would
+        deadlock. do_configure collects it in _finish_attach_hook.
+        """
+        self._configuration_done_sent = False
+        hook = asyncio.ensure_future(
+            self.profile.adapter.after_attach_request(
+                self._initialized_seen, self._quitting_attach
+            )
+        )
+        self._attach_hook = hook
+        initialized = asyncio.ensure_future(self._initialized_seen.wait())
+        try:
+            await asyncio.wait(
+                {hook, initialized}, return_when=asyncio.FIRST_COMPLETED
+            )
+            if hook.done() and not hook.cancelled():
+                hook.result()
+        except Exception:
+            # Nothing else will stop the adapter, which is still waiting
+            # for a target that isn't coming.
+            await self.client.stop()
+            raise
+        finally:
+            initialized.cancel()
+
+    async def _send_configuration_done(self) -> None:
+        """Once per injected session (quitting may race do_configure to
+        it), and always otherwise: a restart reuses this controller."""
+        if self._attach_hook is None or not self._configuration_done_sent:
+            self._configuration_done_sent = True
+            await self.client.configuration_done()
+
+    async def _settle_attach_hook(self) -> None:
+        """Quitting during injection: finish the handshake before anything
+        is torn down. Once the target has connected, pydevd waits for
+        configurationDone with no timeout, so losing the adapter there
+        freezes the program for good. The attach response shows it arrived:
+        the hook alone can't, as remote_exec's returns on connecting. A
+        target that hasn't connected by the limit (GIL held, or main thread
+        blocked) is left alone.
+        """
+        hook = self._attach_hook
+        if hook is None:
+            return
+        response = self._launch_future
+        connected = self._initialized_seen.is_set()
+        if hook.done() and (not connected or response is None or response.done()):
+            return
+        self._quitting_attach.set()
+        deadline = time.monotonic() + _timeouts.PID_ATTACH_QUIT
+
+        def remaining() -> float:
+            return max(0.0, deadline - time.monotonic())
+
+        if not hook.done():
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(self._initialized_seen.wait(), remaining())
+        if self._initialized_seen.is_set():
+            with contextlib.suppress(Exception):
+                await asyncio.wait_for(self._send_configuration_done(), remaining())
+            if response is not None:
+                await asyncio.wait({response}, timeout=remaining())
+            if not hook.done():
+                await asyncio.wait({hook}, timeout=remaining())
+        if not hook.done():
+            hook.cancel()
+            await asyncio.wait({hook})
+
+    async def _finish_attach_hook(self) -> None:
+        """Collect the hook once configuration is done, then pause.
+
+        For an injected target this pause can't be pre-armed: injection
+        doesn't return until the handshake ends, so a pause sent before
+        configurationDone stops the program inside the injected call, with
+        gdb still attached. Quitting there kills gdb mid-call and the
+        program segfaults.
+        """
+        if self._attach_hook is None or self._quitting_attach.is_set():
+            return
+        self.attach_method = await self._attach_hook
+        if self.attach_method is None or self._quitting_attach.is_set():
+            return
+        # Injection replaces a debugpy server already in the target, and
+        # that can leave a session that answers at first, then goes
+        # silent. A merely blocked program still answers these, even
+        # though its pause can't land, so an unanswered request is decisive.
+        limit = _timeouts.PID_ATTACH_RESPONSE
+        try:
+            threads = await asyncio.wait_for(self.client.threads(), limit)
+            if self._pre_arm_pause and threads:
+                await asyncio.wait_for(self.client.pause(threads[0].id), limit)
+                await asyncio.wait_for(self.client.threads(), limit)
+        except TimeoutError:
+            await self.client.stop()
+            raise PidAttachError(
+                "cannot attach: the program stopped answering after injection. "
+                "It probably already runs debugpy (its own debugpy.listen(), "
+                "or another debugger), and that session may no longer work"
+            ) from None
 
     async def do_configure(self) -> None:
         """Called after 'initialized' event. Sends breakpoints + configurationDone.
@@ -573,7 +690,7 @@ class DebugController:
             self._suppress_next_stop = True
 
         # Signal configuration complete — this unblocks the launch response
-        await self.client.configuration_done()
+        await self._send_configuration_done()
 
         # Now await the launch response
         # External terminal needs more time: terminal startup + debuggee connect
@@ -581,6 +698,7 @@ class DebugController:
         response = await asyncio.wait_for(self._launch_future, timeout=timeout)
         if not response.success:
             raise Exception(f"Launch failed: {response.message}")
+        await self._finish_attach_hook()
 
         if bootstrap_entry:
             # GDB loads executable symbols as part of configurationDone and
@@ -656,6 +774,7 @@ class DebugController:
         # ChildProcessManager.close_all for the per-child loop.
         from tdb._timeouts import DAP_DISCONNECT_PARENT
 
+        await self._settle_attach_hook()
         await self._children.close_all()
         try:
             await asyncio.wait_for(
@@ -1531,6 +1650,7 @@ class DebugController:
     # They delegate to the event_handler — all async work happens elsewhere.
 
     def _on_initialized(self, event: Event) -> None:
+        self._initialized_seen.set()
         self.event_handler.on_initialized()
 
     def _on_stopped(self, event: Event) -> None:

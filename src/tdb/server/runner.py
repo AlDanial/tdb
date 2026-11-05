@@ -6,12 +6,13 @@ import asyncio
 import logging
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import Any, Awaitable, TYPE_CHECKING
 
 import uvicorn
 
 from tdb.dap.client import DAPError
 from tdb.languages.base import AdapterNotFoundError
+from tdb.languages.python_attach import PidAttachCancelled, PidAttachError
 from tdb.session.controller import DebugController
 from .app import create_app
 from .event_handler import ServerEventHandler
@@ -21,6 +22,17 @@ if TYPE_CHECKING:
     from tdb.languages.base import LanguageProfile
 
 log = logging.getLogger(__name__)
+
+
+async def _stop_if_cancelled(controller: DebugController, step: Awaitable) -> Any:
+    """Ctrl-C cancels setup, which skips the usual teardown. An injected
+    target is mid-handshake then and needs stop() to finish it, or it
+    waits for configurationDone forever."""
+    try:
+        return await step
+    except asyncio.CancelledError:
+        await controller.stop()
+        raise
 
 
 async def setup_headless_session(
@@ -65,19 +77,24 @@ async def setup_headless_session(
     # Start the debug session
     if is_remote:
         try:
-            await controller.remote_attach(
-                host=attach_host,
-                port=attach_port,
-                path_mappings=path_mappings,
-                program=program,
-                pre_arm_pause=pre_arm_pause,
+            await _stop_if_cancelled(
+                controller,
+                controller.remote_attach(
+                    host=attach_host,
+                    port=attach_port,
+                    path_mappings=path_mappings,
+                    program=program,
+                    pre_arm_pause=pre_arm_pause,
+                ),
             )
         except AdapterNotFoundError as exc:
             print(f"tdb: {exc.hint}", file=sys.stderr)
             sys.exit(2)
-        except ConnectionError as exc:
-            # Adapter spawned but died before serving DAP; the message
-            # carries its stderr tail and any adapter diagnosis.
+        except PidAttachCancelled:
+            sys.exit(0)
+        except (ConnectionError, PidAttachError) as exc:
+            # Adapter spawned but died before serving DAP, or injection
+            # into a Python target failed; either way the message says why.
             print(f"tdb: {exc}", file=sys.stderr)
             sys.exit(2)
         except OSError as exc:
@@ -116,9 +133,12 @@ async def setup_headless_session(
     # Wait for initialized event, then configure
     from tdb._timeouts import DAP_INITIALIZED, DAP_STOP_ON_ENTRY
 
-    await asyncio.wait_for(handler.initialized_event.wait(), timeout=DAP_INITIALIZED)
+    await _stop_if_cancelled(
+        controller,
+        asyncio.wait_for(handler.initialized_event.wait(), timeout=DAP_INITIALIZED),
+    )
     try:
-        await controller.do_configure()
+        await _stop_if_cancelled(controller, controller.do_configure())
     except DAPError as exc:
         # E.g. a rejected pre-configuration command (`set substitute-path`
         # from --path-mapping). do_configure deliberately aborts rather
@@ -126,6 +146,11 @@ async def setup_headless_session(
         # the attach failure modes above instead of dumping a traceback.
         print(f"tdb: adapter configuration failed — {exc}", file=sys.stderr)
         sys.exit(2)
+    except PidAttachError as exc:
+        print(f"tdb: {exc}", file=sys.stderr)
+        sys.exit(2)
+    if controller.attach_method is not None:
+        print(f"Attached using {controller.attach_method}", file=sys.stderr)
 
     # Wait for the debuggee to actually stop. State (is_running,
     # stop_reason, current_thread_id) is set synchronously by

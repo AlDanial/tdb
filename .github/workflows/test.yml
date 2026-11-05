@@ -35,6 +35,35 @@ jobs:
           docker run --rm --cap-add=SYS_PTRACE --security-opt seccomp=unconfined \
             tdb-test uv run pytest
 
+  python-attach-glibc:
+    # The job above runs on Alpine, where debugpy's injection library can't
+    # load, so `tdb -a PID` through gdb is only tested here. See the
+    # glibc-test stage of the Dockerfile for why it is Debian and non-root.
+    name: Python attach by pid on glibc
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Build test image
+        run: docker build --target glibc-test -t tdb-glibc-test .
+
+      - name: Run attach tests
+        run: |
+          docker run --rm --cap-add=SYS_PTRACE --security-opt seccomp=unconfined \
+            tdb-glibc-test uv run --extra dev pytest --no-cov -rs \
+            tests/unit/test_python_attach_inject.py \
+            tests/unit/test_python_attach_probe.py \
+            tests/integration/test_python_pid_attach.py
+
+      - name: Run attach tests as root
+        # `sudo tdb -a PID` against another user's program.
+        run: |
+          docker run --rm --cap-add=SYS_PTRACE --security-opt seccomp=unconfined \
+            -u root tdb-glibc-test /home/appuser/venv/bin/python -m pytest \
+            --no-cov -rs tests/integration/test_python_pid_attach.py -k root_attaches
+
   windows-vi:
     # The vi engine is pure Python and must work on Windows; the golden
     # tests read only the committed golden.json (no nvim needed).

@@ -27,6 +27,7 @@ MIT License.  Copyright 2026 by Al Danial.
 - Debugs synchronous, asynchronous, multi-threaded, and multi-process Python,
   with inspectors for `asyncio` tasks (including a task wait graph), threads,
   and `multiprocessing` / `concurrent.futures` children
+- Attach to a running Python 3.11+ program by pid, with no preparation
 - Remote attach to Python, Perl, Ruby, Rust, C/C++, and Go programs
 - JSON-RPC server, MCP (v2) server, and a `SKILL.md` for headless and
   AI-assisted debugging
@@ -72,6 +73,7 @@ tdb -k 20 -k module.py:14 my_program.py   # run to breakpoints
 tdb -k module.py:27 --if "a > 7" my_program.py   # ... stopping only when a > 7
 tdb ./myprog                     # debug a native executable built with -g
 tdb script.pl                    # ... or a Perl, Bash, Tcsh, Ruby, PowerShell script
+tdb -a 12345                     # attach to a running Python program by pid
 tdb -r remotehost:5678           # attach to a remote debugpy server
 ```
 

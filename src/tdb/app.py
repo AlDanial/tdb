@@ -16,10 +16,13 @@ from textual.message import Message
 from textual.widgets import Footer, Header, OptionList
 from textual.widgets._tree import TreeNode
 
+from tdb import _timeouts
 from tdb.app_handlers.routing import _AppMessageRoutes
 from tdb.languages.base import AdapterNotFoundError
+from tdb.languages.python_attach import PidAttachCancelled, PidAttachError
 from tdb.session.controller import DebugController
 from tdb.session.messages import DapStopped
+from tdb.session.state import SessionPhase
 from tdb.session.textual_handler import TextualEventHandler
 from tdb.keybindings import KeybindingConfig, Mode
 from tdb.source_edit import remap_breakpoints
@@ -682,11 +685,13 @@ class TdbApp(_AppMessageRoutes, App):
             log.exception("Failed to start debug session")
             self._startup_error = f"tdb: {exc.hint}"
             self.exit(return_code=2)
-        except ConnectionError as exc:
+        except PidAttachCancelled:
+            self.exit()
+        except (ConnectionError, PidAttachError) as exc:
             # The adapter was found but died before serving DAP (a gdb
-            # without a DAP interpreter, a debugpy import failure, ...).
-            # DAPClient folds its stderr and any diagnosis into the
-            # message; an empty TUI titled "Failed to start" would hide
+            # without a DAP interpreter, a debugpy import failure, ...),
+            # or injection into a Python target failed. The message says
+            # why; an empty TUI titled "Failed to start" would hide
             # exactly the line the user needs.
             log.exception("Failed to start debug session")
             self._startup_error = f"tdb: {exc}"
@@ -694,6 +699,27 @@ class TdbApp(_AppMessageRoutes, App):
         except Exception:
             log.exception("Failed to start debug session")
             self.sub_title = "Failed to start"
+
+    def announce_pid_attach(self) -> None:
+        """Say how a Python target was reached, and warn later if it
+        never stops: a blocked program can't be paused."""
+        method = self.controller.attach_method
+        if method is None:
+            return
+        self.notify(f"Attached using {method}.", title="Attach")
+        if self._pause_on_attach:
+            self.set_timer(_timeouts.PID_ATTACH_BLOCKED_NOTICE, self._warn_if_blocked)
+
+    def _warn_if_blocked(self) -> None:
+        if self.controller.state.phase is SessionPhase.RUNNING:
+            self.notify(
+                "The program is not running Python code, so pause can't land "
+                "yet; it is probably blocked in a system call. Breakpoints "
+                "fire when it next runs Python.",
+                title="Attach",
+                severity="warning",
+                timeout=15,
+            )
 
     @work(group="remote-source")
     async def _fetch_remote_source(self, path: str) -> None:

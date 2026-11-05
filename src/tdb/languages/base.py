@@ -16,6 +16,7 @@ Rules that keep this compartmentalized (see the design spec):
 
 from __future__ import annotations
 
+import asyncio
 import re
 from dataclasses import dataclass, field
 from typing import Any, Callable
@@ -154,6 +155,17 @@ class AdapterSpec:
     ) -> dict[str, Any]:
         """Arguments for the DAP `attach` request."""
         raise NotImplementedError
+
+    async def after_attach_request(
+        self, initialized: asyncio.Event, quitting: asyncio.Event
+    ) -> str | None:
+        """Runs alongside the session from the moment the attach request
+        is sent. An adapter that has to make the debuggee reach it (Python
+        pid attach) does that here and returns a name for how it did.
+        `initialized` is set when the session starts; the handshake only
+        completes after that, so this must not rely on returning first.
+        `quitting` is set if the user quits before it does."""
+        return None
 
     def pre_configuration_commands(
         self, path_mappings: list[tuple[str, str]]

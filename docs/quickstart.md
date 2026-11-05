@@ -63,6 +63,10 @@ tdb --no-stop-on-entry my_program.py
 # run the debuggee in an external terminal
 tdb --terminal xterm my_program.py
 
+# attach to a running Python 3.11+ program by pid; it needs no preparation
+# (Linux may need `sudo sysctl kernel.yama.ptrace_scope=0` first)
+tdb -a 12345
+
 # attach to a remote Python program that has a debugpy server on port 5678
 # (source code is automatically downloaded from the remote host)
 tdb -r remotehost:5678

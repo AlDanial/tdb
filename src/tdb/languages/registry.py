@@ -207,11 +207,17 @@ def detect_executable(path: str) -> str:
     """Language of a running process's executable (`tdb -a PID` without
     --lang; `path` is /proc/PID/exe on Linux). Order matters: Go and
     OCaml binaries are ELF too, and a Rust binary is only distinguishable
-    by its runtime symbols; anything else ELF is debugged as C/C++."""
+    by its runtime symbols; anything else ELF is debugged as C/C++. Python
+    goes first: an interpreter is ELF too, and is known by its name."""
     from tdb.languages.go import is_go_binary  # lazy: import cycles
     from tdb.languages.ocaml import ocaml_flavor
+    from tdb.languages.python_attach import is_python_executable
     from tdb.languages.rust import is_rust_binary
 
+    # By name, and first: a long-running program's interpreter is often
+    # gone after an upgrade, leaving "python3.12 (deleted)".
+    if is_python_executable(path.removesuffix(" (deleted)")):
+        return "python"
     try:
         with open(path, "rb") as f:
             magic = f.read(4)
