@@ -9,6 +9,7 @@ to reaching the target; it imports no controller or UI code.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import re
 import shutil
@@ -43,10 +44,11 @@ _PROBE_CODE = (
 
 # Remote-exec helpers finish at once: they only queue the script.
 _REMOTE_EXEC_HELPER_TIMEOUT = 10.0
-# gdb has to load the target's symbols first. It takes a fraction of a second
-# for most programs.
-_GDB_QUEUE_TIMEOUT = 10.0
-_GDB_QUEUED = re.compile(r"^\$1 = 0$", re.MULTILINE)
+# gdb has to load the target's symbols first. That takes a fraction of a
+# second for most programs, and it can't be interrupted safely.
+_GDB_QUEUE_TIMEOUT = 20.0
+_GDB_QUEUED = re.compile(r"^tdb-queued 0$", re.MULTILINE)
+_GDB_COMMANDS_NAME = "queue.gdb"
 # How often a wait re-checks the target and the helper.
 _POLL = 0.25
 # A helper that exits cleanly and never ran the code found no Python to run
@@ -65,6 +67,10 @@ METHOD_DEBUGPY = "debugpy injection"
 
 class PidAttachError(Exception):
     """Injection failed; `str()` is the message shown to the user."""
+
+
+class PidAttachCancelled(PidAttachError):
+    """The user quit during injection, so there is nothing to report."""
 
 
 @dataclass(frozen=True)
@@ -191,6 +197,26 @@ def uses_musl(pid: int) -> bool:
         return False
 
 
+def _euid() -> int | None:
+    return os.geteuid() if hasattr(os, "geteuid") else None
+
+
+def _target_uid(pid: int) -> int | None:
+    try:
+        return os.stat(f"{_PROC}/{pid}").st_uid
+    except OSError:
+        return None
+
+
+def _hand_to_target(path: str, pid: int) -> None:
+    """Let the target use a file tdb made. Running as root is what tdb
+    suggests under Yama, and root's private temp files are out of its reach."""
+    uid = _target_uid(pid)
+    if _euid() == 0 and uid not in (None, 0):
+        with contextlib.suppress(OSError):
+            os.chown(path, uid, -1)
+
+
 def _exe_of_pid(pid: int) -> str | None:
     if sys.platform != "linux":
         return None
@@ -260,10 +286,9 @@ def build_remote_exec_script(
     main thread wakes. Renaming `marker` is an atomic claim that tdb makes
     too: whichever side renames it first owns this attempt, and a script
     that loses only deletes its directory. Everything lives in one
-    function so no names are left in the target. The switch interval goes
-    back once `attach` returns, which is when the handshake ends.
+    function so no names are left in the target.
     """
-    return textwrap.dedent(
+    return _python_gdb_helper.FAST_HANDOFFS + textwrap.dedent(
         f"""\
         def _tdb_attach():
             import os, shutil, sys
@@ -274,9 +299,7 @@ def build_remote_exec_script(
                 return
             finally:
                 shutil.rmtree(os.path.dirname(marker), ignore_errors=True)
-            interval = sys.getswitchinterval()
-            sys.setswitchinterval({_python_gdb_helper.ATTACH_SWITCH_INTERVAL})
-            try:
+            def run():
                 sys.path.insert(0, {server_dir!r})
                 try:
                     import attach_pid_injected
@@ -289,12 +312,11 @@ def build_remote_exec_script(
                     "log_to": None,
                     "adapter_access_token": None,
                 }})
-            finally:
-                sys.setswitchinterval(interval)
+            _tdb_fast_handoffs(run)
         try:
             _tdb_attach()
         finally:
-            del _tdb_attach
+            del _tdb_attach, _tdb_fast_handoffs
         """
     )
 
@@ -394,22 +416,54 @@ def _remote_exec_argv(target: TargetInfo, script_path: str) -> list[str]:
     return [target.interpreter or "", "-I", "-c", code]
 
 
-def _gdb_queue_argv(pid: int, script_path: str) -> list[str]:
-    """gdb asks the target to run the script, as `sys.remote_exec` would.
+def _queued_code(script_path: str) -> str:
+    """What the main thread runs for a gdb-queued script.
+
+    It must not fail: a pending call that returns an error raises SystemError
+    in the program's main thread, and that ends most programs. It runs in
+    `__main__` too, so it trusts no names there, and leaves none behind.
+    """
+    return (
+        "try:\n"
+        '    __import__("builtins").exec(__import__("builtins").open('
+        f'{script_path!r}, encoding="utf-8").read(), {{}})\n'
+        "except:\n"
+        "    pass\n"
+    )
+
+
+def _gdb_queue_commands(code: str) -> str:
+    """gdb commands that have the target's main thread run `code`.
 
     Py_AddPendingCall takes no GIL, so this is safe on a main thread waiting
-    for it. Calling into a thread stopped there is not: below glibc 2.41 the
-    wait can't be re-entered, and the target deadlocks. gdb is gone before
-    the script even starts.
+    for it. Calling into a thread stopped there isn't: below glibc 2.41 that
+    wait can't always be re-entered. Nothing here may allocate either, as the
+    thread may have stopped inside malloc, so the code goes on a page of its
+    own, written by gdb, and stays there: it is one page per attach, and tdb
+    can't know when the target is done with it.
     """
-    script = _python_gdb_helper.as_bytes(script_path)
-    code = f"exec(open({script}.decode()).read())"
-    call = (
-        "call (int)Py_AddPendingCall((int(*)(void*))PyRun_SimpleString,"
-        f'(void*)strdup("{code}"))'
+    data = code.encode() + b"\0"
+    prot_read_write, map_private_anonymous = 3, 0x22
+    lines = [
+        f"set $tdb_code = (char *)mmap(0, {len(data)}, {prot_read_write}, "
+        f"{map_private_anonymous}, -1, 0)"
+    ]
+    lines += [
+        f"set {{unsigned char}}($tdb_code + {offset}) = {byte}"
+        for offset, byte in enumerate(data)
+    ]
+    lines.append(
+        'printf "tdb-queued %d\\n", '
+        "(int)Py_AddPendingCall((int(*)(void*))PyRun_SimpleString, $tdb_code)"
     )
-    return ["gdb", "--nw", "--nh", "--nx", "--pid", str(pid), "--batch",
-            f"--eval-command={call}"]
+    return "\n".join(lines) + "\n"
+
+
+def _gdb_queue_argv(pid: int, commands_path: str) -> list[str]:
+    return [
+        "gdb", "--nw", "--nh", "--nx", "--pid", str(pid), "--batch",
+        "-x", commands_path,
+    ]  # fmt: skip
 
 
 def _debugpy_argv(pid: int, port: int, ran_marker: str) -> list[str]:
@@ -532,15 +586,38 @@ async def _queue_with_remote_exec(
 
 
 async def _queue_with_gdb(pid: int, script_path: str) -> tuple[bool, str]:
+    commands_path = os.path.join(os.path.dirname(script_path), _GDB_COMMANDS_NAME)
+    with open(commands_path, "w", encoding="utf-8") as f:
+        f.write(_gdb_queue_commands(_queued_code(script_path)))
     # gdb's own embedded Python may choke on a PYTHONPATH meant for another.
     env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
     with tempfile.TemporaryFile() as output:
-        gdb = _spawn_detached(_gdb_queue_argv(pid, script_path), output, env)
+        gdb = _spawn_detached(_gdb_queue_argv(pid, commands_path), output, env)
         await _wait_for_exit(gdb, time.monotonic() + _GDB_QUEUE_TIMEOUT)
         if gdb.poll() is None:
-            raise TimeoutError
+            # Falling back would run a second gdb, which can't attach.
+            raise PidAttachError(
+                f"cannot attach to pid {pid}: gdb (pid {gdb.pid}) is still "
+                "attached and has not finished. The program may stay stopped "
+                "until it does"
+            )
         text = _read_output(output)
     return gdb.returncode == 0 and _GDB_QUEUED.search(text) is not None, text
+
+
+def _no_connection_error(pid: int) -> PidAttachError:
+    from debugpy import server
+
+    message = (
+        f"cannot attach to pid {pid}: the injected code ran, but the program "
+        f"did not connect within {_timeouts.PID_ATTACH_TOTAL:.0f} seconds"
+    )
+    if _target_uid(pid) not in (None, _euid()):
+        message += (
+            ". It runs as another user, who must be able to read "
+            f"{os.path.dirname(server.__file__)}"
+        )
+    return PidAttachError(message)
 
 
 async def _try_queued(
@@ -550,9 +627,14 @@ async def _try_queued(
     connected: asyncio.Event,
     deadline: float,
     quitting: asyncio.Event,
+    *,
+    missing_script_is_silent: bool,
 ) -> tuple[bool, str]:
     """Have the main thread run the attach script. `queue` takes the script's
-    path and returns (queued, output). Returns (connected, error text)."""
+    path and returns (queued, output). Returns (connected, output) if nothing
+    has started in the target; raises if the script started but never
+    connected, as a fallback would then be a second attach.
+    """
     from debugpy import server
 
     server_dir = os.path.dirname(server.__file__)
@@ -564,25 +646,34 @@ async def _try_queued(
         pass
     with open(script_path, "w", encoding="utf-8") as f:
         f.write(build_remote_exec_script(server_dir, port, marker, claimed))
+    for path in (workdir, marker, script_path):
+        _hand_to_target(path, pid)
 
+    output = ""
+    may_fire = True  # A helper that timed out may yet have queued it.
     try:
-        queued, output = await queue(script_path)
-        if not queued:
-            shutil.rmtree(workdir, ignore_errors=True)
+        may_fire, output = await queue(script_path)
+        if not may_fire:
             return False, output
         wait_until = min(deadline, time.monotonic() + _timeouts.PID_ATTACH_REMOTE_EXEC)
         if await _wait_for_connection(pid, connected, wait_until, quitting=quitting):
             return True, ""
         if _claim(marker, claimed):
-            return False, ""
+            return False, output
         # The script fired just now: it owns the attempt.
-        return await _wait_for_connection(pid, connected, deadline), ""
+        if await _wait_for_connection(pid, connected, deadline):
+            return True, ""
+        raise _no_connection_error(pid)
     except TimeoutError:
-        return False, ""
+        return False, output
     finally:
         if not connected.is_set():
             # Silences a script left queued in the target.
             _claim(marker, claimed)
+            # sys.remote_exec reports a missing script on the target's
+            # stderr, so a queued one keeps its file.
+            if not may_fire or missing_script_is_silent or not pid_exists(pid):
+                shutil.rmtree(workdir, ignore_errors=True)
 
 
 async def inject(
@@ -602,7 +693,7 @@ async def inject(
     pid = target.pid
     quitting = quitting or asyncio.Event()
     deadline = time.monotonic() + _timeouts.PID_ATTACH_TOTAL
-    remote_exec_error = ""
+    remote_exec_error = queue_output = ""
     if target.has_remote_exec:
         reached, remote_exec_error = await _try_queued(
             partial(_queue_with_remote_exec, target),
@@ -611,6 +702,7 @@ async def inject(
             connected,
             deadline,
             quitting,
+            missing_script_is_silent=False,
         )
         if reached:
             return METHOD_REMOTE_EXEC
@@ -623,14 +715,25 @@ async def inject(
         and not quitting.is_set()
         and (remote_exec_error or not target.has_remote_exec)
     ):
-        reached, _ = await _try_queued(
-            partial(_queue_with_gdb, pid), pid, port, connected, deadline, quitting
+        reached, queue_output = await _try_queued(
+            partial(_queue_with_gdb, pid),
+            pid,
+            port,
+            connected,
+            deadline,
+            quitting,
+            missing_script_is_silent=True,
         )
         if reached:
             return METHOD_GDB_QUEUE
 
     if quitting.is_set():
-        raise PidAttachError(f"cannot attach to pid {pid}: quitting")
+        raise PidAttachCancelled(f"cannot attach to pid {pid}: quitting")
+    if time.monotonic() >= deadline:
+        raise PidAttachError(
+            f"cannot attach to pid {pid}: the program did not run the queued "
+            f"code within {_timeouts.PID_ATTACH_TOTAL:.0f} seconds"
+        )
 
     def failure(
         inject_output: str = "", gdb_missing: bool = False, musl: bool = False
@@ -646,8 +749,8 @@ async def inject(
         return PidAttachError(f"cannot attach to pid {pid}: {reason}")
 
     if sys.platform == "linux":
-        if uses_musl(pid):
-            raise failure(musl=True)
+        if uses_musl(pid) and (gdb_found or target.has_remote_exec):
+            raise failure(queue_output, musl=True)
         if not gdb_found:
             raise failure(gdb_missing=True)
 
@@ -655,6 +758,7 @@ async def inject(
         tempfile.TemporaryFile() as output,
         tempfile.TemporaryDirectory(prefix="tdb-attach-") as workdir,
     ):
+        _hand_to_target(workdir, pid)
         ran_marker = os.path.join(workdir, _RAN_NAME)
         helper = _spawn_detached(_debugpy_argv(pid, port, ran_marker), output)
         if await _wait_for_connection(pid, connected, deadline, helper, ran_marker):
@@ -673,11 +777,7 @@ async def inject(
         if code != 0:
             raise failure(_read_output(output))
         if os.path.exists(ran_marker):
-            raise PidAttachError(
-                f"cannot attach to pid {pid}: the injected code ran, but the "
-                f"program did not connect within "
-                f"{_timeouts.PID_ATTACH_TOTAL:.0f} seconds"
-            )
+            raise _no_connection_error(pid)
         raise PidAttachError(
             f"cannot attach to pid {pid}: injection ended with no connection; "
             "the process doesn't seem to be running a Python tdb can reach"

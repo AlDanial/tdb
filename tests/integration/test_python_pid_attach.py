@@ -16,6 +16,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -24,7 +25,11 @@ import pytest
 
 from tdb import _timeouts
 from tdb.languages.python import build_python_profile
-from tdb.languages.python_attach import PidAttachError, uses_musl
+from tdb.languages.python_attach import (
+    PidAttachError,
+    _queue_with_gdb,
+    uses_musl,
+)
 from tdb.server.event_handler import ServerEventHandler
 from tdb.session.controller import DebugController
 
@@ -65,7 +70,7 @@ def _find_python(version: str) -> str | None:
     return result.stdout.strip() if result.returncode == 0 else None
 
 
-PYTHONS = {v: _find_python(v) for v in ("3.11", "3.12", "3.14")}
+PYTHONS = {v: _find_python(v) for v in ("3.11", "3.12", "3.13", "3.14")}
 PY_314 = PYTHONS["3.14"]
 needs_314 = pytest.mark.skipif(PY_314 is None, reason="Python 3.14 not found")
 linux_only = pytest.mark.skipif(not LINUX, reason="Linux process inspection")
@@ -96,7 +101,7 @@ def python(request):
 
 
 class Target:
-    def __init__(self, python, mode, tmp_path, opt_in=True):
+    def __init__(self, python, mode, tmp_path, opt_in=True, user=None):
         self.heartbeat = tmp_path / f"heartbeat-{mode}"
         self.stderr_path = tmp_path / f"stderr-{mode}"
         self.stdout_path = tmp_path / f"stdout-{mode}"
@@ -106,7 +111,11 @@ class Target:
         self.stdout = open(self.stdout_path, "w")
         self.stderr = open(self.stderr_path, "w")
         self.proc = subprocess.Popen(
-            argv, stdin=subprocess.PIPE, stdout=self.stdout, stderr=self.stderr
+            argv,
+            stdin=subprocess.PIPE,
+            stdout=self.stdout,
+            stderr=self.stderr,
+            user=user,
         )
         deadline = time.monotonic() + 15
         while "ready" not in self.stdout_path.read_text():
@@ -304,6 +313,78 @@ def test_all_threads_busy(make_target, attach, python):
 
 
 @linux_only
+def test_program_that_allocates_constantly(make_target, attach, python):
+    # gdb's queue call used to malloc in the target, and a main thread
+    # stopped inside malloc deadlocked on itself.
+    target = make_target("allocating", python)
+    session = attach(target)
+    assert session.proc.poll() is None
+    session.quit()
+    target.assert_running()
+
+
+@linux_only
+def test_program_shadowing_builtins(make_target, attach, python):
+    # The queued call runs in __main__, where these names are the program's.
+    target = make_target("shadowed", python)
+    session = attach(target)
+    assert session.proc.poll() is None
+    session.quit()
+    target.assert_running()
+    assert "SystemError" not in target.stderr_path.read_text()
+
+
+@linux_only
+@pytest.mark.parametrize(
+    "script", ("raise ValueError('boom')", "raise SystemExit(3)", None)
+)
+def test_failing_queued_call_leaves_program_running(
+    make_target, python, tmp_path, script
+):
+    # A pending call that fails raises SystemError in the main thread.
+    target = make_target("busy", python)
+    path = tmp_path / "queued.py"
+    if script is not None:
+        path.write_text(script)
+    queued, _ = asyncio.run(_queue_with_gdb(target.pid, str(path)))
+    assert queued
+    time.sleep(0.5)
+    target.assert_running()
+    assert "SystemError" not in target.stderr_path.read_text()
+
+
+@linux_only
+@needs_gdb_injection
+def test_fallback_with_busy_worker(make_target, attach, python):
+    # Run inside gdb's call, the injected code froze the other threads.
+    target = make_target("join_busy", python)
+    session = attach(target)
+    assert "debugpy injection" in session.errors()
+    assert run_to_line(session, WORK_LINE)
+    session.quit()
+    target.assert_running()
+
+
+@linux_only
+@pytest.mark.skipif(not LINUX or os.geteuid() != 0, reason="needs root")
+def test_root_attaches_to_another_users_program(python):
+    # What tdb tells people to do under Yama. Run as root by the CI job.
+    workdir = Path(tempfile.mkdtemp(prefix="tdb-root-test-"))
+    workdir.chmod(0o777)
+    target = Target(python, "busy", workdir, user=65534)
+    session = Session(target.pid, workdir)
+    try:
+        assert session.wait_ready(), session.errors()
+        assert run_to_line(session, WORK_LINE)
+        session.quit()
+        target.assert_running()
+    finally:
+        session.close()
+        target.kill()
+        shutil.rmtree(workdir, ignore_errors=True)
+
+
+@linux_only
 def test_running_frame_breakpoint(make_target, attach, python):
     target = make_target("busy", python)
     session = attach(target)
@@ -415,10 +496,11 @@ def test_no_pause_on_attach_leaves_program_running(make_target, attach):
 
 
 @linux_only
-@needs_314
 @needs_gdb_injection
-def test_queued_script_stays_silent_after_fallback(make_target, attach, tmp_path):
-    target = make_target("stdin", PY_314)
+def test_queued_script_stays_silent_after_fallback(
+    make_target, attach, tmp_path, python
+):
+    target = make_target("stdin", python)
     session = attach(target)
     assert "debugpy injection" in session.errors()
     session.quit()
@@ -506,6 +588,7 @@ def test_quit_while_gil_is_held_leaves_program_alive(make_target):
 @needs_gdb_injection
 @needs_reentrant_condvar
 def test_injection_timeout_leaves_program_alive(make_target, monkeypatch):
+    monkeypatch.setattr(_timeouts, "PID_ATTACH_REMOTE_EXEC", 0.5)
     monkeypatch.setattr(_timeouts, "PID_ATTACH_TOTAL", 2.0)
     target = make_target("gil")
 

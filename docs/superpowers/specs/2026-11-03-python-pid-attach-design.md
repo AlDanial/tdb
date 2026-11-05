@@ -159,7 +159,7 @@ with `PR_SET_PTRACER`, so it tries first and classifies the failure.
 
 ## Changes found while building
 
-Real-process tests changed three things above:
+Real-process tests and two reviews changed these things above:
 
 - **No pre-armed pause.** The injected call stays open until the handshake ends,
   so a pause before `configurationDone` stopped the program inside it with gdb
@@ -184,22 +184,34 @@ Real-process tests changed three things above:
 - **gdb queues first, on Python below 3.14.** gdb calls `Py_AddPendingCall` with
   the same script `sys.remote_exec` runs, and leaves in about 0.2 s. It takes no
   GIL. Calling into a main thread waiting for the GIL, as debugpy's injection
-  does, deadlocks inside `pthread_cond` below glibc 2.41. This also works on musl.
+  does, can deadlock inside `pthread_cond` below glibc 2.41. This also works on
+  musl.
+- **The queued call can't fail, or allocate.** A pending call that fails raises
+  `SystemError` in the main thread, which kills the program, so the string is a
+  `try`/bare `except` that trusts no names in `__main__`. A thread stopped inside
+  malloc deadlocks if gdb allocates, so gdb maps a page and writes the bytes
+  itself. The page stays mapped: 4 KiB or so per attach.
 - **debugpy's injection runs on its own thread.** It is now the fallback, for a
-  blocked main thread. Run inside gdb's call, `import debugpy` reaches
-  `platform.platform()`, which runs `uname`, and gdb leaves the other threads
-  stopped after that vfork: a program with another busy thread froze for good.
-  `_python_gdb_helper.py` makes the call start a thread and return instead. The
-  helper now exits before the target connects, so a `ran` marker file shows the
-  code reached it.
+  blocked main thread. Run inside gdb's call, attach reaches
+  `platform.platform()` in `debugpy/common/log.py`, which runs `uname`, and gdb
+  leaves the other threads stopped after that vfork: a program with another busy
+  thread froze for good. `_python_gdb_helper.py` makes the call start a thread and
+  return instead. The helper now exits before the target connects, so a `ran`
+  marker file shows the code reached it.
+- **The fallback never overlaps another attempt.** It doesn't run past the
+  deadline, while a script owns the attempt, or while the queueing gdb is still
+  attached, which would look like a permissions failure.
 - **The switch interval drops to 0.1 ms while attaching.** With every thread
-  busy, the imports otherwise miss the 30-second limit.
-- **Quitting cancels the fallback.** `inject` takes a `quitting` event, so gdb
-  never starts after the user quit.
+  busy, the imports otherwise miss the 30-second limit. A watcher restores it
+  after 45 seconds if the attach never returns.
+- **Quitting cancels the fallback, quietly.** `inject` takes a `quitting` event,
+  so gdb never starts after the user quit, and `PidAttachCancelled` exits 0.
+- **Root hands its temp files to the target's user.** `sudo tdb -a` is what tdb
+  suggests under Yama, and the target can't otherwise reach them.
 
 Known limit: below glibc 2.41, native code holding the GIL past the 5-second
 queue wait reaches the fallback with the main thread waiting for the GIL, and
-that deadlocks. `test_injection_timeout_leaves_program_alive` skips there.
+that can deadlock. `test_injection_timeout_leaves_program_alive` skips there.
 
 ## Evidence from the spike
 

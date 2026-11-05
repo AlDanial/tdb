@@ -19,7 +19,7 @@ from textual.widgets._tree import TreeNode
 from tdb import _timeouts
 from tdb.app_handlers.routing import _AppMessageRoutes
 from tdb.languages.base import AdapterNotFoundError
-from tdb.languages.python_attach import PidAttachError
+from tdb.languages.python_attach import PidAttachCancelled, PidAttachError
 from tdb.session.controller import DebugController
 from tdb.session.messages import DapStopped
 from tdb.session.state import SessionPhase
@@ -685,6 +685,8 @@ class TdbApp(_AppMessageRoutes, App):
             log.exception("Failed to start debug session")
             self._startup_error = f"tdb: {exc.hint}"
             self.exit(return_code=2)
+        except PidAttachCancelled:
+            self.exit()
         except (ConnectionError, PidAttachError) as exc:
             # The adapter was found but died before serving DAP (a gdb
             # without a DAP interpreter, a debugpy import failure, ...),

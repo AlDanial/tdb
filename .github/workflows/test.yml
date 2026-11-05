@@ -57,6 +57,13 @@ jobs:
             tests/unit/test_python_attach_probe.py \
             tests/integration/test_python_pid_attach.py
 
+      - name: Run attach tests as root
+        # `sudo tdb -a PID` against another user's program.
+        run: |
+          docker run --rm --cap-add=SYS_PTRACE --security-opt seccomp=unconfined \
+            -u root tdb-glibc-test /home/appuser/venv/bin/python -m pytest \
+            --no-cov -rs tests/integration/test_python_pid_attach.py -k root_attaches
+
   windows-vi:
     # The vi engine is pure Python and must work on Windows; the golden
     # tests read only the committed golden.json (no nvim needed).

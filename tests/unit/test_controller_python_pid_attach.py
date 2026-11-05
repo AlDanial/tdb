@@ -17,7 +17,7 @@ from tdb.languages.python import (
     PidAttachDebugpyAdapter,
     build_python_profile,
 )
-from tdb.languages.python_attach import PidAttachError
+from tdb.languages.python_attach import PidAttachCancelled, PidAttachError
 from tdb.persist import TdbConfig
 from tdb.server.event_handler import ServerEventHandler
 from tdb.server.runner import run_headless
@@ -381,6 +381,17 @@ async def test_app_reports_injection_failure(monkeypatch):
             await pilot.pause()
     assert app._startup_error == "tdb: cannot attach to pid 4242: nope"
     assert app.return_code == 2
+
+
+async def test_app_exits_quietly_if_the_user_quit_during_injection(monkeypatch):
+    async def attach(self, *args, **kwargs):
+        raise PidAttachCancelled("cannot attach to pid 4242: quitting")
+
+    app = _app(monkeypatch, attach)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+    assert app._startup_error is None
+    assert not app.return_code
 
 
 def _record_notices(app, monkeypatch):

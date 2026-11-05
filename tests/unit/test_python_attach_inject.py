@@ -12,13 +12,19 @@ import subprocess
 import sys
 import time
 
+from unittest.mock import Mock
+
 import pytest
 
 from tdb import _timeouts
 from tdb.languages._python_gdb_helper import background_code
 from tdb.languages.python_attach import (
+    PidAttachCancelled,
     PidAttachError,
     TargetInfo,
+    _gdb_queue_commands,
+    _hand_to_target,
+    _queued_code,
     build_remote_exec_script,
     classify_failure,
     inject,
@@ -251,6 +257,7 @@ def test_background_code_stops_if_tdb_cleaned_up(tmp_path):
         text=True,
     )
     assert "b" not in result.stdout.split()
+    assert result.stderr == ""
 
 
 def test_background_code_speeds_up_gil_handoffs_then_restores(tmp_path):
@@ -265,6 +272,50 @@ print(sys.getswitchinterval(), flush=True)
 """
     result = subprocess.run(
         [sys.executable, "-c", program], capture_output=True, text=True, timeout=10
+    )
+    during, after = (float(x) for x in result.stdout.split())
+    assert during < 0.001
+    assert after == pytest.approx(0.005)
+
+
+def test_background_code_leaves_no_names_in_the_program(tmp_path):
+    injected = background_code("pass", str(tmp_path / "ran"))
+    program = (
+        f"before = set(globals())\nexec({injected!r})\n"
+        "print(sorted(set(globals()) - before - {'before'}))\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", program], capture_output=True, text=True, timeout=10
+    )
+    assert result.stdout.strip() == "[]"
+
+
+def test_background_code_ignores_names_in_the_program(tmp_path):
+    injected = background_code("pass", str(tmp_path / "ran"))
+    program = f"from os import open\nbytes = chr = None\nexec({injected!r})\n"
+    result = subprocess.run(
+        [sys.executable, "-c", program], capture_output=True, text=True, timeout=10
+    )
+    assert result.stderr == ""
+    assert (tmp_path / "ran").exists()
+
+
+def test_switch_interval_comes_back_if_the_attach_never_returns(monkeypatch):
+    # A lost adapter leaves pydevd waiting for good. Watch from a thread, as
+    # the program would.
+    import tdb.languages._python_gdb_helper as helper
+
+    code = helper.FAST_HANDOFFS.replace(
+        repr(helper.SWITCH_INTERVAL_LIMIT), "0.2"
+    ) + (
+        "import sys, threading, time\n"
+        "threading.Thread(target=_tdb_fast_handoffs,"
+        " args=(lambda: time.sleep(5),), daemon=True).start()\n"
+        "time.sleep(0.1)\nprint(sys.getswitchinterval())\n"
+        "time.sleep(0.4)\nprint(sys.getswitchinterval())\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, timeout=10
     )
     during, after = (float(x) for x in result.stdout.split())
     assert during < 0.001
@@ -363,10 +414,6 @@ def test_classify_musl_explains_what_can_attach():
     assert "running Python code" in reason
 
 
-def test_classify_musl_wins_over_gdb_missing():
-    assert "install gdb" not in classify(musl=True, gdb_missing=True)
-
-
 def test_classify_permission_wins_over_musl():
     reason = classify(
         musl=True,
@@ -447,7 +494,7 @@ async def test_inject_fails_fast_on_nonzero_helper(helpers):
     assert time.monotonic() - started < 5
 
 
-QUEUED = [sys.executable, "-c", "print('$1 = 0')"]
+QUEUED = [sys.executable, "-c", "print('tdb-queued 0')"]
 
 
 async def test_inject_queues_through_gdb_below_314(helpers):
@@ -482,11 +529,13 @@ async def test_inject_never_signals_gdb_while_queueing(
     monkeypatch.setattr(f"{MODULE}._GDB_QUEUE_TIMEOUT", 0.2)
     path = tmp_path / "gdb-pid"
     helpers.gdb_queue = recording_pid(path, 3)
-    with pytest.raises(PidAttachError):
+    with pytest.raises(PidAttachError, match="still attached"):
         await inject(TARGET_OLD, 5678, asyncio.Event())
     pid = await read_pid(path)
     assert alive(pid)
     os.kill(pid, 9)
+    # A second gdb can't attach, and would report that as a permissions error.
+    assert helpers.debugpy_calls == []
 
 
 async def test_inject_never_falls_back_once_quitting(helpers, short_timeouts):
@@ -495,7 +544,7 @@ async def test_inject_never_falls_back_once_quitting(helpers, short_timeouts):
     helpers.gdb_queue = QUEUED
     quitting = asyncio.Event()
     asyncio.get_running_loop().call_later(0.05, quitting.set)
-    with pytest.raises(PidAttachError):
+    with pytest.raises(PidAttachCancelled):
         await inject(TARGET_OLD, 5678, asyncio.Event(), quitting)
     assert helpers.debugpy_calls == []
 
@@ -508,6 +557,49 @@ async def test_inject_queue_wait_respects_the_deadline(helpers, monkeypatch):
     with pytest.raises(PidAttachError):
         await inject(TARGET_OLD, 5678, asyncio.Event())
     assert time.monotonic() - started < 5
+
+
+async def test_inject_no_fallback_once_past_the_deadline(helpers, monkeypatch):
+    monkeypatch.setattr(_timeouts, "PID_ATTACH_TOTAL", 0.2)
+    helpers.gdb_queue = QUEUED
+    with pytest.raises(PidAttachError, match="did not"):
+        await inject(TARGET_OLD, 5678, asyncio.Event())
+    assert helpers.debugpy_calls == []
+
+
+async def test_inject_no_fallback_when_the_script_owns_the_attempt(
+    helpers, monkeypatch
+):
+    monkeypatch.setattr(_timeouts, "PID_ATTACH_REMOTE_EXEC", 0.1)
+    monkeypatch.setattr(_timeouts, "PID_ATTACH_TOTAL", 0.4)
+
+    def fired(pid, script_path):
+        os.rename(
+            os.path.join(os.path.dirname(script_path), "marker"),
+            os.path.join(os.path.dirname(script_path), "claimed"),
+        )
+        return QUEUED
+
+    monkeypatch.setattr(f"{MODULE}._gdb_queue_argv", fired)
+    with pytest.raises(PidAttachError, match="did not connect"):
+        await inject(TARGET_OLD, 5678, asyncio.Event())
+    assert helpers.debugpy_calls == []
+
+
+async def test_inject_gdb_queue_output_reaches_the_diagnosis(helpers, monkeypatch):
+    monkeypatch.setattr(f"{MODULE}.sys.platform", "linux")
+    monkeypatch.setattr(f"{MODULE}.uses_musl", lambda pid: True)
+    helpers.gdb_queue = fail_with("ptrace: Operation not permitted.")
+    with pytest.raises(PidAttachError, match="permission denied"):
+        await inject(TARGET_OLD, 5678, asyncio.Event())
+
+
+async def test_inject_musl_without_gdb_says_install_gdb(helpers, monkeypatch):
+    monkeypatch.setattr(f"{MODULE}.sys.platform", "linux")
+    monkeypatch.setattr(f"{MODULE}.uses_musl", lambda pid: True)
+    monkeypatch.setattr(f"{MODULE}.shutil.which", lambda name: None)
+    with pytest.raises(PidAttachError, match="install gdb"):
+        await inject(TARGET_OLD, 5678, asyncio.Event())
 
 
 async def test_inject_gdb_queue_skipped_with_remote_exec(helpers):
@@ -534,12 +626,107 @@ async def test_inject_queues_through_gdb_on_musl(helpers, monkeypatch):
     assert await inject(TARGET_OLD, 5678, connected) == "gdb pending call"
 
 
-def test_gdb_queue_command_has_no_quotes_in_its_code():
-    import tdb.languages.python_attach as mod
+def _run_queued(path, prelude: str = "") -> subprocess.CompletedProcess:
+    program = f"{prelude}\nexec({_queued_code(str(path))!r})\nprint('survived')\n"
+    return subprocess.run(
+        [sys.executable, "-c", program], capture_output=True, text=True, timeout=10
+    )
 
-    command = mod._gdb_queue_argv(4242, "/tmp/it's \"odd\"/attach.py")[-1]
-    start = command.index('strdup("') + len('strdup("')
-    assert not {'"', "'", "\\", "\n"} & set(command[start : command.rindex('"')])
+
+@pytest.mark.parametrize(
+    "script",
+    ("raise ValueError('boom')", "raise SystemExit(3)", "raise KeyboardInterrupt", "(("),
+)
+def test_queued_code_cannot_fail(tmp_path, script):
+    path = tmp_path / "script.py"
+    path.write_text(script)
+    result = _run_queued(path)
+    assert result.stdout.split() == ["survived"]
+    assert result.stderr == ""
+
+
+def test_queued_code_survives_a_missing_script(tmp_path):
+    result = _run_queued(tmp_path / "gone.py")
+    assert result.stdout.split() == ["survived"]
+    assert result.stderr == ""
+
+
+def test_queued_code_ignores_names_in_the_program(tmp_path):
+    path = tmp_path / "script.py"
+    marker = tmp_path / "ran"
+    path.write_text(f"import pathlib; pathlib.Path({str(marker)!r}).touch()")
+    result = _run_queued(path, "from os import open\nexec_ = exec\nbytes = None")
+    assert result.stdout.split() == ["survived"]
+    assert marker.exists()
+
+
+def test_queued_code_runs_outside_main_globals(tmp_path):
+    path = tmp_path / "script.py"
+    path.write_text("left_behind = 1")
+    program = (
+        f"exec({_queued_code(str(path))!r})\n"
+        "print('left_behind' in globals())\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", program], capture_output=True, text=True, timeout=10
+    )
+    assert result.stdout.split() == ["False"]
+
+
+def test_gdb_commands_never_allocate_in_the_target():
+    commands = _gdb_queue_commands("print(1)")
+    assert "mmap" in commands
+    assert "strdup" not in commands
+    assert "malloc" not in commands
+    assert '"' not in commands.replace('"tdb-queued %d\\n"', "")
+
+
+def test_gdb_commands_write_every_byte_and_a_terminator():
+    commands = _gdb_queue_commands("ab")
+    assert "= 97" in commands
+    assert "= 98" in commands
+    assert "($tdb_code + 2) = 0" in commands
+
+
+# --- a target run by another user ----------------------------------------
+
+
+def _as_root(monkeypatch, tmp_path, owner):
+    (tmp_path / "4242").mkdir()
+    real_stat = os.stat
+    chowned = []
+
+    def fake_stat(path, *args, **kwargs):
+        if str(path).endswith("/4242"):
+            return Mock(st_uid=owner)
+        return real_stat(path, *args, **kwargs)
+
+    monkeypatch.setattr(f"{MODULE}._PROC", str(tmp_path))
+    monkeypatch.setattr(f"{MODULE}.os.geteuid", lambda: 0)
+    monkeypatch.setattr(f"{MODULE}.os.stat", fake_stat)
+    monkeypatch.setattr(
+        f"{MODULE}.os.chown", lambda path, uid, gid: chowned.append((path, uid))
+    )
+    return chowned
+
+
+def test_root_hands_files_to_the_targets_user(monkeypatch, tmp_path):
+    chowned = _as_root(monkeypatch, tmp_path, 1000)
+    _hand_to_target("/some/dir", 4242)
+    assert chowned == [("/some/dir", 1000)]
+
+
+def test_target_owned_by_root_needs_no_handing_over(monkeypatch, tmp_path):
+    chowned = _as_root(monkeypatch, tmp_path, 0)
+    _hand_to_target("/some/dir", 4242)
+    assert chowned == []
+
+
+def test_other_users_never_chown(monkeypatch, tmp_path):
+    chowned = _as_root(monkeypatch, tmp_path, 1000)
+    monkeypatch.setattr(f"{MODULE}.os.geteuid", lambda: 1000)
+    _hand_to_target("/some/dir", 4242)
+    assert chowned == []
 
 
 def marks_ran(ran_marker: str) -> list[str]:

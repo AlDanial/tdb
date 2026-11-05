@@ -43,6 +43,10 @@ On Linux below glibc 2.41, debugpy's injection can deadlock a program whose main
 thread is waiting for the GIL, so tdb tries it last. That takes native code
 holding the GIL for over 5 seconds.
 
+Run as root, tdb hands its temporary files to the program's user. That user must
+also be able to read tdb's copy of debugpy, so a tdb installed in a private
+directory can't attach to other users' programs.
+
 ## Blocked and idle programs
 
 A hung program or idle server may be blocked in a system call, with no Python
@@ -53,8 +57,8 @@ next runs Python, and threads that are running Python can still be paused.
 If native code holds the GIL, injection can't finish. tdb gives up after 30
 seconds and says so, but it leaves the injection running rather than risk
 crashing the program: its helper ends by itself once the GIL is released, and
-the program may then print a harmless connection error to its stderr. Quitting
-during injection works the same way. If the program has already connected, tdb
+nothing else happens in the program. Quitting during injection works the same
+way. If the program has already connected, tdb
 first finishes the handshake, which can delay quitting by a few seconds.
 
 ## Permission denied
