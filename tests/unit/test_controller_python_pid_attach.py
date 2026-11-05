@@ -84,7 +84,7 @@ class _HookAdapter(DebugpyAdapter):
         self.finish = asyncio.Event()
         self.cancelled = False
 
-    async def after_attach_request(self, initialized):
+    async def after_attach_request(self, initialized, quitting):
         self.log.append("hook")
         if self.error:
             raise self.error

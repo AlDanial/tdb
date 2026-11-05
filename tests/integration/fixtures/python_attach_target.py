@@ -38,9 +38,28 @@ if mode == "debugpy_listen":
 
     debugpy.listen(("127.0.0.1", 0))
 
+def spin():
+    while True:
+        sum(range(10000))
+
+
+def hot_loop():
+    n = 0
+    while True:
+        for _ in range(20000):
+            n = work(n) % 1000
+        with open(heartbeat, "w") as f:
+            f.write(str(time.time()))
+
+
 print("ready", flush=True)
 if mode == "busy":
     loop()
+elif mode == "busy_threads":
+    # Every thread wants the GIL, so the injected code has to compete for it.
+    for _ in range(3):
+        threading.Thread(target=spin, daemon=True).start()
+    hot_loop()
 elif mode == "join":
     worker = threading.Thread(target=loop, daemon=True)
     worker.start()

@@ -72,7 +72,7 @@ class DebugController:
         self.attach_method: str | None = None
         self._initialized_seen = asyncio.Event()
         self._attach_hook: asyncio.Future[str | None] | None = None
-        self._quitting_attach = False
+        self._quitting_attach = asyncio.Event()
         self._configuration_done_sent = False
         # Future for the launch/attach response (set by start() /
         # remote_attach()) and an event marking that the request itself
@@ -466,7 +466,9 @@ class DebugController:
         """
         self._configuration_done_sent = False
         hook = asyncio.ensure_future(
-            self.profile.adapter.after_attach_request(self._initialized_seen)
+            self.profile.adapter.after_attach_request(
+                self._initialized_seen, self._quitting_attach
+            )
         )
         self._attach_hook = hook
         initialized = asyncio.ensure_future(self._initialized_seen.wait())
@@ -507,7 +509,7 @@ class DebugController:
         connected = self._initialized_seen.is_set()
         if hook.done() and (not connected or response is None or response.done()):
             return
-        self._quitting_attach = True
+        self._quitting_attach.set()
         deadline = time.monotonic() + _timeouts.PID_ATTACH_QUIT
 
         def remaining() -> float:
@@ -536,10 +538,10 @@ class DebugController:
         gdb still attached. Quitting there kills gdb mid-call and the
         program segfaults.
         """
-        if self._attach_hook is None or self._quitting_attach:
+        if self._attach_hook is None or self._quitting_attach.is_set():
             return
         self.attach_method = await self._attach_hook
-        if self.attach_method is None or self._quitting_attach:
+        if self.attach_method is None or self._quitting_attach.is_set():
             return
         # Injection replaces a debugpy server already in the target, and
         # that can leave a session that answers at first, then goes

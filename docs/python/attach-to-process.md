@@ -20,8 +20,8 @@ port or helper process behind, and you can attach again later.
 - On Linux, `gdb` for Python below 3.14 and for programs whose main thread is
   blocked. Python 3.14 attaches without it when the program is running Python
   code.
-- On Alpine and other musl systems, Python 3.14 and a program running Python
-  code: debugpy's gdb injection needs glibc, so tdb can't reach anything else.
+- On Alpine and other musl systems, a main thread that is running Python code:
+  debugpy's injection library needs glibc, so tdb can't reach a blocked one.
 
 On macOS and Windows, pass `--python /path/to/python` to name the program's
 interpreter if you want tdb to try the Python 3.14 method first. Attaching on
@@ -31,13 +31,17 @@ macOS generally needs root.
 
 Python 3.14 can run a script in another process with `sys.remote_exec`, which is
 the safest method. It only runs when the main thread next executes Python code,
-so it can't reach a program blocked in a system call. tdb waits 5 seconds for it,
-then falls back to debugpy's own injection (gdb on Linux, lldb on macOS, DLL
-injection on Windows). Python 3.11 to 3.13 use that method directly. A
-notification says which method was used.
+so it can't reach a program blocked in a system call. On Linux, Python 3.11 to
+3.13 get the same effect through gdb, which queues the script with
+`Py_AddPendingCall` and leaves at once. tdb waits 5 seconds for either, then
+falls back to debugpy's own injection (gdb on Linux, lldb on macOS, DLL injection
+on Windows). A notification says which method was used.
 
 gdb briefly stops the whole program at an arbitrary point, which is less safe
 than `sys.remote_exec`. It is gone from the process before your session starts.
+On Linux below glibc 2.41, debugpy's injection can deadlock a program whose main
+thread is waiting for the GIL, so tdb tries it last. That takes native code
+holding the GIL for over 5 seconds.
 
 ## Blocked and idle programs
 

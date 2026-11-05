@@ -92,12 +92,14 @@ def test_quirks():
 async def test_adapter_hook_runs_inject(monkeypatch):
     calls = []
 
-    async def fake_inject(target, port, connected):
-        calls.append((target, port, connected))
+    async def fake_inject(target, port, connected, quitting):
+        calls.append((target, port, connected, quitting))
         return "sys.remote_exec"
 
     monkeypatch.setattr("tdb.languages.python.inject", fake_inject)
-    event = object()
-    method = await PidAttachDebugpyAdapter(TARGET, 6000).after_attach_request(event)
+    event, quitting = object(), object()
+    method = await PidAttachDebugpyAdapter(TARGET, 6000).after_attach_request(
+        event, quitting
+    )
     assert method == "sys.remote_exec"
-    assert calls == [(TARGET, 6000, event)]
+    assert calls == [(TARGET, 6000, event, quitting)]

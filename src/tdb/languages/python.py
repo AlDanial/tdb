@@ -123,8 +123,10 @@ class PidAttachDebugpyAdapter(DebugpyAdapter):
         arguments["subProcess"] = False
         return arguments
 
-    async def after_attach_request(self, initialized: asyncio.Event) -> str | None:
-        return await inject(self.target, self.listen_port, initialized)
+    async def after_attach_request(
+        self, initialized: asyncio.Event, quitting: asyncio.Event
+    ) -> str | None:
+        return await inject(self.target, self.listen_port, initialized, quitting)
 
 
 def _is_breakpoint_hook_frame(frame) -> bool:

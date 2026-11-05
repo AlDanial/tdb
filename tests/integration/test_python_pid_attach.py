@@ -11,6 +11,7 @@ import ctypes
 import dataclasses
 import glob
 import os
+import platform
 import shutil
 import signal
 import subprocess
@@ -74,13 +75,23 @@ needs_gdb_injection = pytest.mark.skipif(
 )
 
 
+def _glibc_below_2_41() -> bool:
+    name, version = platform.libc_ver()
+    return name == "glibc" and tuple(map(int, version.split(".")[:2])) < (2, 41)
+
+
+# gdb's call into a main thread waiting for the GIL deadlocks in pthread_cond
+# there. tdb only gets that far when native code holds the GIL for seconds.
+needs_reentrant_condvar = pytest.mark.skipif(
+    _glibc_below_2_41(), reason="glibc below 2.41 deadlocks here; see the docs"
+)
+
+
 @pytest.fixture(params=list(PYTHONS))
 def python(request):
     path = PYTHONS[request.param]
     if path is None:
         pytest.skip(f"Python {request.param} not found")
-    if MUSL and request.param != "3.14":
-        pytest.skip("only sys.remote_exec works on musl")
     return path
 
 
@@ -275,6 +286,19 @@ def test_busy(make_target, attach, python):
     stack = run_to_line(session, WORK_LINE)
     assert "work" in stack and "loop" in stack
     session.client.ok("remove_breakpoint", f"{TARGET}:{WORK_LINE}")
+    session.quit()
+    target.assert_running()
+
+
+@linux_only
+def test_all_threads_busy(make_target, attach, python):
+    # gdb used to stay inside the program for the whole injected call, and
+    # a subprocess started there left the other threads stopped for good.
+    target = make_target("busy_threads", python)
+    session = attach(target)
+    assert session.proc.poll() is None
+    frames = run_to_line(session, WORK_LINE)
+    assert frames
     session.quit()
     target.assert_running()
 
@@ -480,6 +504,7 @@ def test_quit_while_gil_is_held_leaves_program_alive(make_target):
 
 @linux_only
 @needs_gdb_injection
+@needs_reentrant_condvar
 def test_injection_timeout_leaves_program_alive(make_target, monkeypatch):
     monkeypatch.setattr(_timeouts, "PID_ATTACH_TOTAL", 2.0)
     target = make_target("gil")

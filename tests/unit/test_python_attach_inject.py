@@ -8,12 +8,14 @@ from __future__ import annotations
 
 import asyncio
 import os
+import subprocess
 import sys
 import time
 
 import pytest
 
 from tdb import _timeouts
+from tdb.languages._python_gdb_helper import background_code
 from tdb.languages.python_attach import (
     PidAttachError,
     TargetInfo,
@@ -66,9 +68,13 @@ class Helpers:
         self.remote_exec = EXIT_0
         self.debugpy = EXIT_0
         self.remote_exec_scripts: list[str] = []
+        self.gdb_queue = fail_with('No symbol "Py_AddPendingCall"')
+        self.gdb_queue_scripts: list[str] = []
         self.debugpy_calls: list[list[str]] = []
+        self.on_fallback = lambda: None
         self.real_debugpy_argv = None
         monkeypatch.setattr(f"{MODULE}._remote_exec_argv", self._remote_exec_argv)
+        monkeypatch.setattr(f"{MODULE}._gdb_queue_argv", self._gdb_queue_argv)
         import tdb.languages.python_attach as mod
 
         self.real_debugpy_argv = mod._debugpy_argv
@@ -81,8 +87,15 @@ class Helpers:
         self.remote_exec_scripts.append(script_path)
         return self.remote_exec
 
-    def _debugpy_argv(self, pid, port):
-        self.debugpy_calls.append(self.real_debugpy_argv(pid, port))
+    def _gdb_queue_argv(self, pid, script_path):
+        self.gdb_queue_scripts.append(script_path)
+        return self.gdb_queue
+
+    def _debugpy_argv(self, pid, port, ran_marker):
+        self.debugpy_calls.append(self.real_debugpy_argv(pid, port, ran_marker))
+        self.on_fallback()
+        if callable(self.debugpy):
+            return self.debugpy(ran_marker)
         return self.debugpy
 
     @property
@@ -144,6 +157,28 @@ def test_script_leaves_no_names_in_target(tmp_path):
     assert [k for k in scope if k != "__builtins__"] == []
 
 
+def test_script_speeds_up_gil_handoffs_then_restores(tmp_path):
+    server = tmp_path / "server"
+    server.mkdir()
+    (server / "attach_pid_injected.py").write_text(
+        "import sys\ndef attach(setup): print(sys.getswitchinterval())\n"
+    )
+    workdir = tmp_path / "work"
+    workdir.mkdir()
+    marker = workdir / "marker"
+    marker.touch()
+    script = build_remote_exec_script(
+        str(server), 5678, str(marker), str(workdir / "claimed")
+    )
+    program = f"import sys\nexec({script!r})\nprint(sys.getswitchinterval())\n"
+    result = subprocess.run(
+        [sys.executable, "-c", program], capture_output=True, text=True, timeout=10
+    )
+    during, after = (float(x) for x in result.stdout.split())
+    assert during < 0.001
+    assert after == pytest.approx(0.005)
+
+
 def test_script_calls_debugpy_attach_when_it_wins_the_claim(tmp_path):
     server = tmp_path / "server"
     server.mkdir()
@@ -163,6 +198,83 @@ def test_script_calls_debugpy_attach_when_it_wins_the_claim(tmp_path):
     finally:
         sys.modules.pop("attach_pid_injected", None)
         sys.__dict__.pop("tdb_test_setup", None)
+
+
+# --- the code gdb injects ------------------------------------------------
+
+
+def _run_background_code(tmp_path, code: str) -> subprocess.CompletedProcess:
+    marker = tmp_path / "ran"
+    injected = background_code(code, str(marker))
+    program = f"""
+import sys, time
+exec({injected!r})
+time.sleep(0.5)
+print("main", flush=True)
+"""
+    return subprocess.run(
+        [sys.executable, "-c", program], capture_output=True, text=True, timeout=10
+    )
+
+
+def test_background_code_has_nothing_gdb_cannot_quote(tmp_path):
+    injected = background_code("print('it\\'s')\n", str(tmp_path / "it's"))
+    assert not {'"', "'", "\r", "\n"} & set(injected)
+
+
+def test_background_code_returns_before_the_code_finishes(tmp_path):
+    code = "import time;time.sleep(0.2);print(chr(98)+chr(103),flush=True)"
+    result = _run_background_code(tmp_path, code)
+    assert result.stdout.split() == ["bg", "main"]
+
+
+def test_background_code_runs_off_the_main_thread(tmp_path):
+    code = (
+        "import threading;"
+        "print(threading.current_thread() is threading.main_thread(),flush=True)"
+    )
+    assert _run_background_code(tmp_path, code).stdout.split()[0] == "False"
+
+
+def test_background_code_records_that_it_ran(tmp_path):
+    _run_background_code(tmp_path, "pass")
+    assert (tmp_path / "ran").exists()
+
+
+def test_background_code_stops_if_tdb_cleaned_up(tmp_path):
+    # tdb gave up and removed the directory: nothing may dial back.
+    marker = tmp_path / "gone" / "ran"
+    injected = background_code("print(chr(98),flush=True)", str(marker))
+    result = subprocess.run(
+        [sys.executable, "-c", f"exec({injected!r})\nimport time; time.sleep(0.3)"],
+        capture_output=True,
+        text=True,
+    )
+    assert "b" not in result.stdout.split()
+
+
+def test_background_code_speeds_up_gil_handoffs_then_restores(tmp_path):
+    code = "import sys;print(sys.getswitchinterval(),flush=True)"
+    marker = tmp_path / "ran"
+    injected = background_code(code, str(marker))
+    program = f"""
+import sys, time
+exec({injected!r})
+time.sleep(0.5)
+print(sys.getswitchinterval(), flush=True)
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", program], capture_output=True, text=True, timeout=10
+    )
+    during, after = (float(x) for x in result.stdout.split())
+    assert during < 0.001
+    assert after == pytest.approx(0.005)
+
+
+def test_background_code_keeps_the_real_main_thread(tmp_path):
+    # attach() assumes the main thread if threading isn't imported yet.
+    code = "import threading;print(threading.main_thread().name,flush=True)"
+    assert _run_background_code(tmp_path, code).stdout.split()[0] == "MainThread"
 
 
 # --- classifying failures -----------------------------------------------
@@ -248,7 +360,7 @@ def test_classify_injection_library_failed_to_load():
 def test_classify_musl_explains_what_can_attach():
     reason = classify(musl=True)
     assert "musl" in reason
-    assert "Python 3.14" in reason
+    assert "running Python code" in reason
 
 
 def test_classify_musl_wins_over_gdb_missing():
@@ -277,7 +389,7 @@ async def test_inject_uses_remote_exec_when_it_connects(helpers):
 async def test_inject_falls_back_when_blocked(helpers, short_timeouts):
     helpers.debugpy = [sys.executable, "-c", "import time; time.sleep(0.5)"]
     connected = asyncio.Event()
-    connect_soon(connected, 0.4)
+    helpers.on_fallback = connected.set
     assert await inject(TARGET_314, 5678, connected) == "debugpy injection"
     argv = helpers.debugpy_calls[0]
     assert "--disable-sys-remote-exec" in argv
@@ -333,6 +445,126 @@ async def test_inject_fails_fast_on_nonzero_helper(helpers):
     with pytest.raises(PidAttachError, match="ptrace"):
         await inject(TARGET_OLD, 5678, asyncio.Event())
     assert time.monotonic() - started < 5
+
+
+QUEUED = [sys.executable, "-c", "print('$1 = 0')"]
+
+
+async def test_inject_queues_through_gdb_below_314(helpers):
+    helpers.gdb_queue = QUEUED
+    connected = asyncio.Event()
+    connect_soon(connected)
+    assert await inject(TARGET_OLD, 5678, connected) == "gdb pending call"
+    assert helpers.debugpy_calls == []
+
+
+async def test_inject_falls_back_when_gdb_queue_never_fires(helpers, short_timeouts):
+    helpers.gdb_queue = QUEUED
+    helpers.debugpy = [sys.executable, "-c", "import time; time.sleep(0.5)"]
+    connected = asyncio.Event()
+    helpers.on_fallback = connected.set
+    assert await inject(TARGET_OLD, 5678, connected) == "debugpy injection"
+    # tdb claimed it, so the call left queued in the target stays silent.
+    workdir = os.path.dirname(helpers.gdb_queue_scripts[0])
+    assert not os.path.exists(os.path.join(workdir, "marker"))
+
+
+async def test_inject_falls_back_when_gdb_cannot_queue(helpers):
+    connected = asyncio.Event()
+    helpers.on_fallback = connected.set
+    assert await inject(TARGET_OLD, 5678, connected) == "debugpy injection"
+    assert helpers.gdb_queue_scripts
+
+
+async def test_inject_never_signals_gdb_while_queueing(
+    helpers, short_timeouts, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(f"{MODULE}._GDB_QUEUE_TIMEOUT", 0.2)
+    path = tmp_path / "gdb-pid"
+    helpers.gdb_queue = recording_pid(path, 3)
+    with pytest.raises(PidAttachError):
+        await inject(TARGET_OLD, 5678, asyncio.Event())
+    pid = await read_pid(path)
+    assert alive(pid)
+    os.kill(pid, 9)
+
+
+async def test_inject_never_falls_back_once_quitting(helpers, short_timeouts):
+    # The fallback stops the target; quitting has no use for it, and on a
+    # main thread waiting for the GIL it can deadlock.
+    helpers.gdb_queue = QUEUED
+    quitting = asyncio.Event()
+    asyncio.get_running_loop().call_later(0.05, quitting.set)
+    with pytest.raises(PidAttachError):
+        await inject(TARGET_OLD, 5678, asyncio.Event(), quitting)
+    assert helpers.debugpy_calls == []
+
+
+async def test_inject_queue_wait_respects_the_deadline(helpers, monkeypatch):
+    monkeypatch.setattr(_timeouts, "PID_ATTACH_REMOTE_EXEC", 30.0)
+    monkeypatch.setattr(_timeouts, "PID_ATTACH_TOTAL", 0.5)
+    helpers.gdb_queue = QUEUED
+    started = time.monotonic()
+    with pytest.raises(PidAttachError):
+        await inject(TARGET_OLD, 5678, asyncio.Event())
+    assert time.monotonic() - started < 5
+
+
+async def test_inject_gdb_queue_skipped_with_remote_exec(helpers):
+    connected = asyncio.Event()
+    connect_soon(connected)
+    await inject(TARGET_314, 5678, connected)
+    assert helpers.gdb_queue_scripts == []
+
+
+async def test_inject_gdb_queue_used_when_remote_exec_errors(helpers):
+    helpers.remote_exec = fail_with("Remote debugging is not enabled")
+    helpers.gdb_queue = QUEUED
+    connected = asyncio.Event()
+    connect_soon(connected, 0.3)
+    assert await inject(TARGET_314, 5678, connected) == "gdb pending call"
+
+
+async def test_inject_queues_through_gdb_on_musl(helpers, monkeypatch):
+    monkeypatch.setattr(f"{MODULE}.sys.platform", "linux")
+    monkeypatch.setattr(f"{MODULE}.uses_musl", lambda pid: True)
+    helpers.gdb_queue = QUEUED
+    connected = asyncio.Event()
+    connect_soon(connected)
+    assert await inject(TARGET_OLD, 5678, connected) == "gdb pending call"
+
+
+def test_gdb_queue_command_has_no_quotes_in_its_code():
+    import tdb.languages.python_attach as mod
+
+    command = mod._gdb_queue_argv(4242, "/tmp/it's \"odd\"/attach.py")[-1]
+    start = command.index('strdup("') + len('strdup("')
+    assert not {'"', "'", "\\", "\n"} & set(command[start : command.rindex('"')])
+
+
+def marks_ran(ran_marker: str) -> list[str]:
+    """A helper that exits at once, as gdb does once the code has run."""
+    return [sys.executable, "-c", f"open({ran_marker!r}, 'w').close()"]
+
+
+async def test_inject_waits_for_target_after_helper_exits(helpers):
+    helpers.debugpy = marks_ran
+    connected = asyncio.Event()
+    connect_soon(connected, 2.5)  # later than the clean-exit grace
+    assert await inject(TARGET_OLD, 5678, connected) == "debugpy injection"
+
+
+async def test_inject_reports_code_that_ran_but_never_connected(
+    helpers, short_timeouts
+):
+    helpers.debugpy = marks_ran
+    with pytest.raises(PidAttachError, match="did not connect"):
+        await inject(TARGET_OLD, 5678, asyncio.Event())
+
+
+async def test_inject_clean_exit_without_running_is_not_python(helpers):
+    with pytest.raises(PidAttachError, match="Python"):
+        await inject(TARGET_OLD, 5678, asyncio.Event())
 
 
 async def test_inject_gdb_missing_on_linux(helpers, monkeypatch):
