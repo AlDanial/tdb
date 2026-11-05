@@ -123,6 +123,33 @@ FROM base AS test
 RUN ["uv", "run", "pytest"]
 # - - - - -
 
+# - - - - - glibc attach test target
+# `base` is Alpine, where debugpy's glibc-built injection library can't load,
+# so `tdb -a PID` through gdb is tested here instead (.github/workflows/test.yml).
+# Debian trixie because glibc below 2.41 can deadlock a target whose main thread
+# gdb interrupts while it waits for the GIL, which hangs the GIL tests.
+# Non-root, or the permission tests skip.
+#
+# docker build --target glibc-test -t tdb-glibc-test .
+# docker run --rm --cap-add=SYS_PTRACE --security-opt seccomp=unconfined \
+#   tdb-glibc-test uv run --extra dev pytest --no-cov -rs \
+#   tests/unit/test_python_attach_inject.py \
+#   tests/unit/test_python_attach_probe.py \
+#   tests/integration/test_python_pid_attach.py
+FROM debian:trixie AS glibc-test
+COPY --from=ghcr.io/astral-sh/uv:python3.14-alpine /usr/local/bin/uv /usr/local/bin/uv
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends gdb ca-certificates \
+ && rm -rf /var/lib/apt/lists/* \
+ && useradd -m appuser
+COPY --chown=appuser:appuser . /app
+WORKDIR /app
+USER appuser
+ENV UV_PROJECT_ENVIRONMENT=/home/appuser/venv
+RUN uv python install 3.11 3.12 3.14 \
+ && uv sync --python 3.14 --extra dev
+# - - - - -
+
 FROM base AS final
 ENTRYPOINT ["tdb"]
 CMD ["--help"]
