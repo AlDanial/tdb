@@ -173,19 +173,23 @@ def make_target(tmp_path):
 class Session:
     """`tdb --headless -a PID`, driven over RPC."""
 
-    def __init__(self, pid, tmp_path, *extra):
+    def __init__(self, pid, tmp_path, *extra, cwd=None):
         self.port = _free_port()
         self.stderr_path = tmp_path / f"tdb-stderr-{self.port}"
         self.stderr = open(self.stderr_path, "w")
         env = {
             **os.environ,
-            "PYTHONPATH": str(SRC_DIR) + os.pathsep + os.environ.get("PYTHONPATH", ""),
+            # No empty entry: that means the cwd, even under -P.
+            "PYTHONPATH": os.pathsep.join(
+                filter(None, [str(SRC_DIR), os.environ.get("PYTHONPATH")])
+            ),
             "TDB_LOG_DIR": str(tmp_path),
             "TMPDIR": str(tmp_path),
         }
         self.proc = subprocess.Popen(
             [
                 sys.executable,
+                "-P",
                 "-m",
                 "tdb",
                 "--headless",
@@ -195,6 +199,7 @@ class Session:
                 str(pid),
                 *extra,
             ],
+            cwd=cwd,
             env=env,
             stdout=subprocess.DEVNULL,
             stderr=self.stderr,
@@ -379,9 +384,10 @@ def test_signals_during_gdb_queue_leave_program_running(make_target, python, tmp
 @needs_gdb_injection
 def test_signals_during_fallback_leave_program_running(make_target, python, tmp_path):
     target = make_target("signalled", python)
+    (tmp_path / "token").write_text("token")
     with signals_to(target):
         subprocess.run(
-            _debugpy_argv(target.pid, _free_port(), str(tmp_path / "ran")),
+            _debugpy_argv(target.pid, _free_port(), str(tmp_path / "ran"), "token"),
             capture_output=True,
             timeout=30,
         )
@@ -461,6 +467,58 @@ def test_root_target_user_cannot_replace_gdb_commands(python):
 
 @linux_only
 @needs_root
+def test_root_gdb_commands_survive_a_writable_tmpdir(python):
+    # sudo's env_keep can leave root a TMPDIR the user can write to. Session
+    # points TMPDIR at this 0777 directory, so the user can't read tdb's
+    # private directory but can rename it and put their own in its place.
+    workdir = Path(tempfile.mkdtemp(prefix="tdb-root-test-"))
+    workdir.chmod(0o777)
+    proof = workdir / "proof"
+    attacker = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            "import glob, os, sys, time\n"
+            "work, proof = sys.argv[1:]\n"
+            "swapped = set()\n"
+            "while True:\n"
+            "    for d in glob.glob(os.path.join(work, 'tdb-gdb-*')):\n"
+            "        if d in swapped or d.endswith('.old'):\n"
+            "            continue\n"
+            "        time.sleep(0.01)  # Let root write, then beat gdb's start.\n"
+            "        try:\n"
+            "            os.rename(d, d + '.old')\n"
+            "            os.mkdir(d)\n"
+            "            with open(d + '/queue.gdb', 'w') as f:\n"
+            "                f.write(f'shell touch {proof}\\n')\n"
+            "            swapped.add(d)\n"
+            "        except OSError:\n"
+            "            pass\n",
+            str(workdir),
+            str(proof),
+        ],
+        preexec_fn=_as_nobody,
+    )
+    target = Target(python, "busy", workdir, user=NOBODY)
+    session = Session(target.pid, workdir)
+    try:
+        ready = session.wait_ready()
+        assert not proof.exists(), "root's gdb ran the user's commands"
+        assert ready, session.errors()
+        # The gdb route has to be the one that worked, or nothing was proved.
+        assert "debugpy injection" not in session.errors()
+        assert run_to_line(session, WORK_LINE)
+        session.quit()
+    finally:
+        session.close()
+        attacker.kill()
+        attacker.wait()
+        target.kill()
+        shutil.rmtree(workdir, ignore_errors=True)
+
+
+@linux_only
+@needs_root
 def test_root_chown_never_follows_a_symlink():
     # A real process owned by nobody, for its uid.
     target = subprocess.Popen(["sleep", "30"], preexec_fn=_as_nobody)
@@ -519,6 +577,59 @@ def test_root_attaches_to_another_users_program(python):
     session = Session(target.pid, workdir)
     try:
         assert session.wait_ready(), session.errors()
+        assert run_to_line(session, WORK_LINE)
+        session.quit()
+        target.assert_running()
+    finally:
+        session.close()
+        target.kill()
+        shutil.rmtree(workdir, ignore_errors=True)
+
+
+def _plant_debugpy(directory):
+    """A debugpy/ in `directory` that leaves a proof file if imported."""
+    proof = directory / "proof"
+    (directory / "debugpy").mkdir()
+    (directory / "debugpy" / "__init__.py").write_text(
+        f"import os; open({str(proof)!r}, 'a').write(f'uid={{os.getuid()}}')\n"
+    )
+    return proof
+
+
+@linux_only
+def test_attach_ignores_debugpy_in_cwd(make_target, tmp_path):
+    hostile = tmp_path / "hostile"
+    hostile.mkdir()
+    proof = _plant_debugpy(hostile)
+    target = make_target("busy")
+    session = Session(target.pid, tmp_path, cwd=hostile)
+    try:
+        ready = session.wait_ready()
+        assert not proof.exists(), f"planted code ran: {proof.read_text()}"
+        assert ready, session.errors()
+        # The attach has to have happened, or nothing was proved.
+        assert run_to_line(session, WORK_LINE)
+        session.quit()
+        target.assert_running()
+    finally:
+        session.close()
+
+
+@linux_only
+@needs_root
+def test_root_attach_ignores_debugpy_in_cwd(python):
+    # `sudo tdb -a PID` from a directory the target's user controls.
+    workdir = Path(tempfile.mkdtemp(prefix="tdb-root-test-"))
+    workdir.chmod(0o777)
+    hostile = workdir / "hostile"
+    hostile.mkdir()
+    proof = _plant_debugpy(hostile)
+    target = Target(python, "busy", workdir, user=NOBODY)
+    session = Session(target.pid, workdir, cwd=hostile)
+    try:
+        ready = session.wait_ready()
+        assert not proof.exists(), f"planted code ran: {proof.read_text()}"
+        assert ready, session.errors()
         assert run_to_line(session, WORK_LINE)
         session.quit()
         target.assert_running()

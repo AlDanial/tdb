@@ -56,7 +56,7 @@ class PsesAdapter(AdapterSpec):
             find_pses(self._pses)
         except FileNotFoundError as e:
             raise AdapterNotFoundError(str(e)) from e
-        return [sys.executable, "-m", "tdb.adapters.powershell"]
+        return [sys.executable, "-P", "-m", "tdb.adapters.powershell"]
 
     def launch_body(
         self,

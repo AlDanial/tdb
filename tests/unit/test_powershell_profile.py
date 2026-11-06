@@ -50,6 +50,7 @@ def test_command_is_bundled_proxy(found):
     adapter = PsesAdapter(pwsh_executable=found["pwsh"], pses_dir=found["pses"])
     assert adapter.command() == [
         sys.executable,
+        "-P",
         "-m",
         "tdb.adapters.powershell",
     ]

@@ -7,7 +7,9 @@ swapped), so the kill and reap paths run for real.
 from __future__ import annotations
 
 import asyncio
+import functools
 import os
+import pathlib
 import shutil
 import subprocess
 import sys
@@ -19,7 +21,14 @@ from unittest.mock import Mock
 import pytest
 
 from tdb import _timeouts
-from tdb.languages._python_gdb_helper import background_code, harden_gdb_command
+from tdb.languages._python_gdb_helper import (
+    TOKEN_NAME,
+    background_code,
+    harden_gdb_command,
+    install_hardening,
+    read_token_from_file,
+)
+from tdb.languages.python_attach import _debugpy_argv as real_debugpy_argv
 from tdb.languages.python_attach import (
     PidAttachCancelled,
     PidAttachError,
@@ -32,10 +41,12 @@ from tdb.languages.python_attach import (
     _target_ids,
     build_remote_exec_script,
     classify_failure,
-    inject,
 )
+from tdb.languages.python_attach import inject as inject_with_token
 
 MODULE = "tdb.languages.python_attach"
+TOKEN = "a-token"
+inject = functools.partial(inject_with_token, token=TOKEN)
 TARGET_314 = TargetInfo(os.getpid(), sys.executable, True)
 TARGET_OLD = TargetInfo(os.getpid(), sys.executable, False)
 
@@ -84,6 +95,7 @@ class Helpers:
         self.debugpy_calls: list[list[str]] = []
         self.on_fallback = lambda: None
         self.real_debugpy_argv = None
+        self.token_files = []
         monkeypatch.setattr(f"{MODULE}._remote_exec_argv", self._remote_exec_argv)
         monkeypatch.setattr(f"{MODULE}._gdb_queue_argv", self._gdb_queue_argv)
         self.real_queued_code = _queued_code
@@ -107,8 +119,11 @@ class Helpers:
         self.gdb_queue_scripts.append(script_path)
         return self.real_queued_code(script_path)
 
-    def _debugpy_argv(self, pid, port, ran_marker):
-        self.debugpy_calls.append(self.real_debugpy_argv(pid, port, ran_marker))
+    def _debugpy_argv(self, pid, port, ran_marker, token):
+        self.debugpy_calls.append(self.real_debugpy_argv(pid, port, ran_marker, token))
+        self.token_files.append(
+            pathlib.Path(os.path.dirname(ran_marker), TOKEN_NAME).read_text()
+        )
         self.on_fallback()
         if callable(self.debugpy):
             return self.debugpy(ran_marker)
@@ -138,7 +153,7 @@ def connect_soon(connected: asyncio.Event, delay: float = 0.05) -> None:
 
 
 def test_script_valid_with_awkward_paths():
-    src = build_remote_exec_script(r"C:\it's a dir\server", 5678, r"C:\t\m", r'C:\t\"c')
+    src = build_remote_exec_script(r"C:\it's a dir\server", 5678, r"C:\t\m", r'C:\t\"c', TOKEN)
     compile(src, "<payload>", "exec")
 
 
@@ -146,7 +161,7 @@ def _run_script(tmp_path, marker_present: bool, server_dir: str = "/nonexistent"
     marker, claimed = tmp_path / "marker", tmp_path / "claimed"
     if marker_present:
         marker.write_text("")
-    src = build_remote_exec_script(server_dir, 1, str(marker), str(claimed))
+    src = build_remote_exec_script(server_dir, 1, str(marker), str(claimed), TOKEN)
     scope: dict = {}
     exec(compile(src, "payload", "exec"), scope)
     return scope
@@ -184,7 +199,7 @@ def test_script_speeds_up_gil_handoffs_then_restores(tmp_path):
     marker = workdir / "marker"
     marker.touch()
     script = build_remote_exec_script(
-        str(server), 5678, str(marker), str(workdir / "claimed")
+        str(server), 5678, str(marker), str(workdir / "claimed"), TOKEN
     )
     program = f"import sys\nexec({script!r})\nprint(sys.getswitchinterval())\n"
     result = subprocess.run(
@@ -873,6 +888,117 @@ def test_harden_leaves_other_commands_alone():
     assert harden_gdb_command("lldb --batch") == "lldb --batch"
 
 
+async def test_fallback_gives_the_target_the_token_in_a_file(helpers):
+    helpers.debugpy = [sys.executable, "-c", "pass"]
+    helpers.gdb_queue = fail_with("no")
+    with pytest.raises(PidAttachError):
+        await inject(TARGET_OLD, 5678, asyncio.Event())
+    assert helpers.token_files == [TOKEN]
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="the helper runs on Linux")
+def test_fallback_keeps_the_token_off_the_command_line():
+    argv = real_debugpy_argv(1, 2, "/x/ran", TOKEN)
+    assert TOKEN not in " ".join(argv)
+
+
+def test_fallback_without_the_helper_passes_the_token(monkeypatch):
+    monkeypatch.setattr(f"{MODULE}.sys.platform", "darwin")
+    argv = real_debugpy_argv(1, 2, "/x/ran", TOKEN)
+    assert argv[argv.index("--adapter-access-token") + 1] == TOKEN
+
+
+def test_remote_exec_script_carries_the_token():
+    script = build_remote_exec_script("/s", 1, "/m", "/c", TOKEN)
+    assert f'"adapter_access_token": {TOKEN!r}' in script
+
+
+def test_debugpys_real_attach_code_reads_the_token_file(injector, monkeypatch):
+    # Catches a debugpy upgrade that moves the line read_token_from_file edits.
+    from debugpy.server import cli
+
+    codes = []
+    monkeypatch.setattr(
+        injector, "run_python_code", lambda pid, code, *a, **k: codes.append(code)
+    )
+    monkeypatch.setattr(cli.options, "mode", "connect")
+    monkeypatch.setattr(cli.options, "address", ("127.0.0.1", 1))
+    monkeypatch.setattr(cli.options, "target", 1)
+    monkeypatch.setattr(cli.options, "disable_sys_remote_exec", True, raising=False)
+    cli.attach_to_pid()
+    (code,) = codes
+    assert "/x/token" in read_token_from_file(code, "/x/token")
+
+
+def test_token_file_is_read_before_the_attach(tmp_path):
+    path = tmp_path / "token"
+    path.write_text(TOKEN)
+    seen = {}
+    code = read_token_from_file(
+        "setup = {};attach_pid_injected.attach(setup);", str(path)
+    )
+    exec(code, {"attach_pid_injected": Mock(attach=seen.update)})
+    assert seen == {"adapter_access_token": TOKEN}
+
+
+def test_token_rewrite_refuses_code_it_does_not_recognise():
+    with pytest.raises(RuntimeError, match="attach_pid_injected"):
+        read_token_from_file("something_else()", "/x/token")
+
+
+def test_harden_refuses_a_gdb_command_it_cannot_change():
+    # An unshielded gdb can segfault the target, so never run one quietly.
+    with pytest.raises(RuntimeError, match="--batch"):
+        harden_gdb_command("gdb --nw --pid 1")
+
+
+def test_harden_accepts_a_list_command():
+    hardened = harden_gdb_command(["gdb", "--batch", "--eval-command=x"])
+    assert hardened[:2] == ["gdb", "--batch"]
+    assert hardened[2] == "--eval-command=handle all nostop noprint pass"
+    assert hardened[-1] == "--eval-command=x"
+
+
+def test_harden_leaves_other_list_commands_alone():
+    assert harden_gdb_command(["inject.exe", "1"]) == ["inject.exe", "1"]
+
+
+@pytest.fixture
+def injector(monkeypatch):
+    """debugpy's real injector, restored after the test."""
+    from debugpy.server import cli
+
+    directory = os.path.dirname(cli.pydevd.__file__)
+    monkeypatch.syspath_prepend(os.path.join(directory, "pydevd_attach_to_process"))
+    import add_code_to_python_process as module
+
+    monkeypatch.setattr(module, "subprocess", module.subprocess)
+    monkeypatch.setattr(module, "run_python_code", module.run_python_code)
+    return module
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="debugpy's gdb route")
+def test_debugpys_real_gdb_command_is_hardened(injector, monkeypatch):
+    # Catches a debugpy upgrade that moves what harden_gdb_command looks for.
+    commands = []
+    monkeypatch.setattr(subprocess, "check_call", lambda c, **k: commands.append(c))
+    monkeypatch.setattr(injector, "get_target_filename", lambda: "/x/attach.so")
+    install_hardening(injector, "/nonexistent/marker")
+    # Newer debugpy splits gdb out, as it can also use lldb.
+    run = getattr(injector, "run_python_code_linux_gdb", None)
+    (run or injector.run_python_code_linux)(1, "pass")
+    (command,) = commands
+    assert command.index("handle all") < command.index("dlopen")
+    assert "set unwindonsignal on" in command
+
+
+def test_hardening_stays_inside_the_injector(injector):
+    check_call = subprocess.check_call
+    install_hardening(injector, "/nonexistent/marker")
+    assert subprocess.check_call is check_call
+    assert injector.subprocess.Popen is subprocess.Popen
+
+
 def test_gdb_commands_shield_the_call_from_signals():
     commands = _gdb_queue_commands("print(1)").splitlines()
     assert commands[:3] == [
@@ -912,6 +1038,36 @@ def _handoffs(body: str) -> list[float]:
     )
     assert result.returncode == 0, result.stderr
     return [float(x) for x in result.stdout.split()]
+
+
+def test_repeated_attaches_register_one_fork_callback():
+    (count,) = _handoffs(
+        "import os\n"
+        "calls = []\n"
+        "register = os.register_at_fork\n"
+        "os.register_at_fork = lambda **k: (calls.append(k), register(**k))\n"
+        "for _ in range(3):\n"
+        "    _tdb_fast_handoffs(lambda: None)\n"
+        "print(len(calls))\n"
+    )
+    assert count == 1
+
+
+@pytest.mark.skipif(not hasattr(os, "fork"), reason="needs fork")
+def test_child_forked_during_a_later_attach_gets_the_interval_back():
+    # The one callback has to serve the attach under way, not the first.
+    (in_child,) = _handoffs(
+        "import os, sys\n"
+        "def fork():\n"
+        "    pid = os.fork()\n"
+        "    if pid == 0:\n"
+        "        print(sys.getswitchinterval(), flush=True)\n"
+        "        os._exit(0)\n"
+        "    os.waitpid(pid, 0)\n"
+        "_tdb_fast_handoffs(lambda: None)\n"
+        "_tdb_fast_handoffs(fork)\n"
+    )
+    assert in_child == 0.005
 
 
 def test_switch_interval_comes_back_if_the_watcher_cannot_start():

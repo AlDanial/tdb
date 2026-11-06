@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import secrets
 import sys
 from typing import Any
 
@@ -17,6 +18,7 @@ from tdb.languages.base import (
     assignment_matcher,
     ProfileCapabilities,
 )
+from tdb.languages import _python_adapter
 from tdb.languages.errors import parse_python_error
 from tdb.languages.python_attach import TargetInfo, free_port, inject, probe_target
 
@@ -31,7 +33,10 @@ class DebugpyAdapter(AdapterSpec):
         # threaded through launch_body's "python" key instead. Running
         # the adapter on a Python without debugpy would die immediately
         # with ModuleNotFoundError.
-        return [sys.executable, "-Xfrozen_modules=off", "-m", "debugpy.adapter"]
+        # -P: `-m` otherwise puts the cwd first on sys.path, and a debugpy/
+        # or (with frozen modules off) runpy.py there would run as us. Every
+        # `-m` spawn in tdb needs it; tests/integration/test_cwd_isolation.py.
+        return [sys.executable, "-Xfrozen_modules=off", "-P", "-m", "debugpy.adapter"]
 
     def launch_body(
         self,
@@ -112,6 +117,21 @@ class PidAttachDebugpyAdapter(DebugpyAdapter):
     def __init__(self, target: TargetInfo, listen_port: int) -> None:
         self.target = target
         self.listen_port = listen_port
+        self.token = secrets.token_hex(32)
+
+    def command(self) -> list[str]:
+        # Named as an argument because already_debugged() finds adapters by
+        # looking for it in their command lines.
+        return [
+            sys.executable,
+            "-Xfrozen_modules=off",
+            "-P",
+            _python_adapter.__file__,
+            "debugpy.adapter",
+        ]
+
+    def environment(self) -> dict[str, str]:
+        return {_python_adapter.TOKEN_VARIABLE: self.token}
 
     def attach_body(
         self, *, host: str, port: int, opts: dict[str, Any]
@@ -126,7 +146,9 @@ class PidAttachDebugpyAdapter(DebugpyAdapter):
     async def after_attach_request(
         self, initialized: asyncio.Event, quitting: asyncio.Event
     ) -> str | None:
-        return await inject(self.target, self.listen_port, initialized, quitting)
+        return await inject(
+            self.target, self.listen_port, initialized, quitting, token=self.token
+        )
 
 
 def _is_breakpoint_hook_frame(frame) -> bool:

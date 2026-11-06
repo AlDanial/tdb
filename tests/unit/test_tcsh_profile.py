@@ -26,7 +26,7 @@ def test_profile_shape():
 def test_adapter_command_is_bundled_module(monkeypatch):
     profile = registry.resolve("tcsh")
     monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/tcsh")
-    assert profile.adapter.command() == [sys.executable, "-m", "tdb.adapters.tcsh"]
+    assert profile.adapter.command() == [sys.executable, "-P", "-m", "tdb.adapters.tcsh"]
 
 
 def test_adapter_command_missing_tcsh_hint(monkeypatch):
@@ -41,7 +41,7 @@ def test_adapter_command_missing_tcsh_hint(monkeypatch):
 def test_adapter_command_skips_path_check_with_override(monkeypatch):
     profile = registry.resolve("tcsh", adapter_paths={"tcsh": "/opt/tcsh"})
     monkeypatch.setattr("shutil.which", lambda name: None)
-    assert profile.adapter.command() == [sys.executable, "-m", "tdb.adapters.tcsh"]
+    assert profile.adapter.command() == [sys.executable, "-P", "-m", "tdb.adapters.tcsh"]
 
 
 def test_launch_body_defaults():

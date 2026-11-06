@@ -52,7 +52,7 @@ class TcshAdapter(AdapterSpec):
                 "tcsh not found on PATH — install tcsh, or set "
                 '{"adapters": {"tcsh": "/path/to/tcsh"}} in tdb\'s config'
             )
-        return [sys.executable, "-m", "tdb.adapters.tcsh"]
+        return [sys.executable, "-P", "-m", "tdb.adapters.tcsh"]
 
     def launch_body(
         self,

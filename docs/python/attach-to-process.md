@@ -43,6 +43,10 @@ On Linux below glibc 2.41, debugpy's injection can deadlock a program whose main
 thread is waiting for the GIL, so tdb tries it last. That takes native code
 holding the GIL for over 5 seconds.
 
+tdb's adapter waits on a local port for the injected code to connect back, and
+accepts only a connection holding a token made for this attach, so nothing else
+on the machine can pose as your program. It stays off command lines on Linux.
+
 ## Running tdb as root
 
 Attaching as root to another user's program is safe only if you trust that user
@@ -65,6 +69,12 @@ Pass `--python` to name an interpreter, and tdb will run it as root.
 - If one of the program's signal handlers raises an exception while tdb attaches,
   such as `sys.exit` on SIGTERM, tdb's queued code absorbs it, so send the signal
   again.
+- A local process that connects to the adapter's port during the attach and then
+  says nothing can hold the attach up, though it can't take your program's place.
+- On macOS and Windows, the fallback method passes the token on a command line.
+- A program tdb has attached to keeps one small fork callback, and a
+  `sys._tdb_attach_fork_hooks` list, until it exits. Python can't unregister a
+  fork callback. Attaching again adds nothing.
 
 ## Blocked and idle programs
 

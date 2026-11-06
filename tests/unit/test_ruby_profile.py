@@ -31,7 +31,7 @@ def test_registered_in_registry():
 
 
 def test_command_is_bundled_proxy():
-    assert RdbgAdapter().command() == [sys.executable, "-m", "tdb.adapters.ruby"]
+    assert RdbgAdapter().command() == [sys.executable, "-P", "-m", "tdb.adapters.ruby"]
 
 
 def test_launch_body_carries_rdbg_override():

@@ -14,6 +14,7 @@ def test_command_runs_own_interpreter_with_frozen_modules_off():
     assert DebugpyAdapter().command() == [
         sys.executable,
         "-Xfrozen_modules=off",
+        "-P",
         "-m",
         "debugpy.adapter",
     ]

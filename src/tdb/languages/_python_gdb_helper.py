@@ -25,6 +25,10 @@ SWITCH_INTERVAL_LIMIT = 45.0
 # call and detach with its frame still on the stack, and the program then
 # segfaults. Passing signals straight through avoids that for all but SIGINT
 # and SIGTRAP, which the second setting covers by unwinding the call.
+# In the work directory, for the fallback: see read_token_from_file.
+TOKEN_NAME = "token"
+_DEBUGPY_ATTACH_CALL = "attach_pid_injected.attach(setup);"
+
 GDB_SIGNAL_COMMANDS = ("handle all nostop noprint pass", "set unwindonsignal on")
 
 FAST_HANDOFFS = f"""\
@@ -35,13 +39,12 @@ def _tdb_fast_handoffs(run):
         return fast / 2 <= sys.getswitchinterval() <= fast * 2
     # Another attach may be under way, and it isn't the program's setting.
     interval = 0.005 if ours() else sys.getswitchinterval()
-    attaching = [True]
     def restore():
         if ours():
             sys.setswitchinterval(interval)
-    def in_child():
-        if attaching:
-            restore()
+    # Fork callbacks can't be removed, so a process gets one, for good, and
+    # it serves whichever attaches are under way.
+    forks = sys.__dict__.setdefault("_tdb_attach_fork_hooks", [])
     done = _thread.allocate_lock()
     done.acquire()
     def watch():
@@ -49,23 +52,51 @@ def _tdb_fast_handoffs(run):
         restore()
     try:
         sys.setswitchinterval(fast)
-        if hasattr(os, "register_at_fork"):
-            os.register_at_fork(after_in_child=in_child)
+        if not forks and hasattr(os, "register_at_fork"):
+            forks.append(None)
+            os.register_at_fork(
+                after_in_child=lambda: [hook() for hook in forks if hook]
+            )
+        forks.append(restore)
         _thread.start_new_thread(watch, ())
         run()
     finally:
-        attaching.clear()
+        if restore in forks:
+            forks.remove(restore)
         restore()
         done.release()
 """
 
 
-def harden_gdb_command(command: str) -> str:
-    """debugpy's gdb command line, with `GDB_SIGNAL_COMMANDS` run first."""
-    if not command.startswith("gdb "):
+def harden_gdb_command(command: str | list[str]) -> str | list[str]:
+    """debugpy's gdb command line, with `GDB_SIGNAL_COMMANDS` run first.
+
+    Raises if it is a gdb command with no `--batch` to anchor on: without
+    these settings, a signal during gdb's call can segfault the target.
+    """
+    words = command.split(" ") if isinstance(command, str) else command
+    if words[0] != "gdb":
         return command
-    extra = " ".join(f"--eval-command='{c}'" for c in GDB_SIGNAL_COMMANDS)
-    return command.replace(" --batch ", f" --batch {extra} ", 1)
+    if "--batch" not in words:
+        raise RuntimeError(f"no --batch in debugpy's gdb command: {command!r}")
+    if isinstance(command, str):
+        extra = " ".join(f"--eval-command='{c}'" for c in GDB_SIGNAL_COMMANDS)
+        return command.replace(" --batch ", f" --batch {extra} ", 1)
+    at = command.index("--batch") + 1
+    extra = [f"--eval-command={c}" for c in GDB_SIGNAL_COMMANDS]
+    return [*command[:at], *extra, *command[at:]]
+
+
+def read_token_from_file(code: str, path: str) -> str:
+    """debugpy's attach code, taking the adapter's token from `path`.
+
+    Otherwise the token is in the code, and that goes on gdb's command line,
+    which any local user can read.
+    """
+    if _DEBUGPY_ATTACH_CALL not in code:
+        raise RuntimeError(f"no {_DEBUGPY_ATTACH_CALL} in debugpy's attach code")
+    read = f'setup["adapter_access_token"] = open({path!r}).read();'
+    return code.replace(_DEBUGPY_ATTACH_CALL, read + _DEBUGPY_ATTACH_CALL)
 
 
 def background_code(code: str, ran_marker: str) -> str:
@@ -93,6 +124,33 @@ else:
     return f"__builtins__.exec(__builtins__.bytes({list(body.encode())}), {{}})"
 
 
+class _HardenedSubprocess:
+    """Stands in for `subprocess` inside debugpy's injector module only."""
+
+    def __init__(self, module) -> None:
+        self._module = module
+
+    def __getattr__(self, name: str):
+        return getattr(self._module, name)
+
+    def check_call(self, command, *args, **kwargs):
+        return self._module.check_call(harden_gdb_command(command), *args, **kwargs)
+
+
+def install_hardening(injector, ran_marker: str) -> None:
+    run_python_code = injector.run_python_code
+
+    token_path = os.path.join(os.path.dirname(ran_marker), TOKEN_NAME)
+
+    def run_on_a_thread(pid, python_code, *args, **kwargs):
+        code = read_token_from_file(python_code, token_path)
+        code = background_code(code, ran_marker)
+        return run_python_code(pid, code, *args, **kwargs)
+
+    injector.run_python_code = run_on_a_thread
+    injector.subprocess = _HardenedSubprocess(injector.subprocess)
+
+
 def main() -> None:
     ran_marker = sys.argv.pop(1)
 
@@ -103,19 +161,7 @@ def main() -> None:
     )
     import add_code_to_python_process as injector
 
-    run_python_code = injector.run_python_code
-
-    def run_on_a_thread(pid, python_code, *args, **kwargs):
-        code = background_code(python_code, ran_marker)
-        return run_python_code(pid, code, *args, **kwargs)
-
-    check_call = injector.subprocess.check_call
-
-    def hardened_check_call(command, *args, **kwargs):
-        return check_call(harden_gdb_command(command), *args, **kwargs)
-
-    injector.run_python_code = run_on_a_thread
-    injector.subprocess.check_call = hardened_check_call
+    install_hardening(injector, ran_marker)
     cli.main()
 
 

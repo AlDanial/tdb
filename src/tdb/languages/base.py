@@ -119,6 +119,11 @@ class AdapterSpec:
         """
         raise NotImplementedError
 
+    def environment(self) -> dict[str, str]:
+        """Extra variables for the adapter subprocess, for what must stay
+        out of its command line, which any local user can read."""
+        return {}
+
     def diagnose_exit(self, stderr: str) -> str | None:
         """One user-facing sentence explaining why the adapter process
         exited before tdb was done with it, from its stderr; None when

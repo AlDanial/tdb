@@ -91,6 +91,8 @@ class DAPClient:
         self._death_error = None
         argv = self._adapter.command()
         spawn_kwargs: dict = {}
+        if extra_env := self._adapter.environment():
+            spawn_kwargs["env"] = {**os.environ, **extra_env}
         if os.name == "nt":
             import subprocess
 

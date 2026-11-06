@@ -26,7 +26,7 @@ def test_profile_shape():
 
 def test_adapter_command_is_bundled_module():
     profile = registry.resolve("bash")
-    assert profile.adapter.command() == [sys.executable, "-m", "tdb.adapters.bash"]
+    assert profile.adapter.command() == [sys.executable, "-P", "-m", "tdb.adapters.bash"]
 
 
 def test_launch_body_defaults():

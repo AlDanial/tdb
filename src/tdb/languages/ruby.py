@@ -39,7 +39,7 @@ class RdbgAdapter(AdapterSpec):
         self._rdbg = rdbg_executable
 
     def command(self) -> list[str]:
-        return [sys.executable, "-m", "tdb.adapters.ruby"]
+        return [sys.executable, "-P", "-m", "tdb.adapters.ruby"]
 
     def launch_body(
         self,

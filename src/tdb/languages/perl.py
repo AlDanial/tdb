@@ -37,7 +37,7 @@ class PerlAdapter(AdapterSpec):
         self._perl = perl_executable
 
     def command(self) -> list[str]:
-        return [sys.executable, "-m", "tdb.adapters.perl"]
+        return [sys.executable, "-P", "-m", "tdb.adapters.perl"]
 
     def launch_body(
         self,
