@@ -186,11 +186,17 @@ Real-process tests and two reviews changed these things above:
   GIL. Calling into a main thread waiting for the GIL, as debugpy's injection
   does, can deadlock inside `pthread_cond` below glibc 2.41. This also works on
   musl.
-- **The queued call can't fail, or allocate.** A pending call that fails raises
-  `SystemError` in the main thread, which kills the program, so the string is a
-  `try`/bare `except` that trusts no names in `__main__`. A thread stopped inside
-  malloc deadlocks if gdb allocates, so gdb maps a page and writes the bytes
-  itself. The page stays mapped: 4 KiB or so per attach.
+- **The queued call swallows failures, and doesn't allocate.** A pending call
+  that fails raises `SystemError` in the main thread, which kills the program, so
+  the string is a `try`/bare `except` that trusts no names in `__main__`. It can
+  still fail before the `try`, at the recursion limit or out of memory. A thread
+  stopped inside malloc deadlocks if gdb allocates, so gdb maps a page and writes
+  the bytes itself. The page stays mapped: 4 KiB or so per attach.
+- **Signals can't reach gdb's calls.** A signal delivered during one makes gdb
+  abandon it and detach with its frame on the stack, and the program segfaults.
+  Every gdb tdb runs starts with `handle all nostop noprint pass` and
+  `set unwindonsignal on`, including debugpy's, whose command line the helper
+  rewrites.
 - **debugpy's injection runs on its own thread.** It is now the fallback, for a
   blocked main thread. Run inside gdb's call, attach reaches
   `platform.platform()` in `debugpy/common/log.py`, which runs `uname`, and gdb
@@ -206,8 +212,12 @@ Real-process tests and two reviews changed these things above:
   after 45 seconds if the attach never returns.
 - **Quitting cancels the fallback, quietly.** `inject` takes a `quitting` event,
   so gdb never starts after the user quit, and `PidAttachCancelled` exits 0.
-- **Root hands its temp files to the target's user.** `sudo tdb -a` is what tdb
-  suggests under Yama, and the target can't otherwise reach them.
+- **Root treats the target's user as hostile.** `sudo tdb -a` is what tdb
+  suggests under Yama, so root hands its temp files to the target's user, children
+  first and never through a symlink. Nothing root reads lives in that directory:
+  gdb's commands stay in a private one. Root runs the target's binary only if
+  root alone could have changed it. If the user can't read debugpy, tdb says so
+  at once rather than waiting out the limit.
 
 Known limit: below glibc 2.41, native code holding the GIL past the 5-second
 queue wait reaches the fallback with the main thread waiting for the GIL, and

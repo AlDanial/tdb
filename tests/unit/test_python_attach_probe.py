@@ -13,6 +13,7 @@ from tdb.languages import registry
 from tdb.languages.base import LanguageNotSupportedError
 from tdb.languages.python_attach import (
     TargetInfo,
+    _trusted_to_run,
     already_debugged,
     is_python_executable,
     pid_exists,
@@ -104,6 +105,54 @@ def test_probe_explicit_python_wins(monkeypatch, alive):
     monkeypatch.setattr(f"{MODULE}._exe_of_pid", exe_of_pid)
     assert probe_target(4242, sys.executable).interpreter == sys.executable
     exe_of_pid.assert_not_called()
+
+
+def _python_named_file(tmp_path):
+    ran = tmp_path / "ran"
+    path = tmp_path / "python3"
+    path.write_text(f"#!/bin/sh\ntouch {ran}\necho cpython 3 14 True\n")
+    path.chmod(0o755)
+    return path, ran
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="runs a shell script")
+def test_root_never_runs_a_binary_it_does_not_trust(monkeypatch, tmp_path, alive):
+    path, ran = _python_named_file(tmp_path)
+    monkeypatch.setattr(f"{MODULE}._exe_of_pid", lambda pid: str(path))
+    monkeypatch.setattr(f"{MODULE}._euid", lambda: 0)
+    assert probe_target(4242) == TargetInfo(4242, None, False)
+    assert not ran.exists()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="runs a shell script")
+def test_root_runs_what_the_user_named_with_python_flag(monkeypatch, tmp_path, alive):
+    path, ran = _python_named_file(tmp_path)
+    monkeypatch.setattr(f"{MODULE}._euid", lambda: 0)
+    assert probe_target(4242, str(path)).has_remote_exec
+    assert ran.exists()
+
+
+def test_a_root_owned_interpreter_is_trusted(monkeypatch):
+    monkeypatch.setattr(
+        f"{MODULE}.os.stat", lambda path: Mock(st_uid=0, st_mode=0o100755)
+    )
+    assert _trusted_to_run("/usr/bin/python3")
+
+
+@pytest.mark.parametrize("uid, mode", ((1000, 0o100755), (0, 0o100775), (0, 0o100757)))
+def test_writable_by_others_is_not_trusted(monkeypatch, uid, mode):
+    monkeypatch.setattr(f"{MODULE}.os.stat", lambda path: Mock(st_uid=uid, st_mode=mode))
+    assert not _trusted_to_run("/usr/bin/python3")
+
+
+def test_a_writable_parent_is_not_trusted(monkeypatch):
+    def stat(path):
+        mode = 0o40777 if path == "/opt" else 0o100755
+        return Mock(st_uid=0, st_mode=mode)
+
+    monkeypatch.setattr(f"{MODULE}.os.stat", stat)
+    monkeypatch.setattr(f"{MODULE}.os.path.realpath", lambda path: path)
+    assert not _trusted_to_run("/opt/python3")
 
 
 def test_probe_rejects_old_python(monkeypatch, tmp_path, alive):

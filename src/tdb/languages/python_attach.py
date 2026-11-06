@@ -201,20 +201,131 @@ def _euid() -> int | None:
     return os.geteuid() if hasattr(os, "geteuid") else None
 
 
-def _target_uid(pid: int) -> int | None:
+def _target_ids(pid: int) -> tuple[int, set[int] | None] | None:
+    """The target's uid and groups, as far as this platform can tell."""
+    if sys.platform == "darwin":
+        result = subprocess.run(
+            ["ps", "-o", "uid=", "-p", str(pid)], capture_output=True, text=True
+        )
+        return (int(result.stdout), None) if result.stdout.strip() else None
     try:
-        return os.stat(f"{_PROC}/{pid}").st_uid
-    except OSError:
+        with open(f"{_PROC}/{pid}/status") as f:
+            fields = dict(line.split(":", 1) for line in f if ":" in line)
+        uid = int(fields["Uid"].split()[1])
+        groups = fields["Gid"].split()[1:2] + fields["Groups"].split()
+    except (OSError, KeyError, IndexError, ValueError):
         return None
+    return uid, {int(group) for group in groups}
 
 
-def _hand_to_target(path: str, pid: int) -> None:
-    """Let the target use a file tdb made. Running as root is what tdb
-    suggests under Yama, and root's private temp files are out of its reach."""
-    uid = _target_uid(pid)
-    if _euid() == 0 and uid not in (None, 0):
-        with contextlib.suppress(OSError):
-            os.chown(path, uid, -1)
+def _hand_to_target(paths: list[str], pid: int) -> None:
+    """Let the target use files tdb made. Running as root is what tdb
+    suggests under Yama, and root's private temp files are out of its reach.
+
+    The user gets a directory only once `paths` reaches it, so put it last:
+    until then it is root's alone, and nothing in it can be swapped. Nothing
+    here or in that directory may be trusted by root after that.
+    """
+    ids = _target_ids(pid) if _euid() == 0 else None
+    if ids is None or ids[0] == 0:
+        return
+    with contextlib.suppress(OSError):
+        for path in paths:
+            os.chown(path, ids[0], -1, follow_symlinks=False)
+
+
+def _permits(st: os.stat_result, uid: int, gids: set[int], want: int) -> bool:
+    if st.st_uid == uid:
+        mode = st.st_mode >> 6
+    elif st.st_gid in gids:
+        mode = st.st_mode >> 3
+    else:
+        mode = st.st_mode
+    return mode & want == want
+
+
+def _can_reach(path: str, uid: int, gids: set[int]) -> bool:
+    """True unless plain permissions keep `uid` out of directory `path`."""
+    read, search = 4, 1
+    want = read | search
+    try:
+        while True:
+            if not _permits(os.stat(path), uid, gids, want):
+                return False
+            parent = os.path.dirname(path)
+            if parent == path:
+                return True
+            path, want = parent, search
+    except OSError:
+        return True
+
+
+def _trusted_to_run(path: str) -> bool:
+    """True if only root could have put this file here."""
+    path = os.path.realpath(path)
+    try:
+        while True:
+            st = os.stat(path)
+            if st.st_uid != 0 or st.st_mode & 0o022:
+                return False
+            parent = os.path.dirname(path)
+            if parent == path:
+                return True
+            path = parent
+    except OSError:
+        return False
+
+
+def _visible_to_target(path: str, pid: int) -> bool:
+    """False if `path` doesn't exist in the target's view of the filesystem:
+    a private /tmp, or a container."""
+    if sys.platform != "linux":
+        return True
+    root = f"{_PROC}/{pid}/root"
+    try:
+        os.stat(root + "/")
+    except OSError:
+        return True  # Not ours to look at.
+    try:
+        os.stat(root + path)
+    except (FileNotFoundError, NotADirectoryError):
+        return False
+    except OSError:
+        return True
+    return True
+
+
+def _unseen_error(pid: int, path: str) -> PidAttachError:
+    return PidAttachError(
+        f"cannot attach to pid {pid}: the program can't see {path}. It probably "
+        "has a private /tmp or runs in a container. Set TMPDIR to a directory it "
+        "shares with tdb"
+    )
+
+
+def _check_target_can_read(pid: int, path: str) -> None:
+    if not _visible_to_target(path, pid):
+        raise _unseen_error(pid, path)
+    ids = _target_ids(pid) if _euid() == 0 else None
+    if ids and ids[0] != 0 and ids[1] is not None and not _can_reach(path, *ids):
+        raise PidAttachError(
+            f"cannot attach to pid {pid}: its user (uid {ids[0]}) can't read "
+            f"{path}. Install tdb somewhere that user can read"
+        )
+
+
+def _new_workdir(pid: int) -> str:
+    workdir = tempfile.mkdtemp(prefix="tdb-attach-")
+    try:
+        # The parent, for permissions: this directory is root's own until
+        # it is handed over. Only here does a private /tmp show.
+        _check_target_can_read(pid, os.path.dirname(workdir))
+        if not _visible_to_target(workdir, pid):
+            raise _unseen_error(pid, workdir)
+    except PidAttachError:
+        shutil.rmtree(workdir, ignore_errors=True)
+        raise
+    return workdir
 
 
 def _exe_of_pid(pid: int) -> str | None:
@@ -232,6 +343,9 @@ def probe_target(pid: int, python: str | None = None) -> TargetInfo:
     through debugpy's injection, so they come back as unknown, not as an
     error.
 
+    As root, the target's own binary is only run if its owner couldn't have
+    changed it: otherwise attaching would run their code as root.
+
     Raises LanguageNotSupportedError for a missing pid or a known
     unsupported interpreter.
     """
@@ -246,6 +360,9 @@ def probe_target(pid: int, python: str | None = None) -> TargetInfo:
     unknown = TargetInfo(pid, None, False)
     path = python or _exe_of_pid(pid)
     if path is None or not os.path.isfile(path) or not is_python_executable(path):
+        return unknown
+    # Whoever owns the program may own this file, and the name proves nothing.
+    if python is None and _euid() == 0 and not _trusted_to_run(path):
         return unknown
     try:
         result = subprocess.run(
@@ -419,14 +536,23 @@ def _remote_exec_argv(target: TargetInfo, script_path: str) -> list[str]:
 def _queued_code(script_path: str) -> str:
     """What the main thread runs for a gdb-queued script.
 
-    It must not fail: a pending call that returns an error raises SystemError
-    in the program's main thread, and that ends most programs. It runs in
-    `__main__` too, so it trusts no names there, and leaves none behind.
+    A pending call that returns an error raises SystemError in the program's
+    main thread, and that ends most programs, so nothing may escape. It runs
+    in `__main__` too, so it trusts no names there, and leaves none behind.
+
+    This can't cover everything. If Python can't even enter the code, as at
+    the recursion limit or out of memory, the error comes before the `try`.
+    And the bare `except` also takes an exception from one of the program's
+    signal handlers while attaching, as there is no safe way to pass it on.
     """
+    run = (
+        f'with open({script_path!r}, encoding="utf-8") as script:\n'
+        "    source = script.read()\n"
+        "exec(source, {})\n"
+    )
     return (
         "try:\n"
-        '    __import__("builtins").exec(__import__("builtins").open('
-        f'{script_path!r}, encoding="utf-8").read(), {{}})\n'
+        f'    __import__("builtins").exec({run!r}, {{}})\n'
         "except:\n"
         "    pass\n"
     )
@@ -440,13 +566,18 @@ def _gdb_queue_commands(code: str) -> str:
     wait can't always be re-entered. Nothing here may allocate either, as the
     thread may have stopped inside malloc, so the code goes on a page of its
     own, written by gdb, and stays there: it is one page per attach, and tdb
-    can't know when the target is done with it.
+    can't know when the target is done with it. The mmap flags are Linux's;
+    where they differ (MIPS, Alpha, PA-RISC) the call fails and tdb falls back.
     """
     data = code.encode() + b"\0"
     prot_read_write, map_private_anonymous = 3, 0x22
+    mmap = "((char *(*)(void *, unsigned long, int, int, int, long))mmap)"
     lines = [
-        f"set $tdb_code = (char *)mmap(0, {len(data)}, {prot_read_write}, "
-        f"{map_private_anonymous}, -1, 0)"
+        *_python_gdb_helper.GDB_SIGNAL_COMMANDS,
+        # The stopped frame may be in Rust or Go, whose syntax differs.
+        "set language c",
+        f"set $tdb_code = {mmap}(0, {len(data)}, {prot_read_write}, "
+        f"{map_private_anonymous}, -1, 0)",
     ]
     lines += [
         f"set {{unsigned char}}($tdb_code + {offset}) = {byte}"
@@ -586,12 +717,17 @@ async def _queue_with_remote_exec(
 
 
 async def _queue_with_gdb(pid: int, script_path: str) -> tuple[bool, str]:
-    commands_path = os.path.join(os.path.dirname(script_path), _GDB_COMMANDS_NAME)
-    with open(commands_path, "w", encoding="utf-8") as f:
-        f.write(_gdb_queue_commands(_queued_code(script_path)))
     # gdb's own embedded Python may choke on a PYTHONPATH meant for another.
     env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
-    with tempfile.TemporaryFile() as output:
+    # Not beside the script: the target's user owns that directory when tdb
+    # runs as root, and gdb runs whatever is in this file.
+    with (
+        tempfile.TemporaryDirectory(prefix="tdb-gdb-") as private,
+        tempfile.TemporaryFile() as output,
+    ):
+        commands_path = os.path.join(private, _GDB_COMMANDS_NAME)
+        with open(commands_path, "w", encoding="utf-8") as f:
+            f.write(_gdb_queue_commands(_queued_code(script_path)))
         gdb = _spawn_detached(_gdb_queue_argv(pid, commands_path), output, env)
         await _wait_for_exit(gdb, time.monotonic() + _GDB_QUEUE_TIMEOUT)
         if gdb.poll() is None:
@@ -606,18 +742,10 @@ async def _queue_with_gdb(pid: int, script_path: str) -> tuple[bool, str]:
 
 
 def _no_connection_error(pid: int) -> PidAttachError:
-    from debugpy import server
-
-    message = (
+    return PidAttachError(
         f"cannot attach to pid {pid}: the injected code ran, but the program "
         f"did not connect within {_timeouts.PID_ATTACH_TOTAL:.0f} seconds"
     )
-    if _target_uid(pid) not in (None, _euid()):
-        message += (
-            ". It runs as another user, who must be able to read "
-            f"{os.path.dirname(server.__file__)}"
-        )
-    return PidAttachError(message)
 
 
 async def _try_queued(
@@ -638,7 +766,7 @@ async def _try_queued(
     from debugpy import server
 
     server_dir = os.path.dirname(server.__file__)
-    workdir = tempfile.mkdtemp(prefix="tdb-attach-")
+    workdir = _new_workdir(pid)
     marker = os.path.join(workdir, _MARKER_NAME)
     claimed = os.path.join(workdir, _CLAIMED_NAME)
     script_path = os.path.join(workdir, _SCRIPT_NAME)
@@ -646,8 +774,7 @@ async def _try_queued(
         pass
     with open(script_path, "w", encoding="utf-8") as f:
         f.write(build_remote_exec_script(server_dir, port, marker, claimed))
-    for path in (workdir, marker, script_path):
-        _hand_to_target(path, pid)
+    _hand_to_target([marker, script_path, workdir], pid)
 
     output = ""
     may_fire = True  # A helper that timed out may yet have queued it.
@@ -690,8 +817,30 @@ async def inject(
     anything not yet started. Returns the method used; raises PidAttachError
     with a message for the user.
     """
-    pid = target.pid
     quitting = quitting or asyncio.Event()
+    try:
+        return await _inject(target, port, connected, quitting)
+    except PidAttachCancelled:
+        raise
+    except (PidAttachError, OSError) as exc:
+        message = str(exc)
+        if isinstance(exc, OSError):
+            message = f"cannot attach to pid {target.pid}: {exc}"
+        if quitting.is_set():
+            raise PidAttachCancelled(message) from exc
+        raise PidAttachError(message) from exc
+
+
+async def _inject(
+    target: TargetInfo,
+    port: int,
+    connected: asyncio.Event,
+    quitting: asyncio.Event,
+) -> str:
+    from debugpy import server
+
+    pid = target.pid
+    _check_target_can_read(pid, os.path.dirname(server.__file__))
     deadline = time.monotonic() + _timeouts.PID_ATTACH_TOTAL
     remote_exec_error = queue_output = ""
     if target.has_remote_exec:
@@ -749,16 +898,33 @@ async def inject(
         return PidAttachError(f"cannot attach to pid {pid}: {reason}")
 
     if sys.platform == "linux":
-        if uses_musl(pid) and (gdb_found or target.has_remote_exec):
+        remote_exec_worked = target.has_remote_exec and not remote_exec_error
+        if uses_musl(pid) and (gdb_found or remote_exec_worked):
             raise failure(queue_output, musl=True)
         if not gdb_found:
             raise failure(gdb_missing=True)
 
-    with (
-        tempfile.TemporaryFile() as output,
-        tempfile.TemporaryDirectory(prefix="tdb-attach-") as workdir,
-    ):
-        _hand_to_target(workdir, pid)
+    workdir = _new_workdir(pid)
+    _hand_to_target([workdir], pid)
+    try:
+        return await _inject_with_debugpy(
+            pid, port, connected, deadline, workdir, failure
+        )
+    finally:
+        # Not TemporaryDirectory: the target's user may own this directory,
+        # and shutil.rmtree is what is safe in one.
+        shutil.rmtree(workdir, ignore_errors=True)
+
+
+async def _inject_with_debugpy(
+    pid: int,
+    port: int,
+    connected: asyncio.Event,
+    deadline: float,
+    workdir: str,
+    failure: Callable[[str], PidAttachError],
+) -> str:
+    with tempfile.TemporaryFile() as output:
         ran_marker = os.path.join(workdir, _RAN_NAME)
         helper = _spawn_detached(_debugpy_argv(pid, port, ran_marker), output)
         if await _wait_for_connection(pid, connected, deadline, helper, ran_marker):

@@ -7,6 +7,7 @@ ptrace_scope=1 with no system changes. Every target is killed in teardown.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import ctypes
 import dataclasses
 import glob
@@ -17,6 +18,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -27,7 +29,11 @@ from tdb import _timeouts
 from tdb.languages.python import build_python_profile
 from tdb.languages.python_attach import (
     PidAttachError,
+    _debugpy_argv,
+    _gdb_queue_commands,
+    _hand_to_target,
     _queue_with_gdb,
+    _queued_code,
     uses_musl,
 )
 from tdb.server.event_handler import ServerEventHandler
@@ -329,9 +335,147 @@ def test_program_shadowing_builtins(make_target, attach, python):
     target = make_target("shadowed", python)
     session = attach(target)
     assert session.proc.poll() is None
+    # Failing here would only look like a blocked program, and fall back.
+    assert "debugpy injection" not in session.errors()
     session.quit()
     target.assert_running()
     assert "SystemError" not in target.stderr_path.read_text()
+
+
+def _pump_signals(pid, stop):
+    while not stop.is_set():
+        try:
+            os.kill(pid, signal.SIGUSR1)
+        except OSError:
+            return
+        time.sleep(0.02)
+
+
+@contextlib.contextmanager
+def signals_to(target):
+    stop = threading.Event()
+    pump = threading.Thread(target=_pump_signals, args=(target.pid, stop))
+    pump.start()
+    try:
+        yield
+    finally:
+        stop.set()
+        pump.join()
+
+
+@linux_only
+def test_signals_during_gdb_queue_leave_program_running(make_target, python, tmp_path):
+    target = make_target("signalled", python)
+    script = tmp_path / "queued.py"
+    script.write_text("pass")
+    with signals_to(target):
+        queued, output = asyncio.run(_queue_with_gdb(target.pid, str(script)))
+        time.sleep(0.3)
+    assert queued, output
+    target.assert_running()
+
+
+@linux_only
+@needs_gdb_injection
+def test_signals_during_fallback_leave_program_running(make_target, python, tmp_path):
+    target = make_target("signalled", python)
+    with signals_to(target):
+        subprocess.run(
+            _debugpy_argv(target.pid, _free_port(), str(tmp_path / "ran")),
+            capture_output=True,
+            timeout=30,
+        )
+        time.sleep(0.3)
+    target.assert_running()
+
+
+@linux_only
+def test_gdb_queue_never_calls_malloc(make_target, tmp_path):
+    # Only the main thread runs, so a hit can only come from gdb's own calls.
+    target = make_target("sleep")
+    commands = tmp_path / "commands.gdb"
+    commands.write_text(
+        "set scheduler-locking on\nbreak malloc\n"
+        + _gdb_queue_commands(_queued_code("/nonexistent"))
+    )
+    result = subprocess.run(
+        ["gdb", "--nw", "--nh", "--nx", "--pid", str(target.pid), "--batch"]
+        + ["-x", str(commands)],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert "tdb-queued 0" in result.stdout, result.stdout + result.stderr
+    assert "Breakpoint 1," not in result.stdout
+
+
+needs_root = pytest.mark.skipif(not LINUX or os.geteuid() != 0, reason="needs root")
+NOBODY = 65534
+
+
+def _as_nobody():
+    os.setgid(NOBODY)
+    os.setuid(NOBODY)
+
+
+@linux_only
+@needs_root
+def test_root_target_user_cannot_replace_gdb_commands(python):
+    # They own the work directory, and root's gdb must not run their commands.
+    workdir = Path(tempfile.mkdtemp(prefix="tdb-root-test-"))
+    workdir.chmod(0o777)
+    proof = workdir / "proof"
+    attacker = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            "import glob, os, sys, time\n"
+            "work, proof = sys.argv[1:]\n"
+            "evil = os.path.join(work, 'evil')\n"
+            "open(evil, 'w').write(f'shell touch {proof}\\n')\n"
+            "while True:\n"
+            "    for d in glob.glob(os.path.join(work, 'tdb-*')):\n"
+            "        try:\n"
+            "            with open(evil) as f: text = f.read()\n"
+            "            with open(d + '/new', 'w') as f: f.write(text)\n"
+            "            os.rename(d + '/new', d + '/queue.gdb')\n"
+            "        except OSError:\n"
+            "            pass\n",
+            str(workdir),
+            str(proof),
+        ],
+        preexec_fn=_as_nobody,
+    )
+    target = Target(python, "busy", workdir, user=NOBODY)
+    session = Session(target.pid, workdir)
+    try:
+        assert session.wait_ready(), session.errors()
+        assert not proof.exists()
+    finally:
+        session.close()
+        attacker.kill()
+        attacker.wait()
+        target.kill()
+        shutil.rmtree(workdir, ignore_errors=True)
+
+
+@linux_only
+@needs_root
+def test_root_chown_never_follows_a_symlink():
+    # A real process owned by nobody, for its uid.
+    target = subprocess.Popen(["sleep", "30"], preexec_fn=_as_nobody)
+    workdir = Path(tempfile.mkdtemp(prefix="tdb-root-test-"))
+    victim = workdir / "victim"
+    victim.touch()
+    link = workdir / "link"
+    link.symlink_to(victim)
+    try:
+        _hand_to_target([str(link)], target.pid)
+        assert victim.stat().st_uid == 0
+    finally:
+        target.kill()
+        target.wait()
+        shutil.rmtree(workdir, ignore_errors=True)
 
 
 @linux_only
@@ -366,7 +510,7 @@ def test_fallback_with_busy_worker(make_target, attach, python):
 
 
 @linux_only
-@pytest.mark.skipif(not LINUX or os.geteuid() != 0, reason="needs root")
+@needs_root
 def test_root_attaches_to_another_users_program(python):
     # What tdb tells people to do under Yama. Run as root by the CI job.
     workdir = Path(tempfile.mkdtemp(prefix="tdb-root-test-"))

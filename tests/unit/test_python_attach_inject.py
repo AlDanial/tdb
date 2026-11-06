@@ -8,8 +8,10 @@ from __future__ import annotations
 
 import asyncio
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
 
 from unittest.mock import Mock
@@ -17,14 +19,17 @@ from unittest.mock import Mock
 import pytest
 
 from tdb import _timeouts
-from tdb.languages._python_gdb_helper import background_code
+from tdb.languages._python_gdb_helper import background_code, harden_gdb_command
 from tdb.languages.python_attach import (
     PidAttachCancelled,
     PidAttachError,
     TargetInfo,
+    _can_reach,
     _gdb_queue_commands,
     _hand_to_target,
+    _queue_with_gdb,
     _queued_code,
+    _target_ids,
     build_remote_exec_script,
     classify_failure,
     inject,
@@ -81,6 +86,8 @@ class Helpers:
         self.real_debugpy_argv = None
         monkeypatch.setattr(f"{MODULE}._remote_exec_argv", self._remote_exec_argv)
         monkeypatch.setattr(f"{MODULE}._gdb_queue_argv", self._gdb_queue_argv)
+        self.real_queued_code = _queued_code
+        monkeypatch.setattr(f"{MODULE}._queued_code", self._queued_code)
         import tdb.languages.python_attach as mod
 
         self.real_debugpy_argv = mod._debugpy_argv
@@ -93,9 +100,12 @@ class Helpers:
         self.remote_exec_scripts.append(script_path)
         return self.remote_exec
 
-    def _gdb_queue_argv(self, pid, script_path):
-        self.gdb_queue_scripts.append(script_path)
+    def _gdb_queue_argv(self, pid, commands_path):
         return self.gdb_queue
+
+    def _queued_code(self, script_path):
+        self.gdb_queue_scripts.append(script_path)
+        return self.real_queued_code(script_path)
 
     def _debugpy_argv(self, pid, port, ran_marker):
         self.debugpy_calls.append(self.real_debugpy_argv(pid, port, ran_marker))
@@ -573,10 +583,10 @@ async def test_inject_no_fallback_when_the_script_owns_the_attempt(
     monkeypatch.setattr(_timeouts, "PID_ATTACH_REMOTE_EXEC", 0.1)
     monkeypatch.setattr(_timeouts, "PID_ATTACH_TOTAL", 0.4)
 
-    def fired(pid, script_path):
+    def fired(pid, commands_path):
+        workdir = os.path.dirname(helpers.gdb_queue_scripts[0])
         os.rename(
-            os.path.join(os.path.dirname(script_path), "marker"),
-            os.path.join(os.path.dirname(script_path), "claimed"),
+            os.path.join(workdir, "marker"), os.path.join(workdir, "claimed")
         )
         return QUEUED
 
@@ -691,42 +701,264 @@ def test_gdb_commands_write_every_byte_and_a_terminator():
 # --- a target run by another user ----------------------------------------
 
 
-def _as_root(monkeypatch, tmp_path, owner):
+def _fake_status(tmp_path, monkeypatch, uid, gid=2000, groups="3000 4000"):
     (tmp_path / "4242").mkdir()
-    real_stat = os.stat
-    chowned = []
-
-    def fake_stat(path, *args, **kwargs):
-        if str(path).endswith("/4242"):
-            return Mock(st_uid=owner)
-        return real_stat(path, *args, **kwargs)
-
+    (tmp_path / "4242" / "status").write_text(
+        f"Name:\tpython\nUid:\t{uid}\t{uid}\t{uid}\t{uid}\n"
+        f"Gid:\t{gid}\t{gid}\t{gid}\t{gid}\nGroups:\t{groups}\n"
+    )
     monkeypatch.setattr(f"{MODULE}._PROC", str(tmp_path))
+
+
+def _as_root(monkeypatch, tmp_path, owner):
+    _fake_status(tmp_path, monkeypatch, owner)
+    chowned = []
     monkeypatch.setattr(f"{MODULE}.os.geteuid", lambda: 0)
-    monkeypatch.setattr(f"{MODULE}.os.stat", fake_stat)
     monkeypatch.setattr(
-        f"{MODULE}.os.chown", lambda path, uid, gid: chowned.append((path, uid))
+        f"{MODULE}.os.chown",
+        lambda path, uid, gid, follow_symlinks: chowned.append(
+            (path, uid, follow_symlinks)
+        ),
     )
     return chowned
 
 
-def test_root_hands_files_to_the_targets_user(monkeypatch, tmp_path):
+def test_root_hands_files_to_the_targets_user_in_order(monkeypatch, tmp_path):
     chowned = _as_root(monkeypatch, tmp_path, 1000)
-    _hand_to_target("/some/dir", 4242)
-    assert chowned == [("/some/dir", 1000)]
+    _hand_to_target(["/d/marker", "/d"], 4242)
+    # The directory goes last: until then the user can't touch what's in it.
+    assert chowned == [("/d/marker", 1000, False), ("/d", 1000, False)]
 
 
 def test_target_owned_by_root_needs_no_handing_over(monkeypatch, tmp_path):
     chowned = _as_root(monkeypatch, tmp_path, 0)
-    _hand_to_target("/some/dir", 4242)
+    _hand_to_target(["/some/dir"], 4242)
     assert chowned == []
 
 
 def test_other_users_never_chown(monkeypatch, tmp_path):
     chowned = _as_root(monkeypatch, tmp_path, 1000)
     monkeypatch.setattr(f"{MODULE}.os.geteuid", lambda: 1000)
-    _hand_to_target("/some/dir", 4242)
+    _hand_to_target(["/some/dir"], 4242)
     assert chowned == []
+
+
+def test_target_ids_come_from_status(monkeypatch, tmp_path):
+    _fake_status(tmp_path, monkeypatch, 1000)
+    assert _target_ids(4242) == (1000, {2000, 3000, 4000})
+
+
+def test_macos_finds_the_targets_user_through_ps(monkeypatch):
+    monkeypatch.setattr(f"{MODULE}.sys.platform", "darwin")
+    monkeypatch.setattr(
+        f"{MODULE}.subprocess.run", lambda *a, **k: Mock(stdout=" 501\n", returncode=0)
+    )
+    assert _target_ids(4242) == (501, None)
+
+
+def test_windows_has_no_target_user(monkeypatch):
+    monkeypatch.setattr(f"{MODULE}.sys.platform", "win32")
+    assert _target_ids(4242) is None
+
+
+@pytest.mark.parametrize(
+    "mode, uid, gids, expected",
+    (
+        (0o700, 12345, set(), False),
+        (0o755, 12345, set(), True),
+        (0o750, 12345, set(), False),
+        (0o750, 12345, {os.getgid()}, True),
+        (0o700, os.getuid(), set(), True),
+    ),
+)
+def test_can_reach_follows_each_directory(mode, uid, gids, expected):
+    # Not tmp_path: pytest's own directory is private.
+    top = tempfile.mkdtemp(prefix="tdb-reach-", dir="/tmp")
+    try:
+        path = os.path.join(top, "pkg")
+        os.mkdir(path)
+        os.chmod(top, mode)
+        assert _can_reach(path, uid, gids) is expected
+    finally:
+        shutil.rmtree(top)
+
+
+async def test_root_refuses_at_once_if_debugpy_is_out_of_reach(helpers, monkeypatch):
+    monkeypatch.setattr(f"{MODULE}._euid", lambda: 0)
+    monkeypatch.setattr(f"{MODULE}._target_ids", lambda pid: (1000, {1000}))
+    monkeypatch.setattr(f"{MODULE}._can_reach", lambda path, uid, gids: False)
+    with pytest.raises(PidAttachError, match="can't read"):
+        await inject(TARGET_OLD, 5678, asyncio.Event())
+    assert helpers.gdb_queue_scripts == []
+    assert helpers.debugpy_calls == []
+
+
+async def test_root_judges_the_work_directory_by_its_parent(helpers, monkeypatch):
+    # It is root's own until it is handed over, a moment later.
+    real = _can_reach
+    monkeypatch.setattr(f"{MODULE}._euid", lambda: 0)
+    monkeypatch.setattr(f"{MODULE}._target_ids", lambda pid: (12345, {12345}))
+    monkeypatch.setattr(
+        f"{MODULE}._can_reach",
+        lambda path, uid, gids: "tdb-attach-" not in path or real(path, uid, gids),
+    )
+    helpers.gdb_queue = QUEUED
+    connected = asyncio.Event()
+    connect_soon(connected)
+    assert await inject(TARGET_OLD, 5678, connected) == "gdb pending call"
+
+
+async def test_temp_directory_the_target_cannot_see(helpers, monkeypatch):
+    monkeypatch.setattr(f"{MODULE}.sys.platform", "linux")
+    real = os.stat
+
+    def stat(path, *args, **kwargs):
+        if "/root/" in str(path) and "tdb-attach-" in str(path):
+            raise FileNotFoundError(path)
+        return real(path, *args, **kwargs)
+
+    monkeypatch.setattr(f"{MODULE}.os.stat", stat)
+    with pytest.raises(PidAttachError, match="private"):
+        await inject(TARGET_OLD, 5678, asyncio.Event())
+    assert helpers.gdb_queue_scripts == []
+
+
+async def test_gdb_commands_stay_out_of_the_targets_directory(helpers, monkeypatch):
+    seen = []
+    monkeypatch.setattr(
+        f"{MODULE}._gdb_queue_argv",
+        lambda pid, path: seen.append(path) or QUEUED,
+    )
+    connected = asyncio.Event()
+    connect_soon(connected)
+    await inject(TARGET_OLD, 5678, connected)
+    workdir = os.path.dirname(helpers.gdb_queue_scripts[0])
+    assert os.path.dirname(seen[0]) != workdir
+
+
+async def test_inject_reports_oserror_as_a_failure(helpers, monkeypatch):
+    def full(*args, **kwargs):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(f"{MODULE}.tempfile.mkdtemp", full)
+    with pytest.raises(PidAttachError, match="No space left"):
+        await inject(TARGET_OLD, 5678, asyncio.Event())
+
+
+async def test_any_failure_while_quitting_is_quiet(helpers):
+    quitting = asyncio.Event()
+    quitting.set()
+    helpers.remote_exec = fail_with("boom")
+    with pytest.raises(PidAttachCancelled):
+        await inject(TARGET_314, 5678, asyncio.Event(), quitting)
+
+
+async def test_musl_with_remote_debugging_off_and_no_gdb(helpers, monkeypatch):
+    monkeypatch.setattr(f"{MODULE}.sys.platform", "linux")
+    monkeypatch.setattr(f"{MODULE}.uses_musl", lambda pid: True)
+    monkeypatch.setattr(f"{MODULE}.shutil.which", lambda name: None)
+    helpers.remote_exec = fail_with("Remote debugging is not enabled")
+    with pytest.raises(PidAttachError, match="install gdb"):
+        await inject(TARGET_314, 5678, asyncio.Event())
+
+
+def test_harden_adds_signal_handling_to_debugpys_gdb_command():
+    command = "gdb --nw --pid 1 --batch --eval-command='set language c'"
+    hardened = harden_gdb_command(command)
+    assert hardened.index("handle all") < hardened.index("set language c")
+    assert "set unwindonsignal on" in hardened
+
+
+def test_harden_leaves_other_commands_alone():
+    assert harden_gdb_command("lldb --batch") == "lldb --batch"
+
+
+def test_gdb_commands_shield_the_call_from_signals():
+    commands = _gdb_queue_commands("print(1)").splitlines()
+    assert commands[:3] == [
+        "handle all nostop noprint pass",
+        "set unwindonsignal on",
+        "set language c",
+    ]
+
+
+def test_gdb_commands_declare_mmaps_type():
+    assert "(char *(*)(void *, unsigned long, int, int, int, long))mmap" in (
+        _gdb_queue_commands("print(1)")
+    )
+
+
+def test_queued_code_closes_the_script(tmp_path):
+    path = tmp_path / "script.py"
+    path.write_text("pass")
+    program = f"exec({_queued_code(str(path))!r})\n"
+    result = subprocess.run(
+        [sys.executable, "-X", "dev", "-c", program],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert result.stderr == ""
+
+
+def _handoffs(body: str) -> list[float]:
+    from tdb.languages._python_gdb_helper import FAST_HANDOFFS
+
+    result = subprocess.run(
+        [sys.executable, "-c", FAST_HANDOFFS + body],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert result.returncode == 0, result.stderr
+    return [float(x) for x in result.stdout.split()]
+
+
+def test_switch_interval_comes_back_if_the_watcher_cannot_start():
+    (after,) = _handoffs(
+        "import _thread, sys\n"
+        "def fail(*a): raise RuntimeError\n"
+        "_thread.start_new_thread = fail\n"
+        "try:\n"
+        "    _tdb_fast_handoffs(lambda: None)\n"
+        "except RuntimeError:\n"
+        "    pass\n"
+        "print(sys.getswitchinterval())\n"
+    )
+    assert after == pytest.approx(0.005)
+
+
+def test_overlapping_attaches_restore_the_real_interval():
+    (after,) = _handoffs(
+        "import sys\n"
+        "_tdb_fast_handoffs(lambda: _tdb_fast_handoffs(lambda: None))\n"
+        "print(sys.getswitchinterval())\n"
+    )
+    assert after == pytest.approx(0.005)
+
+
+def test_a_value_the_program_set_during_attach_is_kept():
+    (after,) = _handoffs(
+        "import sys\n"
+        "_tdb_fast_handoffs(lambda: sys.setswitchinterval(0.02))\n"
+        "print(sys.getswitchinterval())\n"
+    )
+    assert after == pytest.approx(0.02)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="needs fork")
+def test_a_child_forked_during_attach_gets_the_real_interval():
+    (child,) = _handoffs(
+        "import os, sys\n"
+        "def run():\n"
+        "    pid = os.fork()\n"
+        "    if pid == 0:\n"
+        "        print(sys.getswitchinterval(), flush=True)\n"
+        "        os._exit(0)\n"
+        "    os.waitpid(pid, 0)\n"
+        "_tdb_fast_handoffs(run)\n"
+    )
+    assert child == pytest.approx(0.005)
 
 
 def marks_ran(ran_marker: str) -> list[str]:

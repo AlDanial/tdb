@@ -62,7 +62,7 @@ jobs:
         run: |
           docker run --rm --cap-add=SYS_PTRACE --security-opt seccomp=unconfined \
             -u root tdb-glibc-test /home/appuser/venv/bin/python -m pytest \
-            --no-cov -rs tests/integration/test_python_pid_attach.py -k root_attaches
+            --no-cov -rs tests/integration/test_python_pid_attach.py -k test_root
 
   windows-vi:
     # The vi engine is pure Python and must work on Windows; the golden
