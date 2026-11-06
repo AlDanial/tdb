@@ -3,6 +3,7 @@ file; add `no-opt-in` to refuse tracing by unrelated processes."""
 
 import ctypes
 import os
+import signal
 import socket
 import sys
 import threading
@@ -61,6 +62,11 @@ elif mode == "busy_threads":
     for _ in range(3):
         threading.Thread(target=spin, daemon=True).start()
     hot_loop()
+elif mode == "signalled":
+    # A signal reaching the program during gdb's call used to abandon the
+    # call and leave its frame on the stack.
+    signal.signal(signal.SIGUSR1, lambda *_: None)
+    loop()
 elif mode == "allocating":
     # Almost always inside malloc, where gdb must not allocate in turn. An
     # idle thread makes malloc take its lock.

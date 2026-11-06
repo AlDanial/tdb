@@ -139,7 +139,7 @@ RUN ["uv", "run", "pytest"]
 #   tests/integration/test_python_pid_attach.py
 # docker run --rm --cap-add=SYS_PTRACE --security-opt seccomp=unconfined \
 #   -u root tdb-glibc-test /home/appuser/venv/bin/python -m pytest --no-cov -rs \
-#   tests/integration/test_python_pid_attach.py -k root_attaches
+#   tests/integration/test_python_pid_attach.py -k test_root
 FROM debian:trixie AS glibc-test
 COPY --from=ghcr.io/astral-sh/uv:python3.14-alpine /usr/local/bin/uv /usr/local/bin/uv
 RUN apt-get update \

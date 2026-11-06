@@ -43,9 +43,28 @@ On Linux below glibc 2.41, debugpy's injection can deadlock a program whose main
 thread is waiting for the GIL, so tdb tries it last. That takes native code
 holding the GIL for over 5 seconds.
 
-Run as root, tdb hands its temporary files to the program's user. That user must
-also be able to read tdb's copy of debugpy, so a tdb installed in a private
-directory can't attach to other users' programs.
+## Running tdb as root
+
+Attaching as root to another user's program is safe only if you trust that user
+as far as gdb's own risks go: gdb reads the program's files as root. tdb hands its
+temporary files to that user, and never runs the program's binary unless root
+alone could have changed it. The Python 3.14 method then needs an interpreter
+installed by root; otherwise tdb uses gdb.
+
+That user must be able to read tdb's copy of debugpy, so a tdb installed in a
+private home directory can't attach to their programs, and tdb says so at once.
+Pass `--python` to name an interpreter, and tdb will run it as root.
+
+## Limits
+
+- A program with a private `/tmp`, or in a container, can't see tdb's temporary
+  files. Set `TMPDIR` to a directory it shares with tdb.
+- Below Python 3.14, a program that is at its recursion limit or out of memory
+  when it runs tdb's queued code exits with a `SystemError`. Python gives tdb no
+  way to catch that.
+- If one of the program's signal handlers raises an exception while tdb attaches,
+  such as `sys.exit` on SIGTERM, tdb's queued code absorbs it, so send the signal
+  again.
 
 ## Blocked and idle programs
 
@@ -56,9 +75,9 @@ next runs Python, and threads that are running Python can still be paused.
 
 If native code holds the GIL, injection can't finish. tdb gives up after 30
 seconds and says so, but it leaves the injection running rather than risk
-crashing the program: its helper ends by itself once the GIL is released, and
-nothing else happens in the program. Quitting during injection works the same
-way. If the program has already connected, tdb
+crashing the program: its helper ends by itself once the GIL is released. The
+program may then print debugpy's connection error to its stderr. Quitting during
+injection works the same way. If the program has already connected, tdb
 first finishes the handshake, which can delay quitting by a few seconds.
 
 ## Permission denied

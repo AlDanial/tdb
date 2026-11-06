@@ -21,23 +21,51 @@ ATTACH_SWITCH_INTERVAL = 0.0001
 # the handshake with no timeout, and a program shouldn't stay this way.
 SWITCH_INTERVAL_LIMIT = 45.0
 
+# A signal reaching the target during one of gdb's calls makes gdb abandon the
+# call and detach with its frame still on the stack, and the program then
+# segfaults. Passing signals straight through avoids that for all but SIGINT
+# and SIGTRAP, which the second setting covers by unwinding the call.
+GDB_SIGNAL_COMMANDS = ("handle all nostop noprint pass", "set unwindonsignal on")
+
 FAST_HANDOFFS = f"""\
 def _tdb_fast_handoffs(run):
-    import _thread, sys
-    interval = sys.getswitchinterval()
+    import _thread, os, sys
+    fast = {ATTACH_SWITCH_INTERVAL!r}
+    def ours():
+        return fast / 2 <= sys.getswitchinterval() <= fast * 2
+    # Another attach may be under way, and it isn't the program's setting.
+    interval = 0.005 if ours() else sys.getswitchinterval()
+    attaching = [True]
+    def restore():
+        if ours():
+            sys.setswitchinterval(interval)
+    def in_child():
+        if attaching:
+            restore()
     done = _thread.allocate_lock()
     done.acquire()
     def watch():
         done.acquire(timeout={SWITCH_INTERVAL_LIMIT!r})
-        sys.setswitchinterval(interval)
-    sys.setswitchinterval({ATTACH_SWITCH_INTERVAL!r})
-    _thread.start_new_thread(watch, ())
+        restore()
     try:
+        sys.setswitchinterval(fast)
+        if hasattr(os, "register_at_fork"):
+            os.register_at_fork(after_in_child=in_child)
+        _thread.start_new_thread(watch, ())
         run()
     finally:
-        sys.setswitchinterval(interval)
+        attaching.clear()
+        restore()
         done.release()
 """
+
+
+def harden_gdb_command(command: str) -> str:
+    """debugpy's gdb command line, with `GDB_SIGNAL_COMMANDS` run first."""
+    if not command.startswith("gdb "):
+        return command
+    extra = " ".join(f"--eval-command='{c}'" for c in GDB_SIGNAL_COMMANDS)
+    return command.replace(" --batch ", f" --batch {extra} ", 1)
 
 
 def background_code(code: str, ran_marker: str) -> str:
@@ -81,7 +109,13 @@ def main() -> None:
         code = background_code(python_code, ran_marker)
         return run_python_code(pid, code, *args, **kwargs)
 
+    check_call = injector.subprocess.check_call
+
+    def hardened_check_call(command, *args, **kwargs):
+        return check_call(harden_gdb_command(command), *args, **kwargs)
+
     injector.run_python_code = run_on_a_thread
+    injector.subprocess.check_call = hardened_check_call
     cli.main()
 
 
