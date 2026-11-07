@@ -43,7 +43,10 @@ def _ignoring_hangups():
     signal.signal(signal.SIGHUP, signal.SIG_IGN)
 
 
-def test_tdb_and_its_program_end_with_the_terminal(tmp_path):
+# "starting" is where a loaded CI runner closed it: Textual's writer thread
+# died on the first EIO, its queue filled, and shutdown blocked on it for good.
+@pytest.mark.parametrize("settle", [0.0, 6.0], ids=["starting", "running"])
+def test_tdb_and_its_program_end_with_the_terminal(tmp_path, settle):
     program = tmp_path / "loop.py"
     program.write_text("import time\nwhile True:\n    time.sleep(0.2)\n")
     master, slave = pty.openpty()
@@ -66,9 +69,14 @@ def test_tdb_and_its_program_end_with_the_terminal(tmp_path):
     family = []
     try:
         started = time.monotonic()
-        while time.monotonic() - started < 6:
-            if select.select([master], [], [], 0.2)[0]:
+        seen = None
+        while time.monotonic() - started < 30:
+            if select.select([master], [], [], 0.05)[0]:
                 os.read(master, 65536)
+            if seen is None and len(_tree(tdb.pid)) > 1:
+                seen = time.monotonic()
+            if seen is not None and time.monotonic() - seen >= settle:
+                break
         family = _tree(tdb.pid)
         assert len(family) > 1, "the session never started"
         os.close(master)

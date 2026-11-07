@@ -21,7 +21,7 @@ from tdb.app_handlers.routing import _AppMessageRoutes
 from tdb.languages.base import AdapterNotFoundError
 from tdb.languages.python_attach import PidAttachCancelled, PidAttachError
 from tdb.session.controller import DebugController
-from tdb.terminal_text import terminal_hung_up
+from tdb.terminal_text import keep_writer_draining, terminal_hung_up
 from tdb.session.messages import DapStopped
 from tdb.session.state import SessionPhase
 from tdb.session.textual_handler import TextualEventHandler
@@ -210,6 +210,7 @@ class TdbApp(_AppMessageRoutes, App):
         source_files: list[Path] | None = None,
     ) -> None:
         super().__init__()
+        keep_writer_draining()
         self._program = program
         self._source_files = source_files or []
         self._replay_driver = replay_driver

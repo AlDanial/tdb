@@ -1153,6 +1153,9 @@ def _run_doc() -> None:
             yield MarkdownViewer(docs, show_table_of_contents=True)
             yield Footer()
 
+    from tdb.terminal_text import keep_writer_draining
+
+    keep_writer_draining()
     _DocApp().run()
 
 
