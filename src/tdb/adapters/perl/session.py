@@ -27,6 +27,20 @@ log = logging.getLogger(__name__)
 RunInTerminal = Callable[[list[str], str, dict[str, str]], Awaitable[None]]
 
 
+# perl -d runs this in place of its plain require. perl5db runs any .perldb in
+# the current directory, and tdb may be started in a directory that has nothing
+# to do with the program. The directory comes as a path because all chdir then
+# needs is search permission, and it works the same on Windows; a directory
+# handle covers a path that can't be followed. Both variables go, so that a
+# perl the program starts is left as it would be.
+PERL5DB_FROM_ROOT = (
+    "BEGIN { my ($here) = delete($ENV{TDB_PERL_CWD}) =~ /\\A(.*)\\z/s; "
+    "delete $ENV{PERL5DB}; opendir(my $back, '.'); chdir '/'; "
+    "require 'perl5db.pl'; chdir $here or eval { $back && chdir $back } "
+    'or die "cannot return to $here: $!\\n"; }'
+)
+
+
 class PerlProtocolError(Exception):
     def __init__(self, message: str, tail: str = "") -> None:
         super().__init__(message)
@@ -184,6 +198,8 @@ class PerlSession:
         adapters_dir = os.path.dirname(helpers_path())
         shim_path = compile_shim_path()
         compile_shim_available = os.path.isfile(shim_path)
+        child_env["PERL5DB"] = PERL5DB_FROM_ROOT
+        child_env["TDB_PERL_CWD"] = os.path.abspath(cwd)
         argv = [perl, "-d"]
         if compile_shim_available:
             child_env["TDB_COMPILE_FILE"] = program

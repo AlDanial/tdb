@@ -43,9 +43,16 @@ On Linux below glibc 2.41, debugpy's injection can deadlock a program whose main
 thread is waiting for the GIL, so tdb tries it last. That takes native code
 holding the GIL for over 5 seconds.
 
-tdb's adapter waits on a local port for the injected code to connect back, and
-accepts only a connection holding a token made for this attach, so nothing else
-on the machine can pose as your program. It stays off command lines on Linux.
+tdb's adapter chooses a local port and waits there for the injected code to
+connect back, and tdb injects only once it is listening. The two sides then
+prove to each other that they hold a key made for this attach, without sending
+it, before any debugging starts. So nothing else on the machine can pose as your
+program, and your program won't talk to anything that took the port after tdb
+left. The key stays off command lines.
+
+Programs your program starts, or forks, are not debugged: a breakpoint doesn't
+stop them. If the attach never finishes, because tdb died during it for
+instance, the injected code lets the program go on after 65 seconds.
 
 ## Running tdb as root
 
@@ -63,18 +70,24 @@ Pass `--python` to name an interpreter, and tdb will run it as root.
 
 - A program with a private `/tmp`, or in a container, can't see tdb's temporary
   files. Set `TMPDIR` to a directory it shares with tdb.
+- As root, tdb refuses a temporary directory that another user could change. A
+  sticky directory owned by root, like `/tmp` or `/var/tmp`, is fine.
 - Below Python 3.14, a program that is at its recursion limit or out of memory
   when it runs tdb's queued code exits with a `SystemError`. Python gives tdb no
   way to catch that.
 - If one of the program's signal handlers raises an exception while tdb attaches,
   such as `sys.exit` on SIGTERM, tdb's queued code absorbs it, so send the signal
   again.
-- A local process that connects to the adapter's port during the attach and then
-  says nothing can hold the attach up, though it can't take your program's place.
-- On macOS and Windows, the fallback method passes the token on a command line.
+- A local process that floods the adapter's port during the attach can make the
+  attach fail, though it can't take your program's place or affect the program.
+- Only one attach to a program can run at a time. A second one started during
+  the first fails with "did not connect" and leaves the first alone.
+- On Alpine and other musl systems with Python 3.11, if the attach never finishes
+  the program stays traced, and slower, until it exits.
 - A program tdb has attached to keeps one small fork callback, and a
   `sys._tdb_attach_fork_hooks` list, until it exits. Python can't unregister a
-  fork callback. Attaching again adds nothing.
+  fork callback. Attaching again adds nothing. The callback is what keeps forked
+  children out of the debugger.
 
 ## Blocked and idle programs
 

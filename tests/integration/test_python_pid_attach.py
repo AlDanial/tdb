@@ -15,6 +15,7 @@ import os
 import platform
 import shutil
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
@@ -26,6 +27,7 @@ import httpx
 import pytest
 
 from tdb import _timeouts
+from tdb.languages import _python_gdb_helper
 from tdb.languages.python import build_python_profile
 from tdb.languages.python_attach import (
     PidAttachError,
@@ -60,6 +62,7 @@ def _line(tag: str) -> int:
 
 WORK_LINE = _line("# WORK_LINE")
 LOOP_LINE = _line("# LOOP_LINE")
+CHILD_LINE = _line("# CHILD_LINE")
 
 
 def _find_python(version: str) -> str | None:
@@ -387,7 +390,7 @@ def test_signals_during_fallback_leave_program_running(make_target, python, tmp_
     (tmp_path / "token").write_text("token")
     with signals_to(target):
         subprocess.run(
-            _debugpy_argv(target.pid, _free_port(), str(tmp_path / "ran"), "token"),
+            _debugpy_argv(target.pid, _free_port(), str(tmp_path / "ran")),
             capture_output=True,
             timeout=30,
         )
@@ -419,6 +422,13 @@ needs_root = pytest.mark.skipif(not LINUX or os.geteuid() != 0, reason="needs ro
 NOBODY = 65534
 
 
+def _shared_workdir():
+    """For root's temp files and the target's: sticky, like /tmp."""
+    workdir = Path(tempfile.mkdtemp(prefix="tdb-root-test-"))
+    workdir.chmod(0o1777)
+    return workdir
+
+
 def _as_nobody():
     os.setgid(NOBODY)
     os.setuid(NOBODY)
@@ -428,8 +438,7 @@ def _as_nobody():
 @needs_root
 def test_root_target_user_cannot_replace_gdb_commands(python):
     # They own the work directory, and root's gdb must not run their commands.
-    workdir = Path(tempfile.mkdtemp(prefix="tdb-root-test-"))
-    workdir.chmod(0o777)
+    workdir = _shared_workdir()
     proof = workdir / "proof"
     attacker = subprocess.Popen(
         [
@@ -467,52 +476,20 @@ def test_root_target_user_cannot_replace_gdb_commands(python):
 
 @linux_only
 @needs_root
-def test_root_gdb_commands_survive_a_writable_tmpdir(python):
-    # sudo's env_keep can leave root a TMPDIR the user can write to. Session
-    # points TMPDIR at this 0777 directory, so the user can't read tdb's
-    # private directory but can rename it and put their own in its place.
+def test_root_refuses_a_tmpdir_others_can_change(python):
+    # sudo's env_keep can leave root a TMPDIR the user can write to. Nothing
+    # stops them swapping tdb's directory there, and root writes through it.
     workdir = Path(tempfile.mkdtemp(prefix="tdb-root-test-"))
     workdir.chmod(0o777)
-    proof = workdir / "proof"
-    attacker = subprocess.Popen(
-        [
-            sys.executable,
-            "-c",
-            "import glob, os, sys, time\n"
-            "work, proof = sys.argv[1:]\n"
-            "swapped = set()\n"
-            "while True:\n"
-            "    for d in glob.glob(os.path.join(work, 'tdb-gdb-*')):\n"
-            "        if d in swapped or d.endswith('.old'):\n"
-            "            continue\n"
-            "        time.sleep(0.01)  # Let root write, then beat gdb's start.\n"
-            "        try:\n"
-            "            os.rename(d, d + '.old')\n"
-            "            os.mkdir(d)\n"
-            "            with open(d + '/queue.gdb', 'w') as f:\n"
-            "                f.write(f'shell touch {proof}\\n')\n"
-            "            swapped.add(d)\n"
-            "        except OSError:\n"
-            "            pass\n",
-            str(workdir),
-            str(proof),
-        ],
-        preexec_fn=_as_nobody,
-    )
     target = Target(python, "busy", workdir, user=NOBODY)
     session = Session(target.pid, workdir)
     try:
-        ready = session.wait_ready()
-        assert not proof.exists(), "root's gdb ran the user's commands"
-        assert ready, session.errors()
-        # The gdb route has to be the one that worked, or nothing was proved.
-        assert "debugpy injection" not in session.errors()
-        assert run_to_line(session, WORK_LINE)
-        session.quit()
+        session.proc.wait(timeout=40)
+        assert "TMPDIR" in session.errors()
+        assert glob.glob(str(workdir / "tdb-attach-*")) == []
+        target.assert_running()
     finally:
         session.close()
-        attacker.kill()
-        attacker.wait()
         target.kill()
         shutil.rmtree(workdir, ignore_errors=True)
 
@@ -571,8 +548,7 @@ def test_fallback_with_busy_worker(make_target, attach, python):
 @needs_root
 def test_root_attaches_to_another_users_program(python):
     # What tdb tells people to do under Yama. Run as root by the CI job.
-    workdir = Path(tempfile.mkdtemp(prefix="tdb-root-test-"))
-    workdir.chmod(0o777)
+    workdir = _shared_workdir()
     target = Target(python, "busy", workdir, user=65534)
     session = Session(target.pid, workdir)
     try:
@@ -619,8 +595,7 @@ def test_attach_ignores_debugpy_in_cwd(make_target, tmp_path):
 @needs_root
 def test_root_attach_ignores_debugpy_in_cwd(python):
     # `sudo tdb -a PID` from a directory the target's user controls.
-    workdir = Path(tempfile.mkdtemp(prefix="tdb-root-test-"))
-    workdir.chmod(0o777)
+    workdir = _shared_workdir()
     hostile = workdir / "hostile"
     hostile.mkdir()
     proof = _plant_debugpy(hostile)
@@ -741,6 +716,119 @@ def test_output_reaches_console(make_target, attach):
         output += session.client.ok("get_output") or ""
         time.sleep(0.1)
     assert "tick" in output
+
+
+def _silent_adapter_program(python, close_it):
+    """A program stuck in real pydevd: connected, with no configurationDone."""
+    code = _python_gdb_helper.FAST_HANDOFFS.replace(
+        repr(_python_gdb_helper.SWITCH_INTERVAL_LIMIT), "1.0"
+    ) + (
+        "import debugpy, sys, threading, time\n"
+        "tools = lambda: [sys.monitoring.get_tool(i) for i in range(6)]\n"
+        "state = (lambda: (sys.gettrace(), tools() if hasattr(sys, 'monitoring') else []))\n"
+        "seen = {}\n"
+        "def other_thread():\n"
+        "    released.wait()\n"
+        "    (lambda: None)()\n"
+        "    (lambda: None)()\n"
+        "    seen['worker'] = sys.gettrace()\n"
+        "released = threading.Event()\n"
+        "worker = threading.Thread(target=other_thread)\n"
+        "worker.start()\n"
+        "_tdb_fast_handoffs(lambda: debugpy.connect(('127.0.0.1', PORT)))\n"
+        "time.sleep(0.5)\n"
+        "(lambda: None)()\n"
+        "print('released', flush=True)\n"
+        "released.set()\n"
+        "worker.join()\n"
+        "print('main', *state(), flush=True)\n"
+        "print('worker', seen['worker'], flush=True)\n"
+    )
+    import debugpy
+
+    env = {**os.environ, "PYTHONPATH": str(Path(debugpy.__file__).parents[1])}
+    with socket.socket() as server:
+        server.bind(("127.0.0.1", 0))
+        server.listen()
+        program = subprocess.Popen(
+            [python, "-c", code.replace("PORT", str(server.getsockname()[1]))],
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        server.settimeout(30)
+        accepted, _ = server.accept()
+        with accepted:
+            if close_it:
+                accepted.close()
+            try:
+                out, err = program.communicate(timeout=30)
+            except subprocess.TimeoutExpired:
+                program.kill()
+                out, err = program.communicate()
+                out += "still frozen"
+    return out, err
+
+
+@pytest.mark.parametrize("close_it", [False, True], ids=["silent", "gone"])
+def test_program_gets_free_if_the_attach_never_finishes(python, close_it):
+    # pydevd waits for configurationDone with no timeout. Every thread has to
+    # end up untraced too: leaving a tracer costs the program speed for good.
+    out, err = _silent_adapter_program(python, close_it)
+    assert "released" in out, out + err
+    assert "main None []" in out or "main None [None, None, None, None, None, None]" in out, out + err
+    assert "worker None" in out, out + err
+
+
+def _child_log(target):
+    path = Path(f"{target.heartbeat}.children")
+    return path.read_text() if path.exists() else ""
+
+
+def _wait_for_children(target, count):
+    wanted = _child_log(target).count("exit ") + count
+    deadline = time.monotonic() + 20
+    while _child_log(target).count("exit ") < wanted:
+        assert time.monotonic() < deadline, _child_log(target)[-2000:]
+        time.sleep(0.05)
+
+
+@linux_only
+@needs_gdb_injection
+@pytest.mark.parametrize("mode", ["forking", "forking_raise"])
+def test_forked_children_never_stop_for_tdb(make_target, attach, python, mode):
+    # They have nothing left to talk to tdb with, so a stop there is for good.
+    target = make_target(mode, python)
+    session = attach(target, "--no-pause-on-attach")
+    session.client.ok("set_breakpoint", f"{TARGET}:{CHILD_LINE}")
+    _wait_for_children(target, 3)
+    during = _child_log(target)
+    session.quit()
+    _wait_for_children(target, 3)
+    assert "hung" not in _child_log(target)
+    # The session's socket stays open in a child, and tdb then can't see the
+    # target die while the child lives.
+    assert "sockets 0" in during and "sockets 1" not in during
+    warned = "PYDEV DEBUGGER WARNING" in target.stderr_path.read_text()
+    assert not warned, "a forked child wrote to the program's stderr"
+
+
+@linux_only
+@needs_gdb_injection
+@pytest.mark.parametrize("mode", ["spawning", "join_spawning"])
+def test_python_children_stay_out_of_the_session(make_target, attach, mode):
+    # debugpy would rewrite their command lines to dial the adapter: that
+    # shows its port and token to every local user, and once tdb has gone
+    # they die on the dead port or connect to whoever took it.
+    target = make_target(mode)
+    session = attach(target, "--no-pause-on-attach")
+    _wait_for_children(target, 3)
+    session.quit()
+    _wait_for_children(target, 3)
+    log = _child_log(target)
+    assert "settrace" not in log
+    assert {line for line in log.splitlines() if line.startswith("exit")} == {"exit 0"}
 
 
 @linux_only

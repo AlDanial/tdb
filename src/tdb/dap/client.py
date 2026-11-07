@@ -218,7 +218,27 @@ class DAPClient:
                 self._process.terminate()
             except ProcessLookupError:
                 pass  # adapter already died (crash or kill) — nothing to stop
-            await self._process.wait()
+            await self._reap_adapter()
+
+    async def _reap_adapter(self) -> None:
+        """A wedged adapter (gdb stuck on its own locks) takes SIGTERM and
+        never acts on it, so neither wait may be unbounded."""
+        from tdb._timeouts import ADAPTER_STOP_GRACE
+
+        assert self._process is not None
+        try:
+            await asyncio.wait_for(self._process.wait(), ADAPTER_STOP_GRACE)
+            return
+        except asyncio.TimeoutError:
+            log.warning("Adapter ignored SIGTERM; killing it")
+        try:
+            self._process.kill()
+        except ProcessLookupError:
+            pass
+        try:
+            await asyncio.wait_for(self._process.wait(), ADAPTER_STOP_GRACE)
+        except asyncio.TimeoutError:
+            log.warning("Adapter still not reaped after SIGKILL")
 
     async def _read_loop(self) -> None:
         """Continuously read DAP messages from the adapter."""

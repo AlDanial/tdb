@@ -13,7 +13,7 @@ import contextlib
 import os
 import re
 import shutil
-import socket
+import stat
 import subprocess
 import sys
 import tempfile
@@ -55,7 +55,7 @@ _POLL = 0.25
 _HELPER_EXIT_GRACE = 2.0
 _MAX_REASON_LENGTH = 300
 
-_SCRIPT_NAME = "attach.py"
+_SCRIPT_NAME = _python_gdb_helper.SCRIPT_NAME
 _MARKER_NAME = "marker"
 _CLAIMED_NAME = "claimed"
 _RAN_NAME = "ran"
@@ -313,8 +313,48 @@ def _check_target_can_read(pid: int, path: str) -> None:
         )
 
 
+def _only_root_can_change(path: str) -> bool:
+    """True if no other user could rename what root puts in directory `path`.
+    The sticky bit counts: that is how others can share /tmp safely.
+
+    `path` has to be resolved already, and any symlink refuses it: following
+    one here would check somewhere other than where the path later leads.
+    """
+    try:
+        while True:
+            st = os.lstat(path)
+            if st.st_uid != 0 or stat.S_ISLNK(st.st_mode):
+                return False
+            if st.st_mode & 0o022 and not st.st_mode & stat.S_ISVTX:
+                return False
+            parent = os.path.dirname(path)
+            if parent == path:
+                return True
+            path = parent
+    except OSError:
+        return False
+
+
+def _temp_base(pid: int) -> str | None:
+    """Where to make temporary directories, or None for tempfile's default.
+
+    Root writes files by name in there and then chowns them, so anyone who
+    can swap the directory has root write wherever they point it.
+    """
+    if _euid() != 0:
+        return None
+    base = os.path.realpath(tempfile.gettempdir())
+    if not _only_root_can_change(base):
+        raise PidAttachError(
+            f"cannot attach to pid {pid}: running as root, tdb won't use the "
+            f"temporary directory {base}, as other users could change it. Set "
+            "TMPDIR to a directory only root can change, or a sticky one like /tmp"
+        )
+    return base
+
+
 def _new_workdir(pid: int) -> str:
-    workdir = tempfile.mkdtemp(prefix="tdb-attach-")
+    workdir = tempfile.mkdtemp(prefix="tdb-attach-", dir=_temp_base(pid))
     try:
         # The parent, for permissions: this directory is root's own until
         # it is handed over. Only here does a private /tmp show.
@@ -386,13 +426,6 @@ def probe_target(pid: int, python: str | None = None) -> TargetInfo:
     return TargetInfo(pid, path, remote_exec == "True")
 
 
-def free_port() -> int:
-    """An unused localhost port for the adapter to wait on."""
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
 def build_remote_exec_script(
     server_dir: str, port: int, marker: str, claimed: str, token: str
 ) -> str:
@@ -404,7 +437,8 @@ def build_remote_exec_script(
     that loses only deletes its directory. Everything lives in one
     function so no names are left in the target.
     """
-    return _python_gdb_helper.FAST_HANDOFFS + textwrap.dedent(
+    prelude = _python_gdb_helper.FAST_HANDOFFS + _python_gdb_helper.ATTACH_PRELUDE
+    return prelude + textwrap.dedent(
         f"""\
         def _tdb_attach():
             import os, shutil, sys
@@ -421,18 +455,20 @@ def build_remote_exec_script(
                     import attach_pid_injected
                 finally:
                     del sys.path[0]
-                attach_pid_injected.attach({{
-                    "mode": "connect",
-                    "address": ["127.0.0.1", {port!r}],
-                    "wait_for_client": False,
-                    "log_to": None,
-                    "adapter_access_token": {token!r},
-                }})
+                key = bytes.fromhex({token!r})
+                if _tdb_prepare(attach_pid_injected, {port!r}, key):
+                    attach_pid_injected.attach({{
+                        "mode": "connect",
+                        "address": ["127.0.0.1", {port!r}],
+                        "wait_for_client": False,
+                        "log_to": None,
+                        "adapter_access_token": None,
+                    }})
             _tdb_fast_handoffs(run)
         try:
             _tdb_attach()
         finally:
-            del _tdb_attach, _tdb_fast_handoffs
+            del _tdb_attach, _tdb_fast_handoffs, _tdb_dial, _tdb_prepare
         """
     )
 
@@ -596,19 +632,13 @@ def _gdb_queue_argv(pid: int, commands_path: str) -> list[str]:
     ]  # fmt: skip
 
 
-def _debugpy_argv(pid: int, port: int, ran_marker: str, token: str) -> list[str]:
+def _debugpy_argv(pid: int, port: int, ran_marker: str) -> list[str]:
     # -P: the cwd otherwise comes first, and a local debugpy/ would win.
-    # lldb and DLL injection have no gdb to get out of, and are untested
-    # with a thread, so they keep debugpy's plain entry point. That has
-    # only the command line for the token; the helper reads it from a file.
-    if sys.platform == "linux":
-        entry = [_python_gdb_helper.__file__, ran_marker]
-    else:
-        entry = ["-m", "debugpy", "--adapter-access-token", token]
     return [
         sys.executable,
         "-P",
-        *entry,
+        _python_gdb_helper.__file__,
+        ran_marker,
         "--connect",
         f"127.0.0.1:{port}",
         "--disable-sys-remote-exec",
@@ -755,6 +785,22 @@ def _no_connection_error(pid: int) -> PidAttachError:
     )
 
 
+def _write_script(workdir: str, port: int, token: str) -> tuple[str, str, str]:
+    """Leave the attach script in `workdir`. Returns its marker, its claimed
+    path and its own."""
+    from debugpy import server
+
+    server_dir = os.path.dirname(server.__file__)
+    marker = os.path.join(workdir, _MARKER_NAME)
+    claimed = os.path.join(workdir, _CLAIMED_NAME)
+    script_path = os.path.join(workdir, _SCRIPT_NAME)
+    with open(marker, "w"):
+        pass
+    with open(script_path, "w", encoding="utf-8") as f:
+        f.write(build_remote_exec_script(server_dir, port, marker, claimed, token))
+    return marker, claimed, script_path
+
+
 async def _try_queued(
     queue: Callable[[str], Awaitable[tuple[bool, str]]],
     pid: int,
@@ -771,17 +817,8 @@ async def _try_queued(
     has started in the target; raises if the script started but never
     connected, as a fallback would then be a second attach.
     """
-    from debugpy import server
-
-    server_dir = os.path.dirname(server.__file__)
     workdir = _new_workdir(pid)
-    marker = os.path.join(workdir, _MARKER_NAME)
-    claimed = os.path.join(workdir, _CLAIMED_NAME)
-    script_path = os.path.join(workdir, _SCRIPT_NAME)
-    with open(marker, "w"):
-        pass
-    with open(script_path, "w", encoding="utf-8") as f:
-        f.write(build_remote_exec_script(server_dir, port, marker, claimed, token))
+    marker, claimed, script_path = _write_script(workdir, port, token)
     _hand_to_target([marker, script_path, workdir], pid)
 
     output = ""
@@ -922,10 +959,15 @@ async def _inject(
     fd = os.open(token_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(fd, "w") as f:
         f.write(token)
-    _hand_to_target([token_path, workdir], pid)
+    handed_over = [token_path, workdir]
+    if sys.platform != "linux":
+        # The helper can only inject a line that runs this.
+        marker, _, script_path = _write_script(workdir, port, token)
+        handed_over = [token_path, marker, script_path, workdir]
+    _hand_to_target(handed_over, pid)
     try:
         return await _inject_with_debugpy(
-            pid, port, connected, deadline, workdir, failure, token
+            pid, port, connected, deadline, workdir, failure
         )
     finally:
         # Not TemporaryDirectory: the target's user may own this directory,
@@ -940,11 +982,10 @@ async def _inject_with_debugpy(
     deadline: float,
     workdir: str,
     failure: Callable[[str], PidAttachError],
-    token: str,
 ) -> str:
     with tempfile.TemporaryFile() as output:
         ran_marker = os.path.join(workdir, _RAN_NAME)
-        helper = _spawn_detached(_debugpy_argv(pid, port, ran_marker, token), output)
+        helper = _spawn_detached(_debugpy_argv(pid, port, ran_marker), output)
         if await _wait_for_connection(pid, connected, deadline, helper, ran_marker):
             # lldb and DLL injection stay in the target until the handshake
             # ends. Wait so a session never has a debugger in it.

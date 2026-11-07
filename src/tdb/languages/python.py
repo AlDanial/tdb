@@ -6,8 +6,11 @@ import asyncio
 import os
 import secrets
 import sys
+from collections.abc import Callable
 from typing import Any
 
+from tdb import _timeouts
+from tdb.dap.messages import Event
 from tdb.dap.types import Capabilities
 from tdb.languages.base import (
     AdapterQuirks,
@@ -20,7 +23,13 @@ from tdb.languages.base import (
 )
 from tdb.languages import _python_adapter
 from tdb.languages.errors import parse_python_error
-from tdb.languages.python_attach import TargetInfo, free_port, inject, probe_target
+from tdb.languages.python_attach import (
+    PidAttachCancelled,
+    PidAttachError,
+    TargetInfo,
+    inject,
+    probe_target,
+)
 
 
 class DebugpyAdapter(AdapterSpec):
@@ -108,15 +117,16 @@ class DebugpyAdapter(AdapterSpec):
 
 class PidAttachDebugpyAdapter(DebugpyAdapter):
     """Attach to a running process by pid. tdb spawns the adapter, which
-    waits on `listen_port`; code injected into the target dials back, so
-    nothing stays open in the target after tdb quits."""
+    picks a port and reports it; code injected into the target dials back,
+    so nothing stays open in the target after tdb quits."""
 
     # No pre-armed pause: see DebugController._finish_attach_hook.
     quirks = AdapterQuirks(attach_via_adapter=True)
 
-    def __init__(self, target: TargetInfo, listen_port: int) -> None:
+    def __init__(self, target: TargetInfo) -> None:
         self.target = target
-        self.listen_port = listen_port
+        self.listen_port: int | None = None
+        self._listening = asyncio.Event()
         self.token = secrets.token_hex(32)
 
     def command(self) -> list[str]:
@@ -138,7 +148,9 @@ class PidAttachDebugpyAdapter(DebugpyAdapter):
     ) -> dict[str, Any]:
         arguments = super().attach_body(host=host, port=port, opts=opts)
         del arguments["connect"]
-        arguments["listen"] = {"host": "127.0.0.1", "port": self.listen_port}
+        # The adapter chooses: a port tdb picked could be taken before the
+        # adapter bound it, and the target would dial whoever took it.
+        arguments["listen"] = {"host": "127.0.0.1", "port": 0}
         arguments["redirectOutput"] = True
         arguments["subProcess"] = False
         return arguments
@@ -146,9 +158,41 @@ class PidAttachDebugpyAdapter(DebugpyAdapter):
     async def after_attach_request(
         self, initialized: asyncio.Event, quitting: asyncio.Event
     ) -> str | None:
+        await self._wait_until_listening(quitting)
+        assert self.listen_port is not None
         return await inject(
             self.target, self.listen_port, initialized, quitting, token=self.token
         )
+
+    def event_handlers(self) -> dict[str, Callable[[Event], None]]:
+        return {"debugpyWaitingForServer": self._on_waiting_for_server}
+
+    def _on_waiting_for_server(self, event: Event) -> None:
+        self.listen_port = event.body["port"]
+        self._listening.set()
+
+    async def _wait_until_listening(self, quitting: asyncio.Event) -> None:
+        waits = {
+            asyncio.ensure_future(self._listening.wait()),
+            asyncio.ensure_future(quitting.wait()),
+        }
+        try:
+            await asyncio.wait(
+                waits,
+                timeout=_timeouts.PID_ATTACH_LISTEN,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+        finally:
+            for wait in waits:
+                wait.cancel()
+        if quitting.is_set():
+            raise PidAttachCancelled(f"attach to pid {self.target.pid} cancelled")
+        if not self._listening.is_set():
+            raise PidAttachError(
+                f"cannot attach to pid {self.target.pid}: debugpy's adapter did "
+                f"not start listening within {_timeouts.PID_ATTACH_LISTEN:.0f} "
+                "seconds"
+            )
 
 
 def _is_breakpoint_hook_frame(frame) -> bool:
@@ -187,7 +231,7 @@ def build_python_profile(
 
     spec: AdapterSpec = DebugpyAdapter()
     if attach_pid is not None:
-        spec = PidAttachDebugpyAdapter(probe_target(attach_pid, python), free_port())
+        spec = PidAttachDebugpyAdapter(probe_target(attach_pid, python))
     return LanguageProfile(
         id="python",
         display_name="Python",
@@ -197,7 +241,9 @@ def build_python_profile(
             compute_step_units=compute_step_units,
             breakpoint_hook_frame=_is_breakpoint_hook_frame,
             breakpoint_hook_step_in_frame=_is_pytest_trace_trampoline_frame,
-            child_process_strategy="debugpy",
+            # Children aren't debugged after an attach by pid, and a forged
+            # debugpyAttach would have tdb connect wherever the target said.
+            child_process_strategy="debugpy" if attach_pid is None else None,
             task_inspection=True,
             pause_while_running=True,
             interactive_variable=assignment_matcher(

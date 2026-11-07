@@ -5,6 +5,7 @@ import ctypes
 import os
 import signal
 import socket
+import subprocess
 import sys
 import threading
 import time
@@ -43,6 +44,61 @@ if mode == "debugpy_listen":
 def spin():
     while True:
         sum(range(10000))
+
+
+def child_work():
+    return 1  # CHILD_LINE
+
+
+def fork_children(raising):
+    """Fork for good, logging how each child ended: "hung" if it never did."""
+    log = heartbeat + ".children"
+    while True:
+        pid = os.fork()
+        if pid == 0:
+            child_work()
+            sockets = sum(
+                os.readlink(f"/proc/self/fd/{fd}").startswith("socket:")
+                for fd in os.listdir("/proc/self/fd")
+                if os.path.exists(f"/proc/self/fd/{fd}")
+            )
+            with open(log, "a") as f:
+                f.write(f"sockets {sockets}\n")
+            if raising:
+                raise ValueError("in the child")
+            os._exit(0)
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline:
+            if os.waitpid(pid, os.WNOHANG)[0]:
+                outcome = "exit"
+                break
+            time.sleep(0.01)
+        else:
+            outcome = "hung"
+            os.kill(pid, signal.SIGKILL)
+            os.waitpid(pid, 0)
+        with open(log, "a") as f:
+            f.write(f"{outcome} \n")
+        with open(heartbeat, "w") as f:
+            f.write(str(time.time()))
+        time.sleep(0.05)
+
+
+def spawn_children():
+    """Run Python children for good, logging what each saw and how it ended."""
+    log = heartbeat + ".children"
+    code = (
+        "import sys\n"
+        "cmdline = open('/proc/self/cmdline').read().replace(chr(0), ' ')\n"
+        "open(sys.argv[1], 'a').write('child ' + cmdline + chr(10))\n"
+    )
+    while True:
+        result = subprocess.run([sys.executable, "-c", code, log], capture_output=True)
+        with open(log, "a") as f:
+            f.write(f"exit {result.returncode}\n")
+        with open(heartbeat, "w") as f:
+            f.write(str(time.time()))
+        time.sleep(0.05)
 
 
 def hot_loop():
@@ -86,6 +142,15 @@ elif mode == "shadowed":
         os.write(fd, str(time.time()).encode())
         os.close(fd)
         time.sleep(0.02)
+elif mode in ("forking", "forking_raise"):
+    fork_children(raising=mode == "forking_raise")
+elif mode == "spawning":
+    spawn_children()
+elif mode == "join_spawning":
+    # Main blocked in join, so attaching takes debugpy's own injection.
+    worker = threading.Thread(target=spawn_children, daemon=True)
+    worker.start()
+    worker.join()
 elif mode == "join_busy":
     worker = threading.Thread(target=hot_loop, daemon=True)
     worker.start()

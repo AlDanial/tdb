@@ -21,6 +21,7 @@ from tdb.app_handlers.routing import _AppMessageRoutes
 from tdb.languages.base import AdapterNotFoundError
 from tdb.languages.python_attach import PidAttachCancelled, PidAttachError
 from tdb.session.controller import DebugController
+from tdb.terminal_text import terminal_hung_up
 from tdb.session.messages import DapStopped
 from tdb.session.state import SessionPhase
 from tdb.session.textual_handler import TextualEventHandler
@@ -351,6 +352,7 @@ class TdbApp(_AppMessageRoutes, App):
         yield Footer()
 
     def on_mount(self) -> None:
+        self.set_interval(2.0, self._exit_if_terminal_hung_up)
         if self._config.theme and self._config.theme in self.available_themes:
             self.theme = self._config.theme
 
@@ -1994,6 +1996,15 @@ class TdbApp(_AppMessageRoutes, App):
         # `controller.stop()` can take a moment when many child DAP
         # sessions need to be torn down — without this guard, a second
         # keypress would spawn another concurrent shutdown.
+        await self._finish_quit()
+
+    def _exit_if_terminal_hung_up(self) -> None:
+        """Nobody can answer a prompt now, so this skips them. Unsaved edits
+        are lost, as they are when a signal ends tdb."""
+        if terminal_hung_up():
+            self.run_worker(self._finish_quit(), name="terminal-gone")
+
+    async def _finish_quit(self) -> None:
         if self._is_quitting:
             return
         self._is_quitting = True

@@ -2,12 +2,20 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
+from tdb import _timeouts
 from tdb.cli import parse_args
+from tdb.dap.messages import Event
 from tdb.languages.base import LanguageNotSupportedError
 from tdb.languages.python import DebugpyAdapter, PidAttachDebugpyAdapter
-from tdb.languages.python_attach import TargetInfo
+from tdb.languages.python_attach import (
+    PidAttachCancelled,
+    PidAttachError,
+    TargetInfo,
+)
 
 TARGET = TargetInfo(4242, "/usr/bin/python3.14", True)
 
@@ -72,17 +80,25 @@ def test_remote_attach_keeps_plain_adapter():
 
 
 def test_attach_body_shape():
-    body = PidAttachDebugpyAdapter(TARGET, 6000).attach_body(
+    body = PidAttachDebugpyAdapter(TARGET).attach_body(
         host="127.0.0.1", port=0, opts={}
     )
-    assert body["listen"] == {"host": "127.0.0.1", "port": 6000}
+    # Port 0: a port picked beforehand can be taken before the adapter binds.
+    assert body["listen"] == {"host": "127.0.0.1", "port": 0}
     assert body["redirectOutput"] is True
     assert body["subProcess"] is False
     assert "connect" not in body
 
 
+def test_attach_ignores_requests_to_connect_to_children(probe_calls):
+    # Children aren't debugged here, and a forged debugpyAttach from a hostile
+    # target would have tdb connect wherever it said.
+    args = parse_args(["--lang", "python", "-a", "4242"])
+    assert args.profile.capabilities.child_process_strategy is None
+
+
 def test_quirks():
-    quirks = PidAttachDebugpyAdapter(TARGET, 6000).quirks
+    quirks = PidAttachDebugpyAdapter(TARGET).quirks
     assert quirks.attach_via_adapter
     # A pre-armed pause lands inside the injected call, with gdb attached.
     assert not quirks.pre_arm_pause_on_attach
@@ -97,8 +113,46 @@ async def test_adapter_hook_runs_inject(monkeypatch):
         return "sys.remote_exec"
 
     monkeypatch.setattr("tdb.languages.python.inject", fake_inject)
-    event, quitting = object(), object()
-    spec = PidAttachDebugpyAdapter(TARGET, 6000)
-    method = await spec.after_attach_request(event, quitting)
+    connected, quitting = object(), asyncio.Event()
+    spec = PidAttachDebugpyAdapter(TARGET)
+    _report_listening(spec, 6000)
+    method = await spec.after_attach_request(connected, quitting)
     assert method == "sys.remote_exec"
-    assert calls == [(TARGET, 6000, event, quitting, spec.token)]
+    assert calls == [(TARGET, 6000, connected, quitting, spec.token)]
+
+
+def _report_listening(spec, port):
+    (handler,) = spec.event_handlers().values()
+    handler(Event(seq=1, event="debugpyWaitingForServer", body={"port": port}))
+
+
+def test_adapter_listens_for_debugpys_event():
+    assert list(PidAttachDebugpyAdapter(TARGET).event_handlers()) == [
+        "debugpyWaitingForServer"
+    ]
+
+
+async def _never_injected(monkeypatch):
+    async def fake_inject(*args, **kwargs):
+        raise AssertionError("injected with no adapter listening")
+
+    monkeypatch.setattr("tdb.languages.python.inject", fake_inject)
+
+
+async def test_no_injection_until_the_adapter_listens(monkeypatch):
+    # The target dials whatever port it is given, so anyone holding that
+    # port gets the token and the program.
+    await _never_injected(monkeypatch)
+    monkeypatch.setattr(_timeouts, "PID_ATTACH_LISTEN", 0.05)
+    with pytest.raises(PidAttachError, match="adapter"):
+        await PidAttachDebugpyAdapter(TARGET).after_attach_request(
+            object(), asyncio.Event()
+        )
+
+
+async def test_quitting_stops_the_wait_for_the_adapter(monkeypatch):
+    await _never_injected(monkeypatch)
+    quitting = asyncio.Event()
+    quitting.set()
+    with pytest.raises(PidAttachCancelled):
+        await PidAttachDebugpyAdapter(TARGET).after_attach_request(object(), quitting)

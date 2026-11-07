@@ -11,6 +11,8 @@ spawning debugpy.
 from __future__ import annotations
 
 import asyncio
+import signal
+import sys
 from typing import Any, Callable
 
 import pytest
@@ -824,3 +826,28 @@ async def test_stream_loss_without_adapter_death_keeps_original_error(monkeypatc
     with pytest.raises(ConnectionError, match="Connection lost"):
         await client.initialize()
     client._watch_task.cancel()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="SIGTERM cannot be ignored")
+async def test_stop_gives_up_on_an_adapter_that_ignores_sigterm():
+    # A wedged gdb takes SIGTERM and never acts on it; waiting for it hung
+    # the session for good.
+    code = (
+        "import signal, time\n"
+        "signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+        "print('ready', flush=True)\n"
+        "time.sleep(300)\n"
+    )
+    process = await asyncio.create_subprocess_exec(
+        sys.executable, "-c", code, stdout=asyncio.subprocess.PIPE
+    )
+    await process.stdout.readline()
+    client = DAPClient()
+    client._process = process
+    try:
+        await asyncio.wait_for(client.stop(), timeout=15)
+    finally:
+        if process.returncode is None:
+            process.kill()
+            await process.wait()
+    assert process.returncode == -signal.SIGKILL

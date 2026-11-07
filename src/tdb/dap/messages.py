@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from tdb.terminal_text import clean_message
+
 
 @dataclass
 class Request:
@@ -81,10 +83,15 @@ class Event:
 
 def parse_message(data: dict[str, Any]) -> Request | Response | Event:
     msg_type = data["type"]
+    # Text from the debuggee, on its way to tdb's own terminal.
     if msg_type == "response":
-        return Response.from_dict(data)
+        return Response.from_dict(clean_message(data))
     elif msg_type == "event":
-        return Event.from_dict(data)
+        cleaned = clean_message(data)
+        if data.get("event") == "output" and "output" in data.get("body", {}):
+            # ConsoleView keeps the colours, safely.
+            cleaned["body"]["output"] = data["body"]["output"]
+        return Event.from_dict(cleaned)
     elif msg_type == "request":
         return Request(
             seq=data["seq"],

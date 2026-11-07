@@ -438,6 +438,8 @@ class DebugController:
         self._is_remote_attach = True
         self._pre_arm_pause = pre_arm_pause
         self._attach_path_mappings = list(path_mappings or [])
+        for name, handler in self.profile.adapter.event_handlers().items():
+            self.client.on_event(name, handler)
 
         if self.profile.adapter.quirks.attach_via_adapter:
             await self.client.start()
