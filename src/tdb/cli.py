@@ -136,6 +136,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Arguments to pass to the debugged program",
     )
     parser.add_argument(
+        "--source",
+        metavar="FILE",
+        help="Add files to the Source picker from a UTF-8 list (one filename "
+        "per line, relative to the list file; blank lines and # comments ignored). "
+        "Supplements local Python imports.",
+    )
+    parser.add_argument(
         "--cwd",
         default=None,
         help="Working directory for the debugged program",
@@ -895,6 +902,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = build_parser()
     args = parser.parse_args(argv)
     _apply_flag_implications(args)
+    args.source_files = []
+    if args.source is not None:
+        from tdb.source_discovery import read_source_list
+
+        try:
+            args.source_files, warnings = read_source_list(args.source)
+        except (OSError, UnicodeError, ValueError) as exc:
+            parser.error(f"cannot read --source {args.source}: {exc}")
+        for warning in warnings:
+            print(f"tdb: warning: {warning}", file=sys.stderr)
 
     if args.run:
         for flag, value in (
@@ -1249,6 +1266,7 @@ def _run_post_mortem(args: argparse.Namespace) -> None:
         program="",
         config=config,
         post_mortem_snapshot=snapshot,
+        source_files=args.source_files,
     )
     app.run()
 
@@ -1295,6 +1313,7 @@ def _run_run(args: argparse.Namespace) -> None:
             config=load_config(),
             examine_dests=args.examine_log,
             cli_breakpoints=args.cli_bps,
+            source_files=args.source_files,
         )
     )
     sys.exit(code)
@@ -1328,6 +1347,7 @@ def build_replay_tui_app(
     replay_timeout: float = 30.0,
     announce: bool = True,
     interval: float | None = None,
+    source_files: list[Path] | None = None,
 ) -> "tuple[TdbApp, ReplayDriver]":
     """Build the TUI + driver pair for `--replay-tui` from a recording.
 
@@ -1350,7 +1370,12 @@ def build_replay_tui_app(
         announce=announce,
         interval=interval,
     )
-    common = dict(config=config, profile=profile_from_header(h), replay_driver=driver)
+    common = dict(
+        config=config,
+        profile=profile_from_header(h),
+        replay_driver=driver,
+        source_files=source_files,
+    )
     if h["mode"] == "launch":
         app = TdbApp(
             program=h["program"],
@@ -1395,6 +1420,7 @@ def _run_replay_tui(args: argparse.Namespace) -> None:
         replay_timeout=args.replay_timeout,
         announce=not args.replay_quiet,
         interval=args.replay_interval,
+        source_files=args.source_files,
     )
     app.run()
     if app._startup_error:
@@ -1445,6 +1471,7 @@ def _run_tui(args: argparse.Namespace) -> None:
         server_port=args.server_port if args.server else None,
         profile=args.profile,
         recorder=recorder,
+        source_files=args.source_files,
     )
     try:
         app.run()
