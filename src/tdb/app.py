@@ -27,6 +27,8 @@ from tdb.session.state import SessionPhase
 from tdb.session.textual_handler import TextualEventHandler
 from tdb.keybindings import KeybindingConfig, Mode
 from tdb.source_edit import remap_breakpoints
+from tdb.source_discovery import discover_sources
+from tdb.widgets.source_modal import SourceModal
 from tdb.widgets.breakpoint_view import BreakpointView
 from tdb.widgets.code_editor import _UnsavedChangesModal
 from tdb.widgets.code_view import CodeView, _BreakpointConditionModal, looks_binary
@@ -150,6 +152,7 @@ class TdbApp(_AppMessageRoutes, App):
         # convention. So we bind both forms for File; a user pressing Alt+F
         # gets ctrl+right delivered to tdb, which still opens the menu.
         Binding("alt+f,ctrl+right", "menu_file", "File menu", show=False),
+        Binding("alt+s", "menu_source", "Source files", show=False, priority=True),
         Binding("alt+c", "menu_configure", "Configure menu", show=False),
         Binding("alt+e", "menu_edit", "Edit menu", show=False),
         Binding("alt+t", "menu_threads", "Threads", show=False),
@@ -204,10 +207,12 @@ class TdbApp(_AppMessageRoutes, App):
         adopted_handler: "SwappableEventHandler | None" = None,
         adopted_stop: tuple | None = None,
         replay_driver: "ReplayDriver | None" = None,
+        source_files: list[Path] | None = None,
     ) -> None:
         super().__init__()
         keep_writer_draining()
         self._program = program
+        self._source_files = source_files or []
         self._replay_driver = replay_driver
         # Set by the DAP stopped/terminated handlers once the panels
         # reflect a *final* stop (statement-mode intermediate stops never
@@ -320,7 +325,7 @@ class TdbApp(_AppMessageRoutes, App):
             action_labels["async-tasks-label"] = "Async Tasks"
         # File > Open is language-aware: the picker filters to the
         # profile's extensions and validates the pick (action_open_file).
-        leading_action_labels = {"open-file-label": "File"}
+        leading_action_labels = {"open-file-label": "File", "source-label": "Source"}
         yield MenuBar(
             {
                 "Edit": [
@@ -1792,6 +1797,8 @@ class TdbApp(_AppMessageRoutes, App):
     ) -> None:
         if message.label_id == "open-file-label":
             self.action_open_file()
+        elif message.label_id == "source-label":
+            self.action_menu_source()
         elif message.label_id == "threads-label":
             self._open_threads()
         elif message.label_id == "processes-label":
@@ -1811,6 +1818,58 @@ class TdbApp(_AppMessageRoutes, App):
     def action_menu_file(self) -> None:
         self._close_open_menu()
         self.action_open_file()
+
+    @work(group="source-navigation")
+    async def action_menu_source(self) -> None:
+        # A second shortcut must not stack pickers or cancel an edit prompt.
+        if any(
+            isinstance(screen, (SourceModal, _UnsavedChangesModal))
+            for screen in self.screen_stack
+        ):
+            return
+        self._close_open_menu()
+        paths = await asyncio.to_thread(
+            discover_sources,
+            self._program,
+            self._cwd,
+            self._source_files,
+            python=self.controller.profile.id == "python",
+        )
+        if any(
+            isinstance(screen, (SourceModal, _UnsavedChangesModal))
+            for screen in self.screen_stack
+        ):
+            return
+        path = await self.push_screen(
+            SourceModal(paths, Path(self._cwd or Path.cwd()).resolve()),
+            wait_for_dismiss=True,
+        )
+        if not path:
+            return
+        code_view = self.query_one("#code-view", CodeView)
+        if path == code_view.source_path:
+            code_view.focus()
+            return
+        if not await self._confirm_discard_edits():
+            return
+        if code_view.is_editing:
+            code_view.leave_edit_mode(discard=True)
+        code_view.load_file(path)
+        state = self.controller.state
+        code_view.set_breakpoints(state.breakpoints.get(path, []))
+        code_view.set_breakpoints_disabled(state.breakpoints_disabled)
+        frame = next(
+            (f for f in state.stack_frames if f.id == state.current_frame_id), None
+        )
+        code_view.current_line = (
+            frame.line
+            if frame
+            and frame.source
+            and frame.source.path
+            and Path(frame.source.path).resolve() == Path(path)
+            else None
+        )
+        code_view.focus()
 
     def action_menu_configure(self) -> None:
         self.query_one("#menu-bar", MenuBar).open_menu("Configure")
