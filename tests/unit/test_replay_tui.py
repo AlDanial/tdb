@@ -453,3 +453,97 @@ async def test_stdin_eof_gesture_closes_program_stdin(app_pilot, monkeypatch):
     await pilot.pause()
     assert errors == 0
     assert closed == [True]
+
+
+# --- pause playback + clearing conditions (Codex review #9, #10) -------
+
+
+async def test_pause_is_replayed_and_waits_for_the_stop(app_pilot, monkeypatch):
+    app, _ = app_pilot
+    calls = []
+
+    async def fake_pause():
+        calls.append("pause")
+        app.call_later(_mark_stopped, app)
+        return True
+
+    monkeypatch.setattr(app.controller, "pause", fake_pause)
+    driver = make_driver(recording(("pause", [])))
+    assert await driver.run(app) == 0
+    assert calls == ["pause"]
+
+
+async def test_set_breakpoint_with_empty_condition_clears_existing_one(
+    app_pilot, fake_breakpoints
+):
+    """The recorder writes a cleared condition as "" (app.py), so playback
+    must clear it rather than report success and keep `x > 1`."""
+    app, _ = app_pilot
+    app.controller.state.breakpoints["/abs/p.py"] = [
+        SourceBreakpoint(line=3, condition="x > 1", hit_condition="2")
+    ]
+    driver = make_driver(recording(("set_breakpoint", ["/abs/p.py:3", "", ""])))
+    assert await driver.run(app) == 0
+    assert fake_breakpoints == [("condition", "/abs/p.py", 3, None, None)]
+
+
+async def test_set_breakpoint_keeps_matching_condition_without_reapplying(
+    app_pilot, fake_breakpoints
+):
+    app, _ = app_pilot
+    app.controller.state.breakpoints["/abs/p.py"] = [
+        SourceBreakpoint(line=3, condition="x > 1")
+    ]
+    driver = make_driver(recording(("set_breakpoint", ["/abs/p.py:3", "x > 1", ""])))
+    assert await driver.run(app) == 0
+    assert fake_breakpoints == []
+
+
+def _recorded_action_names() -> set[str]:
+    """Every action name app.py can pass to `self.recorder.record(...)`:
+    string constants in the first argument (dict values, not keys)."""
+    import ast
+    import inspect
+
+    import tdb.app
+
+    names: set[str] = set()
+
+    def collect(node):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            names.add(node.value)
+        elif isinstance(node, ast.Dict):
+            for v in node.values:
+                collect(v)
+        elif isinstance(node, ast.IfExp):
+            collect(node.body)
+            collect(node.orelse)
+        elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+            collect(node.func.value)  # {...}.get(x)
+        elif isinstance(node, ast.Subscript):
+            collect(node.value)  # {...}[x]
+
+    tree = ast.parse(inspect.getsource(tdb.app))
+    for call in ast.walk(tree):
+        if (
+            isinstance(call, ast.Call)
+            and isinstance(call.func, ast.Attribute)
+            and call.func.attr == "record"
+            and isinstance(call.func.value, ast.Attribute)
+            and call.func.value.attr == "recorder"
+            and call.args
+        ):
+            collect(call.args[0])
+    return names
+
+
+def test_every_recorded_action_is_replayable_in_both_replayers():
+    """Recorder/replay action contract: what the TUI records, both the
+    TUI replay driver and the headless (RPC) replay must accept."""
+    from tdb.replay_tui import REPLAYABLE_ACTIONS
+    from tdb.server.handlers import RpcHandlers
+
+    recorded = _recorded_action_names()
+    assert {"pause", "set_breakpoint", "next", "stack_up"} <= recorded  # sanity
+    assert recorded - REPLAYABLE_ACTIONS == set()
+    assert recorded - set(RpcHandlers.ACTIONS) == set()

@@ -35,6 +35,8 @@ _STEP_GESTURES = {
     "step_in": "step_in",
     "step_out": "step_out",
     "continue": "continue_",
+    # Not a step, but the same mechanics: the gesture, then the stop.
+    "pause": "pause",
 }
 
 STILL_RUNNING_MSG = "still running (no stop within the replay timeout)"
@@ -127,26 +129,14 @@ class ReplayDriver:
         action, params = rec["action"], list(rec["params"])
         if action in _STEP_GESTURES:
             return await self._step(app, _STEP_GESTURES[action])
-        if action == "evaluate":
-            return await self._evaluate(app, params)
-        if action in ("stack_up", "stack_down"):
-            return await self._stack(app, up=action == "stack_up")
-        if action == "set_breakpoint":
-            return await self._set_breakpoint(app, params)
-        if action == "remove_breakpoint":
-            return await self._remove_breakpoint(app, params)
-        if action == "inspect":
-            return await self._inspect(app, params)
-        if action == "restart":
-            return await self._restart(app)
-        if action == "stdin":
-            return await self._stdin(app, params)
-        if action == "stdin_eof":
-            return await self._stdin_eof(app)
-        if action == "quit":
-            await app.action_quit_debugger()
-            return True, "quit"
-        return False, f"{action} is not replayable in the TUI"
+        handler = _ACTIONS.get(action)
+        if handler is None:
+            return False, f"{action} is not replayable in the TUI"
+        return await handler(self, app, params)
+
+    async def _quit(self, app: TdbApp) -> tuple[bool, str]:
+        await app.action_quit_debugger()
+        return True, "quit"
 
     async def _step(self, app: TdbApp, gesture: str) -> tuple[bool, str]:
         from tdb.widgets.code_view import CodeView
@@ -205,13 +195,18 @@ class ReplayDriver:
             path, line = parse_file_line(str(params[0]))
         except (IndexError, ValueError):
             return False, "params[0] must be 'file:line'"
+        # A record fully specifies the breakpoint, as in headless replay
+        # (controller.add_breakpoint): an empty or absent condition is
+        # "none", which is how the recorder writes a cleared one.
         condition = str(params[1]) if len(params) > 1 and params[1] else None
         hit_condition = str(params[2]) if len(params) > 2 and params[2] else None
         if not _has_breakpoint(app, path, line):
             await app.on_code_view_breakpoint_toggled(
                 CodeView.BreakpointToggled(path, line)
             )
-        if condition or hit_condition:
+        bp = _breakpoint(app, path, line)
+        current = (bp.condition or None, bp.hit_condition or None) if bp else (None, None)
+        if current != (condition, hit_condition):
             await app.on_tdb_app__apply_breakpoint_condition(
                 app._ApplyBreakpointCondition(path, line, condition, hit_condition)
             )
@@ -306,8 +301,34 @@ class ReplayDriver:
             app.stop_settled.clear()
 
 
+def _breakpoint(app: TdbApp, path: str, line: int):
+    return next(
+        (bp for bp in app.controller.state.breakpoints.get(path, []) if bp.line == line),
+        None,
+    )
+
+
 def _has_breakpoint(app: TdbApp, path: str, line: int) -> bool:
-    return any(bp.line == line for bp in app.controller.state.breakpoints.get(path, []))
+    return _breakpoint(app, path, line) is not None
+
+
+# Non-step actions: name -> handler(driver, app, params).
+_ACTIONS: dict[str, Callable[[ReplayDriver, "TdbApp", list], Awaitable[tuple[bool, str]]]] = {
+    "evaluate": lambda d, app, p: d._evaluate(app, p),
+    "stack_up": lambda d, app, p: d._stack(app, up=True),
+    "stack_down": lambda d, app, p: d._stack(app, up=False),
+    "set_breakpoint": lambda d, app, p: d._set_breakpoint(app, p),
+    "remove_breakpoint": lambda d, app, p: d._remove_breakpoint(app, p),
+    "inspect": lambda d, app, p: d._inspect(app, p),
+    "restart": lambda d, app, p: d._restart(app),
+    "stdin": lambda d, app, p: d._stdin(app, p),
+    "stdin_eof": lambda d, app, p: d._stdin_eof(app),
+    "quit": lambda d, app, p: d._quit(app),
+}
+
+# Every action this driver plays back; the recorder/replay contract test
+# checks it covers every name the TUI records.
+REPLAYABLE_ACTIONS = frozenset(_STEP_GESTURES) | frozenset(_ACTIONS)
 
 
 def _find_node(node, ref: int):

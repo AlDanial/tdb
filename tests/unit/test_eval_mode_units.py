@@ -2,7 +2,7 @@
 rebind a breakpoint to a different line at setBreakpoints time), the
 no-threadId resume fallback, and final-exit-code semantics."""
 
-from tdb import eval_mode
+from tdb import eval_mode, run_mode
 from tdb.dap.types import SourceBreakpoint
 from tests.unit.test_controller_actions import _make
 
@@ -77,13 +77,13 @@ async def test_resume_client_none_is_noop():
 def test_final_exit_code_prefers_real_code():
     console = eval_mode._EvalRunHandler()
     console.exit_code = 7
-    assert eval_mode._final_exit_code(console) == 7
+    assert run_mode.final_exit_code(console) == 7
 
 
 def test_final_exit_code_zero_is_zero():
     console = eval_mode._EvalRunHandler()
     console.exit_code = 0
-    assert eval_mode._final_exit_code(console) == 0
+    assert run_mode.final_exit_code(console) == 0
 
 
 def test_final_exit_code_terminated_without_exited_is_failure():
@@ -91,4 +91,4 @@ def test_final_exit_code_terminated_without_exited_is_failure():
     # must not report success to the shell.
     console = eval_mode._EvalRunHandler()
     assert console.exit_code is None
-    assert eval_mode._final_exit_code(console) == 1
+    assert run_mode.final_exit_code(console) == 1

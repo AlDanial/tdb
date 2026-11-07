@@ -571,3 +571,29 @@ async def test_no_cli_breakpoints_means_none_configured(script, monkeypatch):
     await _run(script, monkeypatch, sink, driver=driver)
     assert "episode" in script.calls
     assert script.configured_bps == {}
+
+
+async def test_terminated_without_exited_is_not_reported_as_success(script, monkeypatch):
+    """Codex #7: `terminated` with no `exited` (adapter death, SIGKILL)
+    has no exit status; --run must not tell `tdb --run ... && next` the
+    program succeeded."""
+    sink = _Sink()
+    sink.name = "s"
+
+    async def driver():
+        await _settle()
+        script.console.on_terminated()
+
+    code = await _run(script, monkeypatch, sink, driver=driver)
+    assert code == 1
+
+
+async def test_real_exit_code_zero_still_reported(script, monkeypatch):
+    sink = _Sink()
+    sink.name = "s"
+
+    async def driver():
+        await _settle()
+        script.console.on_exited(0)
+
+    assert await _run(script, monkeypatch, sink, driver=driver) == 0
