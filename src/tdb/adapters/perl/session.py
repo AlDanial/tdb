@@ -483,10 +483,20 @@ class PerlSession:
         assert self._writer is not None
         await self._writer.drain()
 
+    def _terminal_debuggee_pid(self) -> int | None:
+        """The external-terminal debuggee's pid while it is provably still
+        ours, else None. The pid came from perl5db's own `p $$`; the
+        debuggee holds the perl5db socket until it exits, so before EOF
+        the pid cannot have been reused by an unrelated process."""
+        if self._process is not None or self.debuggee_pid is None or self._eof:
+            return None
+        return self.debuggee_pid
+
     def interrupt(self) -> bool:
         """Ask the running debuggee to stop: SIGINT the owned child (launch
-        mode) or write a pause byte on the control channel (attach mode).
-        False if neither is available."""
+        mode), write a pause byte on the control channel (attach mode),
+        or SIGINT the external-terminal debuggee by its pid. False if
+        none is available."""
         if self._process is not None:
             try:
                 os.kill(self._process.pid, signal.SIGINT)
@@ -496,9 +506,19 @@ class PerlSession:
         if self._control_writer is not None:
             self._control_writer.write(b"p")
             return True
+        pid = self._terminal_debuggee_pid()
+        if pid is not None:
+            try:
+                os.kill(pid, signal.SIGINT)
+                return True
+            except (ProcessLookupError, PermissionError):
+                return False
         return False
 
     async def stop(self) -> None:
+        # Before the reader is cancelled: whether the debuggee had
+        # already gone (EOF) decides if its pid may still be signalled.
+        terminal_pid = self._terminal_debuggee_pid()
         tasks = [t for t in [self._reader_task, *self._pump_tasks] if t is not None]
         for t in tasks:
             t.cancel()
@@ -515,15 +535,17 @@ class PerlSession:
             # "Event loop is closed" unraisable warning at teardown.
             if self._process.stdin is not None and not self._process.stdin.is_closing():
                 self._process.stdin.close()
-            try:
-                self._process.kill()
-            except ProcessLookupError:
-                pass
-            await self._process.wait()
-        if self._process is None and self.debuggee_pid is not None:
+            # The whole group (spawned with start_new_session): a process
+            # the program started can hold our pipes, and wait() would
+            # block on them forever. No grace: perl5db is no longer
+            # listening, so SIGTERM buys nothing.
+            from tdb._proc import stop_group
+
+            await stop_group(self._process, grace=0, kill_grace=2.0)
+        if terminal_pid is not None:
             for sig in (signal.SIGTERM, signal.SIGKILL):
                 try:
-                    os.kill(self.debuggee_pid, sig)
+                    os.kill(terminal_pid, sig)
                 except (ProcessLookupError, PermissionError):
                     break
                 await asyncio.sleep(0.05)

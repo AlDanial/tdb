@@ -31,7 +31,6 @@ import logging
 import os
 import re
 import shutil
-import signal
 import subprocess
 import tempfile
 from dataclasses import dataclass
@@ -1258,29 +1257,17 @@ class RubyDapServer:
         except Exception:
             log.exception("_watch_exit failed during teardown")
 
-    def _kill_rdbg_group(self, sig_kill: bool = False) -> None:
-        proc = self._proc
-        if proc is None or proc.returncode is not None:
-            return
-        try:
-            if os.name == "nt":
-                proc.kill() if sig_kill else proc.terminate()
-            else:
-                os.killpg(proc.pid, signal.SIGKILL if sig_kill else signal.SIGTERM)
-        except (ProcessLookupError, OSError):
-            pass
-
     async def _ensure_rdbg_dead(self, grace: float = 2.0) -> None:
+        """Stop rdbg's whole process group -- even when rdbg itself has
+        already exited, since the program or a helper it started can
+        outlive it -- with every wait bounded (see tdb._proc)."""
+        from tdb._proc import stop_group
+
         self._close_stdin()  # before the early return: an exited child's pipe still needs it
         proc = self._proc
-        if proc is None or proc.returncode is not None:
+        if proc is None:
             return
-        self._kill_rdbg_group()
-        try:
-            await asyncio.wait_for(proc.wait(), grace)
-        except asyncio.TimeoutError:
-            self._kill_rdbg_group(sig_kill=True)
-            await proc.wait()
+        await stop_group(proc, grace=grace)
 
     async def _on_disconnect(self, request: dict) -> None:
         await self._cancel_launch_task()

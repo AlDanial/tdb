@@ -62,10 +62,18 @@ class DAPClient:
         # leaving a silent hang on premature adapter exit.
         self._watch_task: asyncio.Task[None] | None = None
         self._stdout_drain_task: asyncio.Task[None] | None = None
+        # Reads the adapter's stderr for its whole life, so a verbose
+        # adapter never blocks on a full pipe; keeps only the tail, for
+        # the death message.
+        self._stderr_task: asyncio.Task[None] | None = None
+        self._stderr_tail = bytearray()
         # True once the adapter's pre_stack_trace_commands() have been
         # attempted on this connection (see _prime_stack_trace).
         self._stack_trace_primed = False
         self.capabilities = Capabilities()
+
+    # How much of the adapter's stderr to keep for diagnostics.
+    STDERR_TAIL_BYTES = 64 * 1024
 
     def _next_seq(self) -> int:
         self._seq += 1
@@ -111,6 +119,7 @@ class DAPClient:
             stderr=asyncio.subprocess.PIPE,
             **spawn_kwargs,
         )
+        self._start_stderr_drain()
         if self._adapter.connect_mode == "spawn_tcp":
             host, port = await self._await_listen_line()
             self._reader, self._writer = await asyncio.open_connection(host, port)
@@ -127,6 +136,66 @@ class DAPClient:
         # `DebugController` (asyncio holds only weak refs to tasks).
         self._watch_task = asyncio.create_task(self._watch_adapter_death())
 
+    def _start_stderr_drain(self) -> None:
+        self._stderr_tail = bytearray()
+        if self._process is not None and self._process.stderr is not None:
+            self._stderr_task = asyncio.create_task(
+                self._drain_stderr(self._process.stderr)
+            )
+
+    async def _drain_stderr(self, stream: asyncio.StreamReader) -> None:
+        keep = self.STDERR_TAIL_BYTES
+        with contextlib.suppress(ConnectionError, ValueError):
+            while chunk := await stream.read(65536):
+                self._stderr_tail += chunk
+                if len(self._stderr_tail) > keep:
+                    del self._stderr_tail[:-keep]
+
+    def _stderr_text(self) -> str:
+        return self._stderr_tail.decode("utf-8", errors="replace").strip()
+
+    async def _collected_stderr(self) -> str:
+        """The adapter's stderr once it has exited. With the drain task
+        running, wait (briefly: a process the adapter started may hold
+        the pipe open) for it to reach EOF; without one, read directly."""
+        from tdb._timeouts import ADAPTER_EXIT_GRACE
+
+        task = self._stderr_task
+        if task is not None:
+            if not task.done():
+                with contextlib.suppress(asyncio.TimeoutError, Exception):
+                    await asyncio.wait_for(asyncio.shield(task), ADAPTER_EXIT_GRACE)
+            return self._stderr_text()
+        if self._process is None or self._process.stderr is None:
+            return ""
+        try:
+            data = await self._process.stderr.read()
+        except Exception:
+            return ""
+        return data.decode("utf-8", errors="replace").strip()
+
+    def _fail_connection(self, err: ConnectionError) -> None:
+        """The connection is gone: remember why, so later requests fail
+        at once, and fail every request still waiting for an answer."""
+        if self._death_error is None:
+            self._death_error = err
+        for fut in list(self._pending.values()):
+            if not fut.done():
+                fut.set_exception(self._death_error)
+        self._pending.clear()
+
+    async def _wait_for_death_watcher(self) -> None:
+        """Give a running death watcher a moment to record why the
+        adapter went away (its exit code and stderr)."""
+        from tdb._timeouts import ADAPTER_EXIT_GRACE
+
+        task = self._watch_task
+        if self._death_error is None and task is not None and not task.done():
+            try:
+                await asyncio.wait_for(asyncio.shield(task), timeout=ADAPTER_EXIT_GRACE)
+            except (asyncio.TimeoutError, Exception):
+                pass
+
     async def _death_error_behind(self, exc: ConnectionError) -> ConnectionError:
         """The death watcher's ConnectionError when the adapter process
         exiting is what broke the stream, else ``exc`` itself.
@@ -137,27 +206,14 @@ class DAPClient:
         "Connection lost" -- which would win the race and hide the
         stderr line and the remedy. Wait briefly for the watcher.
         """
-        from tdb._timeouts import ADAPTER_EXIT_GRACE
-
-        task = self._watch_task
-        if self._death_error is None and task is not None and not task.done():
-            try:
-                await asyncio.wait_for(asyncio.shield(task), timeout=ADAPTER_EXIT_GRACE)
-            except (asyncio.TimeoutError, Exception):
-                pass
+        await self._wait_for_death_watcher()
         return self._death_error or exc
 
     async def _watch_adapter_death(self) -> None:
         if self._process is None:
             return
         rc = await self._process.wait()
-        stderr_bytes = b""
-        if self._process.stderr is not None:
-            try:
-                stderr_bytes = await self._process.stderr.read()
-            except Exception:
-                pass
-        stderr_text = stderr_bytes.decode("utf-8", errors="replace").strip()
+        stderr_text = await self._collected_stderr()
         log.error(
             "%s adapter exited with code %s%s",
             self._adapter.id,
@@ -174,18 +230,16 @@ class DAPClient:
         diagnosis = self._adapter.diagnose_exit(stderr_text)
         if diagnosis:
             message += f" — {diagnosis}"
-        err = ConnectionError(message)
         # Kept for requests sent after this point (initialize racing the
-        # watcher): they must fail at once, not after DAP_REQUEST.
-        self._death_error = err
-        for fut in list(self._pending.values()):
-            if not fut.done():
-                fut.set_exception(err)
-        self._pending.clear()
+        # watcher): they must fail at once, not after DAP_REQUEST. It wins
+        # over a plainer "connection closed" the read loop may have set.
+        self._death_error = None
+        self._fail_connection(ConnectionError(message))
 
     async def connect(self, host: str, port: int) -> None:
         """Connect to an already-running debugpy adapter over TCP."""
         self._stack_trace_primed = False
+        self._death_error = None
         self._reader, self._writer = await asyncio.open_connection(host, port)
         self._reader_task = asyncio.create_task(self._read_loop())
 
@@ -220,6 +274,11 @@ class DAPClient:
             except ProcessLookupError:
                 pass  # adapter already died (crash or kill) — nothing to stop
             await self._reap_adapter()
+        if self._stderr_task is not None:
+            self._stderr_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._stderr_task
+            self._stderr_task = None
 
     async def _reap_adapter(self) -> None:
         """A wedged adapter (gdb stuck on its own locks) takes SIGTERM and
@@ -230,9 +289,11 @@ class DAPClient:
 
         process = self._process
         assert process is not None
+        # The stderr drain task, when there is one, already reads it; a
+        # second reader on one StreamReader would raise.
         drain = (
             asyncio.ensure_future(_drain(process.stderr))
-            if process.stderr is not None
+            if process.stderr is not None and self._stderr_task is None
             else None
         )
         try:
@@ -296,6 +357,13 @@ class DAPClient:
             raise
         except Exception:
             log.exception("Error in DAP read loop")
+        # Nothing more will be read, so nothing pending can be answered.
+        # A spawned adapter's death watcher has the better message (exit
+        # code, stderr): give it a moment to land first.
+        await self._wait_for_death_watcher()
+        self._fail_connection(
+            ConnectionError(f"{self._adapter.id} adapter closed the DAP connection")
+        )
 
     async def _handle_reverse_request(self, request: Request) -> None:
         """Dispatch a reverse request to its registered handler and respond."""
@@ -338,12 +406,10 @@ class DAPClient:
             while True:
                 raw = await self._process.stdout.readline()
                 if not raw:  # EOF: adapter exited before announcing
-                    stderr = b""
-                    if self._process.stderr is not None:
-                        stderr = await self._process.stderr.read()
+                    stderr = await self._collected_stderr()
                     raise ConnectionError(
                         f"{self._adapter.id} adapter exited before serving DAP: "
-                        f"{stderr.decode('utf-8', errors='replace').strip() or 'no output'}"
+                        f"{stderr or 'no output'}"
                     )
                 m = pattern.search(raw.decode("utf-8", errors="replace"))
                 if m:
