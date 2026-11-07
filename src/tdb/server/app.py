@@ -14,6 +14,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 
+from .auth import AccessGuard
 from .handlers import ControllerRef, RpcHandlers
 from .rpc_types import RpcRequest, RpcResponse
 
@@ -36,13 +37,16 @@ log = logging.getLogger(__name__)
 NO_LOCK_ACTIONS = frozenset({"pause"})
 
 
-def create_app(handlers: RpcHandlers) -> FastAPI:
+def create_app(handlers: RpcHandlers, *, token: str | None, port: int) -> FastAPI:
     """Build the FastAPI app wired to the given RpcHandlers instance.
 
     `handlers` carries the controller ref + event handler; create_app is
-    purely about HTTP transport.
+    purely about HTTP transport. Every request must name a loopback Host
+    on `port`, and carry `token` as a bearer token unless it is None
+    (--insecure-no-auth); see tdb.server.auth.
     """
-    app = FastAPI(title="tdb debug server")
+    app = FastAPI(title="tdb debug server", docs_url=None, redoc_url=None, openapi_url=None)
+    app.add_middleware(AccessGuard, token=token, port=port)
     actions = handlers.dispatch_table()
 
     @app.post("/rpc", response_model=RpcResponse, response_model_exclude_none=True)

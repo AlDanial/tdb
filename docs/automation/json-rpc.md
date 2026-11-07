@@ -19,6 +19,44 @@ tdb --server my_program.py
 
 Both the interactive TUI and the JSON-RPC server run simultaneously.
 
+## Authentication
+
+The server can evaluate code in the debuggee and read local files, so it
+only accepts requests that carry a secret token:
+
+```
+Authorization: Bearer <token>
+```
+
+At startup tdb generates a random token and writes it to a file only you
+can read, `server-<port>.token` in tdb's config directory
+(`~/.config/tdb/server-8150.token`, or `%APPDATA%\tdb\server-8150.token`
+on Windows). The path is printed at startup (headless) or shown as a
+notification (`--server`), and the file is removed when the server
+exits. Read it into a variable for the examples below:
+
+```bash
+TDB_TOKEN=$(cat ~/.config/tdb/server-8150.token)
+```
+
+To choose the token yourself (scripts, CI), set `TDB_SERVER_TOKEN`
+before starting tdb; no token file is written then:
+
+```bash
+export TDB_SERVER_TOKEN=$(python -c 'import secrets; print(secrets.token_urlsafe(32))')
+TDB_TOKEN=$TDB_SERVER_TOKEN
+python -m tdb --headless my_program.py &
+```
+
+A request without the right token gets HTTP 401. Independently of the
+token, the `Host` header must be `127.0.0.1`, `localhost` or `[::1]` with
+the server's port (421 otherwise), and a browser `Origin` header must
+name one of those too (403 otherwise). Together these stop other local
+users and malicious web pages (DNS rebinding) from driving the debugger.
+
+`--insecure-no-auth` turns the token requirement off, for a trusted
+single-user machine. The Host/Origin checks stay on.
+
 ## RPC Protocol
 
 Send POST requests with `{"action": "...", "params": [...]}`. Responses return
@@ -29,26 +67,31 @@ object holding the full JSON payload; `value` then holds a one-line summary.
 ```bash
 # Check status
 curl -s -X POST http://127.0.0.1:8150/rpc \
+  -H "Authorization: Bearer $TDB_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"action":"status","params":[]}'
 
 # Set a breakpoint
 curl -s -X POST http://127.0.0.1:8150/rpc \
+  -H "Authorization: Bearer $TDB_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"action":"set_breakpoint","params":["/abs/path/to/file.py:42"]}'
 
 # Continue execution
 curl -s -X POST http://127.0.0.1:8150/rpc \
+  -H "Authorization: Bearer $TDB_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"action":"continue","params":[]}'
 
 # Inspect variables
 curl -s -X POST http://127.0.0.1:8150/rpc \
+  -H "Authorization: Bearer $TDB_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"action":"inspect","params":["x", "len(items)", "type(result)"]}'
 
 # Shut down
 curl -s -X POST http://127.0.0.1:8150/rpc \
+  -H "Authorization: Bearer $TDB_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"action":"quit","params":[]}'
 ```
@@ -93,7 +136,7 @@ curl -s -X POST http://127.0.0.1:8150/rpc \
 Subscribe to real-time debug events:
 
 ```bash
-curl -N http://127.0.0.1:8150/events
+curl -N -H "Authorization: Bearer $TDB_TOKEN" http://127.0.0.1:8150/events
 ```
 
 Events: `initialized`, `stopped`, `continued`, `terminated`, `exited`, `output`.

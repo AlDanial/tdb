@@ -31,12 +31,21 @@ def _free_port() -> int:
         return s.getsockname()[1]
 
 
+# The server requires a bearer token; fixing it via $TDB_SERVER_TOKEN
+# also keeps a token file out of the real config dir.
+TEST_SERVER_TOKEN = "tdb-integration-test-token"
+
+
 class RpcClient:
     """Tiny JSON-RPC client over HTTP."""
 
     def __init__(self, base_url: str) -> None:
         self.base_url = base_url
-        self._client = httpx.Client(base_url=base_url, timeout=15.0)
+        self._client = httpx.Client(
+            base_url=base_url,
+            timeout=15.0,
+            headers={"Authorization": f"Bearer {TEST_SERVER_TOKEN}"},
+        )
 
     def call(self, action: str, *params: Any) -> dict:
         resp = self._client.post(
@@ -69,6 +78,7 @@ def headless_server(tmp_path):
         "PYTHONPATH": str(SRC_DIR) + os.pathsep + os.environ.get("PYTHONPATH", ""),
         # Keep tdb's debug log out of /tmp/tdb.log under tests; redirect to tmp_path.
         "TDB_LOG_DIR": str(tmp_path),
+        "TDB_SERVER_TOKEN": TEST_SERVER_TOKEN,
     }
     # Default: stop on entry so the program is paused when the server comes
     # up. Tests can issue `continue` when they want it to run.

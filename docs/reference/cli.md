@@ -7,7 +7,7 @@ usage: tdb [-h] [-v] [-r [HOST:]PORT] [--cwd CWD] [--no-stop-on-entry]
            [--keybindings {default,vim,emacs}]
            [--terminal {xterm,konsole,gnome-terminal,ghostty,kitty,iterm2,warp,wezterm,terminator}]
            [--local-root PATH] [--remote-root PATH]
-           [--server] [--headless] [-k FILE:LINE|LINE] [--server-port SERVER_PORT] [-d] [--doc-text] [--info]
+           [--server] [--headless] [-k FILE:LINE|LINE] [--server-port SERVER_PORT] [--insecure-no-auth] [-d] [--doc-text] [--info]
            [--config {write-default,install-padwalker}]
            [program] [args ...]
 ```
@@ -38,6 +38,7 @@ usage: tdb [-h] [-v] [-r [HOST:]PORT] [--cwd CWD] [--no-stop-on-entry]
 | `--server` | Enable JSON-RPC server alongside TUI |
 | `--headless` | JSON-RPC server only, no TUI |
 | `--server-port PORT` | Server port (default: 8150) |
+| `--insecure-no-auth` | Let the JSON-RPC server accept requests without its bearer token (see [JSON-RPC Server Mode](../automation/json-rpc.md#authentication)) |
 | `--record FILE` | Record this TUI session's debugging actions to FILE (JSON-RPC lines) |
 | `--replay FILE` | Replay a recording headless, printing a transcript (no program argument) |
 | `--replay-tui FILE` | Replay a recording inside the TUI at the recorded pace, so you can watch it |
