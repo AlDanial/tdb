@@ -8,6 +8,7 @@ write the admin's clipboard.
 
 from __future__ import annotations
 
+import contextlib
 import errno
 import re
 import sys
@@ -67,6 +68,38 @@ def terminal_hung_up() -> bool:
     except (AttributeError, ImportError, OSError, ValueError):
         pass
     return False
+
+
+def _draining_run(self: Any) -> None:
+    """Textual's WriterThread.run, except that a terminal gone (EIO) stops the
+    writing, not the thread. Textual's own run dies on it, and its queue then
+    fills and blocks every later write, shutdown's included, for good."""
+    get = self._queue.get
+    qsize = self._queue.qsize
+    gone = False
+    while True:
+        text = get()
+        if text is None:
+            break
+        if gone:
+            continue
+        try:
+            self._file.write(text)
+            if qsize() == 0:
+                self._file.flush()
+        except OSError:
+            gone = True
+    if not gone:
+        with contextlib.suppress(OSError):
+            self._file.flush()
+
+
+def keep_writer_draining() -> None:
+    """Make every Textual WriterThread (Linux and Windows drivers alike) keep
+    taking writes once the terminal has gone."""
+    from textual.drivers._writer_thread import WriterThread
+
+    WriterThread.run = _draining_run  # type: ignore[method-assign]
 
 
 def clean_message(value: Any) -> Any:

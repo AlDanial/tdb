@@ -148,6 +148,31 @@ async def _continue_to_exit(ctrl, handler) -> None:
     await asyncio.wait_for(handler.terminated_event.wait(), WAIT)
 
 
+async def _continue_past_stale_steps_to_exit(ctrl, handler, stops, removed) -> None:
+    """With several domains on one breakpoint, a `next` that another domain's
+    hit interrupted stays queued in lldb, which finishes it on a later resume
+    (as a "step" stop, or a hit of its internal breakpoint 0), so a continue
+    can end there. Resume past those; a hit of `removed` is a real failure."""
+    for _ in range(8):
+        handler.reset_for_continue()
+        del stops[:]
+        await ctrl.continue_()
+        stopped = asyncio.ensure_future(handler.stopped_event.wait())
+        ended = asyncio.ensure_future(handler.terminated_event.wait())
+        done, pending = await asyncio.wait(
+            {stopped, ended}, timeout=WAIT, return_when=asyncio.FIRST_COMPLETED
+        )
+        for task in pending:
+            task.cancel()
+        hits = {i for body in stops for i in body.get("hitBreakpointIds") or ()}
+        assert not hits & removed, f"the removed breakpoint still stopped: {stops}"
+        if ended in done:
+            return
+        assert stopped in done, "the program neither stopped nor ended"
+        await ctrl.fetch_stop_info()
+    pytest.fail("continue kept ending at stale steps")
+
+
 async def _stable_threads(ctrl: DebugController) -> list[Thread]:
     """Poll until lldb-dap's thread list stops growing (probe Q3: the
     list is incomplete for ~1-2s right after a stop)."""
@@ -265,7 +290,11 @@ async def test_domains_visible_at_breakpoint(session, ocaml_domains_binary):
 async def test_step_and_continue_at_domain_breakpoint(session, ocaml_domains_binary):
     binary, src = ocaml_domains_binary
     ctrl, handler = session
+    stops: list[dict] = []
+    ctrl.client.on_event("stopped", lambda event: stops.append(event.body or {}))
     await _launch(ctrl, handler, binary, breakpoints=[(src, BP_LINE)])
+    removed = set(stops[0].get("hitBreakpointIds") or ())
+    assert removed, f"the first stop was not the breakpoint: {stops[0]}"
 
     await _resume_and_wait(ctrl, handler, "step_over")
     assert ctrl.state.stack_frames
@@ -280,7 +309,7 @@ async def test_step_and_continue_at_domain_breakpoint(session, ocaml_domains_bin
         assert frame2.source.path.endswith("ocaml_domains.ml")
 
     await ctrl.remove_breakpoint(src, BP_LINE)
-    await _continue_to_exit(ctrl, handler)
+    await _continue_past_stale_steps_to_exit(ctrl, handler, stops, removed)
     assert "sum=6" in handler.drain_output()
 
 

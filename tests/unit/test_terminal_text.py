@@ -6,11 +6,18 @@ admin's clipboard, and whatever is pasted from it goes into a root shell.
 
 from __future__ import annotations
 
+import errno
+import threading
+
 import pytest
 from rich.text import Text
 
 from tdb.dap.messages import Event, Response, parse_message
-from tdb.terminal_text import console_text, strip_terminal_controls
+from tdb.terminal_text import (
+    console_text,
+    keep_writer_draining,
+    strip_terminal_controls,
+)
 
 OSC_52 = "\x1b]52;c;ZXZpbA==\x1b\\"
 OSC_TITLE_BEL = "\x1b]0;title\x07"
@@ -98,3 +105,32 @@ def test_program_output_is_left_for_the_console():
         )
     )  # fmt: skip
     assert message.body["output"] == "\x1b[31mred\x1b[0m"
+
+
+class _GoneTerminal:
+    def write(self, text):
+        raise OSError(errno.EIO, "Input/output error")
+
+    def flush(self):
+        raise OSError(errno.EIO, "Input/output error")
+
+    def fileno(self):
+        return 1
+
+
+def test_writes_never_block_once_the_terminal_is_gone():
+    from textual.drivers._writer_thread import MAX_QUEUED_WRITES, WriterThread
+
+    keep_writer_draining()
+    writer = WriterThread(_GoneTerminal())
+    writer.start()
+    finished = threading.Event()
+
+    def flood():
+        for _ in range(MAX_QUEUED_WRITES * 3):
+            writer.write("frame")
+        writer.stop()
+        finished.set()
+
+    threading.Thread(target=flood, daemon=True).start()
+    assert finished.wait(5), "a write or stop() blocked on the dead writer"
