@@ -7,11 +7,17 @@ swapped), so the kill and reap paths run for real.
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import functools
+import hmac
 import os
+import pathlib
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 
 from unittest.mock import Mock
@@ -19,7 +25,18 @@ from unittest.mock import Mock
 import pytest
 
 from tdb import _timeouts
-from tdb.languages._python_gdb_helper import background_code, harden_gdb_command
+from tdb.languages import _python_adapter
+from tdb.languages._python_gdb_helper import (
+    ATTACH_PRELUDE,
+    HANDSHAKE_TIMEOUT,
+    SCRIPT_NAME,
+    TOKEN_NAME,
+    background_code,
+    harden_gdb_command,
+    install_hardening,
+    prepare_attach_code,
+)
+from tdb.languages.python_attach import _debugpy_argv as real_debugpy_argv
 from tdb.languages.python_attach import (
     PidAttachCancelled,
     PidAttachError,
@@ -27,15 +44,20 @@ from tdb.languages.python_attach import (
     _can_reach,
     _gdb_queue_commands,
     _hand_to_target,
+    _new_workdir,
+    _only_root_can_change,
     _queue_with_gdb,
     _queued_code,
     _target_ids,
     build_remote_exec_script,
     classify_failure,
-    inject,
 )
+from tdb.languages.python_attach import inject as inject_with_token
 
 MODULE = "tdb.languages.python_attach"
+TOKEN = "a-token"
+HEX_KEY = "ab" * 32
+inject = functools.partial(inject_with_token, token=TOKEN)
 TARGET_314 = TargetInfo(os.getpid(), sys.executable, True)
 TARGET_OLD = TargetInfo(os.getpid(), sys.executable, False)
 
@@ -84,6 +106,7 @@ class Helpers:
         self.debugpy_calls: list[list[str]] = []
         self.on_fallback = lambda: None
         self.real_debugpy_argv = None
+        self.token_files = []
         monkeypatch.setattr(f"{MODULE}._remote_exec_argv", self._remote_exec_argv)
         monkeypatch.setattr(f"{MODULE}._gdb_queue_argv", self._gdb_queue_argv)
         self.real_queued_code = _queued_code
@@ -109,6 +132,9 @@ class Helpers:
 
     def _debugpy_argv(self, pid, port, ran_marker):
         self.debugpy_calls.append(self.real_debugpy_argv(pid, port, ran_marker))
+        self.token_files.append(
+            pathlib.Path(os.path.dirname(ran_marker), TOKEN_NAME).read_text()
+        )
         self.on_fallback()
         if callable(self.debugpy):
             return self.debugpy(ran_marker)
@@ -138,15 +164,24 @@ def connect_soon(connected: asyncio.Event, delay: float = 0.05) -> None:
 
 
 def test_script_valid_with_awkward_paths():
-    src = build_remote_exec_script(r"C:\it's a dir\server", 5678, r"C:\t\m", r'C:\t\"c')
+    src = build_remote_exec_script(r"C:\it's a dir\server", 5678, r"C:\t\m", r'C:\t\"c', TOKEN)
     compile(src, "<payload>", "exec")
+
+
+def _without_handshake(script: str) -> str:
+    """For a stand-in attach_pid_injected, with no adapter to dial."""
+    start = "def _tdb_prepare(attach_pid_injected, port, key):\n"
+    assert start in script
+    return script.replace(start, start + "    return True\n")
 
 
 def _run_script(tmp_path, marker_present: bool, server_dir: str = "/nonexistent"):
     marker, claimed = tmp_path / "marker", tmp_path / "claimed"
     if marker_present:
         marker.write_text("")
-    src = build_remote_exec_script(server_dir, 1, str(marker), str(claimed))
+    src = _without_handshake(
+        build_remote_exec_script(server_dir, 1, str(marker), str(claimed), HEX_KEY)
+    )
     scope: dict = {}
     exec(compile(src, "payload", "exec"), scope)
     return scope
@@ -177,14 +212,17 @@ def test_script_speeds_up_gil_handoffs_then_restores(tmp_path):
     server = tmp_path / "server"
     server.mkdir()
     (server / "attach_pid_injected.py").write_text(
-        "import sys\ndef attach(setup): print(sys.getswitchinterval())\n"
+        "import sys\n_debugpy_dir = ''\n"
+        "def attach(setup): print(sys.getswitchinterval())\n"
     )
     workdir = tmp_path / "work"
     workdir.mkdir()
     marker = workdir / "marker"
     marker.touch()
-    script = build_remote_exec_script(
-        str(server), 5678, str(marker), str(workdir / "claimed")
+    script = _without_handshake(
+        build_remote_exec_script(
+            str(server), 5678, str(marker), str(workdir / "claimed"), HEX_KEY
+        )
     )
     program = f"import sys\nexec({script!r})\nprint(sys.getswitchinterval())\n"
     result = subprocess.run(
@@ -199,7 +237,7 @@ def test_script_calls_debugpy_attach_when_it_wins_the_claim(tmp_path):
     server = tmp_path / "server"
     server.mkdir()
     (server / "attach_pid_injected.py").write_text(
-        "import sys\ndef attach(setup):\n    sys.tdb_test_setup = setup\n"
+        "import sys\n_debugpy_dir = ''\ndef attach(setup):\n    sys.tdb_test_setup = setup\n"
     )
     work = tmp_path / "work"
     work.mkdir()
@@ -236,6 +274,12 @@ print("main", flush=True)
 def test_background_code_has_nothing_gdb_cannot_quote(tmp_path):
     injected = background_code("print('it\\'s')\n", str(tmp_path / "it's"))
     assert not {'"', "'", "\r", "\n"} & set(injected)
+
+
+def test_background_code_failing_says_nothing_to_the_program(tmp_path):
+    result = _run_background_code(tmp_path, "raise ValueError('key file gone')")
+    assert result.stdout.split() == ["main"]
+    assert result.stderr == ""
 
 
 def test_background_code_returns_before_the_code_finishes(tmp_path):
@@ -873,6 +917,338 @@ def test_harden_leaves_other_commands_alone():
     assert harden_gdb_command("lldb --batch") == "lldb --batch"
 
 
+async def test_fallback_gives_the_target_the_token_in_a_file(helpers):
+    helpers.debugpy = [sys.executable, "-c", "pass"]
+    helpers.gdb_queue = fail_with("no")
+    with pytest.raises(PidAttachError):
+        await inject(TARGET_OLD, 5678, asyncio.Event())
+    assert helpers.token_files == [TOKEN]
+
+
+def test_fallback_keeps_the_key_off_the_command_line():
+    assert real_debugpy_argv(1, 2, "/x/ran")[4:] == [
+        "--connect", "127.0.0.1:2", "--disable-sys-remote-exec", "--pid", "1",
+    ]  # fmt: skip
+
+
+def test_remote_exec_script_carries_the_key():
+    script = build_remote_exec_script("/s", 1, "/m", "/c", TOKEN)
+    assert f"bytes.fromhex({TOKEN!r})" in script
+    assert '"adapter_access_token": None' in script
+
+
+def test_debugpys_real_attach_code_can_be_prepared(injector, monkeypatch):
+    # Catches a debugpy upgrade that moves the line prepare_attach_code edits.
+    from debugpy.server import cli
+
+    codes = []
+    monkeypatch.setattr(
+        injector, "run_python_code", lambda pid, code, *a, **k: codes.append(code)
+    )
+    monkeypatch.setattr(cli.options, "mode", "connect")
+    monkeypatch.setattr(cli.options, "address", ("127.0.0.1", 1))
+    monkeypatch.setattr(cli.options, "target", 1)
+    monkeypatch.setattr(cli.options, "disable_sys_remote_exec", True, raising=False)
+    cli.attach_to_pid()
+    (code,) = codes
+    assert "/x/token" in prepare_attach_code(code, "/x/token")
+
+
+def test_attach_code_goes_through_the_handshake_first():
+    code = prepare_attach_code("attach_pid_injected.attach(setup);", "/x/token")
+    assert code.index("_tdb_prepare(attach") < code.index("_tdb_ready and attach")
+
+
+def test_token_rewrite_refuses_code_it_does_not_recognise():
+    with pytest.raises(RuntimeError, match="attach_pid_injected"):
+        prepare_attach_code("something_else()", "/x/token")
+
+
+async def test_gdb_commands_have_no_name_to_swap(monkeypatch):
+    # A named file could be replaced before gdb opens it.
+    seen = {}
+
+    def spawn(argv, output, env=None, pass_fds=()):
+        seen.update(argv=argv, pass_fds=pass_fds)
+        return subprocess.Popen(EXIT_0)
+
+    monkeypatch.setattr(f"{MODULE}._spawn_detached", spawn)
+    await _queue_with_gdb(1, "/x/script")
+    (fd,) = seen["pass_fds"]
+    assert seen["argv"][-2:] == ["-x", f"/proc/self/fd/{fd}"]
+
+
+def _root_with_tempdir(monkeypatch, tmpdir):
+    monkeypatch.setattr(f"{MODULE}._euid", lambda: 0)
+    monkeypatch.setattr(f"{MODULE}._check_target_can_read", lambda *a: None)
+    monkeypatch.setattr(f"{MODULE}._hand_to_target", lambda *a: None)
+    monkeypatch.setattr(f"{MODULE}.tempfile.gettempdir", lambda: str(tmpdir))
+
+
+def test_root_refuses_a_temp_directory_a_user_could_change(tmp_path, monkeypatch):
+    # tmp_path isn't root's: its owner could swap tdb's directory for another
+    # and have root write through it.
+    _root_with_tempdir(monkeypatch, tmp_path)
+    with pytest.raises(PidAttachError, match="TMPDIR"):
+        _new_workdir(1)
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_root_makes_its_directory_in_the_resolved_path(tmp_path, monkeypatch):
+    # A symlink in a user's directory could be repointed between calls.
+    _root_with_tempdir(monkeypatch, tmp_path / "link")
+    (tmp_path / "real").mkdir()
+    (tmp_path / "link").symlink_to(tmp_path / "real")
+    monkeypatch.setattr(f"{MODULE}._only_root_can_change", lambda path: True)
+    monkeypatch.setattr(f"{MODULE}._visible_to_target", lambda *a: True)
+    workdir = _new_workdir(1)
+    assert os.path.dirname(workdir) == str(tmp_path / "real")
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX permissions")
+def test_only_root_can_change(tmp_path):
+    assert _only_root_can_change("/")
+    assert not _only_root_can_change(str(tmp_path))
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX permissions")
+def test_a_symlink_never_counts_as_only_root(monkeypatch):
+    # Its target can change between this check and any use of the path, so
+    # a path checked by following it isn't the path that gets used.
+    stats = {"/link": os.stat_result((0o120777, 0, 0, 0, 0, 0, 0, 0, 0, 0))}
+    real_lstat = os.lstat
+    monkeypatch.setattr(
+        f"{MODULE}.os.lstat", lambda path, **k: stats.get(path) or real_lstat(path, **k)
+    )
+    assert not _only_root_can_change("/link")
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX permissions")
+def test_sticky_root_directory_counts_as_only_root(monkeypatch):
+    # Others can add to /tmp, but only rename what is theirs.
+    stats = {
+        "/": os.stat_result((0o40755, 0, 0, 0, 0, 0, 0, 0, 0, 0)),
+        "/tmp": os.stat_result((0o41777, 0, 0, 0, 0, 0, 0, 0, 0, 0)),
+        "/open": os.stat_result((0o40777, 0, 0, 0, 0, 0, 0, 0, 0, 0)),
+    }
+    real_lstat = os.lstat
+    monkeypatch.setattr(
+        f"{MODULE}.os.lstat", lambda path, **k: stats.get(path) or real_lstat(path, **k)
+    )
+    assert _only_root_can_change("/tmp")
+    assert not _only_root_can_change("/open")
+
+
+def _dial(port, key=b"k" * 32, timeout=5.0):
+    """The target's side of the handshake, run as the injected code runs it."""
+    namespace = {}
+    exec(ATTACH_PRELUDE.replace(repr(HANDSHAKE_TIMEOUT), repr(timeout)), namespace)
+    return namespace["_tdb_dial"](port, key)
+
+
+def _serve_once(behave):
+    server = socket.create_server(("127.0.0.1", 0))
+    received = []
+
+    def run():
+        peer, _ = server.accept()
+        with peer:
+            behave(peer, received)
+            peer.settimeout(2)
+            with contextlib.suppress(OSError):
+                while chunk := peer.recv(4096):
+                    received.append(chunk)
+        server.close()
+
+    thread = threading.Thread(target=run, daemon=True)
+    thread.start()
+    return server.getsockname()[1], received, thread
+
+
+def _adapter_proof(key, nonce, ours=b"n" * 32):
+    return ours + hmac.new(key, b"adapter" + nonce + ours, "sha256").digest()
+
+
+def test_target_walks_away_from_a_port_squatter():
+    # Whoever takes the port once the adapter has gone gets nothing it can
+    # use: only the nonce it was sent, and no debugger.
+    port, received, thread = _serve_once(
+        lambda peer, got: (got.append(peer.recv(32)), peer.sendall(b"x" * 64))
+    )
+    assert _dial(port) is None
+    thread.join(5)
+    assert [len(chunk) for chunk in received] == [32]
+
+
+def test_target_walks_away_from_a_replayed_answer():
+    # A proof from another handshake is for other nonces.
+    port, received, thread = _serve_once(
+        lambda peer, got: (
+            got.append(peer.recv(32)),
+            peer.sendall(_adapter_proof(b"k" * 32, b"o" * 32)),
+        )
+    )
+    assert _dial(port) is None
+    thread.join(5)
+    assert [len(chunk) for chunk in received] == [32]
+
+
+def test_target_gives_up_on_a_silent_peer():
+    port, received, thread = _serve_once(lambda peer, got: time.sleep(1))
+    started = time.monotonic()
+    assert _dial(port, timeout=0.2) is None
+    assert time.monotonic() - started < 1
+
+
+def test_target_gets_nothing_from_a_closed_port():
+    port, _, thread = _serve_once(lambda peer, got: None)
+    thread.join(5)
+    assert _dial(port) is None
+
+
+def test_target_goes_on_with_a_peer_that_proves_itself():
+    key = b"k" * 32
+
+    def behave(peer, got):
+        nonce = peer.recv(32)
+        peer.sendall(_adapter_proof(key, nonce))
+        got.append(peer.recv(32) == hmac.new(
+            key, b"target" + nonce + b"n" * 32, "sha256"
+        ).digest())
+
+    port, received, thread = _serve_once(behave)
+    sock = _dial(port, key)
+    assert sock.gettimeout() is None
+    sock.close()
+    thread.join(5)
+    assert received == [True]
+
+
+def test_target_handshake_has_one_deadline():
+    # Otherwise each byte a peer drips out earns a whole new timeout.
+    def drip(peer, got):
+        with contextlib.suppress(OSError):
+            for _ in range(60):
+                peer.sendall(b"x")
+                time.sleep(0.05)
+
+    port, _, thread = _serve_once(drip)
+    started = time.monotonic()
+    assert _dial(port, timeout=0.3) is None
+    assert time.monotonic() - started < 1.5
+
+
+def test_adapter_handshake_has_one_deadline():
+    left, right = socket.socketpair()
+
+    def drip():
+        with contextlib.suppress(OSError):
+            for _ in range(60):
+                right.sendall(b"x")
+                time.sleep(0.05)
+
+    threading.Thread(target=drip, daemon=True).start()
+    started = time.monotonic()
+    with left, right, pytest.raises(OSError):
+        _python_adapter._peer_proves_itself(left, b"k", time.monotonic() + 0.3)
+    assert time.monotonic() - started < 1.5
+
+
+def test_off_linux_the_injected_code_fits_windows_shared_memory(
+    injector, monkeypatch, tmp_path
+):
+    # debugpy asserts this size: anything longer can't attach at all there.
+    long = tmp_path / ("d" * 150)
+    long.mkdir()
+    (long / SCRIPT_NAME).write_text("print('ran the script')\n")
+    codes = []
+    monkeypatch.setattr(
+        injector, "run_python_code", lambda pid, code, *a, **k: codes.append(code)
+    )
+    install_hardening(injector, str(long / "ran"))
+    monkeypatch.setattr("tdb.languages._python_gdb_helper.sys.platform", "win32")
+    injector.run_python_code(1, "ignored")
+    monkeypatch.undo()
+    (code,) = codes
+    assert len(code) < 2047
+    result = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, timeout=10
+    )
+    assert "ran the script" in result.stdout
+
+
+async def test_fallback_off_linux_leaves_a_script_for_the_bootstrap(
+    helpers, monkeypatch
+):
+    monkeypatch.setattr(f"{MODULE}.sys.platform", "win32")
+    helpers.debugpy = [sys.executable, "-c", "pass"]
+    seen = []
+    real = helpers._debugpy_argv
+
+    def spy(pid, port, ran_marker):
+        seen.append(pathlib.Path(os.path.dirname(ran_marker), SCRIPT_NAME).read_text())
+        return real(pid, port, ran_marker)
+
+    monkeypatch.setattr(f"{MODULE}._debugpy_argv", spy)
+    with pytest.raises(PidAttachError):
+        await inject(TARGET_OLD, 5678, asyncio.Event())
+    assert "_tdb_prepare" in seen[0]
+    assert f"bytes.fromhex({TOKEN!r})" in seen[0]
+
+
+def test_harden_refuses_a_gdb_command_it_cannot_change():
+    # An unshielded gdb can segfault the target, so never run one quietly.
+    with pytest.raises(RuntimeError, match="--batch"):
+        harden_gdb_command("gdb --nw --pid 1")
+
+
+def test_harden_accepts_a_list_command():
+    hardened = harden_gdb_command(["gdb", "--batch", "--eval-command=x"])
+    assert hardened[:2] == ["gdb", "--batch"]
+    assert hardened[2] == "--eval-command=handle all nostop noprint pass"
+    assert hardened[-1] == "--eval-command=x"
+
+
+def test_harden_leaves_other_list_commands_alone():
+    assert harden_gdb_command(["inject.exe", "1"]) == ["inject.exe", "1"]
+
+
+@pytest.fixture
+def injector(monkeypatch):
+    """debugpy's real injector, restored after the test."""
+    from debugpy.server import cli
+
+    directory = os.path.dirname(cli.pydevd.__file__)
+    monkeypatch.syspath_prepend(os.path.join(directory, "pydevd_attach_to_process"))
+    import add_code_to_python_process as module
+
+    monkeypatch.setattr(module, "subprocess", module.subprocess)
+    monkeypatch.setattr(module, "run_python_code", module.run_python_code)
+    return module
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="debugpy's gdb route")
+def test_debugpys_real_gdb_command_is_hardened(injector, monkeypatch):
+    # Catches a debugpy upgrade that moves what harden_gdb_command looks for.
+    commands = []
+    monkeypatch.setattr(subprocess, "check_call", lambda c, **k: commands.append(c))
+    monkeypatch.setattr(injector, "get_target_filename", lambda: "/x/attach.so")
+    install_hardening(injector, "/nonexistent/marker")
+    # Newer debugpy splits gdb out, as it can also use lldb.
+    run = getattr(injector, "run_python_code_linux_gdb", None)
+    (run or injector.run_python_code_linux)(1, "pass")
+    (command,) = commands
+    assert command.index("handle all") < command.index("dlopen")
+    assert "set unwindonsignal on" in command
+
+
+def test_hardening_stays_inside_the_injector(injector):
+    check_call = subprocess.check_call
+    install_hardening(injector, "/nonexistent/marker")
+    assert subprocess.check_call is check_call
+    assert injector.subprocess.Popen is subprocess.Popen
+
+
 def test_gdb_commands_shield_the_call_from_signals():
     commands = _gdb_queue_commands("print(1)").splitlines()
     assert commands[:3] == [
@@ -912,6 +1288,113 @@ def _handoffs(body: str) -> list[float]:
     )
     assert result.returncode == 0, result.stderr
     return [float(x) for x in result.stdout.split()]
+
+
+FAKE_PYDEVD = (
+    "import sys, types\n"
+    "pydevd = types.ModuleType('pydevd')\n"
+    "pydevd.get_global_debugger = lambda: None\n"
+    "pydevd.PYDEVD_USE_SYS_MONITORING = False\n"
+    "sys.modules['pydevd'] = pydevd\n"
+)
+
+
+@pytest.mark.skipif(not hasattr(os, "fork"), reason="needs fork")
+def test_fork_callback_leaves_tracers_alone_with_no_debugger():
+    # Coverage or a profiler the program runs after tdb has left.
+    (kept,) = _handoffs(
+        FAKE_PYDEVD + "import os\n"
+        "_tdb_fast_handoffs(lambda: None)\n"
+        "sys.settrace(lambda *a: None)\n"
+        "pid = os.fork()\n"
+        "if pid == 0:\n"
+        "    tracer = sys.gettrace()\n"
+        "    sys.settrace(None)\n"
+        "    print(1 if tracer else 0, flush=True)\n"
+        "    os._exit(0)\n"
+        "sys.settrace(None)\n"
+        "os.waitpid(pid, 0)\n"
+    )
+    assert kept == 1
+
+
+def test_second_attach_stands_aside_for_one_under_way():
+    # Its debugpy would tear down the first, freezing the program meanwhile.
+    (ran,) = _handoffs(
+        "calls = []\n"
+        "def outer():\n"
+        "    calls.append('outer')\n"
+        "    _tdb_fast_handoffs(lambda: calls.append('inner'))\n"
+        "_tdb_fast_handoffs(outer)\n"
+        "print(len(calls))\n"
+    )
+    assert ran == 1
+
+
+def test_attach_is_possible_again_once_one_has_finished():
+    (ran,) = _handoffs(
+        "calls = []\n"
+        "_tdb_fast_handoffs(lambda: calls.append(1))\n"
+        "_tdb_fast_handoffs(lambda: calls.append(2))\n"
+        "print(len(calls))\n"
+    )
+    assert ran == 2
+
+
+def test_watchdog_keeps_looking_for_a_late_wait():
+    # A starved attach may only reach pydevd's wait after the limit.
+    from tdb.languages import _python_gdb_helper as helper
+
+    code = helper.FAST_HANDOFFS.replace(repr(helper.SWITCH_INTERVAL_LIMIT), "0.2")
+    code += FAKE_PYDEVD + (
+        "import time\n"
+        "pydevd.PYDEVD_USE_SYS_MONITORING = True\n"
+        "pydevd.stoptrace = lambda: None\n"
+        "class Debugger:\n"
+        "    ready_to_run = False\n"
+        "    def wait_for_ready_to_run(self):\n"
+        "        while not self.ready_to_run:\n"
+        "            time.sleep(0.01)\n"
+        "def attach():\n"
+        "    time.sleep(0.6)\n"
+        "    Debugger().wait_for_ready_to_run()\n"
+        "_tdb_fast_handoffs(attach)\n"
+        "print('released')\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, timeout=10
+    )
+    assert "released" in result.stdout
+
+
+def test_repeated_attaches_register_one_fork_callback():
+    (count,) = _handoffs(
+        "import os\n"
+        "calls = []\n"
+        "register = os.register_at_fork\n"
+        "os.register_at_fork = lambda **k: (calls.append(k), register(**k))\n"
+        "for _ in range(3):\n"
+        "    _tdb_fast_handoffs(lambda: None)\n"
+        "print(len(calls))\n"
+    )
+    assert count == 1
+
+
+@pytest.mark.skipif(not hasattr(os, "fork"), reason="needs fork")
+def test_child_forked_during_a_later_attach_gets_the_interval_back():
+    # The one callback has to serve the attach under way, not the first.
+    (in_child,) = _handoffs(
+        "import os, sys\n"
+        "def fork():\n"
+        "    pid = os.fork()\n"
+        "    if pid == 0:\n"
+        "        print(sys.getswitchinterval(), flush=True)\n"
+        "        os._exit(0)\n"
+        "    os.waitpid(pid, 0)\n"
+        "_tdb_fast_handoffs(lambda: None)\n"
+        "_tdb_fast_handoffs(fork)\n"
+    )
+    assert in_child == 0.005
 
 
 def test_switch_interval_comes_back_if_the_watcher_cannot_start():

@@ -34,7 +34,7 @@ class BashAdapter(AdapterSpec):
         self._bash = bash_executable
 
     def command(self) -> list[str]:
-        return [sys.executable, "-m", "tdb.adapters.bash"]
+        return [sys.executable, "-P", "-m", "tdb.adapters.bash"]
 
     def launch_body(
         self,

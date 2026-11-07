@@ -155,7 +155,7 @@ def test_first_call_starts_listener(hook, monkeypatch):
     assert hook._subprocess is fake_proc
 
     (argv,) = popen_argv
-    assert argv[1:3] == ["-m", "tdb"]
+    assert argv[1:4] == ["-P", "-m", "tdb"]
     assert "-r" in argv and f"{hook._SERVER_HOST}:4242" in argv
     # The hook stops the debuggee itself via debugpy.breakpoint(); tdb's
     # pre-armed pause would race it and can leave the thread suspended

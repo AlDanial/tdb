@@ -60,6 +60,10 @@ ADAPTER_LISTEN = 15.0
 ADAPTER_EXIT_GRACE = 2.0
 """Timeout for spawn_tcp adapter to announce its listening port."""
 
+# How long a stopping adapter gets to exit after SIGTERM, then again after
+# SIGKILL. A wedged gdb takes SIGTERM and never acts on it.
+ADAPTER_STOP_GRACE = 5.0
+
 # Run-mode examine reads each child process's threads and stacks in
 # turn. A child that is mid-fork or wedged in native code can leave
 # `threads` unanswered; bound it so one slow child can't stall the
@@ -81,6 +85,9 @@ RPC_STEP_WAIT = 600.0
 # blocked, so tdb waits this long for it to connect and then falls back.
 # The slowest success measured was 3.9s, behind a C call holding the GIL.
 PID_ATTACH_REMOTE_EXEC = 5.0
+# How long the adapter gets to start listening before tdb gives up without
+# injecting anything.
+PID_ATTACH_LISTEN = 10.0
 # Ceiling for injection as a whole, whichever method is used.
 PID_ATTACH_TOTAL = 30.0
 # Quitting mid-injection first lets the handshake finish, for this long:

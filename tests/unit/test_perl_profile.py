@@ -25,7 +25,7 @@ def test_registered_in_registry():
 
 
 def test_command_is_bundled_module():
-    assert PerlAdapter().command() == [sys.executable, "-m", "tdb.adapters.perl"]
+    assert PerlAdapter().command() == [sys.executable, "-P", "-m", "tdb.adapters.perl"]
 
 
 def test_launch_body_carries_perl_override():

@@ -51,7 +51,19 @@ BEGIN {
     $^P = 0x73f unless $^P & 0x02;
     unless ( defined &DB::DB ) {
         package DB;
+        # perl5db runs any .perldb in the current directory; see
+        # PERL5DB_FROM_ROOT in session.py.
+        require Cwd;
+        my ($here) = ( Cwd::getcwd() // '' ) =~ /\A(.*)\z/s;    # Untainted.
+        opendir( my $back, '.' );
+        my $can_return = length $here || $back;
+        chdir '/' if $can_return;
         require 'perl5db.pl';
+        if ($can_return) {
+            ( length $here && chdir $here )
+              or eval { $back && chdir $back }
+              or warn "Devel::TdbRemote: cannot return to $here: $!\n";
+        }
     }
 }
 

@@ -21,6 +21,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
+from tdb.dap.messages import Event
 from tdb.dap.types import Capabilities, StackFrame, Thread
 
 
@@ -118,6 +119,15 @@ class AdapterSpec:
         executable cannot be found.
         """
         raise NotImplementedError
+
+    def environment(self) -> dict[str, str]:
+        """Extra variables for the adapter subprocess, for what must stay
+        out of its command line, which any local user can read."""
+        return {}
+
+    def event_handlers(self) -> dict[str, Callable[[Event], None]]:
+        """DAP events this adapter needs to see itself, for attach."""
+        return {}
 
     def diagnose_exit(self, stderr: str) -> str | None:
         """One user-facing sentence explaining why the adapter process

@@ -296,7 +296,7 @@ def hook_env(monkeypatch):
 def test_hook_launches_tdb_on_snapshot(hook_env):
     exception_hook(*_capture(_crash_two_frames))
     ((argv, snap),) = hook_env
-    assert argv[:4] == [sys.executable, "-m", "tdb", "--post-mortem"]
+    assert argv[:5] == [sys.executable, "-P", "-m", "tdb", "--post-mortem"]
     assert snap["exception"]["message"] == "kaput"
     # Temp snapshot file is cleaned up after the TUI exits.
     import os

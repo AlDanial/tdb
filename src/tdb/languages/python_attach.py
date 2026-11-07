@@ -13,7 +13,7 @@ import contextlib
 import os
 import re
 import shutil
-import socket
+import stat
 import subprocess
 import sys
 import tempfile
@@ -48,7 +48,6 @@ _REMOTE_EXEC_HELPER_TIMEOUT = 10.0
 # second for most programs, and it can't be interrupted safely.
 _GDB_QUEUE_TIMEOUT = 20.0
 _GDB_QUEUED = re.compile(r"^tdb-queued 0$", re.MULTILINE)
-_GDB_COMMANDS_NAME = "queue.gdb"
 # How often a wait re-checks the target and the helper.
 _POLL = 0.25
 # A helper that exits cleanly and never ran the code found no Python to run
@@ -56,7 +55,7 @@ _POLL = 0.25
 _HELPER_EXIT_GRACE = 2.0
 _MAX_REASON_LENGTH = 300
 
-_SCRIPT_NAME = "attach.py"
+_SCRIPT_NAME = _python_gdb_helper.SCRIPT_NAME
 _MARKER_NAME = "marker"
 _CLAIMED_NAME = "claimed"
 _RAN_NAME = "ran"
@@ -314,8 +313,48 @@ def _check_target_can_read(pid: int, path: str) -> None:
         )
 
 
+def _only_root_can_change(path: str) -> bool:
+    """True if no other user could rename what root puts in directory `path`.
+    The sticky bit counts: that is how others can share /tmp safely.
+
+    `path` has to be resolved already, and any symlink refuses it: following
+    one here would check somewhere other than where the path later leads.
+    """
+    try:
+        while True:
+            st = os.lstat(path)
+            if st.st_uid != 0 or stat.S_ISLNK(st.st_mode):
+                return False
+            if st.st_mode & 0o022 and not st.st_mode & stat.S_ISVTX:
+                return False
+            parent = os.path.dirname(path)
+            if parent == path:
+                return True
+            path = parent
+    except OSError:
+        return False
+
+
+def _temp_base(pid: int) -> str | None:
+    """Where to make temporary directories, or None for tempfile's default.
+
+    Root writes files by name in there and then chowns them, so anyone who
+    can swap the directory has root write wherever they point it.
+    """
+    if _euid() != 0:
+        return None
+    base = os.path.realpath(tempfile.gettempdir())
+    if not _only_root_can_change(base):
+        raise PidAttachError(
+            f"cannot attach to pid {pid}: running as root, tdb won't use the "
+            f"temporary directory {base}, as other users could change it. Set "
+            "TMPDIR to a directory only root can change, or a sticky one like /tmp"
+        )
+    return base
+
+
 def _new_workdir(pid: int) -> str:
-    workdir = tempfile.mkdtemp(prefix="tdb-attach-")
+    workdir = tempfile.mkdtemp(prefix="tdb-attach-", dir=_temp_base(pid))
     try:
         # The parent, for permissions: this directory is root's own until
         # it is handed over. Only here does a private /tmp show.
@@ -387,15 +426,8 @@ def probe_target(pid: int, python: str | None = None) -> TargetInfo:
     return TargetInfo(pid, path, remote_exec == "True")
 
 
-def free_port() -> int:
-    """An unused localhost port for the adapter to wait on."""
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
 def build_remote_exec_script(
-    server_dir: str, port: int, marker: str, claimed: str
+    server_dir: str, port: int, marker: str, claimed: str, token: str
 ) -> str:
     """Source of the script `sys.remote_exec` runs inside the target.
 
@@ -405,7 +437,8 @@ def build_remote_exec_script(
     that loses only deletes its directory. Everything lives in one
     function so no names are left in the target.
     """
-    return _python_gdb_helper.FAST_HANDOFFS + textwrap.dedent(
+    prelude = _python_gdb_helper.FAST_HANDOFFS + _python_gdb_helper.ATTACH_PRELUDE
+    return prelude + textwrap.dedent(
         f"""\
         def _tdb_attach():
             import os, shutil, sys
@@ -422,18 +455,20 @@ def build_remote_exec_script(
                     import attach_pid_injected
                 finally:
                     del sys.path[0]
-                attach_pid_injected.attach({{
-                    "mode": "connect",
-                    "address": ["127.0.0.1", {port!r}],
-                    "wait_for_client": False,
-                    "log_to": None,
-                    "adapter_access_token": None,
-                }})
+                key = bytes.fromhex({token!r})
+                if _tdb_prepare(attach_pid_injected, {port!r}, key):
+                    attach_pid_injected.attach({{
+                        "mode": "connect",
+                        "address": ["127.0.0.1", {port!r}],
+                        "wait_for_client": False,
+                        "log_to": None,
+                        "adapter_access_token": None,
+                    }})
             _tdb_fast_handoffs(run)
         try:
             _tdb_attach()
         finally:
-            del _tdb_attach, _tdb_fast_handoffs
+            del _tdb_attach, _tdb_fast_handoffs, _tdb_dial, _tdb_prepare
         """
     )
 
@@ -599,16 +634,11 @@ def _gdb_queue_argv(pid: int, commands_path: str) -> list[str]:
 
 def _debugpy_argv(pid: int, port: int, ran_marker: str) -> list[str]:
     # -P: the cwd otherwise comes first, and a local debugpy/ would win.
-    # lldb and DLL injection have no gdb to get out of, and are untested
-    # with a thread, so they keep debugpy's plain entry point.
-    if sys.platform == "linux":
-        entry = [_python_gdb_helper.__file__, ran_marker]
-    else:
-        entry = ["-m", "debugpy"]
     return [
         sys.executable,
         "-P",
-        *entry,
+        _python_gdb_helper.__file__,
+        ran_marker,
         "--connect",
         f"127.0.0.1:{port}",
         "--disable-sys-remote-exec",
@@ -627,7 +657,10 @@ async def _spawn_remote_exec(argv: list[str]) -> asyncio.subprocess.Process:
 
 
 def _spawn_detached(
-    argv: list[str], output: IO[bytes], env: dict[str, str] | None = None
+    argv: list[str],
+    output: IO[bytes],
+    env: dict[str, str] | None = None,
+    pass_fds: tuple[int, ...] = (),
 ) -> subprocess.Popen:
     """Start the injection helper so that nothing can stop it.
 
@@ -644,6 +677,7 @@ def _spawn_detached(
         stdout=output,
         stderr=subprocess.STDOUT,
         env=env,
+        pass_fds=pass_fds,
         start_new_session=sys.platform != "win32",
     )
 
@@ -719,16 +753,19 @@ async def _queue_with_remote_exec(
 async def _queue_with_gdb(pid: int, script_path: str) -> tuple[bool, str]:
     # gdb's own embedded Python may choke on a PYTHONPATH meant for another.
     env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
-    # Not beside the script: the target's user owns that directory when tdb
-    # runs as root, and gdb runs whatever is in this file.
+    # gdb runs whatever is in this file, so it has no name to swap: root's
+    # TMPDIR may be writable by the user, and the target's user owns the
+    # directory beside the script. gdb reads it through an inherited fd.
     with (
-        tempfile.TemporaryDirectory(prefix="tdb-gdb-") as private,
+        tempfile.TemporaryFile("w", encoding="utf-8") as commands,
         tempfile.TemporaryFile() as output,
     ):
-        commands_path = os.path.join(private, _GDB_COMMANDS_NAME)
-        with open(commands_path, "w", encoding="utf-8") as f:
-            f.write(_gdb_queue_commands(_queued_code(script_path)))
-        gdb = _spawn_detached(_gdb_queue_argv(pid, commands_path), output, env)
+        commands.write(_gdb_queue_commands(_queued_code(script_path)))
+        commands.flush()
+        fd = commands.fileno()
+        gdb = _spawn_detached(
+            _gdb_queue_argv(pid, f"/proc/self/fd/{fd}"), output, env, pass_fds=(fd,)
+        )
         await _wait_for_exit(gdb, time.monotonic() + _GDB_QUEUE_TIMEOUT)
         if gdb.poll() is None:
             # Falling back would run a second gdb, which can't attach.
@@ -748,6 +785,22 @@ def _no_connection_error(pid: int) -> PidAttachError:
     )
 
 
+def _write_script(workdir: str, port: int, token: str) -> tuple[str, str, str]:
+    """Leave the attach script in `workdir`. Returns its marker, its claimed
+    path and its own."""
+    from debugpy import server
+
+    server_dir = os.path.dirname(server.__file__)
+    marker = os.path.join(workdir, _MARKER_NAME)
+    claimed = os.path.join(workdir, _CLAIMED_NAME)
+    script_path = os.path.join(workdir, _SCRIPT_NAME)
+    with open(marker, "w"):
+        pass
+    with open(script_path, "w", encoding="utf-8") as f:
+        f.write(build_remote_exec_script(server_dir, port, marker, claimed, token))
+    return marker, claimed, script_path
+
+
 async def _try_queued(
     queue: Callable[[str], Awaitable[tuple[bool, str]]],
     pid: int,
@@ -755,6 +808,7 @@ async def _try_queued(
     connected: asyncio.Event,
     deadline: float,
     quitting: asyncio.Event,
+    token: str,
     *,
     missing_script_is_silent: bool,
 ) -> tuple[bool, str]:
@@ -763,17 +817,8 @@ async def _try_queued(
     has started in the target; raises if the script started but never
     connected, as a fallback would then be a second attach.
     """
-    from debugpy import server
-
-    server_dir = os.path.dirname(server.__file__)
     workdir = _new_workdir(pid)
-    marker = os.path.join(workdir, _MARKER_NAME)
-    claimed = os.path.join(workdir, _CLAIMED_NAME)
-    script_path = os.path.join(workdir, _SCRIPT_NAME)
-    with open(marker, "w"):
-        pass
-    with open(script_path, "w", encoding="utf-8") as f:
-        f.write(build_remote_exec_script(server_dir, port, marker, claimed))
+    marker, claimed, script_path = _write_script(workdir, port, token)
     _hand_to_target([marker, script_path, workdir], pid)
 
     output = ""
@@ -808,6 +853,8 @@ async def inject(
     port: int,
     connected: asyncio.Event,
     quitting: asyncio.Event | None = None,
+    *,
+    token: str,
 ) -> str:
     """Make the target connect to the adapter waiting on `port`.
 
@@ -819,7 +866,7 @@ async def inject(
     """
     quitting = quitting or asyncio.Event()
     try:
-        return await _inject(target, port, connected, quitting)
+        return await _inject(target, port, connected, quitting, token)
     except PidAttachCancelled:
         raise
     except (PidAttachError, OSError) as exc:
@@ -836,6 +883,7 @@ async def _inject(
     port: int,
     connected: asyncio.Event,
     quitting: asyncio.Event,
+    token: str,
 ) -> str:
     from debugpy import server
 
@@ -851,6 +899,7 @@ async def _inject(
             connected,
             deadline,
             quitting,
+            token,
             missing_script_is_silent=False,
         )
         if reached:
@@ -871,6 +920,7 @@ async def _inject(
             connected,
             deadline,
             quitting,
+            token,
             missing_script_is_silent=True,
         )
         if reached:
@@ -905,7 +955,16 @@ async def _inject(
             raise failure(gdb_missing=True)
 
     workdir = _new_workdir(pid)
-    _hand_to_target([workdir], pid)
+    token_path = os.path.join(workdir, _python_gdb_helper.TOKEN_NAME)
+    fd = os.open(token_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(token)
+    handed_over = [token_path, workdir]
+    if sys.platform != "linux":
+        # The helper can only inject a line that runs this.
+        marker, _, script_path = _write_script(workdir, port, token)
+        handed_over = [token_path, marker, script_path, workdir]
+    _hand_to_target(handed_over, pid)
     try:
         return await _inject_with_debugpy(
             pid, port, connected, deadline, workdir, failure

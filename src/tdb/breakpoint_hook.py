@@ -117,6 +117,7 @@ def attach_and_pause(stop_at_frame: FrameType | None = None) -> bool:
         _subprocess = subprocess.Popen(
             [
                 sys.executable,
+                "-P",
                 "-m",
                 "tdb",
                 "-r",

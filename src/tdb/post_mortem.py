@@ -104,7 +104,7 @@ def launch_snapshot(
         with os.fdopen(fd, "w") as f:
             json.dump(snapshot, f)
         subprocess.run(
-            [sys.executable, "-m", "tdb", "--post-mortem", path],
+            [sys.executable, "-P", "-m", "tdb", "--post-mortem", path],
             stdin=sys.stdin,
             stdout=sys.stdout,
             stderr=sys.stderr,

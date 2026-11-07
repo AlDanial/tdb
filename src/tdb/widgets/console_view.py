@@ -10,6 +10,8 @@ already sits.
 from __future__ import annotations
 
 from rich.text import Text
+
+from tdb.terminal_text import console_text
 from textual.binding import Binding
 from textual.containers import Vertical
 from textual.message import Message
@@ -87,11 +89,11 @@ class ConsoleView(Vertical):
     def write_output(self, text: str, category: str = "stdout") -> None:
         log = self.query_one("#console-log", RichLog)
         if category == "stderr":
-            log.write(Text(text, style="red"))
+            log.write(console_text(text, style="red"))
         elif category == "console":
-            log.write(Text(text, style="dim"))
+            log.write(console_text(text, style="dim"))
         else:
-            log.write(Text(text))
+            log.write(console_text(text))
 
     def echo_input(self, text: str) -> None:
         """Show a submitted stdin line in the log; pipes don't echo."""
