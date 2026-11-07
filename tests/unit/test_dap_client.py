@@ -923,12 +923,16 @@ async def test_stop_tells_an_adapter_that_left_its_pipes_held_from_a_wedged_one(
     assert "ignored SIGTERM" not in caplog.text
 
 
-
 def _framed(body: bytes) -> bytes:
     return b"Content-Length: %d\r\n\r\n" % len(body) + body
 
 
-_DEEP = b'{"seq":1,"type":"event","event":"x","body":' + b"[" * 100_000 + b"]" * 100_000 + b"}"
+_DEEP = (
+    b'{"seq":1,"type":"event","event":"x","body":'
+    + b"[" * 100_000
+    + b"]" * 100_000
+    + b"}"
+)
 
 
 @pytest.mark.parametrize(
@@ -942,7 +946,15 @@ _DEEP = b'{"seq":1,"type":"event","event":"x","body":' + b"[" * 100_000 + b"]" *
         _framed(b"{not json"),
         _framed(_DEEP),
     ],
-    ids=["text body", "list body", "no event", "bad type", "not an object", "not json", "deep"],
+    ids=[
+        "text body",
+        "list body",
+        "no event",
+        "bad type",
+        "not an object",
+        "not json",
+        "deep",
+    ],
 )
 async def test_a_malformed_message_is_dropped_and_reading_goes_on(dap, raw):
     """Under `tdb -a PID` the target's own debugpy talks to tdb; a message it
