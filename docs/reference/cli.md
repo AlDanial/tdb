@@ -3,7 +3,7 @@
 ```
 usage: tdb [-h] [-v] [-r [HOST:]PORT] [--cwd CWD] [--no-stop-on-entry]
            [--no-just-my-code] [--no-subprocess] [--python PYTHON] [--pv]
-           [--lang LANGUAGE] [--adapter ADAPTER]
+           [--lang LANGUAGE] [--adapter ADAPTER] [--source FILE]
            [--keybindings {default,vim,emacs}]
            [--terminal {xterm,konsole,gnome-terminal,ghostty,kitty,iterm2,warp,wezterm,terminator}]
            [--local-root PATH] [--remote-root PATH]
@@ -23,6 +23,7 @@ usage: tdb [-h] [-v] [-r [HOST:]PORT] [--cwd CWD] [--no-stop-on-entry]
 | `--if EXPR` | Make the `-k`/`-t` breakpoint just before it conditional: the program stops there only when `EXPR` is true, e.g. `-k module.py:27 --if "a > 7"`. `EXPR` uses the debug adapter's expression syntax for the program's language. At most one `--if` per breakpoint; not supported for Tcsh. |
 | `--no-stop-on-entry` | Do not pause at the first line (default: stop on entry; automatic when `-k` is given) |
 | `--cwd DIR` | Working directory for the debuggee |
+| `--source FILE` | Add files to the Source picker from a UTF-8 file containing one filename per line. Relative paths are resolved against the list file's directory. Supplements automatically discovered local Python sources. |
 | `--python PATH` | Python interpreter for the debuggee (Python targets only) |
 | `--pv` | Shorthand for --python .venv/bin/python |
 | `--lang LANGUAGE` | Debuggee language (`python`, `cpp`, `perl`); default: auto-detect from the target |
@@ -50,3 +51,39 @@ usage: tdb [-h] [-v] [-r [HOST:]PORT] [--cwd CWD] [--no-stop-on-entry]
 | `--info` | Print the About text, file locations, and the path and version of each interpreter and debugger `tdb` would use, then exit |
 | `--config write-default` | Rename the existing `config.json` to `config.json-YYYY-mm-DD-HH:MM:SS` (`HH.MM.SS` on Windows, which forbids colons in filenames) and write a new one holding every default value, then exit |
 | `--config install-padwalker` | Build and cache the bundled PadWalker Perl module now, for the perl `tdb` would debug with (`adapters.perl` in `config.json`, else `perl` on `PATH`), instead of waiting for the first Perl launch; exits 1 if it cannot be built |
+
+## Source files
+
+Click **Source** beside **File**, or press **Alt+S**, to browse files relevant
+to the current program. The tree starts fully expanded. Click a directory
+name to collapse or expand it; use Up/Down or j/k and Enter to open a file
+in Code View. Escape closes the picker. Selecting a source file leaves the
+debug target and selected stack frame unchanged; unsaved edits prompt you
+to save, discard, or cancel navigation.
+
+For Python, `tdb` reads the entry script's imports and recursively follows
+matching modules in the script directory and debuggee working directory.
+Packages, local namespace packages, relative imports, aliases, and package
+initializers are supported. Discovery reads saved files each time the picker
+opens and never executes imports. It does not search installed libraries or
+`PYTHONPATH`, resolve dynamic imports, or correct misspelled module names.
+Files with syntax errors remain selectable, but their imports are not followed.
+
+To include other files, create a UTF-8 list such as `sources.txt`:
+
+```text
+src/helper.py
+../shared/common.py
+/opt/project/library/util.py
+```
+
+Then run `tdb --source=sources.txt main.py`. List entries supplement automatic
+discovery, and listed Python files are also scanned in Python sessions.
+Relative entries are relative to `sources.txt`, not the debuggee's working
+directory. Blank lines are ignored; paths are literal, without glob or shell
+expansion or comment syntax. Duplicate paths appear once. An unreadable list
+file is a command-line error; unavailable individual files produce warnings.
+
+For other languages, Source shows an available source entry file plus the
+explicit list, without automatic dependency discovery. Explicit files also
+work in attach sessions where no entry script is known.

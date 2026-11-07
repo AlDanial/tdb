@@ -29,6 +29,7 @@ end-of-line and paste (`End` and the terminal's own paste still work).
 | Key | Menu |
 |-----|------|
 | `Alt+F` | File (open a different script to debug) |
+| `Alt+S` | Source (browse relevant source files without changing the debug target) |
 | `Alt+E` | Edit (Save, Revert to Disk, Discard and Exit Edit Mode, Open in $EDITOR) |
 | `Alt+C` | Configure (Color Theme, Keybindings, Step Mode) |
 | `Alt+T` | Threads |
