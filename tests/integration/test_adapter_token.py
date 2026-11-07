@@ -295,8 +295,7 @@ def test_token_never_reaches_the_command_line():
 def test_each_attach_gets_its_own_token():
     target = TargetInfo(1, "", (3, 12))
     assert (
-        PidAttachDebugpyAdapter(target).token
-        != PidAttachDebugpyAdapter(target).token
+        PidAttachDebugpyAdapter(target).token != PidAttachDebugpyAdapter(target).token
     )
 
 

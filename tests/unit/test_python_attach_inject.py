@@ -164,7 +164,9 @@ def connect_soon(connected: asyncio.Event, delay: float = 0.05) -> None:
 
 
 def test_script_valid_with_awkward_paths():
-    src = build_remote_exec_script(r"C:\it's a dir\server", 5678, r"C:\t\m", r'C:\t\"c', TOKEN)
+    src = build_remote_exec_script(
+        r"C:\it's a dir\server", 5678, r"C:\t\m", r"C:\t\"c", TOKEN
+    )
     compile(src, "<payload>", "exec")
 
 
@@ -359,9 +361,7 @@ def test_switch_interval_comes_back_if_the_attach_never_returns(monkeypatch):
     # the program would.
     import tdb.languages._python_gdb_helper as helper
 
-    code = helper.FAST_HANDOFFS.replace(
-        repr(helper.SWITCH_INTERVAL_LIMIT), "0.2"
-    ) + (
+    code = helper.FAST_HANDOFFS.replace(repr(helper.SWITCH_INTERVAL_LIMIT), "0.2") + (
         "import sys, threading, time\n"
         "threading.Thread(target=_tdb_fast_handoffs,"
         " args=(lambda: time.sleep(5),), daemon=True).start()\n"
@@ -458,7 +458,9 @@ def test_classify_unknown_keeps_last_output_line():
 
 
 def test_classify_injection_library_failed_to_load():
-    output = 'noise\nNo symbol "DoAttach" in current context.\nCalledProcessError: gdb\n'
+    output = (
+        'noise\nNo symbol "DoAttach" in current context.\nCalledProcessError: gdb\n'
+    )
     assert "could not load" in classify(inject_output=output)
 
 
@@ -629,9 +631,7 @@ async def test_inject_no_fallback_when_the_script_owns_the_attempt(
 
     def fired(pid, commands_path):
         workdir = os.path.dirname(helpers.gdb_queue_scripts[0])
-        os.rename(
-            os.path.join(workdir, "marker"), os.path.join(workdir, "claimed")
-        )
+        os.rename(os.path.join(workdir, "marker"), os.path.join(workdir, "claimed"))
         return QUEUED
 
     monkeypatch.setattr(f"{MODULE}._gdb_queue_argv", fired)
@@ -689,7 +689,12 @@ def _run_queued(path, prelude: str = "") -> subprocess.CompletedProcess:
 
 @pytest.mark.parametrize(
     "script",
-    ("raise ValueError('boom')", "raise SystemExit(3)", "raise KeyboardInterrupt", "(("),
+    (
+        "raise ValueError('boom')",
+        "raise SystemExit(3)",
+        "raise KeyboardInterrupt",
+        "((",
+    ),
 )
 def test_queued_code_cannot_fail(tmp_path, script):
     path = tmp_path / "script.py"
@@ -717,10 +722,7 @@ def test_queued_code_ignores_names_in_the_program(tmp_path):
 def test_queued_code_runs_outside_main_globals(tmp_path):
     path = tmp_path / "script.py"
     path.write_text("left_behind = 1")
-    program = (
-        f"exec({_queued_code(str(path))!r})\n"
-        "print('left_behind' in globals())\n"
-    )
+    program = f"exec({_queued_code(str(path))!r})\nprint('left_behind' in globals())\n"
     result = subprocess.run(
         [sys.executable, "-c", program], capture_output=True, text=True, timeout=10
     )
@@ -1112,9 +1114,10 @@ def test_target_goes_on_with_a_peer_that_proves_itself():
     def behave(peer, got):
         nonce = peer.recv(32)
         peer.sendall(_adapter_proof(key, nonce))
-        got.append(peer.recv(32) == hmac.new(
-            key, b"target" + nonce + b"n" * 32, "sha256"
-        ).digest())
+        got.append(
+            peer.recv(32)
+            == hmac.new(key, b"target" + nonce + b"n" * 32, "sha256").digest()
+        )
 
     port, received, thread = _serve_once(behave)
     sock = _dial(port, key)

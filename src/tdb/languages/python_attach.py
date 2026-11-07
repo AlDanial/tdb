@@ -64,6 +64,7 @@ METHOD_REMOTE_EXEC = "sys.remote_exec"
 METHOD_GDB_QUEUE = "gdb pending call"
 METHOD_DEBUGPY = "debugpy injection"
 
+
 class PidAttachError(Exception):
     """Injection failed; `str()` is the message shown to the user."""
 
@@ -585,12 +586,7 @@ def _queued_code(script_path: str) -> str:
         "    source = script.read()\n"
         "exec(source, {})\n"
     )
-    return (
-        "try:\n"
-        f'    __import__("builtins").exec({run!r}, {{}})\n'
-        "except:\n"
-        "    pass\n"
-    )
+    return f'try:\n    __import__("builtins").exec({run!r}, {{}})\nexcept:\n    pass\n'
 
 
 def _gdb_queue_commands(code: str) -> str:

@@ -93,9 +93,7 @@ def test_probe_deleted_interpreter_is_unknown(monkeypatch, alive):
 def test_probe_missing_file_is_unknown(monkeypatch, tmp_path, alive):
     run = Mock()
     monkeypatch.setattr(f"{MODULE}.subprocess.run", run)
-    monkeypatch.setattr(
-        f"{MODULE}._exe_of_pid", lambda pid: str(tmp_path / "python3")
-    )
+    monkeypatch.setattr(f"{MODULE}._exe_of_pid", lambda pid: str(tmp_path / "python3"))
     assert probe_target(4242) == TargetInfo(4242, None, False)
     run.assert_not_called()
 
@@ -141,7 +139,9 @@ def test_a_root_owned_interpreter_is_trusted(monkeypatch):
 
 @pytest.mark.parametrize("uid, mode", ((1000, 0o100755), (0, 0o100775), (0, 0o100757)))
 def test_writable_by_others_is_not_trusted(monkeypatch, uid, mode):
-    monkeypatch.setattr(f"{MODULE}.os.stat", lambda path: Mock(st_uid=uid, st_mode=mode))
+    monkeypatch.setattr(
+        f"{MODULE}.os.stat", lambda path: Mock(st_uid=uid, st_mode=mode)
+    )
     assert not _trusted_to_run("/usr/bin/python3")
 
 
@@ -203,7 +203,9 @@ def test_pid_exists_false_for_missing_process(monkeypatch):
     assert pid_exists(4242) is False
 
 
-TCP_HEADER = "  sl  local_address rem_address   st tx:rx tr:when retrnsmt uid timeout inode\n"
+TCP_HEADER = (
+    "  sl  local_address rem_address   st tx:rx tr:when retrnsmt uid timeout inode\n"
+)
 
 
 def _tcp_row(local, remote, state, inode):

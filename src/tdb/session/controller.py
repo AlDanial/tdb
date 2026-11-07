@@ -475,9 +475,7 @@ class DebugController:
         self._attach_hook = hook
         initialized = asyncio.ensure_future(self._initialized_seen.wait())
         try:
-            await asyncio.wait(
-                {hook, initialized}, return_when=asyncio.FIRST_COMPLETED
-            )
+            await asyncio.wait({hook, initialized}, return_when=asyncio.FIRST_COMPLETED)
             if hook.done() and not hook.cancelled():
                 hook.result()
         except Exception:
