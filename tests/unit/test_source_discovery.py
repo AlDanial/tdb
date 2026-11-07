@@ -90,17 +90,31 @@ def test_non_python_does_not_parse_or_include_binary(tmp_path):
 def test_source_list_paths_are_literal_relative_to_list(tmp_path, monkeypatch):
     a = write(tmp_path, "sources/with space.py")
     b = write(tmp_path, "outside.py")
-    literal = write(tmp_path, "sources/#literal.py")
+    literal = write(tmp_path, "sources/[literal].py")
     listing = write(
         tmp_path,
         "sources/list.txt",
-        f"with space.py\n\n{b}\n./with space.py\nmissing.py\n#literal.py\n",
+        f"with space.py\n\n{b}\n./with space.py\nmissing.py\n[literal].py\n",
     )
     monkeypatch.chdir(tmp_path.parent)
     paths, warnings = read_source_list(str(listing))
     assert set(paths) == {a, b, literal}
     assert len(paths) == 3
     assert len(warnings) == 1 and "missing.py" in warnings[0]
+
+
+def test_source_list_ignores_blank_lines_and_hash_comments(tmp_path):
+    source = write(tmp_path, "with space.py")
+    listing = write(
+        tmp_path,
+        "sources.txt",
+        "\n \t\n# full-line comment\n  # indented comment\n"
+        "with space.py # inline comment # more comment\n"
+        "with space.py#comment without a separating space\n",
+    )
+    paths, warnings = read_source_list(str(listing))
+    assert paths == [source]
+    assert warnings == []
 
 
 def test_list_read_errors_are_not_silenced(tmp_path):

@@ -72,16 +72,20 @@ Files with syntax errors remain selectable, but their imports are not followed.
 To include other files, create a UTF-8 list such as `sources.txt`:
 
 ```text
-src/helper.py
+# Additional source files
+src/helper.py  # Local helper
 ../shared/common.py
+
 /opt/project/library/util.py
 ```
 
 Then run `tdb --source=sources.txt main.py`. List entries supplement automatic
 discovery, and listed Python files are also scanned in Python sessions.
 Relative entries are relative to `sources.txt`, not the debuggee's working
-directory. Blank lines are ignored; paths are literal, without glob or shell
-expansion or comment syntax. Duplicate paths appear once. An unreadable list
+directory. Everything from the first `#` to the end of each line is ignored,
+including full-line comments. Remaining whitespace is trimmed and blank lines
+are skipped. Paths have no glob or shell expansion; filenames containing `#`
+cannot be listed. Duplicate paths appear once. An unreadable list
 file is a command-line error; unavailable individual files produce warnings.
 
 For other languages, Source shows an available source entry file plus the

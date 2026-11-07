@@ -38,12 +38,12 @@ _SOURCE_SUFFIXES = {
 
 
 def read_source_list(filename: str) -> tuple[list[Path], list[str]]:
-    """Read literal UTF-8 paths; report bad entries, propagate list read errors."""
+    """Read UTF-8 paths, ignoring blanks and # comments; report bad entries."""
     listing = Path(filename).resolve()
     paths: set[Path] = set()
     warnings: list[str] = []
     for line in listing.read_text(encoding="utf-8").splitlines():
-        name = line.strip()
+        name = line.split("#", 1)[0].strip()
         if not name:
             continue
         path = listing.parent / name

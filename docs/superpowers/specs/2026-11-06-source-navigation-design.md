@@ -36,7 +36,8 @@ static discovery; runtime discovery is out of scope.
   beyond the named module are out of scope.
 - Files that cannot be parsed remain selectable, but yield no further imports.
   Discovery uses saved files on disk and refreshes each time the modal opens.
-- The list file is UTF-8, one path per line, with blank lines ignored. Relative
+- The list file is UTF-8, one path per line. Ignore content from the first `#`
+  through the end of each line, trim whitespace, and skip blank lines. Relative
   paths resolve against the list file's directory; absolute paths are accepted.
   Listed paths are literal filenames, with no glob or shell expansion. Existing
   files of any language may be listed. Deduplicate resolved paths. Listed Python

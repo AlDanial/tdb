@@ -139,7 +139,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--source",
         metavar="FILE",
         help="Add files to the Source picker from a UTF-8 list (one filename "
-        "per line, relative to the list file). Supplements local Python imports.",
+        "per line, relative to the list file; blank lines and # comments ignored). "
+        "Supplements local Python imports.",
     )
     parser.add_argument(
         "--cwd",
