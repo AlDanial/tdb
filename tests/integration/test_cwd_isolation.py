@@ -252,7 +252,7 @@ def test_perl_hook_module_returns_with_no_path_back(cwd_with_unsearchable_parent
         pytest.skip("perl5db.pl not found")
     perl = (
         f"perl -I{SRC_DIR / 'tdb' / 'adapters' / 'perl'} -MDevel::TdbRemote "
-        "-e 'print -e \"here\" ? \"stayed\\n\" : \"moved\\n\"'"
+        '-e \'print -e "here" ? "stayed\\n" : "moved\\n"\''
     )
     (inside / "here").write_text("")
     result = subprocess.run(

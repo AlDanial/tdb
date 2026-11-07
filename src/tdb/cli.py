@@ -7,7 +7,7 @@ import os
 import shutil
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from tdb.app import TdbApp
@@ -1064,6 +1064,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return args
 
 
+def _exit_on_startup_error(app: Any) -> None:
+    """Print a fatal startup error and exit. It can quote the debuggee or its
+    adapter, and goes straight to the terminal, so it is printed clean."""
+    if app._startup_error:
+        from tdb.terminal_text import strip_terminal_controls
+
+        print(strip_terminal_controls(app._startup_error), file=sys.stderr)
+        sys.exit(app.return_code or 2)
+
+
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
 
@@ -1426,9 +1436,7 @@ def _run_replay_tui(args: argparse.Namespace) -> None:
         source_files=args.source_files,
     )
     app.run()
-    if app._startup_error:
-        print(app._startup_error, file=sys.stderr)
-        sys.exit(app.return_code or 2)
+    _exit_on_startup_error(app)
     if app.return_code:
         sys.exit(app.return_code)
     sys.exit(0 if driver.errors == 0 else 1)
@@ -1483,6 +1491,4 @@ def _run_tui(args: argparse.Namespace) -> None:
     # Fatal startup error (e.g. remote-attach connection refused). The
     # TUI has already torn down; surface the reason on stderr so the
     # user doesn't just see a blank terminal and a non-zero exit code.
-    if app._startup_error:
-        print(app._startup_error, file=sys.stderr)
-        sys.exit(app.return_code or 2)
+    _exit_on_startup_error(app)

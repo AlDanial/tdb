@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import asyncio
 import logging
 import os
@@ -222,23 +223,46 @@ class DAPClient:
 
     async def _reap_adapter(self) -> None:
         """A wedged adapter (gdb stuck on its own locks) takes SIGTERM and
-        never acts on it, so neither wait may be unbounded."""
+        never acts on it, so neither wait may be unbounded. Its stderr is
+        drained meanwhile: an adapter that writes as it quits would otherwise
+        block on the full pipe and look wedged."""
         from tdb._timeouts import ADAPTER_STOP_GRACE
 
-        assert self._process is not None
+        process = self._process
+        assert process is not None
+        drain = (
+            asyncio.ensure_future(_drain(process.stderr))
+            if process.stderr is not None
+            else None
+        )
         try:
-            await asyncio.wait_for(self._process.wait(), ADAPTER_STOP_GRACE)
-            return
-        except asyncio.TimeoutError:
+            try:
+                await asyncio.wait_for(process.wait(), ADAPTER_STOP_GRACE)
+                return
+            except asyncio.TimeoutError:
+                pass
+            if process.returncode is not None:
+                # wait() also waits for the pipes, which a process the
+                # adapter started can hold open after the adapter is gone.
+                log.warning(
+                    "Adapter exited (%s) but its pipes are still held open, "
+                    "by a process it started",
+                    process.returncode,
+                )
+                return
             log.warning("Adapter ignored SIGTERM; killing it")
-        try:
-            self._process.kill()
-        except ProcessLookupError:
-            pass
-        try:
-            await asyncio.wait_for(self._process.wait(), ADAPTER_STOP_GRACE)
-        except asyncio.TimeoutError:
-            log.warning("Adapter still not reaped after SIGKILL")
+            try:
+                process.kill()
+            except ProcessLookupError:
+                pass
+            try:
+                await asyncio.wait_for(process.wait(), ADAPTER_STOP_GRACE)
+            except asyncio.TimeoutError:
+                if process.returncode is None:
+                    log.warning("Adapter still not reaped after SIGKILL")
+        finally:
+            if drain is not None:
+                drain.cancel()
 
     async def _read_loop(self) -> None:
         """Continuously read DAP messages from the adapter."""
@@ -246,8 +270,13 @@ class DAPClient:
         reader = self._reader
         try:
             while True:
-                data = await read_message(reader)
-                msg = parse_message(data)
+                try:
+                    msg = parse_message(await read_message(reader))
+                except (ValueError, RecursionError) as exc:
+                    # Bad JSON or a bad shape: the frame was read whole, so
+                    # the stream is still in step and the next one is fine.
+                    log.warning("Dropped a malformed DAP message: %r", exc)
+                    continue
                 if isinstance(msg, Response):
                     future = self._pending.pop(msg.request_seq, None)
                     if future and not future.done():
@@ -707,3 +736,10 @@ class DAPError(Exception):
         self.command = command
         self.body = body or {}
         super().__init__(f"DAP {command} failed: {message}")
+
+
+async def _drain(stream: asyncio.StreamReader) -> None:
+    """Read `stream` to its end, discarding it."""
+    with contextlib.suppress(ConnectionError, ValueError):
+        while await stream.read(65536):
+            pass

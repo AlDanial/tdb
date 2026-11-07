@@ -60,7 +60,10 @@ def unquote_dap_string(s: str) -> str:
     try:
         value = ast.literal_eval(s)
         if isinstance(value, str):
-            return value
+            from tdb.terminal_text import strip_terminal_controls
+
+            # A repr's `\x1b` is ESC again once decoded.
+            return strip_terminal_controls(value)
     except (ValueError, SyntaxError):
         pass
     return s

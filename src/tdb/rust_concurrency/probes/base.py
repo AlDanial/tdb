@@ -7,6 +7,7 @@ import re
 from dataclasses import replace
 from typing import Any
 
+from tdb.terminal_text import clean_message
 from tdb.rust_concurrency.models import (
     Confidence,
     Evidence,
@@ -115,7 +116,9 @@ def _marker_payload(output: str) -> str:
 def parse_probe_output(output: str) -> ProbeResult:
     """Parse one strict marker envelope, degrading malformed evidence safely."""
     try:
-        payload = json.loads(_marker_payload(output))
+        # Thread names and the like are the debuggee's; JSON's `\u001b` is
+        # ESC again once decoded.
+        payload = clean_message(json.loads(_marker_payload(output)))
         envelope = _mapping(payload, "probe envelope")
         version = envelope.get("rust_version")
         if version is not None and not _is_string(version):

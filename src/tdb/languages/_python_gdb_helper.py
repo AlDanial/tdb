@@ -233,7 +233,7 @@ def prepare_attach_code(code: str, path: str) -> str:
         raise RuntimeError(f"no {_DEBUGPY_ATTACH_CALL} in debugpy's attach code")
     prepare = (
         f"exec({ATTACH_PRELUDE!r});"
-        f'_tdb_key = bytes.fromhex(open({path!r}).read());'
+        f"_tdb_key = bytes.fromhex(open({path!r}).read());"
         '_tdb_ready = _tdb_prepare(attach_pid_injected, setup["address"][1], _tdb_key);'
     )
     return code.replace(
@@ -295,9 +295,7 @@ def install_hardening(injector, ran_marker: str) -> None:
 
     def run_on_a_thread(pid, python_code, *args, **kwargs):
         if sys.platform == "linux":
-            code = prepare_attach_code(
-                python_code, os.path.join(workdir, TOKEN_NAME)
-            )
+            code = prepare_attach_code(python_code, os.path.join(workdir, TOKEN_NAME))
             code = background_code(code, ran_marker)
         else:
             # lldb and DLL injection have no gdb to get out of, and are

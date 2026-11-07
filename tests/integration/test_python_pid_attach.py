@@ -47,7 +47,9 @@ TARGET = Path(__file__).parent / "fixtures" / "python_attach_target.py"
 LINUX = sys.platform == "linux"
 
 pytestmark = [
-    pytest.mark.skipif(sys.platform == "darwin", reason="injection needs root on macOS"),
+    pytest.mark.skipif(
+        sys.platform == "darwin", reason="injection needs root on macOS"
+    ),
     pytest.mark.skipif(
         LINUX and shutil.which("gdb") is None, reason="gdb is needed on Linux"
     ),
@@ -671,7 +673,9 @@ def test_attach_twice(make_target, attach, python):
 
 
 @linux_only
-def test_quit_while_paused_at_attach_leaves_program_running(make_target, attach, python):
+def test_quit_while_paused_at_attach_leaves_program_running(
+    make_target, attach, python
+):
     # The pause must not land inside the injected call: quitting there
     # used to kill gdb mid-call and segfault the target.
     target = make_target("busy", python)
@@ -777,7 +781,9 @@ def test_program_gets_free_if_the_attach_never_finishes(python, close_it):
     # end up untraced too: leaving a tracer costs the program speed for good.
     out, err = _silent_adapter_program(python, close_it)
     assert "released" in out, out + err
-    assert "main None []" in out or "main None [None, None, None, None, None, None]" in out, out + err
+    assert (
+        "main None []" in out or "main None [None, None, None, None, None, None]" in out
+    ), out + err
     assert "worker None" in out, out + err
 
 

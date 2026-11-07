@@ -41,6 +41,7 @@ if mode == "debugpy_listen":
 
     debugpy.listen(("127.0.0.1", 0))
 
+
 def spin():
     while True:
         sum(range(10000))

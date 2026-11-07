@@ -45,14 +45,20 @@ def _ignoring_hangups():
 
 # "starting" is where a loaded CI runner closed it: Textual's writer thread
 # died on the first EIO, its queue filled, and shutdown blocked on it for good.
-@pytest.mark.parametrize("settle", [0.0, 6.0], ids=["starting", "running"])
-def test_tdb_and_its_program_end_with_the_terminal(tmp_path, settle):
+# "run mode" is a --run TUI opened by a -k breakpoint: nobody can answer its
+# detach-or-terminate dialog, so it ends the program.
+@pytest.mark.parametrize(
+    "settle, options",
+    [(0.0, []), (6.0, []), (6.0, ["--run", "-k", "3"])],
+    ids=["starting", "running", "run mode"],
+)
+def test_tdb_and_its_program_end_with_the_terminal(tmp_path, settle, options):
     program = tmp_path / "loop.py"
     program.write_text("import time\nwhile True:\n    time.sleep(0.2)\n")
     master, slave = pty.openpty()
     fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 40, 120, 0, 0))
     tdb = subprocess.Popen(
-        [sys.executable, "-P", "-m", "tdb", str(program)],
+        [sys.executable, "-P", "-m", "tdb", *options, str(program)],
         stdin=slave,
         stdout=slave,
         stderr=slave,

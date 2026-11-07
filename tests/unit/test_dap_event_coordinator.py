@@ -405,3 +405,22 @@ async def test_trampoline_stop_steps_in_instead_of_rendering():
     await co.on_stopped(DapStopped(1, "step"))
     assert calls == {"step_in": 1, "step_out": 0, "rendered": 1}
     assert co._hook_step_outs == 0
+
+
+def test_check_stderr_traceback_shows_no_escape_sequences():
+    """stderr is the debuggee's to write; the crash dialog must not pass its
+    escape sequences (OSC 52 writes the clipboard) to tdb's terminal."""
+    co, app = _coord()
+    osc_52 = "\x1b]52;c;ZXZpbA==\x07"
+    app._stderr_buffer = [
+        "Traceback (most recent call last):\n",
+        f'  File "/foo/bar{osc_52}.py", line 7, in main\n',
+        f"    1 / 0  # {osc_52}\n",
+        f"ZeroDivisionError: \x1b[31mdivision by zero{osc_52}\n",
+    ]
+    co._check_stderr_traceback()
+    (modal,) = app.pushed_screens
+    for shown in (modal._exception_text, modal._frames_text, modal._header):
+        assert "\x1b" not in shown and "\x07" not in shown, repr(shown)
+    assert "division by zero" in modal._exception_text
+    assert app.controller.state.stack_frames[0].source.path == "/foo/bar.py"

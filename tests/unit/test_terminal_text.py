@@ -25,7 +25,9 @@ CSI = "\x1b[2J"
 DCS = "\x1bPq#0\x1b\\"
 
 
-@pytest.mark.parametrize("sequence", [OSC_52, OSC_TITLE_BEL, CSI, DCS, "\x1bc", "\x9b2J"])
+@pytest.mark.parametrize(
+    "sequence", [OSC_52, OSC_TITLE_BEL, CSI, DCS, "\x1bc", "\x9b2J"]
+)
 def test_sequences_go(sequence):
     assert strip_terminal_controls(f"a{sequence}b") == "ab"
 
@@ -45,7 +47,9 @@ def test_an_unterminated_sequence_goes_too():
 
 
 def test_every_control_goes():
-    text = "".join(map(chr, range(0x20))) + "\x7f" + "".join(map(chr, range(0x80, 0xA0)))
+    text = (
+        "".join(map(chr, range(0x20))) + "\x7f" + "".join(map(chr, range(0x80, 0xA0)))
+    )
     assert strip_terminal_controls(text) == "\t\n"
 
 
@@ -134,3 +138,39 @@ def test_writes_never_block_once_the_terminal_is_gone():
 
     threading.Thread(target=flood, daemon=True).start()
     assert finished.wait(5), "a write or stop() blocked on the dead writer"
+
+
+def test_hang_up_check_survives_a_platform_without_termios(monkeypatch):
+    """Windows has no termios; the check runs every two seconds from start-up."""
+    import sys
+
+    from tdb.terminal_text import terminal_hung_up
+
+    monkeypatch.setitem(sys.modules, "termios", None)
+    assert terminal_hung_up() is False
+
+
+@pytest.mark.skipif(not hasattr(__import__("os"), "openpty"), reason="needs a pty")
+def test_hang_up_is_seen_on_the_terminal_tdb_draws_on(monkeypatch, tmp_path):
+    """Under nohup, stdin is not the terminal; the screen still goes to stderr."""
+    import os
+    import sys
+
+    from tdb.terminal_text import terminal_hung_up
+
+    master, slave = os.openpty()
+    os.close(master)
+    with open(os.devnull) as quiet, os.fdopen(slave, "w") as screen:
+        monkeypatch.setattr(sys, "__stdin__", quiet)
+        monkeypatch.setattr(sys, "__stderr__", screen)
+        assert terminal_hung_up() is True
+
+
+def test_coloured_output_keeps_exactly_its_own_line_break():
+    assert console_text("\x1b[31mred\x1b[0m\n").plain == "red\n"
+    assert console_text("\x1b[31mred\x1b[0m").plain == "red"
+
+
+def test_a_lone_8_bit_introducer_does_not_take_the_rest_of_the_text():
+    assert strip_terminal_controls("caf\x9d keep this") == "caf keep this"
+    assert strip_terminal_controls("a\x9d0;title\x9cb") == "ab"
