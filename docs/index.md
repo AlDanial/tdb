@@ -22,6 +22,7 @@ complex programs.
 
 - PyPI: [https://pypi.org/project/textual-debugger/](https://pypi.org/project/textual-debugger/)
 - GitHub: [https://github.com/AlDanial/tdb](https://github.com/AlDanial/tdb)
+- RTD: [https://textual-debugger.readthedocs.io/](https://textual-debugger.readthedocs.io/)
 
 MIT License.  Copyright 2026 by Al Danial.
 
@@ -45,7 +46,7 @@ It specifically supports modules
     - `threading` (with a thread inspector)
     - `multiprocessing` / `concurrent.futures` (with automatic child process attachment and a process inspector)
 
-- attaches to a running Python 3.11+ program by pid, with no preparation
+- attaches to a running Python (3.11+), C/C++, Go, Rust, or OCaml program by PID, with no preparation
 
 - supports remote attachment to Python, Perl, Ruby, Rust, C/C++, and Go programs
 
