@@ -23,6 +23,7 @@ from textual.widgets import Input, Label
 
 from tdb.keybindings import KeybindingConfig, Mode
 from tdb.source_edit import atomic_write_text
+from tdb.terminal_text import visible_controls
 from tdb.vi import MarkTable, ViSession
 from tdb.widgets.code_editor import CodeEditor, _UnsavedChangesModal
 
@@ -1129,13 +1130,16 @@ class CodeView(ScrollableContainer, can_focus=True):
         self._had_trailing_newline = text.endswith("\n")
         self._source_text = text
         self._lines = text.splitlines()
+        # The file is the debuggee user's to write: only what is drawn has
+        # its controls made visible, so Edit mode saves the file as it was.
         if is_placeholder:
             # A message, not code: no statement analysis, no syntax
             # highlighting (the language lexer would colour it oddly).
             self._step_units = []
             self._valid_bp_lines = set()
             self._highlighted = [
-                Text(line, style=Style(italic=True, dim=True)) for line in self._lines
+                Text(visible_controls(line), style=Style(italic=True, dim=True))
+                for line in self._lines
             ]
         else:
             # Step units underpin the "breakpoints land on logical statement
@@ -1143,7 +1147,7 @@ class CodeView(ScrollableContainer, can_focus=True):
             # failure → all click sites pass lines through unchanged.
             self._step_units = compute_step_units(text, filename=path)
             self._valid_bp_lines = {u[0] for u in self._step_units}
-            self._highlighted = self._highlight_source(text)
+            self._highlighted = self._highlight_source(visible_controls(text))
         self._max_line_width = max((cell_len(line) for line in self._lines), default=0)
         self._render_code(layout=True)
 
@@ -1260,7 +1264,7 @@ class CodeView(ScrollableContainer, can_focus=True):
         if self._highlighted is not None and index < len(self._highlighted):
             hl_line = self._highlighted[index]
         else:
-            hl_line = Text(self._lines[index])
+            hl_line = Text(visible_controls(self._lines[index]))
 
         if is_current:
             hl_line = self._apply_line_bg(hl_line, "rgb(120,100,30)")

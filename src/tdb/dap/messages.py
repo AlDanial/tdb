@@ -81,21 +81,44 @@ class Event:
         )
 
 
-def parse_message(data: dict[str, Any]) -> Request | Response | Event:
-    msg_type = data["type"]
+class MalformedMessage(ValueError):
+    """A DAP message tdb cannot use. Under `tdb -a PID` the target's own
+    debugpy sends them, so one must cost that message, not the session."""
+
+
+_PAYLOAD = {"response": "body", "event": "body", "request": "arguments"}
+
+
+def parse_message(data: Any) -> Request | Response | Event:
+    if not isinstance(data, dict):
+        raise MalformedMessage(f"not an object: {type(data).__name__}")
+    msg_type = data.get("type")
+    payload = _PAYLOAD.get(msg_type)  # type: ignore[arg-type]
+    if payload is None:
+        raise MalformedMessage(f"unknown message type: {msg_type!r}")
+    if data.get(payload) is None:
+        data = {**data, payload: {}}
+    elif not isinstance(data[payload], dict):
+        raise MalformedMessage(f"{msg_type} {payload} is not an object")
+    try:
+        return _parse(msg_type, data)
+    except (KeyError, TypeError, RecursionError) as exc:
+        raise MalformedMessage(f"{msg_type}: {exc!r}") from exc
+
+
+def _parse(msg_type: str, data: dict[str, Any]) -> Request | Response | Event:
     # Text from the debuggee, on its way to tdb's own terminal.
     if msg_type == "response":
         return Response.from_dict(clean_message(data))
-    elif msg_type == "event":
+    if msg_type == "event":
         cleaned = clean_message(data)
-        if data.get("event") == "output" and "output" in data.get("body", {}):
+        output = data["body"].get("output")
+        if data.get("event") == "output" and isinstance(output, str):
             # ConsoleView keeps the colours, safely.
-            cleaned["body"]["output"] = data["body"]["output"]
+            cleaned["body"]["output"] = output
         return Event.from_dict(cleaned)
-    elif msg_type == "request":
-        return Request(
-            seq=data["seq"],
-            command=data["command"],
-            arguments=data.get("arguments", {}),
-        )
-    raise ValueError(f"Unknown message type: {msg_type}")
+    return Request(
+        seq=data["seq"],
+        command=data["command"],
+        arguments=data["arguments"],
+    )

@@ -174,3 +174,26 @@ async def test_quit_paths_never_write_breakpoints_file(monkeypatch, tmp_path, ke
         for _ in range(20):
             await pilot.pause()
     assert saves == []
+
+
+async def test_losing_the_terminal_ends_the_program_without_touching_saved_breakpoints(
+    adopted, monkeypatch
+):
+    """Run mode on a terminal that has gone: nobody can answer the dialog, and
+    detaching would only reopen a TUI on the dead terminal at the next stop,
+    so the program ends, as it would on that terminal without tdb. Run mode
+    ignores breakpoints.json, so this must not overwrite it either."""
+    app, handler, controller, stopped_calls = adopted
+    app._program = "/somewhere/prog.py"
+    saved = []
+    monkeypatch.setattr("tdb.app.save_breakpoints", lambda *a, **k: saved.append(a))
+    monkeypatch.setattr("tdb.app.terminal_hung_up", lambda: True)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        app._exit_if_terminal_hung_up()
+        for _ in range(20):
+            await pilot.pause()
+        assert not isinstance(app.screen, _DetachQuitModal)
+    assert stopped_calls == [True]
+    assert saved == []
+    assert app.detach_and_resume is False

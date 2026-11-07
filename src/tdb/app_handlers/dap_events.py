@@ -279,7 +279,11 @@ class DapEventCoordinator:
         if parse_error is None:
             return
 
-        stderr = "".join(self.app._stderr_buffer)
+        from tdb.terminal_text import strip_terminal_controls
+
+        # The debuggee writes stderr; what the dialog shows must not reach
+        # tdb's terminal as commands (the console decodes its own copy).
+        stderr = strip_terminal_controls("".join(self.app._stderr_buffer))
         parsed = parse_error(stderr, exit_code)
         if parsed is None:
             return

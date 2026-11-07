@@ -2061,7 +2061,14 @@ class TdbApp(_AppMessageRoutes, App):
     def _exit_if_terminal_hung_up(self) -> None:
         """Nobody can answer a prompt now, so this skips them. Unsaved edits
         are lost, as they are when a signal ends tdb."""
-        if terminal_hung_up():
+        if not terminal_hung_up():
+            return
+        if self._adopted:
+            # Run mode: detaching would reopen a TUI on the dead terminal at
+            # the next stop, so the program ends, as it would on that
+            # terminal without tdb.
+            self.run_worker(self._terminate_now(), name="terminal-gone")
+        else:
             self.run_worker(self._finish_quit(), name="terminal-gone")
 
     async def _finish_quit(self) -> None:
@@ -2094,6 +2101,10 @@ class TdbApp(_AppMessageRoutes, App):
     async def _terminate_and_exit(self) -> None:
         if not await self._confirm_discard_edits():
             return
+        await self._terminate_now()
+
+    async def _terminate_now(self) -> None:
+        # Run mode ignores breakpoints.json, so it never overwrites it.
         if self._is_quitting:
             return
         self._is_quitting = True

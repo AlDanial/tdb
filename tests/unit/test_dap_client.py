@@ -851,3 +851,106 @@ async def test_stop_gives_up_on_an_adapter_that_ignores_sigterm():
             process.kill()
             await process.wait()
     assert process.returncode == -signal.SIGKILL
+
+
+async def test_stop_drains_an_adapter_whose_stderr_is_full():
+    # An adapter that writes as it quits (gdb does) blocks on a stderr pipe
+    # nobody reads, and looks as if it ignored SIGTERM.
+    code = (
+        "import os, signal\n"
+        "def bye(*_):\n"
+        "    os.write(2, b'x' * 200_000)\n"
+        "    os._exit(0)\n"
+        "signal.signal(signal.SIGTERM, bye)\n"
+        "print('ready', flush=True)\n"
+        "while True:\n"
+        "    os.write(2, b'y' * 4096)\n"
+    )
+    process = await asyncio.create_subprocess_exec(
+        sys.executable,
+        "-c",
+        code,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    await process.stdout.readline()
+    await asyncio.sleep(0.5)  # long enough to fill the pipe
+    client = DAPClient()
+    client._process = process
+    try:
+        await asyncio.wait_for(client.stop(), timeout=15)
+    finally:
+        if process.returncode is None:
+            process.kill()
+            await process.wait()
+    assert process.returncode == 0
+
+
+async def test_stop_tells_an_adapter_that_left_its_pipes_held_from_a_wedged_one(caplog):
+    # The adapter is gone, but a process it started keeps its stderr open, so
+    # asyncio's wait() does not return. It did not ignore SIGTERM.
+    code = (
+        "import subprocess, sys\n"
+        "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])\n"
+        "print(child.pid, flush=True)\n"
+        "sys.stdin.read()\n"
+    )
+    process = await asyncio.create_subprocess_exec(
+        sys.executable,
+        "-c",
+        code,
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    holder = int(await process.stdout.readline())
+    client = DAPClient()
+    client._process = process
+    try:
+        with caplog.at_level("WARNING", logger="tdb.dap.client"):
+            await asyncio.wait_for(client.stop(), timeout=15)
+    finally:
+        import os
+
+        try:
+            os.kill(holder, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        if process.returncode is None:
+            process.kill()
+            await process.wait()
+    assert process.returncode == -signal.SIGTERM
+    assert "ignored SIGTERM" not in caplog.text
+
+
+
+def _framed(body: bytes) -> bytes:
+    return b"Content-Length: %d\r\n\r\n" % len(body) + body
+
+
+_DEEP = b'{"seq":1,"type":"event","event":"x","body":' + b"[" * 100_000 + b"]" * 100_000 + b"}"
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        encode_message({"seq": 1, "type": "event", "event": "output", "body": "text"}),
+        encode_message({"seq": 1, "type": "event", "event": "stopped", "body": [1]}),
+        encode_message({"seq": 1, "type": "event"}),
+        encode_message({"seq": 1, "type": "nonsense"}),
+        encode_message(["not", "a", "message"]),
+        _framed(b"{not json"),
+        _framed(_DEEP),
+    ],
+    ids=["text body", "list body", "no event", "bad type", "not an object", "not json", "deep"],
+)
+async def test_a_malformed_message_is_dropped_and_reading_goes_on(dap, raw):
+    """Under `tdb -a PID` the target's own debugpy talks to tdb; a message it
+    garbles must not end the session's read loop."""
+    client, adapter = dap
+    got = []
+    client.on_event("stopped", got.append)
+    adapter._writer.write(raw)
+    adapter.send_event("stopped", {"reason": "breakpoint", "threadId": 1})
+    await _wait_until(lambda: got)
+    assert got[0].body["reason"] == "breakpoint"

@@ -227,6 +227,14 @@ def _decode_json_repr(raw: str) -> object:
       - `'...json...'` directly (some adapters elide the wrap)
       - bare list-shaped Python literal (when JSON happens to be valid Python too)
     """
+    from tdb.terminal_text import clean_message
+
+    # Decoding turns an escaped `\u001b` back into ESC, past the cleaning
+    # the DAP message had on arrival.
+    return clean_message(_decode_json_repr_raw(raw))
+
+
+def _decode_json_repr_raw(raw: str) -> object:
     text = raw.strip()
     try:
         parsed = ast.literal_eval(text)
