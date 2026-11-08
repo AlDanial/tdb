@@ -27,6 +27,7 @@ from tdb.run_mode import (
     _arm_signals,
     _disarm_signals,
     configure_when_initialized,
+    final_exit_code,
     start_session,
     stop_session_on_error,
 )
@@ -198,18 +199,6 @@ async def _resume_client(client: DAPClient | None, thread_id: int | None) -> Non
         pass  # already resumed, or the process exited under us
 
 
-def _final_exit_code(console: ConsoleRunHandler) -> int:
-    """Exit code once the session has ended.
-
-    `terminated` can arrive without `exited` (hard crash, adapter
-    death, SIGKILL); exit_code is then still None, and reporting 0
-    would tell a `tdb -e ... && next-step` pipeline the run succeeded.
-    """
-    if console.exit_code is not None:
-        return console.exit_code
-    return 1
-
-
 async def _next_wake(
     console: _EvalRunHandler, interrupt: asyncio.Event
 ) -> tuple[str, tuple[DAPClient | None, int | None, str] | None]:
@@ -284,7 +273,7 @@ async def run(
             while True:
                 event, stop = await _next_wake(console, interrupt)
                 if event == "exited":
-                    return _final_exit_code(console)
+                    return final_exit_code(console)
                 if event == "interrupt":
                     print("tdb: interrupted — stopping the program", file=sys.stderr)
                     await controller.stop()
@@ -309,6 +298,6 @@ async def run(
                         await _handle_stop(controller, client, tid, eval_points)
                     await _resume_client(client, tid)
                 if console.exited.is_set():
-                    return _final_exit_code(console)
+                    return final_exit_code(console)
         finally:
             _disarm_signals(loop, installed, ignore=False)

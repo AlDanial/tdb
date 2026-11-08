@@ -34,6 +34,18 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
+def final_exit_code(console: "ConsoleRunHandler") -> int:
+    """Exit code once the session has ended.
+
+    `terminated` can arrive without `exited` (hard crash, adapter
+    death, SIGKILL); exit_code is then still None, and reporting 0
+    would tell a `tdb --run ... && next-step` pipeline the run succeeded.
+    """
+    if console.exit_code is not None:
+        return console.exit_code
+    return 1
+
+
 class ConsoleRunHandler:
     """Event sink for the headless phase of run mode.
 
@@ -438,7 +450,7 @@ async def run(
                         console.exited, interrupt, console.stopped, examine_ev
                     )
                     if console.exited.is_set():
-                        exit_code = console.exit_code or 0
+                        exit_code = final_exit_code(console)
                         break
 
                     if interrupt.is_set() and not console.stopped.is_set():
@@ -451,7 +463,7 @@ async def run(
                         ok = await controller.pause(timeout=_PAUSE_TIMEOUT)
                         if console.exited.is_set():
                             # Died between the signal and the pause landing.
-                            exit_code = console.exit_code or 0
+                            exit_code = final_exit_code(console)
                             print(
                                 f"tdb: program exited (code {exit_code}) before "
                                 "the debugger could open",
@@ -495,7 +507,7 @@ async def run(
                         requested = examine.now_iso()
                         ok = await controller.pause(timeout=_PAUSE_TIMEOUT)
                         if console.exited.is_set():
-                            exit_code = console.exit_code or 0
+                            exit_code = final_exit_code(console)
                             await emit(
                                 "exited", seq, trigger, requested, None, exit_code
                             )

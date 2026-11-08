@@ -1454,10 +1454,13 @@ class DebugController:
         threads = self.state.threads
         if not threads:
             return
+        ctx = self._inspect_context()
         try:
             stacks = {}
             for t in threads:
                 stacks[t.id] = await ac.stack_trace(t.id, levels=8)
+            if not self._still_current(ctx):
+                return
             decorations = classify(threads, stacks)
             by_id = {d.thread.id: d for d in decorations}
             current = by_id.get(self.state.current_thread_id)
@@ -1480,7 +1483,10 @@ class DebugController:
         try:
             self._active_client = self.client
             self.state.current_thread_id = thread_id
+            ctx = self._inspect_context()
             frames = await self.client.stack_trace(thread_id)
+            if not self._still_current(ctx):
+                return  # resumed, or the user picked something else meanwhile
             if frames:
                 initial = self._initial_frame(frames)
                 self.state.set_stack(frames, current_frame_id=initial.id)
@@ -1503,14 +1509,20 @@ class DebugController:
             return
         try:
             self._active_client = child
+            generation = self.state.generation
             threads = await child.threads()
-            if not threads:
+            if not threads or self.state.generation != generation or (
+                self._active_client is not child
+            ):
                 return
             # debugpy reports threads in creation order; index 0 is the
             # child's MainThread, which is what the user expects to land on.
             main_tid = threads[0].id
             self.state.current_thread_id = main_tid
+            ctx = self._inspect_context()
             frames = await child.stack_trace(main_tid)
+            if not self._still_current(ctx):
+                return  # resumed, or the user picked something else meanwhile
             if frames:
                 initial = self._initial_frame(frames)
                 self.state.set_stack(frames, current_frame_id=initial.id)
@@ -1531,64 +1543,101 @@ class DebugController:
 
         load_post_mortem_into(self.state, snapshot)
 
+    def _inspect_context(self) -> tuple:
+        """What an inspection fetch is about: the stop (phase generation),
+        the client, and the selected thread. Results awaited under one
+        context are published only if it is still current -- a reply
+        landing after a resume, or after the user picked another thread
+        or process, describes a state that is gone."""
+        return (self.state.generation, self._active_client, self.state.current_thread_id)
+
+    def _still_current(self, ctx: tuple) -> bool:
+        generation, client, thread_id = ctx
+        return (
+            self.state.generation == generation
+            and self._active_client is client
+            and self.state.current_thread_id == thread_id
+        )
+
     async def fetch_stop_info(self) -> None:
         """After stopping, fetch threads, stack trace, scopes, and variables.
 
         Uses _active_client which points to whichever client (parent or
-        child) most recently stopped at a breakpoint/exception.
+        child) most recently stopped at a breakpoint/exception. Nothing
+        is published once the stop it was fetched for has passed.
         """
         ac = self._active_client
+        generation = self.state.generation
         try:
-            self.state.threads = await ac.threads()
+            threads = await ac.threads()
         except Exception:
             log.exception("Error fetching threads")
+        else:
+            if self.state.generation != generation or self._active_client is not ac:
+                return
+            self.state.threads = threads
 
         await self._prefer_visible_thread(ac)
 
-        if self.state.current_thread_id is not None:
+        ctx = self._inspect_context()
+        if ctx[0] != generation or ctx[1] is not ac or ctx[2] is None:
+            return
+        try:
+            frames = await ac.stack_trace(ctx[2])
+        except Exception:
+            log.exception("Error fetching stack trace")
+            frames = []
+        if not self._still_current(ctx):
+            log.debug("stack trace for a stop that has passed; dropped")
+            return
+        if frames:
+            initial = self._initial_frame(frames)
+            self.state.set_stack(frames, current_frame_id=initial.id)
             try:
-                frames = await ac.stack_trace(self.state.current_thread_id)
+                await self.fetch_scopes_and_variables(initial.id)
             except Exception:
-                log.exception("Error fetching stack trace")
-                frames = []
-            if frames:
-                initial = self._initial_frame(frames)
-                self.state.set_stack(frames, current_frame_id=initial.id)
-                try:
-                    await self.fetch_scopes_and_variables(initial.id)
-                except Exception:
-                    log.exception("Error fetching scopes/variables")
-            else:
-                self.state.set_stack(frames)
+                log.exception("Error fetching scopes/variables")
+        else:
+            self.state.set_stack(frames)
 
     async def fetch_scopes_and_variables(self, frame_id: int) -> None:
-        ac = self._active_client
+        """Fetch `frame_id`'s scopes and variables and publish them --
+        all at once, and only if the stop, client, thread and selected
+        frame are still the ones they were fetched for."""
+        ctx = self._inspect_context()
+        ac = ctx[1]
         # Copy: the Interactive scope is appended below, and the
         # adapter's list must not accumulate it across calls.
-        self.state.scopes = list(await ac.scopes(frame_id))
-        self.state.variables.clear()
-        for scope in self.state.scopes:
-            variables = await ac.variables(scope.variables_reference)
-            self.state.variables[scope.variables_reference] = variables
+        scopes = list(await ac.scopes(frame_id))
+        variables: dict[int, list[Variable]] = {}
+        for scope in scopes:
+            variables[scope.variables_reference] = await ac.variables(
+                scope.variables_reference
+            )
         if self.state.interactive:
-            self.state.scopes.append(
+            scopes.append(
                 Scope(name="Interactive", variables_reference=INTERACTIVE_SCOPE_REF)
             )
-            self.state.variables[INTERACTIVE_SCOPE_REF] = [
+            variables[INTERACTIVE_SCOPE_REF] = [
                 await self._read_interactive(ac, iv, frame_id)
-                for iv in self.state.interactive
+                for iv in list(self.state.interactive)
             ]
         if self.state.display:
             shown = [
                 var
-                for expr in self.state.display
+                for expr in list(self.state.display)
                 if (var := await self._read_display(ac, expr, frame_id)) is not None
             ]
             if shown:
-                self.state.scopes.insert(
-                    0, Scope(name="Display", variables_reference=DISPLAY_SCOPE_REF)
-                )
-                self.state.variables[DISPLAY_SCOPE_REF] = shown
+                scopes.insert(0, Scope(name="Display", variables_reference=DISPLAY_SCOPE_REF))
+                variables[DISPLAY_SCOPE_REF] = shown
+        if not self._still_current(ctx) or self.state.current_frame_id != frame_id:
+            log.debug("scopes for frame %s of a passed stop/selection; dropped", frame_id)
+            return
+        self.state.scopes = scopes
+        # In place: other holders of the dict see the new contents.
+        self.state.variables.clear()
+        self.state.variables.update(variables)
 
     @staticmethod
     async def _read_display(client, expr: str, frame_id: int) -> Variable | None:
