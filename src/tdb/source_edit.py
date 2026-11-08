@@ -4,7 +4,8 @@ No Textual imports here: everything is unit-testable without a TUI.
 
 - atomic_write_text: write-to-temp + os.replace so a crash mid-save
   never leaves a half-written source file (works on Windows because
-  the temp file lives in the target's own directory).
+  the temp file lives in the target's own directory). The temp file is
+  created exclusively under a random name, so it can't be hijacked.
 - remap_line_numbers / remap_breakpoints: after a save, breakpoints
   set on the old text need new line numbers. difflib gives us the
   equal/insert/delete/replace blocks; we map through them.
@@ -19,6 +20,7 @@ import os
 import shlex
 import shutil
 import sys
+import tempfile
 from collections.abc import Iterable, Mapping, Sequence
 
 from tdb.dap.types import SourceBreakpoint
@@ -37,23 +39,43 @@ def atomic_write_text(path: str, text: str) -> None:
     target = os.path.realpath(path)
     directory = os.path.dirname(target) or "."
     name = os.path.basename(target)
-    tmp = os.path.join(directory, f".{name}.tdb-tmp")
+    # mkstemp creates the file exclusively (O_CREAT|O_EXCL) under an
+    # unpredictable name: a symlink planted beside the source can't
+    # redirect the write, and two saves never share a temp file.
+    fd, tmp = tempfile.mkstemp(prefix=f".{name}.", suffix=".tdb-tmp", dir=directory)
     try:
-        with open(tmp, "w", encoding="utf-8", newline="") as fh:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
             fh.write(text)
             fh.flush()
             os.fsync(fh.fileno())
         try:
             shutil.copymode(target, tmp)
         except OSError:
-            pass  # target doesn't exist yet (new file): keep umask mode
+            # New file: mkstemp made it 0600; give it the mode open()
+            # would have (0666 minus umask).
+            os.chmod(tmp, 0o666 & ~_current_umask())
         os.replace(tmp, target)
-    except OSError:
+    except BaseException:
         try:
             os.unlink(tmp)
         except OSError:
             pass
         raise
+
+
+def _current_umask() -> int:
+    """The process umask. Linux exposes it read-only in /proc; elsewhere
+    the only way is to set and restore it."""
+    try:
+        with open("/proc/self/status", encoding="ascii") as fh:
+            for line in fh:
+                if line.startswith("Umask:"):
+                    return int(line.split()[1], 8)
+    except (OSError, ValueError):
+        pass
+    mask = os.umask(0o022)
+    os.umask(mask)
+    return mask
 
 
 def remap_line_numbers(

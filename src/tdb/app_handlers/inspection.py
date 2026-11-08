@@ -533,7 +533,7 @@ class InspectionWorkflows:
         """Open the Processes modal immediately (showing Loading...) and let
         the worker fill it in. Returns whether the worker should be spawned.
 
-        Honors the on-disk cache written by `_save_processes_cache` on
+        Honors the in-memory snapshot written by `_save_processes_cache` on
         the previous dismiss. The cache is invalidated by
         controller._on_continued, so a hit means we're still in the same
         stopped episode and can restore the full snapshot (process list +
@@ -568,7 +568,7 @@ class InspectionWorkflows:
 
     def _on_processes_dismissed(self, _result: object) -> None:
         """Push-screen callback: persist the modal's accumulated state to
-        the cache file, then drop the registry reference.
+        the snapshot, then drop the registry reference.
 
         Cache write is skipped when the modal was dismissed before
         populate (no processes) or when the program has since stepped/
