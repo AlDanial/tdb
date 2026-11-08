@@ -14,6 +14,7 @@ from tdb.dap.client import DAPError
 from tdb.languages.base import AdapterNotFoundError
 from tdb.languages.python_attach import PidAttachCancelled, PidAttachError
 from tdb.session.controller import DebugController
+from . import auth
 from .app import create_app
 from .event_handler import ServerEventHandler
 from .handlers import ControllerRef, RpcHandlers
@@ -181,6 +182,7 @@ async def run_headless(
     path_mappings: list[tuple[str, str]] | None = None,
     profile: "LanguageProfile | None" = None,
     pre_arm_pause: bool = True,
+    insecure_no_auth: bool = False,
 ) -> None:
     """Run the debug server in headless mode (no TUI).
 
@@ -208,7 +210,8 @@ async def run_headless(
 
     # Create and start the FastAPI server
     handlers = RpcHandlers(ControllerRef(controller), handler)
-    fastapi_app = create_app(handlers)
+    token, token_file = auth.setup_token(insecure=insecure_no_auth, port=port)
+    fastapi_app = create_app(handlers, token=token, port=port)
     config = uvicorn.Config(
         fastapi_app,
         host=host,
@@ -218,12 +221,16 @@ async def run_headless(
     server = uvicorn.Server(config)
 
     print(f"tdb debug server listening on http://{host}:{port}/rpc")
+    print(auth.describe_token(token, token_file))
     if attach_host is not None and attach_port is not None:
         print(f"Debugging: remote {attach_host}:{attach_port}")
     else:
         print(f"Debugging: {program}")
 
-    await server.serve()
+    try:
+        await server.serve()
+    finally:
+        auth.remove_token_file(token_file)
 
     # Clean up
     try:

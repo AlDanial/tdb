@@ -95,7 +95,7 @@ a network (stdio transport only by design).
 
 - SSE-style event push: `control` and `wait_for_stop` make polling
   efficient enough; events would also need uneven MCP-client support.
-- HTTP / streamable-HTTP transports: would require auth (which the
-  HTTP RPC server also currently lacks); stdio inherits the trust of
+- HTTP / streamable-HTTP transports: would require auth (as the
+  HTTP RPC server's bearer token does); stdio inherits the trust of
   the process that spawned it.
 - Multi-session: one debug session per MCP process.

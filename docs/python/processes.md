@@ -22,11 +22,13 @@ RPC equivalents:
 ```bash
 # List all child processes
 curl -s -X POST http://127.0.0.1:8150/rpc \
+  -H "Authorization: Bearer $TDB_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"action":"list_processes","params":[]}'
 
 # Inspect a specific process by name or PID
 curl -s -X POST http://127.0.0.1:8150/rpc \
+  -H "Authorization: Bearer $TDB_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"action":"inspect_process","params":["ForkPoolWorker-1"]}'
 ```
