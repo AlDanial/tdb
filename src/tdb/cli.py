@@ -361,6 +361,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Port for the JSON-RPC debug server (default: 8150)",
     )
     parser.add_argument(
+        "--insecure-no-auth",
+        action="store_true",
+        help="Let the JSON-RPC debug server accept requests without the "
+        "bearer token it otherwise requires. Any local user could then "
+        "drive the debugger (run code, read files). Host/Origin checks "
+        "stay on.",
+    )
+    parser.add_argument(
         "--post-mortem",
         metavar="SNAPSHOT_FILE",
         default=None,
@@ -1304,6 +1312,7 @@ def _run_headless(args: argparse.Namespace) -> None:
             path_mappings=args.path_mappings or None,
             profile=args.profile,
             pre_arm_pause=not args.no_pause_on_attach,
+            insecure_no_auth=args.insecure_no_auth,
         )
     )
 
@@ -1480,6 +1489,7 @@ def _run_tui(args: argparse.Namespace) -> None:
         pause_on_attach=not args.no_pause_on_attach,
         sub_process=not args.no_subprocess,
         server_port=args.server_port if args.server else None,
+        server_insecure_no_auth=args.insecure_no_auth,
         profile=args.profile,
         recorder=recorder,
         source_files=args.source_files,

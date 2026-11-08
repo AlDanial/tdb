@@ -368,7 +368,7 @@ async def test_reset_for_retry_does_not_let_a_cancelled_watch_exit_emit_stray_ev
         stdin = None  # externalTerminal-shaped: no proxy-owned stdin pipe
 
         def __init__(self):
-            self.pid = 999999
+            self.pid = 1 << 30  # beyond any pid_max: a real killpg() gets ESRCH
             self.returncode = None
             self._exited = asyncio.Event()
 
@@ -487,7 +487,7 @@ async def test_reset_for_retry_closes_rdbg_writer_for_proxy_owned_launch_too():
     server = _server()
 
     class FakeProc:
-        pid = 424242
+        pid = 1 << 30  # beyond any pid_max: a real killpg() gets ESRCH
         returncode = 0  # already dead -- keeps _ensure_rdbg_dead a no-op
         stdin = None
 

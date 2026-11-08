@@ -11,11 +11,13 @@ RPC equivalents:
 ```bash
 # List all threads (* marks current)
 curl -s -X POST http://127.0.0.1:8150/rpc \
+  -H "Authorization: Bearer $TDB_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"action":"list_threads","params":[]}'
 
 # Inspect a specific thread by ID
 curl -s -X POST http://127.0.0.1:8150/rpc \
+  -H "Authorization: Bearer $TDB_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"action":"inspect_thread","params":[1]}'
 ```

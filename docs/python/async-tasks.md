@@ -23,16 +23,19 @@ RPC equivalents:
 ```bash
 # List all tasks
 curl -s -X POST http://127.0.0.1:8150/rpc \
+  -H "Authorization: Bearer $TDB_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"action":"list_tasks","params":[]}'
 
 # Inspect a specific task by name
 curl -s -X POST http://127.0.0.1:8150/rpc \
+  -H "Authorization: Bearer $TDB_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"action":"inspect_task","params":["Task-1"]}'
 
 # Show wait graph and any deadlock cycles
 curl -s -X POST http://127.0.0.1:8150/rpc \
+  -H "Authorization: Bearer $TDB_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"action":"wait_graph","params":[]}'
 ```

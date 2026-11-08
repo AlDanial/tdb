@@ -4,24 +4,22 @@ Opening the Processes modal in a multi-process debug session is
 expensive: each visible child requires DAP threads + stack_trace +
 scopes + variables round-trips against its own DAPClient. Closing the
 modal and re-opening within the *same stopped episode* repaints exactly
-the same data, so we serialize the modal's accumulated detail to disk
-on dismiss and restore from it on open.
+the same data, so we serialize the modal's accumulated detail on dismiss
+and restore from it on open.
 
 Lifecycle:
-  - controller._on_continued (and controller.stop) clears the file —
-    any subsequent step/continue invalidates the snapshot.
-  - The cache lives in the temp dir, keyed by tdb's PID so concurrent
-    tdb sessions don't collide and crashed-tdb leftovers don't get
-    picked up by a different tdb invocation later.
+  - controller._on_continued (and controller.stop) clears the
+    snapshot — any subsequent step/continue invalidates it.
+  - The snapshot is kept in memory, as a JSON string, so each load()
+    returns fresh objects. It used to be a predictably named file in the
+    shared temp dir, which another local user could pre-create as a
+    symlink (clobbering a file on save) or fill with forged data.
 """
 
 from __future__ import annotations
 
 import json
 import logging
-import os
-import tempfile
-from pathlib import Path
 
 from tdb.dap.types import Scope, Source, StackFrame, Variable
 from tdb.inspection import ProcessInfo
@@ -29,9 +27,7 @@ from tdb.inspection import ProcessInfo
 log = logging.getLogger(__name__)
 
 
-def cache_path() -> Path:
-    """Return the per-tdb-session cache file path."""
-    return Path(tempfile.gettempdir()) / f"tdb_processes_cache_{os.getpid()}.json"
+_snapshot: str | None = None
 
 
 # --- Serialization helpers -------------------------------------------
@@ -158,7 +154,7 @@ def save(
     details: dict[int, dict],
     current_pid: int | None,
 ) -> None:
-    """Serialize the Processes modal snapshot to disk.
+    """Serialize the Processes modal snapshot (kept in memory).
 
     `details` is keyed by pid; each value is the same shape that
     ProcessesModal.show_process_detail receives:
@@ -183,10 +179,8 @@ def save(
         },
         "current_pid": current_pid,
     }
-    try:
-        cache_path().write_text(json.dumps(payload))
-    except OSError:
-        log.exception("Failed to write processes cache to %s", cache_path())
+    global _snapshot
+    _snapshot = json.dumps(payload)
 
 
 def load() -> dict | None:
@@ -198,13 +192,12 @@ def load() -> dict | None:
                          "variables": {ref: [Variable]}}},
        "current_pid": int | None}
     """
-    path = cache_path()
-    if not path.is_file():
+    if _snapshot is None:
         return None
     try:
-        raw = json.loads(path.read_text())
-    except (OSError, json.JSONDecodeError):
-        log.exception("Failed to read processes cache %s", path)
+        raw = json.loads(_snapshot)
+    except json.JSONDecodeError:
+        log.exception("Processes cache snapshot is corrupt")
         return None
     try:
         processes = [_proc_from_dict(p) for p in raw["processes"]]
@@ -224,16 +217,11 @@ def load() -> dict | None:
             "current_pid": raw.get("current_pid"),
         }
     except (KeyError, TypeError, ValueError):
-        log.exception(
-            "Processes cache schema mismatch in %s — discarding",
-            path,
-        )
+        log.exception("Processes cache schema mismatch — discarding")
         return None
 
 
 def clear() -> None:
-    """Remove the cache file. No-op if it doesn't exist."""
-    try:
-        cache_path().unlink(missing_ok=True)
-    except OSError:
-        log.exception("Failed to clear processes cache %s", cache_path())
+    """Discard the snapshot. No-op if there is none."""
+    global _snapshot
+    _snapshot = None

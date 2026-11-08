@@ -200,6 +200,7 @@ class TdbApp(_AppMessageRoutes, App):
         pause_on_attach: bool = True,
         sub_process: bool = True,
         server_port: int | None = None,
+        server_insecure_no_auth: bool = False,
         post_mortem_snapshot: dict | None = None,
         profile: "LanguageProfile | None" = None,
         recorder: object | None = None,
@@ -235,6 +236,7 @@ class TdbApp(_AppMessageRoutes, App):
         self._pause_on_attach = pause_on_attach
         self._sub_process = sub_process
         self._server_port = server_port
+        self._server_insecure_no_auth = server_insecure_no_auth
         self._post_mortem_snapshot = post_mortem_snapshot
         self._profile = profile
 
@@ -773,6 +775,7 @@ class TdbApp(_AppMessageRoutes, App):
     async def _start_server(self) -> None:
         """Start the JSON-RPC debug server alongside the TUI."""
         import uvicorn
+        from tdb.server import auth
         from tdb.server.app import create_app
         from tdb.server.handlers import ControllerRef, HandlerRef, RpcHandlers
 
@@ -780,7 +783,10 @@ class TdbApp(_AppMessageRoutes, App):
         self._controller_ref = ControllerRef(self.controller)
         self._handler_ref = HandlerRef(self._server_handler)
         handlers = RpcHandlers(self._controller_ref, self._handler_ref)
-        fastapi_app = create_app(handlers)
+        token, token_file = auth.setup_token(
+            insecure=self._server_insecure_no_auth, port=self._server_port
+        )
+        fastapi_app = create_app(handlers, token=token, port=self._server_port)
         config = uvicorn.Config(
             fastapi_app,
             host="127.0.0.1",
@@ -789,7 +795,17 @@ class TdbApp(_AppMessageRoutes, App):
         )
         self._uvicorn_server = uvicorn.Server(config)
         log.info("Starting debug server on port %d", self._server_port)
-        await self._uvicorn_server.serve()
+        self.notify(
+            f"http://127.0.0.1:{self._server_port}/rpc\n"
+            + auth.describe_token(token, token_file),
+            title="Debug server",
+            severity="warning" if token is None else "information",
+            timeout=10,
+        )
+        try:
+            await self._uvicorn_server.serve()
+        finally:
+            auth.remove_token_file(token_file)
 
     def _should_auto_continue(self) -> bool:
         """True when a recorded session should auto-continue past its

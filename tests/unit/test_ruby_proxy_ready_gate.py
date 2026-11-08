@@ -94,7 +94,7 @@ class _FakeProc:
         self.stdout.feed_eof()
         self.stderr = stderr
         self.returncode: int | None = None
-        self.pid = 4242
+        self.pid = 1 << 30  # beyond any pid_max: a real killpg() gets ESRCH
 
     async def wait(self) -> int:
         await asyncio.Event().wait()  # never exits on its own

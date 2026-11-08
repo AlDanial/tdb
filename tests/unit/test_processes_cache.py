@@ -12,12 +12,11 @@ from tdb.inspection import ProcessInfo
 
 
 @pytest.fixture(autouse=True)
-def _isolated_cache_path(tmp_path, monkeypatch):
-    """Redirect cache_path() to the per-test tmp_path so the real
-    tdb cache file in /tmp is never touched."""
-    target = tmp_path / "cache.json"
-    monkeypatch.setattr(processes_cache, "cache_path", lambda: target)
-    yield target
+def _isolated_cache_path():
+    """Every test starts and ends with an empty in-memory snapshot."""
+    processes_cache.clear()
+    yield
+    processes_cache.clear()
 
 
 def _sample_payload():
@@ -100,20 +99,39 @@ def test_load_returns_none_when_missing(_isolated_cache_path):
 
 
 def test_load_returns_none_on_corrupt_json(_isolated_cache_path):
-    _isolated_cache_path.write_text("not json {")
+    processes_cache._snapshot = "not json {"
     assert processes_cache.load() is None
 
 
 def test_load_returns_none_on_schema_mismatch(_isolated_cache_path):
-    _isolated_cache_path.write_text(json.dumps({"not": "the right shape"}))
+    processes_cache._snapshot = json.dumps({"not": "the right shape"})
     assert processes_cache.load() is None
 
 
-def test_clear_removes_file(_isolated_cache_path):
+def test_clear_discards_snapshot(_isolated_cache_path):
     processes_cache.save(*_sample_payload())
-    assert _isolated_cache_path.is_file()
+    assert processes_cache.load() is not None
     processes_cache.clear()
-    assert not _isolated_cache_path.exists()
+    assert processes_cache.load() is None
+
+
+def test_never_touches_the_shared_temp_dir(_isolated_cache_path, tmp_path, monkeypatch):
+    import tempfile
+
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+    """A predictable file in a world-writable temp dir could be a planted
+    symlink (write clobbers the target) or forged data (read)."""
+    monkeypatch.setenv("TMPDIR", str(tmp_path))
+    processes_cache.save(*_sample_payload())
+    assert list(tmp_path.iterdir()) == []
+    assert processes_cache.load() is not None
+
+
+def test_loaded_snapshot_is_a_fresh_copy(_isolated_cache_path):
+    processes_cache.save(*_sample_payload())
+    first = processes_cache.load()
+    first["processes"].clear()
+    assert processes_cache.load()["processes"]
 
 
 def test_clear_is_noop_when_missing(_isolated_cache_path):

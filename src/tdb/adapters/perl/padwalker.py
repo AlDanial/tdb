@@ -26,7 +26,8 @@ Resolution order at launch (`ensure_padwalker`):
 
 The cache root honours TDB_PADWALKER_CACHE (tests point it at a temp
 dir so real builds never touch ~/.config/tdb) and tolerates a read-only
-config dir by falling back to the system temp dir.
+config dir by falling back to a private (0700, owner-checked) directory in
+the system temp dir.
 """
 
 from __future__ import annotations
@@ -35,6 +36,7 @@ import importlib.resources
 import logging
 import os
 import shutil
+import stat
 import subprocess
 import tempfile
 from dataclasses import dataclass
@@ -154,6 +156,45 @@ def _cache_candidates() -> list[Path]:
     return [primary] if primary == fallback else [primary, fallback]
 
 
+def _is_private_dir(path: Path) -> bool:
+    """True when `path` is a real directory (not a symlink) owned by us
+    that nobody else can write to.
+
+    The temp-dir fallback lives in a directory every local user can
+    create entries in, under a predictable name. Anything found there
+    is loaded into perl (`-MPadWalker`), so a directory another user
+    planted would run their code as us. Windows' temp dir is per-user.
+    """
+    if os.name == "nt":
+        return True
+    try:
+        st = os.lstat(path)
+    except OSError:
+        return False
+    return (
+        stat.S_ISDIR(st.st_mode)
+        and st.st_uid == os.geteuid()
+        and not st.st_mode & 0o022
+    )
+
+
+def _trusted(root: Path, primary: Path) -> bool:
+    """The configured cache root is the user's own choice; the shared
+    temp-dir fallback must prove it is private. Entries inside a private
+    root can only have been made by us, so they need no check of their own."""
+    return root == primary or _is_private_dir(root)
+
+
+def _cached_dirs(name: str) -> list[Path]:
+    """Existing cache entries for `name` that are safe to load from."""
+    primary = cache_root()
+    return [
+        root / name
+        for root in _cache_candidates()
+        if _trusted(root, primary) and (root / name).is_dir()
+    ]
+
+
 def _build(perl: str, env: dict, make: str, dlext: str, dest: Path) -> str | None:
     """Compile the vendored sources with `perl`; install the two artefacts
     into `dest`. Returns None on success, else a short reason."""
@@ -255,17 +296,26 @@ def _resolve(perl: str, env: dict) -> PadWalkerResult:
         )
     version, archname, make, dlext = cfg
     name = cache_key(version, archname)
-    for root in _cache_candidates():
-        cached = root / name
-        if cached.is_dir() and _loads(perl, with_perl5lib(env, str(cached))):
+    for cached in _cached_dirs(name):
+        if _loads(perl, with_perl5lib(env, str(cached))):
             return PadWalkerResult(str(cached), "cached")
     reasons: list[str] = []
+    primary = cache_root()
     for root in _cache_candidates():
         dest = root / name
         try:
-            root.mkdir(parents=True, exist_ok=True)
+            if root == primary:
+                root.mkdir(parents=True, exist_ok=True)
+            else:
+                root.mkdir(mode=0o700, exist_ok=True)
         except OSError as e:
             reasons.append(f"cannot create {root} ({e})")
+            continue
+        if not _trusted(root, primary):
+            reasons.append(
+                f"cache dir {root} is not private (owned by another user, "
+                "a symlink, or writable by others); not using it"
+            )
             continue
         reason = _build(perl, env, make, dlext, dest)
         if reason is None:
@@ -318,8 +368,7 @@ def is_loadable(perl: str, env: dict | None = None) -> bool:
         return False
     name = cache_key(cfg[0], cfg[1])
     return any(
-        (root / name).is_dir() and _loads(perl, with_perl5lib(env, str(root / name)))
-        for root in _cache_candidates()
+        _loads(perl, with_perl5lib(env, str(entry))) for entry in _cached_dirs(name)
     )
 
 
@@ -335,9 +384,8 @@ def padwalker_status(perl: str = "perl") -> str:
         return f"{perl} does not run"
     version, archname, _make, _dlext = cfg
     name = cache_key(version, archname)
-    for root in _cache_candidates():
-        cached = root / name
-        if cached.is_dir() and _loads(perl, with_perl5lib(env, str(cached))):
+    for cached in _cached_dirs(name):
+        if _loads(perl, with_perl5lib(env, str(cached))):
             return f"built for perl {version} ({archname}), cached in {cached}"
     return (
         f"not yet built for perl {version} ({archname}); tdb will try to "

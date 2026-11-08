@@ -966,3 +966,90 @@ async def test_a_malformed_message_is_dropped_and_reading_goes_on(dap, raw):
     adapter.send_event("stopped", {"reason": "breakpoint", "threadId": 1})
     await _wait_until(lambda: got)
     assert got[0].body["reason"] == "breakpoint"
+
+
+# --- stderr drained while running; connection loss fails requests -------
+
+
+async def test_adapter_stderr_is_drained_while_it_runs():
+    """A verbose adapter must not block on a full stderr pipe mid-session
+    (Codex review #3: 1 MiB of stderr stalled the adapter)."""
+    code = (
+        "import os, sys\n"
+        "os.write(2, b'x' * (1 << 20))\n"
+        "os.write(2, b'\\nlast line\\n')\n"
+        "print('done', flush=True)\n"
+        "sys.stdin.read()\n"
+    )
+    process = await asyncio.create_subprocess_exec(
+        sys.executable,
+        "-c",
+        code,
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    client = DAPClient()
+    client._process = process
+    client._start_stderr_drain()
+    try:
+        line = await asyncio.wait_for(process.stdout.readline(), timeout=10)
+        assert line == b"done\n"
+        process.stdin.close()
+        await asyncio.wait_for(process.wait(), timeout=10)
+        await asyncio.wait_for(client._stderr_task, timeout=5)
+        tail = client._stderr_text()
+        assert tail.endswith("last line")
+        assert len(tail) <= DAPClient.STDERR_TAIL_BYTES
+    finally:
+        if process.returncode is None:
+            process.kill()
+            await process.wait()
+        await client.stop()
+
+
+async def test_adapter_death_message_uses_drained_stderr():
+    process = await asyncio.create_subprocess_exec(
+        sys.executable,
+        "-c",
+        "import sys; sys.stderr.write('fatal: no dap here\\n'); sys.exit(3)",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    client = DAPClient()
+    client._process = process
+    client._start_stderr_drain()
+    fut: asyncio.Future = asyncio.get_running_loop().create_future()
+    client._pending[1] = fut
+    await asyncio.wait_for(client._watch_adapter_death(), timeout=10)
+    with pytest.raises(ConnectionError, match="exit 3.*fatal: no dap here"):
+        fut.result()
+
+
+async def test_connection_loss_fails_pending_requests_at_once(dap):
+    """A TCP adapter going away (no subprocess watcher to notice) must
+    fail outstanding requests now, not after DAP_REQUEST (Codex #6)."""
+    client, adapter = dap
+    adapter.silent.add("threads")
+    future = await client._send_raw("threads")
+    await adapter.wait_for_requests("threads")
+    await adapter.close()
+    with pytest.raises(ConnectionError, match="closed"):
+        await asyncio.wait_for(future, timeout=2)
+    assert client._pending == {}
+    with pytest.raises(ConnectionError):
+        await asyncio.wait_for(client.threads(), timeout=2)
+
+
+async def test_reconnect_clears_a_previous_connection_loss(dap):
+    client, adapter = dap
+    await adapter.close()
+    await _wait_until(lambda: client._death_error is not None)
+    fresh = FakeAdapter()
+    port = await fresh.start()
+    try:
+        await client.connect("127.0.0.1", port)
+        assert client._death_error is None
+        await asyncio.wait_for(client.threads(), timeout=2)
+    finally:
+        await fresh.close()

@@ -41,7 +41,7 @@ from tdb.languages.python_attach import (
 from tdb.server.event_handler import ServerEventHandler
 from tdb.session.controller import DebugController
 
-from .conftest import RpcClient, SRC_DIR, _free_port
+from .conftest import TEST_SERVER_TOKEN, RpcClient, SRC_DIR, _free_port
 
 TARGET = Path(__file__).parent / "fixtures" / "python_attach_target.py"
 LINUX = sys.platform == "linux"
@@ -190,6 +190,7 @@ class Session:
             ),
             "TDB_LOG_DIR": str(tmp_path),
             "TMPDIR": str(tmp_path),
+            "TDB_SERVER_TOKEN": TEST_SERVER_TOKEN,
         }
         self.proc = subprocess.Popen(
             [
