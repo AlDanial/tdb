@@ -4,9 +4,9 @@
 
 Add a Source action immediately to the right of the existing File action
 (called Files in the request). Clicking Source or pressing Alt-S opens a
-modal tree of files relevant to the debugged program. All directories start
-expanded; clicking a directory toggles its branch. Up/down and j/k move the
-selection, Enter opens a file in Code View, and Escape cancels.
+modal list of files relevant to the debugged program. The debuggee source file
+appears first, followed by the remaining paths in sorted order. Up/down and j/k
+move the selection, Enter opens a file in Code View, and Escape cancels.
 
 Selecting a source file keeps the debug target, execution state, and selected
 stack frame unchanged. Existing breakpoint display and unsaved-edit safeguards
@@ -38,7 +38,8 @@ static discovery; runtime discovery is out of scope.
   Discovery uses saved files on disk and refreshes each time the modal opens.
 - The list file is UTF-8, one path per line. Ignore content from the first `#`
   through the end of each line, trim whitespace, and skip blank lines. Relative
-  paths resolve against the list file's directory; absolute paths are accepted.
+  paths resolve against the directory where tdb is launched, independent of
+  the list file location and --cwd; absolute paths are accepted.
   Listed paths are literal filenames, with no glob or shell expansion. Existing
   files of any language may be listed. Deduplicate resolved paths. Listed Python
   files are additional discovery roots for Python sessions.
@@ -47,14 +48,13 @@ static discovery; runtime discovery is out of scope.
 - Outside Python sessions, show explicitly listed files and an available source
   entry file, without attempting language-specific dependency discovery or
   presenting native executable binaries as source.
-- Build the tree from the finite collected file set, rather than scanning all
-  directory contents. Sort directories and files deterministically. Use the
-  working directory as the root when all files fit beneath it; otherwise use
-  their common ancestor, labeled with its path. Show an empty-state message
-  when no local source files are available.
+- Build a flat list from the finite collected file set. Show the debuggee source
+  first when available, then sort the remaining paths deterministically. Paths
+  beneath the launch directory display as `./path/to/file`; external paths are
+  absolute, including files on other drives. Show an empty-state message when
+  no local source files are available.
 - Match the existing file modal's dimensions and styling, using a dedicated
-  tree populated eagerly so every branch starts expanded. Preserve the current
-  File action's label and behavior.
+  option list. Preserve the current File action's label and behavior.
 
 ## Integration and validation
 
@@ -65,7 +65,7 @@ navigation should work without restart support whenever local files exist.
 Test import resolution, recursion and cycles, package and relative imports,
 unresolved modules, malformed source, additive list handling, duplicates and
 external paths. Test CLI parsing and option propagation. Exercise the modal
-with Textual tests covering initial expansion, collapse, keyboard navigation,
+with Textual tests covering debuggee-first ordering, path labels, keyboard navigation,
 selection and cancellation; verify selection updates Code View without
 restarting the session. Document the option, path semantics, shortcut, and
 static-discovery limitations. Run the relevant existing UI and CLI regressions.

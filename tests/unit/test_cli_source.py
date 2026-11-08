@@ -16,14 +16,16 @@ from tdb.source_discovery import discover_sources
 
 
 @pytest.fixture
-def source_args(tmp_path):
+def source_args(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
     main = tmp_path / "main.py"
     main.write_text("import local\n")
     (tmp_path / "local.py").write_text("")
     external = tmp_path / "elsewhere" / "extra.py"
     external.parent.mkdir()
     external.write_text("")
-    listing = tmp_path / "files.txt"
+    listing = tmp_path / "lists" / "files.txt"
+    listing.parent.mkdir()
     listing.write_text("elsewhere/extra.py\nmissing.py\n")
     return main, external, listing
 
@@ -37,6 +39,14 @@ def test_source_list_is_additive_and_warns(source_args, capsys):
         external,
     }
     assert "missing.py" in capsys.readouterr().err
+
+
+def test_source_paths_use_launch_directory_even_with_debuggee_cwd(source_args):
+    main, external, listing = source_args
+    args = parse_args(
+        ["--source", str(listing), "--cwd", str(external.parent), str(main)]
+    )
+    assert args.source_files == [external]
 
 
 @pytest.mark.parametrize("kind", ["missing", "invalid_utf8", "directory"])
