@@ -71,6 +71,52 @@ def test_atomic_write_raises_oserror_and_leaves_no_temp(tmp_path, monkeypatch):
     assert sorted(p.name for p in tmp_path.iterdir()) == ["prog.py"]
 
 
+posix_only = pytest.mark.skipif(os.name == "nt", reason="POSIX symlinks/umask")
+
+
+@posix_only
+def test_atomic_write_ignores_planted_temp_symlink(tmp_path):
+    """Someone who can write beside the source plants the old predictable
+    temp name as a symlink: the save must not follow it."""
+    target = tmp_path / "demo.py"
+    target.write_text("old\n", encoding="utf-8")
+    victim = tmp_path / "victim.txt"
+    victim.write_text("precious\n", encoding="utf-8")
+    (tmp_path / ".demo.py.tdb-tmp").symlink_to(victim)
+    atomic_write_text(str(target), "new\n")
+    assert victim.read_text(encoding="utf-8") == "precious\n"
+    assert not target.is_symlink()
+    assert target.read_text(encoding="utf-8") == "new\n"
+
+
+def test_atomic_write_temp_names_are_unique(tmp_path, monkeypatch):
+    """Two saves of one file must not share a temp file."""
+    target = tmp_path / "prog.py"
+    seen: list[str] = []
+    real_replace = os.replace
+
+    def spy(src, dst):
+        seen.append(os.fspath(src))
+        real_replace(src, dst)
+
+    monkeypatch.setattr(os, "replace", spy)
+    atomic_write_text(str(target), "a\n")
+    atomic_write_text(str(target), "b\n")
+    assert len(set(seen)) == 2
+    assert all(os.path.dirname(p) == str(tmp_path) for p in seen)
+
+
+@posix_only
+def test_atomic_write_new_file_gets_umask_mode(tmp_path):
+    target = tmp_path / "fresh.py"
+    old = os.umask(0o022)
+    try:
+        atomic_write_text(str(target), "x\n")
+    finally:
+        os.umask(old)
+    assert (os.stat(target).st_mode & 0o777) == 0o644
+
+
 # ---- remap_line_numbers ----
 
 

@@ -261,3 +261,90 @@ def test_is_loadable_cached_build(monkeypatch, cache):
 def test_is_loadable_false_without_native_or_cache(monkeypatch, cache):
     _fake_perl(monkeypatch, native=False, cached_ok=True)
     assert pw.is_loadable("perl") is False
+
+
+# --- shared temp-dir fallback must be private (local code execution) -----
+
+posix_only = pytest.mark.skipif(os.name == "nt", reason="POSIX ownership/permissions")
+
+
+def _plant(root: Path) -> Path:
+    """What another local user could pre-create in the shared temp dir."""
+    d = root / pw.cache_key("5.40.1", "x86_64-linux-gnu-thread-multi")
+    d.mkdir(parents=True)
+    (d / "PadWalker.pm").write_text("system('evil')")
+    return d
+
+
+def _fallback_root(tmp_path: Path) -> Path:
+    return pw._cache_candidates()[-1]
+
+
+@posix_only
+def test_world_writable_fallback_cache_is_not_loaded(monkeypatch, cache, tmp_path):
+    _fake_perl(monkeypatch, native=False, cached_ok=True)
+    root = _fallback_root(tmp_path)
+    planted = _plant(root)
+    root.chmod(0o777)
+    r = pw.ensure_padwalker("perl", {})
+    assert r.lib_dir != str(planted)
+    assert r.source == "built" and r.lib_dir.startswith(str(cache))
+
+
+@posix_only
+def test_foreign_owned_fallback_cache_is_not_loaded(monkeypatch, cache, tmp_path):
+    _fake_perl(monkeypatch, native=False, cached_ok=True)
+    root = _fallback_root(tmp_path)
+    planted = _plant(root)
+    root.chmod(0o700)
+    real_lstat = os.lstat
+
+    class _Foreign:
+        def __init__(self, st):
+            self._st = st
+
+        def __getattr__(self, name):
+            if name == "st_uid":
+                return os.geteuid() + 1
+            return getattr(self._st, name)
+
+    def lstat(p, *a, **kw):
+        st = real_lstat(p, *a, **kw)
+        return _Foreign(st) if Path(p) == root else st
+
+    monkeypatch.setattr(pw.os, "lstat", lstat)
+    for probe in (pw.ensure_padwalker, pw.is_loadable):
+        pw._memo.clear()
+        r = probe("perl", {})
+        lib = getattr(r, "lib_dir", None)
+        assert lib != str(planted)
+
+
+@posix_only
+def test_symlinked_fallback_cache_is_not_loaded(monkeypatch, cache, tmp_path):
+    _fake_perl(monkeypatch, native=False, cached_ok=True)
+    elsewhere = tmp_path / "attacker"
+    _plant(elsewhere)
+    root = _fallback_root(tmp_path)
+    root.symlink_to(elsewhere, target_is_directory=True)
+    assert pw.is_loadable("perl") is False
+
+
+@posix_only
+def test_fallback_root_created_private(monkeypatch, cache, tmp_path):
+    _fake_perl(monkeypatch, native=False, cached_ok=True)
+    real_mkdir = Path.mkdir
+
+    def mkdir(self, *a, **kw):
+        if str(self).startswith(str(cache)):
+            raise OSError(30, "Read-only file system")
+        return real_mkdir(self, *a, **kw)
+
+    monkeypatch.setattr(Path, "mkdir", mkdir)
+    old = os.umask(0o022)
+    try:
+        r = pw.ensure_padwalker("perl", {})
+    finally:
+        os.umask(old)
+    assert r.source == "built"
+    assert (os.stat(_fallback_root(tmp_path)).st_mode & 0o077) == 0

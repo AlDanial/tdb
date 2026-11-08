@@ -174,10 +174,10 @@ async def test_rpc_endpoint_retains_structured_rust_data(handlers, monkeypatch):
         "collect_rust_concurrency",
         AsyncMock(return_value=_sample_rust_snapshot()),
     )
-    app = create_app(handlers)
+    app = create_app(handlers, token=None, port=8150)
     transport = httpx.ASGITransport(app=app)
 
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+    async with httpx.AsyncClient(transport=transport, base_url="http://127.0.0.1:8150") as client:
         response = await client.post(
             "/rpc", json={"action": "rust_concurrency", "params": []}
         )
@@ -794,12 +794,12 @@ async def test_dispatcher_pause_bypasses_session_lock(handlers):
 
     from tdb.server.app import create_app
 
-    app = create_app(handlers)
+    app = create_app(handlers, token=None, port=8150)
     transport = httpx.ASGITransport(app=app)
 
     async with handlers.session_lock:
         async with httpx.AsyncClient(
-            transport=transport, base_url="http://test"
+            transport=transport, base_url="http://127.0.0.1:8150"
         ) as client:
             # pause: must come back quickly despite the held lock.
             rsp = await asyncio.wait_for(
