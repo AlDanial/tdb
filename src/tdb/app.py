@@ -1857,7 +1857,11 @@ class TdbApp(_AppMessageRoutes, App):
         ):
             return
         path = await self.push_screen(
-            SourceModal(paths, Path(self._cwd or Path.cwd()).resolve()),
+            SourceModal(
+                paths,
+                Path.cwd().resolve(),
+                program=Path(self._program).resolve() if self._program else None,
+            ),
             wait_for_dismiss=True,
         )
         if not path:

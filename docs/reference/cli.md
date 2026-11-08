@@ -23,7 +23,7 @@ usage: tdb [-h] [-v] [-r [HOST:]PORT] [--cwd CWD] [--no-stop-on-entry]
 | `--if EXPR` | Make the `-k`/`-t` breakpoint just before it conditional: the program stops there only when `EXPR` is true, e.g. `-k module.py:27 --if "a > 7"`. `EXPR` uses the debug adapter's expression syntax for the program's language. At most one `--if` per breakpoint; not supported for Tcsh. |
 | `--no-stop-on-entry` | Do not pause at the first line (default: stop on entry; automatic when `-k` is given) |
 | `--cwd DIR` | Working directory for the debuggee |
-| `--source FILE` | Add files to the Source picker from a UTF-8 file containing one filename per line. Relative paths are resolved against the list file's directory. Supplements automatically discovered local Python sources. |
+| `--source FILE` | Add files to the Source picker from a UTF-8 file containing one filename per line. Relative paths are resolved against the directory where `tdb` is launched. Supplements automatically discovered local Python sources. |
 | `--python PATH` | Python interpreter for the debuggee (Python targets only) |
 | `--pv` | Shorthand for --python .venv/bin/python |
 | `--lang LANGUAGE` | Debuggee language (`python`, `cpp`, `perl`); default: auto-detect from the target |
@@ -56,9 +56,10 @@ usage: tdb [-h] [-v] [-r [HOST:]PORT] [--cwd CWD] [--no-stop-on-entry]
 ## Source files
 
 Click **Source** beside **File**, or press **Alt+S**, to browse files relevant
-to the current program. The tree starts fully expanded. Click a directory
-name to collapse or expand it; use Up/Down or j/k and Enter to open a file
-in Code View. Escape closes the picker. Selecting a source file leaves the
+to the current program. The picker shows a flat list with the debuggee source
+file first, followed by the remaining files sorted by path. Files beneath the
+launch directory appear as `./path/to/file`; external files use absolute paths.
+Use Up/Down or j/k and Enter to open a file in Code View. Escape closes the picker. Selecting a source file leaves the
 debug target and selected stack frame unchanged; unsaved edits prompt you
 to save, discard, or cancel navigation.
 
@@ -82,8 +83,8 @@ src/helper.py  # Local helper
 
 Then run `tdb --source=sources.txt main.py`. List entries supplement automatic
 discovery, and listed Python files are also scanned in Python sessions.
-Relative entries are relative to `sources.txt`, not the debuggee's working
-directory. Everything from the first `#` to the end of each line is ignored,
+Relative entries resolve from the directory where `tdb` is launched, regardless
+of where `sources.txt` is stored or the debuggee working directory (`--cwd`). Everything from the first `#` to the end of each line is ignored,
 including full-line comments. Remaining whitespace is trimmed and blank lines
 are skipped. Paths have no glob or shell expansion; filenames containing `#`
 cannot be listed. Duplicate paths appear once. An unreadable list

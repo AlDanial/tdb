@@ -38,7 +38,7 @@ _SOURCE_SUFFIXES = {
 
 
 def read_source_list(filename: str) -> tuple[list[Path], list[str]]:
-    """Read UTF-8 paths, ignoring blanks and # comments; report bad entries."""
+    """Read launch-directory-relative UTF-8 paths, ignoring blanks and # comments."""
     listing = Path(filename).resolve()
     paths: set[Path] = set()
     warnings: list[str] = []
@@ -46,7 +46,7 @@ def read_source_list(filename: str) -> tuple[list[Path], list[str]]:
         name = line.split("#", 1)[0].strip()
         if not name:
             continue
-        path = listing.parent / name
+        path = Path(name)
         try:
             path = path.resolve()
             # Opening (rather than os.access) checks actual readability.
