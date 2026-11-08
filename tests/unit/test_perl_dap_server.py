@@ -365,7 +365,7 @@ async def test_ended_location_in_launch_mode_sends_q_and_reports_real_exit_code(
 
     class StubSession:
         stopped = True
-        pid = 4242
+        pid = 1 << 30  # beyond any pid_max: a real kill() gets ESRCH
         eof = True  # `q` genuinely closed the connection
 
         def __init__(self) -> None:
@@ -408,7 +408,7 @@ async def test_ended_location_in_launch_mode_dedupes_against_forwarded_eof():
 
     class StubSession:
         stopped = True
-        pid = 4242
+        pid = 1 << 30  # beyond any pid_max: a real kill() gets ESRCH
         eof = True  # `q` genuinely closed the connection
 
         async def helper(self, expr, timeout=20.0):
@@ -445,7 +445,7 @@ async def test_location_error_in_launch_mode_does_not_send_q():
 
     class StubSession:
         stopped = True
-        pid = 4242
+        pid = 1 << 30  # beyond any pid_max: a real kill() gets ESRCH
         eof = False
 
         def __init__(self) -> None:
@@ -488,7 +488,7 @@ async def test_q_without_eof_does_not_leave_eof_terminated_dangling():
 
     class StubSession:
         stopped = True
-        pid = 4242
+        pid = 1 << 30  # beyond any pid_max: a real kill() gets ESRCH
         eof = False  # `q` never actually closed the connection
 
         async def helper(self, expr, timeout=20.0):

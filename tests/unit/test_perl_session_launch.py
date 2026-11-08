@@ -37,7 +37,7 @@ class _FakeStream:
 
 
 class _FakeProcess:
-    pid = 12345
+    pid = 1 << 30  # beyond any pid_max: a real kill()/killpg() gets ESRCH
     returncode = 0
     stdout = _FakeStream()
     stderr = _FakeStream()

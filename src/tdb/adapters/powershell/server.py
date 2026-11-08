@@ -773,28 +773,16 @@ class PowerShellDapServer:
         return "".join(early)[-2000:].strip()
 
     # ---- teardown ----
-    def _kill_group(self, sig_kill: bool = False) -> None:
-        proc = self._proc
-        if proc is None or proc.returncode is not None:
-            return
-        try:
-            if os.name == "nt":
-                proc.kill() if sig_kill else proc.terminate()
-            else:
-                os.killpg(proc.pid, signal.SIGKILL if sig_kill else signal.SIGTERM)
-        except (ProcessLookupError, OSError):
-            pass
-
     async def _ensure_pwsh_dead(self, grace: float = 2.0) -> None:
+        """Stop pwsh's whole process group -- even when pwsh itself has
+        already exited, since the script's own children can outlive it --
+        with every wait bounded (see tdb._proc)."""
+        from tdb._proc import stop_group
+
         proc = self._proc
-        if proc is None or proc.returncode is not None:
+        if proc is None:
             return
-        self._kill_group()
-        try:
-            await asyncio.wait_for(proc.wait(), grace)
-        except asyncio.TimeoutError:
-            self._kill_group(sig_kill=True)
-            await proc.wait()
+        await stop_group(proc, grace=grace)
 
     async def _await_watch_exit(self, timeout: float = 4.0) -> None:
         task = self._watch_exit_task
