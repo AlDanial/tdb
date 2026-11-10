@@ -41,9 +41,14 @@ Locations a tool reads its installation or your settings from (`HOME`,
 `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `GOPATH`, `CARGO_HOME`, `GEM_HOME`,
 `OPAMROOT`, ...) are never changed.
 
-Known limitation: Go telemetry still writes to `~/.config/go/telemetry`
-when `$HOME` is writable. When `$HOME` is read-only that write fails
-harmlessly and the build goes on.
+Known limitations, both only when `$HOME` is writable (when it is
+read-only the write fails harmlessly and the session goes on):
+
+- Go telemetry still writes to `~/.config/go/telemetry`.
+- PowerShell (`pwsh`) creates its empty personal module directory
+  `~/.local/share/powershell/Modules` at startup. Only `XDG_DATA_HOME`
+  moves it, and `tdb` leaves that alone because it holds the modules
+  your scripts import.
 
 ## Sample `config.json`
 

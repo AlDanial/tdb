@@ -193,10 +193,15 @@ MARKS = {
 }
 
 # Writes under HOME that have no redirect variable short of one tdb must
-# never set (tdb.tool_env never relocates XDG_CONFIG_HOME).
+# never set (tdb.tool_env never relocates XDG_CONFIG_HOME or XDG_DATA_HOME).
+# With a read-only HOME each of these fails harmlessly (the readonly cases
+# pass); only a writable HOME sees them.
 WRITABLE_XFAIL = {
     "go": "go's telemetry counters go to os.UserConfigDir()/go/telemetry "
     "(XDG_CONFIG_HOME); GOTELEMETRYDIR is not settable",
+    "powershell": "pwsh creates its personal module dir "
+    "$XDG_DATA_HOME/powershell/Modules at every startup, even with "
+    "PSModulePath set; only XDG_DATA_HOME moves it",
 }
 
 
