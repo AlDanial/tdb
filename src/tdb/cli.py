@@ -941,6 +941,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """
     parser = build_parser()
     args = parser.parse_args(argv)
+    # Before anything reads config.json (_resolve_language does), so a
+    # bare --config-dir is honored at parse time too. Idempotent.
+    from tdb.config_dir import apply_config_dir
+
+    apply_config_dir(args.config_dir)
     if args.vi:
         # `tdb --vi FILE`: every other switch is ignored (not acted on,
         # not validated), so skip all the launch post-processing below.
@@ -1120,11 +1125,7 @@ def _exit_on_startup_error(app: Any) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
-    args = parse_args(argv)
-
-    from tdb.config_dir import apply_config_dir
-
-    apply_config_dir(args.config_dir)
+    args = parse_args(argv)  # also applies --config-dir / TDB_CONFIG_DIR
 
     import logging
     from tdb.persist import log_file
@@ -1151,8 +1152,11 @@ def main(argv: list[str] | None = None) -> None:
     if args.vi:
         from tdb.vi_app import ViApp
 
-        ViApp(args.vi_file).run()
-        sys.exit(0)
+        vi = ViApp(args.vi_file)
+        vi.run()
+        # Textual sets return_code 1 when the app crashed; None/0 is a
+        # normal quit.
+        sys.exit(vi.return_code or 0)
     if args.doc:
         _run_doc()
     elif args.doc_text:

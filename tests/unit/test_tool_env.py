@@ -62,10 +62,28 @@ def test_gomodcache_skipped_when_gopath_set(tmp_path):
     assert "GOMODCACHE" not in env
 
 
-def test_gomodcache_set_when_gopath_unset(tmp_path):
+def _fake_home(monkeypatch, home):
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+
+
+def test_gomodcache_set_when_gopath_unset(monkeypatch, tmp_path):
+    _fake_home(monkeypatch, tmp_path / "home")
     env = {}
     apply_tool_redirects(tmp_path, env)
     assert env["GOMODCACHE"] == str(tmp_path / "tools" / "go" / "mod")
+
+
+def test_gomodcache_skipped_when_default_modcache_exists(monkeypatch, tmp_path):
+    """An existing ~/go/pkg/mod holds the user's downloaded modules;
+    redirecting would break offline builds that worked before."""
+    home = tmp_path / "home"
+    (home / "go" / "pkg" / "mod").mkdir(parents=True)
+    _fake_home(monkeypatch, home)
+    env = {}
+    apply_tool_redirects(tmp_path / "cfg", env)
+    assert "GOMODCACHE" not in env
+    assert "GOCACHE" in env
 
 
 def test_table_is_complete_and_under_tools(tmp_path):

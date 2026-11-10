@@ -28,7 +28,9 @@ from pathlib import Path
 #                    (debug gem lib/debug/console.rb).
 #   GOCACHE          go build cache (dlv debug runs `go build`).
 #   GOMODCACHE       module downloads; default is $GOPATH/pkg/mod, so it
-#                    is only filled while GOPATH is unset (~/go).
+#                    is only filled while GOPATH is unset (~/go) and
+#                    ~/go/pkg/mod does not exist yet (an existing one
+#                    holds modules offline builds rely on).
 #   DEBUGINFOD_CACHE_PATH  debuginfod-client(7) cache, used by gdb.
 #   GDBHISTFILE      gdb history file when `set history save on`.
 #   RUBY_DEBUG_HISTORY_FILE  rdbg history (debug gem config.rb).
@@ -54,20 +56,31 @@ def tool_redirects(config_dir: Path) -> dict[str, str]:
     return {name: str(tools.joinpath(*parts)) for name, parts in _TABLE}
 
 
+def _default_gomodcache_exists() -> bool:
+    try:
+        return (Path.home() / "go" / "pkg" / "mod").is_dir()
+    except (OSError, RuntimeError):  # no resolvable home dir
+        return False
+
+
 def apply_tool_redirects(
     config_dir: Path, environ: MutableMapping[str, str] = os.environ
 ) -> dict[str, str]:
     """Fill each redirect variable that is absent or empty in ``environ``.
 
-    ``GOMODCACHE`` is skipped when ``GOPATH`` is set: the user's module
-    cache lives there. Creates no directories (each tool creates its
-    own). Returns the variables it set.
+    ``GOMODCACHE`` is skipped when ``GOPATH`` is set or the default
+    ``~/go/pkg/mod`` already exists: the user's module cache lives
+    there, and offline builds need the modules already downloaded.
+    Creates no directories (each tool creates its own). Returns the
+    variables it set.
     """
     applied: dict[str, str] = {}
     for name, value in tool_redirects(config_dir).items():
         if environ.get(name):
             continue
-        if name == "GOMODCACHE" and environ.get("GOPATH"):
+        if name == "GOMODCACHE" and (
+            environ.get("GOPATH") or _default_gomodcache_exists()
+        ):
             continue
         environ[name] = value
         applied[name] = value

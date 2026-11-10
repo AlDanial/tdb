@@ -18,6 +18,33 @@ variable, a relative `DIR` is resolved against the current directory, and
 `DIR` is created if it does not exist. Child processes started by `tdb`
 inherit the setting. `tdb --info` shows the active directory.
 
+The tools `tdb` runs (debug adapters, debuggers, build steps) and the
+debuggee also write caches and history files under `$HOME` by default.
+Under `--config-dir`/`TDB_CONFIG_DIR`, `tdb` points those write
+locations into `DIR/tools`, for itself and every child process. Each
+variable is set only when it is unset or empty; one you set yourself
+always wins:
+
+| Variable | Set to | Used by |
+|---|---|---|
+| `XDG_CACHE_HOME` | `DIR/tools/cache` | Go build cache default, pip, pwsh, debuginfod, gdb/lldb caches |
+| `XDG_STATE_HOME` | `DIR/tools/state` | rdbg history default |
+| `PIP_CACHE_DIR` | `DIR/tools/pip` | pip (XDG does not apply on Windows/macOS) |
+| `GOCACHE` | `DIR/tools/go/build` | `go build` (run by dlv) |
+| `GOMODCACHE` | `DIR/tools/go/mod` | Go module downloads; only when `GOPATH` is unset and `~/go/pkg/mod` does not exist, so an existing module cache keeps working offline |
+| `GDBHISTFILE` | `DIR/tools/gdb/history` | gdb history (`set history save on`) |
+| `DEBUGINFOD_CACHE_PATH` | `DIR/tools/gdb/debuginfod` | debuginfod client used by gdb |
+| `RUBY_DEBUG_HISTORY_FILE` | `DIR/tools/ruby/rdbg_history` | rdbg history |
+| `DUNE_CACHE_ROOT` | `DIR/tools/ocaml/dune` | dune shared cache |
+
+Locations a tool reads its installation or your settings from (`HOME`,
+`XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `GOPATH`, `CARGO_HOME`, `GEM_HOME`,
+`OPAMROOT`, ...) are never changed.
+
+Known limitation: Go telemetry still writes to `~/.config/go/telemetry`
+when `$HOME` is writable. When `$HOME` is read-only that write fails
+harmlessly and the build goes on.
+
 ## Sample `config.json`
 
 Every key `tdb` reads, with its default or a representative value.

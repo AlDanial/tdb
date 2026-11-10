@@ -99,6 +99,8 @@ def test_main_dispatches_to_vi_app(monkeypatch, tmp_path):
     ran: list[str] = []
 
     class _FakeViApp:
+        return_code = None  # Textual's value after a normal exit()
+
         def __init__(self, path: str) -> None:
             self.path = path
 
@@ -110,6 +112,28 @@ def test_main_dispatches_to_vi_app(monkeypatch, tmp_path):
         cli.main(["--config-dir", str(tmp_path / "cfg"), "--vi", str(f)])
     assert exc.value.code == 0
     assert ran == [str(f)]
+
+
+def test_vi_crash_exit_status_propagates(monkeypatch, tmp_path):
+    """A ViApp that crashed (Textual return_code 1) must not exit 0."""
+    import tdb.cli as cli
+    import tdb.vi_app as vi_app
+
+    f = tmp_path / "f.txt"
+    f.write_text("hello\n")
+    monkeypatch.setenv("TDB_LOG_DIR", str(tmp_path / "log"))
+
+    class _CrashedViApp:
+        def __init__(self, path: str) -> None:
+            self.return_code = None
+
+        def run(self):
+            self.return_code = 1
+
+    monkeypatch.setattr(vi_app, "ViApp", _CrashedViApp)
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["--vi", str(f)])
+    assert exc.value.code == 1
 
 
 async def test_vi_starts_no_subprocess(monkeypatch, tmp_path):

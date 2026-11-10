@@ -286,3 +286,29 @@ def test_other_errors_not_retried(tmp_path, monkeypatch):
         save_text(str(f), "new")
     assert ei.value.errno == errno.ENOSPC
     assert f.read_text() == "old"
+
+
+def _sharing_violation(*a):
+    # Windows ERROR_SHARING_VIOLATION-style failure: a PermissionError
+    # whose errno is not in the POSIX retry set.
+    raise PermissionError("file is in use by another process")
+
+
+def test_windows_permission_error_falls_back_to_direct_write(tmp_path, monkeypatch):
+    f = tmp_path / "f.py"
+    f.write_text("old")
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(os, "replace", _sharing_violation)
+    save_text(str(f), "new")
+    assert f.read_text() == "new"
+    assert [p.name for p in tmp_path.iterdir()] == ["f.py"]
+
+
+def test_non_windows_unlisted_permission_error_not_retried(tmp_path, monkeypatch):
+    f = tmp_path / "f.py"
+    f.write_text("old")
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(os, "replace", _sharing_violation)
+    with pytest.raises(PermissionError):
+        save_text(str(f), "new")
+    assert f.read_text() == "old"

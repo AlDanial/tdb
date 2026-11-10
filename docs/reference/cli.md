@@ -9,7 +9,7 @@ usage: tdb [-h] [-v] [-r [HOST:]PORT] [--cwd CWD] [--no-stop-on-entry]
            [--local-root PATH] [--remote-root PATH]
            [--server] [--headless] [-k FILE:LINE|LINE] [--server-port SERVER_PORT] [--insecure-no-auth] [-d] [--doc-text] [--info]
            [--config {write-default,install-padwalker}] [--config-dir DIR]
-           [--vi FILE]
+           [--vi]
            [program] [args ...]
 ```
 

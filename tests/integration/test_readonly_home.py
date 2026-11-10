@@ -44,7 +44,12 @@ def _gdb_dap_ok() -> bool:
     gdb = shutil.which("gdb")
     if gdb is None:
         return False
-    out = subprocess.run([gdb, "--version"], capture_output=True, text=True).stdout
+    try:
+        out = subprocess.run(
+            [gdb, "--version"], capture_output=True, text=True, timeout=30
+        ).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return False
     import re
 
     m = re.search(r"(\d+)\.\d+", out)
@@ -52,10 +57,14 @@ def _gdb_dap_ok() -> bool:
 
 
 def _perl_ok() -> bool:
-    return (
-        shutil.which("perl") is not None
-        and subprocess.run(["perl", "-e", "require v5.18"]).returncode == 0
-    )
+    if shutil.which("perl") is None:
+        return False
+    try:
+        return (
+            subprocess.run(["perl", "-e", "require v5.18"], timeout=30).returncode == 0
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
 
 
 def _need(ok: bool, why: str):
@@ -236,17 +245,45 @@ def _descendants(pid: int) -> list[int]:
     return out
 
 
-def _kill_tree(proc: subprocess.Popen) -> None:
-    for pid in _descendants(proc.pid):
+def _marked(marker: str) -> list[int]:
+    """Linux: live processes whose environment carries ``marker``. Finds
+    children that setsid'd away and were reparented after tdb exited,
+    which a descendant walk from tdb's (gone) pid no longer reaches."""
+    proc = Path("/proc")
+    if not proc.is_dir():
+        return []
+    needle = f"{_MARKER_KEY}={marker}".encode()
+    found = []
+    for entry in proc.iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            environ = (entry / "environ").read_bytes()
+        except OSError:
+            continue
+        if needle in environ.split(b"\0"):
+            found.append(int(entry.name))
+    return found
+
+
+def _kill_tree(proc: subprocess.Popen, marker: str) -> None:
+    # Descendants only while tdb is unreaped: once reaped its pid may be
+    # reused by an unrelated process.
+    pids = _descendants(proc.pid) if proc.poll() is None else []
+    for pid in {*pids, *_marked(marker)}:
         try:
             os.kill(pid, signal.SIGKILL)
         except OSError:
             pass
-    try:
-        os.killpg(proc.pid, signal.SIGKILL)
-    except OSError:
-        pass
+    if proc.returncode is None:
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except OSError:
+            pass
     proc.wait(timeout=10)
+
+
+_MARKER_KEY = "TDB_READONLY_HOME_TEST"
 
 
 @pytest.fixture
@@ -276,6 +313,8 @@ def test_no_writes_under_home(name, mode, tmp_path, home):
         env.pop(key, None)
     env.pop("TDB_CONFIG_DIR", None)
     env["HOME"] = str(home)
+    marker = f"{os.getpid()}-{name}-{mode}"
+    env[_MARKER_KEY] = marker
     env["PYTHONPATH"] = str(REPO_SRC) + os.pathsep + env.get("PYTHONPATH", "")
     if name == "powershell":
         # PSES may be found via ~/.vscode, which HOME no longer reaches.
@@ -312,11 +351,11 @@ def test_no_writes_under_home(name, mode, tmp_path, home):
     try:
         out, _ = proc.communicate(timeout=RUN_TIMEOUT)
     except subprocess.TimeoutExpired:
-        _kill_tree(proc)
         pytest.fail(f"{name}: tdb did not finish in {RUN_TIMEOUT}s")
     finally:
-        if proc.poll() is None:
-            _kill_tree(proc)
+        # Always, even after a clean exit: an adapter that setsid'd away
+        # (or lingers in tdb's session) must not outlive the test.
+        _kill_tree(proc, marker)
 
     assert proc.returncode == 0, out
     assert "y 2" in out, out
