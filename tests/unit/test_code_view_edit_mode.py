@@ -196,7 +196,7 @@ async def test_save_failure_notifies_and_stays_dirty(tmp_path, monkeypatch):
     def boom(path, text):
         raise PermissionError("read-only filesystem")
 
-    monkeypatch.setattr(cvmod, "atomic_write_text", boom)
+    monkeypatch.setattr(cvmod, "save_text", boom)
     app = _CVApp()
     async with app.run_test() as pilot:
         cv = app.query_one("#cv", CodeView)
@@ -338,3 +338,26 @@ async def test_focus_on_code_view_redirects_to_editor(tmp_path):
         cv.focus()
         await pilot.pause()
         assert isinstance(app.focused, CodeEditor)
+
+
+async def test_save_uses_fallback(tmp_path, monkeypatch):
+    import errno
+    import os
+
+    def busy(*a, **k):
+        raise OSError(errno.EBUSY, "busy")
+
+    monkeypatch.setattr(os, "replace", busy)
+    app = _CVApp()
+    async with app.run_test() as pilot:
+        cv = app.query_one("#cv", CodeView)
+        path = _write(tmp_path)
+        cv.load_file(path)
+        await pilot.press("escape", "escape")
+        await pilot.pause()
+        await pilot.press("z")
+        assert cv.is_dirty
+        await pilot.press("ctrl+s")
+        await pilot.pause()
+        assert not cv.is_dirty
+        assert Path(path).read_text(encoding="utf-8") == "zx = 1\ny = 2\n"

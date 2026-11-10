@@ -16,6 +16,7 @@ No Textual imports here: everything is unit-testable without a TUI.
 from __future__ import annotations
 
 import difflib
+import errno
 import os
 import shlex
 import shutil
@@ -61,6 +62,38 @@ def atomic_write_text(path: str, text: str) -> None:
         except OSError:
             pass
         raise
+
+
+_RETRY_ERRNOS = frozenset(
+    {errno.EACCES, errno.EPERM, errno.EROFS, errno.EBUSY, errno.EXDEV}
+)
+
+
+def _is_direct_write_candidate(exc: OSError) -> bool:
+    if exc.errno in _RETRY_ERRNOS:
+        return True
+    return sys.platform == "win32" and isinstance(exc, PermissionError)
+
+
+def save_text(path: str, text: str) -> None:
+    """Save `text` to `path`: atomically when possible, else in place.
+
+    The atomic route needs to create a temp file in the target's directory
+    and rename over the target, which fails for a writable file in a
+    read-only directory, a bind-mounted file (EBUSY), or a cross-device
+    target. For those errors fall back to a plain write of the resolved
+    path. If the direct write also fails, its error is raised.
+    """
+    try:
+        atomic_write_text(path, text)
+        return
+    except OSError as exc:
+        if not _is_direct_write_candidate(exc):
+            raise
+    with open(os.path.realpath(path), "w", encoding="utf-8", newline="") as fh:
+        fh.write(text)
+        fh.flush()
+        os.fsync(fh.fileno())
 
 
 def _current_umask() -> int:

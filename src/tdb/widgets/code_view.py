@@ -22,7 +22,7 @@ from textual.widget import Widget
 from textual.widgets import Input, Label
 
 from tdb.keybindings import KeybindingConfig, Mode
-from tdb.source_edit import atomic_write_text
+from tdb.source_edit import save_text
 from tdb.terminal_text import visible_controls
 from tdb.vi import MarkTable, ViSession
 from tdb.widgets.code_editor import CodeEditor, _UnsavedChangesModal
@@ -791,13 +791,13 @@ class CodeView(ScrollableContainer, can_focus=True):
         return True
 
     def save_file(self) -> bool:
-        """Atomically write the editor buffer to source_path. On OSError
+        """Write (atomically if possible) the editor buffer to source_path. On OSError
         notify and keep the buffer dirty. Posts FileSaved on success."""
         if self._editor is None or self.source_path is None:
             return False
         text = self._editor.file_text
         try:
-            atomic_write_text(self.source_path, text)
+            save_text(self.source_path, text)
         except OSError as exc:
             self.app.notify(f"Save failed: {exc}", title="Edit", severity="error")
             return False
