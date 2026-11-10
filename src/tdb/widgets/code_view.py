@@ -802,6 +802,19 @@ class CodeView(ScrollableContainer, can_focus=True):
         else:
             self._teardown_editor(reload_from_disk=reload_from_disk)
 
+    def replace_file(self, path: str) -> None:
+        """Standalone mode: switch the editor to `path` (an empty buffer
+        when it does not exist yet). Drops the current buffer without a
+        prompt and without posting EditClosed — callers run it through
+        confirm_unsaved first."""
+        self._teardown_editor(reload_from_disk=False)
+        if Path(path).exists():
+            self.load_file(path)
+        else:
+            self.load_new_file(path)
+        self.cursor_line = 1
+        self.call_after_refresh(self.enter_edit_mode)
+
     def discard_edits(self) -> None:
         """Drop unsaved edits and leave Edit mode (no prompt)."""
         self.leave_edit_mode(discard=True)

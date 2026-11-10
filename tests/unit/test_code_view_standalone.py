@@ -262,3 +262,40 @@ async def test_confirm_unsaved_save_failure_does_not_continue(tmp_path, monkeypa
         assert path.read_text(encoding="utf-8") == TEXT
         assert app.focused is cv._editor
         assert isinstance(app.focused, CodeEditor)
+
+
+async def test_replace_file_switches_without_editclosed(tmp_path):
+    app = _CVApp()
+    async with app.run_test() as pilot:
+        cv = app.cv
+        await _edit(pilot, cv, _write(tmp_path))
+        await _type(pilot, "x")
+        other = tmp_path / "other.py"
+        other.write_text("z = 3\n", encoding="utf-8")
+        cv.replace_file(str(other))
+        await pilot.pause()
+        await pilot.pause()
+        assert app.closed == 0
+        assert cv.source_path == str(other)
+        assert cv.mode == Mode.EDIT
+        assert cv._editor is not None and cv._editor.is_mounted
+        assert cv._editor.file_text == "z = 3\n"
+        assert not cv._editor.is_dirty
+        assert app.focused is cv._editor
+        assert len(cv.query(CodeEditor)) == 1
+
+
+async def test_replace_file_missing_path_opens_empty_buffer(tmp_path):
+    app = _CVApp()
+    async with app.run_test() as pilot:
+        cv = app.cv
+        await _edit(pilot, cv, _write(tmp_path))
+        new = tmp_path / "new.py"
+        cv.replace_file(str(new))
+        await pilot.pause()
+        await pilot.pause()
+        assert app.closed == 0
+        assert cv.source_path == str(new)
+        assert cv.is_editing
+        assert cv._editor.file_text == ""
+        assert not new.exists()

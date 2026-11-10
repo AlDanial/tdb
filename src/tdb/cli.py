@@ -403,6 +403,14 @@ def build_parser() -> argparse.ArgumentParser:
         "TDB_CONFIG_DIR). Combines with every other option",
     )
     parser.add_argument(
+        "--vi",
+        action="store_true",
+        help="Edit FILE (the one positional argument) in a full-screen "
+        "vim-style editor; no program is run and no debugger is started. "
+        "All other options except --config-dir are ignored. A FILE that "
+        "does not exist yet is created on the first :w",
+    )
+    parser.add_argument(
         "--config",
         choices=["write-default", "install-padwalker"],
         default=None,
@@ -908,15 +916,36 @@ def _snap_breakpoints(args: argparse.Namespace) -> None:
     args.eval_points = snapped_points
 
 
+def _check_vi_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
+    """`--vi`: exactly one editable file name among the positionals.
+    Sets `args.vi_file`; otherwise exits via parser.error."""
+    from tdb.vi_app import validate_vi_target
+
+    files = ([args.program] if args.program is not None else []) + list(args.args)
+    if not files:
+        parser.error("--vi expects a file name")
+    if len(files) > 1:
+        parser.error("--vi takes exactly one file name")
+    error = validate_vi_target(files[0])
+    if error is not None:
+        parser.error(error)
+    args.vi_file = files[0]
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """Public entry: build parser, parse argv, run post-processing.
 
-    Short-circuit modes (`--doc`, `--doc-text`, `--info`, `--config`,
-    `--post-mortem`) skip the launch-related validation since they don't
+    Short-circuit modes (`--vi`, `--doc`, `--doc-text`, `--info`,
+    `--config`, `--post-mortem`) skip the launch-related validation since they don't
     run a debuggee.
     """
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.vi:
+        # `tdb --vi FILE`: every other switch is ignored (not acted on,
+        # not validated), so skip all the launch post-processing below.
+        _check_vi_args(args, parser)
+        return args
     _apply_flag_implications(args)
     args.source_files = []
     if args.source is not None:
@@ -1119,6 +1148,11 @@ def main(argv: list[str] | None = None) -> None:
         root.addHandler(logging.NullHandler())
         root.setLevel(logging.CRITICAL + 1)
 
+    if args.vi:
+        from tdb.vi_app import ViApp
+
+        ViApp(args.vi_file).run()
+        sys.exit(0)
     if args.doc:
         _run_doc()
     elif args.doc_text:

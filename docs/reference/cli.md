@@ -9,6 +9,7 @@ usage: tdb [-h] [-v] [-r [HOST:]PORT] [--cwd CWD] [--no-stop-on-entry]
            [--local-root PATH] [--remote-root PATH]
            [--server] [--headless] [-k FILE:LINE|LINE] [--server-port SERVER_PORT] [--insecure-no-auth] [-d] [--doc-text] [--info]
            [--config {write-default,install-padwalker}] [--config-dir DIR]
+           [--vi FILE]
            [program] [args ...]
 ```
 
@@ -51,6 +52,7 @@ usage: tdb [-h] [-v] [-r [HOST:]PORT] [--cwd CWD] [--no-stop-on-entry]
 | `--doc-text` | Print this documentation to stdout as wrapped plain text and exit |
 | `--info` | Print the About text, file locations, and the path and version of each interpreter and debugger `tdb` would use, then exit |
 | `--config-dir DIR` | Use `DIR` instead of the default per-user config directory for `config.json`, `breakpoints.json` and the log; also settable with the `TDB_CONFIG_DIR` environment variable (the flag wins). Created if missing; combines with every other option |
+| `--vi FILE` | Edit `FILE` in a full-screen vim-style editor instead of debugging: no program runs and no debug adapter starts. Exactly one file; a directory, a binary file or a file that is not valid UTF-8 is refused. A file that does not exist yet is created on the first `:w`. All other options except `--config-dir` are ignored. See [Using tdb as an editor](../using/vim-edit-mode.md#using-tdb-as-an-editor) |
 | `--config write-default` | Rename the existing `config.json` to `config.json-YYYY-mm-DD-HH:MM:SS` (`HH.MM.SS` on Windows, which forbids colons in filenames) and write a new one holding every default value, then exit |
 | `--config install-padwalker` | Build and cache the bundled PadWalker Perl module now, for the perl `tdb` would debug with (`adapters.perl` in `config.json`, else `perl` on `PATH`), instead of waiting for the first Perl launch; exits 1 if it cannot be built |
 
