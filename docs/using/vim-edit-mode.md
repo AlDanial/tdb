@@ -94,7 +94,9 @@ other option is ignored. Nothing is written to `breakpoints.json`.
   valid UTF-8 is refused with a message and a non-zero exit.
 - A file that does not exist yet opens as an empty buffer; it appears
   on disk only at the first `:w`, so quitting without saving leaves
-  nothing behind (its directory must already exist).
+  nothing behind (its directory must already exist). As in vim, a new
+  file is saved with a final newline; an existing file keeps whatever
+  final-newline state it had.
 - `:w` saves and stays; `:wq` and `:x` save and exit; `:q!` exits
   without saving. `:q` and `Ctrl+Q` exit, but with unsaved changes they
   open the Save / Discard / Cancel dialog first (not vim's E37

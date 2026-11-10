@@ -507,6 +507,10 @@ class CodeView(ScrollableContainer, can_focus=True):
         self._deferred_is_local: bool = True
         self._deferred_is_lossy: bool = False
         self._deferred_is_placeholder: bool = False
+        # Files opened by load_new_file (did not exist yet): saving them
+        # ends the text with a newline, like vim's 'fixeol'. Files read
+        # from disk keep whatever final-newline state they had.
+        self._fix_eol_paths: set[str] = set()
 
     def compose(self):
         self._content = _CodeContent(self)
@@ -846,6 +850,12 @@ class CodeView(ScrollableContainer, can_focus=True):
         if self._editor is None or self.source_path is None:
             return False
         text = self._editor.file_text
+        if (
+            self.source_path in self._fix_eol_paths
+            and text
+            and not text.endswith("\n")
+        ):
+            text += "\n"  # an empty buffer still writes 0 bytes, as vim does
         try:
             save_text(self.source_path, text)
         except OSError as exc:
@@ -1129,6 +1139,7 @@ class CodeView(ScrollableContainer, can_focus=True):
     def load_new_file(self, path: str) -> None:
         """Show an empty, editable buffer for `path`, a file that does
         not exist yet. Nothing is written until the user saves."""
+        self._fix_eol_paths.add(path)
         self._install_source("", path, is_local=True)
 
     def load_placeholder(self, message: str, path: str) -> None:

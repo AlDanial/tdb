@@ -296,9 +296,8 @@ async def test_new_file_write_creates(tmp_path):
         await _type(pilot, ":w\r")
         await pilot.pause()
         assert _running(app)
-    # The vi engine saves exactly the buffer: an empty new buffer has no
-    # final newline to keep, so none is added.
-    assert f.read_text() == "text"
+    # A new file gets a final newline, like vim's 'fixeol'.
+    assert f.read_bytes() == b"text\n"
 
 
 async def test_alt_f_and_ctrl_right_open_file_picker(tmp_path):
@@ -411,3 +410,15 @@ async def test_file_menu_rejects_directory(tmp_path):
         await pilot.pause()
         assert _cv(app).source_path == str(f)
         assert _cv(app).is_editing
+
+
+async def test_existing_file_without_final_newline_saves_without(tmp_path):
+    f = tmp_path / "noeol.txt"
+    f.write_bytes(b"one\ntwo")
+    app = ViApp(str(f))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await _type(pilot, "x:wq\r")
+        await pilot.pause()
+    assert app.return_code == 0
+    assert f.read_bytes() == b"ne\ntwo"

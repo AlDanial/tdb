@@ -222,7 +222,8 @@ async def test_load_new_file_touches_nothing(tmp_path):
         await pilot.press("escape")
         await _type(pilot, ":wq\r")
         await pilot.pause()
-        assert p.read_text(encoding="utf-8") == "hi"
+        # A new file gets a final newline on save, like vim's 'fixeol'.
+        assert p.read_bytes() == b"hi\n"
         assert app.closed == 1
 
 
@@ -299,3 +300,46 @@ async def test_replace_file_missing_path_opens_empty_buffer(tmp_path):
         assert cv.is_editing
         assert cv._editor.file_text == ""
         assert not new.exists()
+
+
+async def test_new_file_empty_buffer_writes_zero_bytes(tmp_path):
+    app = _CVApp()
+    async with app.run_test() as pilot:
+        cv = app.cv
+        p = tmp_path / "new.py"
+        cv.load_new_file(str(p))
+        assert await cv.enter_edit_mode()
+        await pilot.pause()
+        await _type(pilot, ":w\r")
+        await pilot.pause()
+        assert p.read_bytes() == b""
+
+
+async def test_new_file_every_save_adds_final_newline(tmp_path):
+    app = _CVApp()
+    async with app.run_test() as pilot:
+        cv = app.cv
+        p = tmp_path / "new.py"
+        cv.load_new_file(str(p))
+        assert await cv.enter_edit_mode()
+        await pilot.pause()
+        await _type(pilot, "ia")
+        await pilot.press("escape")
+        await _type(pilot, ":w\r")
+        assert p.read_bytes() == b"a\n"
+        assert not cv._editor.is_dirty
+        await _type(pilot, "ab")
+        await pilot.press("escape")
+        await _type(pilot, ":w\r")
+        assert p.read_bytes() == b"ab\n"
+
+
+async def test_existing_file_without_final_newline_keeps_none(tmp_path):
+    app = _CVApp()
+    async with app.run_test() as pilot:
+        cv = app.cv
+        p = _write(tmp_path, "x = 1\ny = 2")
+        await _edit(pilot, cv, p)
+        await _type(pilot, "x:w\r")
+        await pilot.pause()
+        assert p.read_bytes() == b" = 1\ny = 2"
