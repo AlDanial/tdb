@@ -8,7 +8,7 @@ usage: tdb [-h] [-v] [-r [HOST:]PORT] [--cwd CWD] [--no-stop-on-entry]
            [--terminal {xterm,konsole,gnome-terminal,ghostty,kitty,iterm2,warp,wezterm,terminator}]
            [--local-root PATH] [--remote-root PATH]
            [--server] [--headless] [-k FILE:LINE|LINE] [--server-port SERVER_PORT] [--insecure-no-auth] [-d] [--doc-text] [--info]
-           [--config {write-default,install-padwalker}]
+           [--config {write-default,install-padwalker}] [--config-dir DIR]
            [program] [args ...]
 ```
 
@@ -50,6 +50,7 @@ usage: tdb [-h] [-v] [-r [HOST:]PORT] [--cwd CWD] [--no-stop-on-entry]
 | `--doc` | Display this documentation in a terminal Markdown viewer and exit |
 | `--doc-text` | Print this documentation to stdout as wrapped plain text and exit |
 | `--info` | Print the About text, file locations, and the path and version of each interpreter and debugger `tdb` would use, then exit |
+| `--config-dir DIR` | Use `DIR` instead of the default per-user config directory for `config.json`, `breakpoints.json` and the log; also settable with the `TDB_CONFIG_DIR` environment variable (the flag wins). Created if missing; combines with every other option |
 | `--config write-default` | Rename the existing `config.json` to `config.json-YYYY-mm-DD-HH:MM:SS` (`HH.MM.SS` on Windows, which forbids colons in filenames) and write a new one holding every default value, then exit |
 | `--config install-padwalker` | Build and cache the bundled PadWalker Perl module now, for the perl `tdb` would debug with (`adapters.perl` in `config.json`, else `perl` on `PATH`), instead of waiting for the first Perl launch; exits 1 if it cannot be built |
 

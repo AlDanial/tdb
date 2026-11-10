@@ -162,6 +162,7 @@ def test_tdb_section_lists_files(stub_tools, tmp_path, monkeypatch):
     assert lines == [
         f"    tdb executable           : {install_dir()}",
         f"    version                  : {__version__}",
+        f"    config dir               : {persist.config_dir()}",
         f"    config file              : {persist.config_file()}",
         f"    breakpoints file         : {persist.state_file()}",
         f"    log file                 : {log} [15 KB]",

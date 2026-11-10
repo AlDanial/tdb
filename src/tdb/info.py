@@ -81,6 +81,13 @@ def _python_version() -> str:
     return ".".join(str(n) for n in sys.version_info[:3])
 
 
+def _config_dir_row() -> str:
+    from tdb.persist import config_dir, config_dir_overridden
+
+    note = " (from --config-dir/TDB_CONFIG_DIR)" if config_dir_overridden() else ""
+    return row("config dir", f"{config_dir()}{note}")
+
+
 def _log_row(path: Path) -> str:
     try:
         suffix = f"[{size_label(path.stat().st_size)}]"
@@ -223,6 +230,7 @@ def info_text() -> str:
             [
                 row("tdb executable", install_dir()),
                 row("version", __version__),
+                _config_dir_row(),
                 row("config file", config_file()),
                 row("breakpoints file", state_file()),
                 _log_row(log_file()),

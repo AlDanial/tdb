@@ -395,6 +395,14 @@ def build_parser() -> argparse.ArgumentParser:
         "lldb-dap, perl, ruby, dlv, ocamlearlybird, bash, tcsh, pwsh), then exit",
     )
     parser.add_argument(
+        "--config-dir",
+        metavar="DIR",
+        default=None,
+        help="Use DIR instead of the default per-user config directory "
+        "for config.json, breakpoints.json and the log (also settable via "
+        "TDB_CONFIG_DIR). Combines with every other option",
+    )
+    parser.add_argument(
         "--config",
         choices=["write-default", "install-padwalker"],
         default=None,
@@ -1084,6 +1092,10 @@ def _exit_on_startup_error(app: Any) -> None:
 
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
+
+    from tdb.config_dir import apply_config_dir
+
+    apply_config_dir(args.config_dir)
 
     import logging
     from tdb.persist import log_file

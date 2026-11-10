@@ -9,6 +9,15 @@ On Windows, it uses `%APPDATA%\tdb\`.
 | `config.json` | User preferences (keybinding scheme, color theme, step mode, adapter overrides) |
 | `breakpoints.json` | Breakpoints from previous sessions, keyed by project directory |
 
+## Read-only home directory
+
+If the default location is not writable (for example a read-only home
+directory), point `tdb` somewhere else with `--config-dir DIR` or the
+`TDB_CONFIG_DIR` environment variable. The flag takes precedence over the
+variable, a relative `DIR` is resolved against the current directory, and
+`DIR` is created if it does not exist. Child processes started by `tdb`
+inherit the setting. `tdb --info` shows the active directory.
+
 ## Sample `config.json`
 
 Every key `tdb` reads, with its default or a representative value.
