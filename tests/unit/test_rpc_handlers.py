@@ -177,7 +177,9 @@ async def test_rpc_endpoint_retains_structured_rust_data(handlers, monkeypatch):
     app = create_app(handlers, token=None, port=8150)
     transport = httpx.ASGITransport(app=app)
 
-    async with httpx.AsyncClient(transport=transport, base_url="http://127.0.0.1:8150") as client:
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://127.0.0.1:8150"
+    ) as client:
         response = await client.post(
             "/rpc", json={"action": "rust_concurrency", "params": []}
         )

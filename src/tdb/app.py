@@ -1878,7 +1878,8 @@ class TdbApp(_AppMessageRoutes, App):
                         cwd=self._cwd,
                         just_my_code=self._just_my_code,
                     )
-                    if self.controller.profile.id == "python" else None
+                    if self.controller.profile.id == "python"
+                    else None
                 ),
             ),
             wait_for_dismiss=True,

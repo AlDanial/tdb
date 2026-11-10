@@ -393,9 +393,12 @@ async def run(
                 examine_ev.set()
 
             episode = tui_episode or partial(
-                _default_tui_episode, source_files=source_files,
-                source_filename=source_filename, cwd=cwd,
-                python=python, just_my_code=just_my_code,
+                _default_tui_episode,
+                source_files=source_files,
+                source_filename=source_filename,
+                cwd=cwd,
+                python=python,
+                just_my_code=just_my_code,
             )
             installed = _arm_signals(loop, interrupt.set, on_examine)
             exit_code = 0

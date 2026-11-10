@@ -573,7 +573,9 @@ async def test_no_cli_breakpoints_means_none_configured(script, monkeypatch):
     assert script.configured_bps == {}
 
 
-async def test_terminated_without_exited_is_not_reported_as_success(script, monkeypatch):
+async def test_terminated_without_exited_is_not_reported_as_success(
+    script, monkeypatch
+):
     """Codex #7: `terminated` with no `exited` (adapter death, SIGKILL)
     has no exit status; --run must not tell `tdb --run ... && next` the
     program succeeded."""

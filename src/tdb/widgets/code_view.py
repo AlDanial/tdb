@@ -850,11 +850,7 @@ class CodeView(ScrollableContainer, can_focus=True):
         if self._editor is None or self.source_path is None:
             return False
         text = self._editor.file_text
-        if (
-            self.source_path in self._fix_eol_paths
-            and text
-            and not text.endswith("\n")
-        ):
+        if self.source_path in self._fix_eol_paths and text and not text.endswith("\n"):
             text += "\n"  # an empty buffer still writes 0 bytes, as vim does
         try:
             save_text(self.source_path, text)
