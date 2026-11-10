@@ -214,9 +214,11 @@ installed (same skip pattern the language suites already use).
   vim. Ctrl+C is likewise a vim-style no-op/cancel, not a quit. The quit
   paths are exactly `:q`, `:q!`, `:wq`, `:x`, and the app's Ctrl+Q; all
   of them follow the unsaved-changes rule above.
-- **All of `_VI_TDB_KEYS` go to the vi engine under `--vi`** (Ctrl+O,
-  Ctrl+E, Ctrl+V, Ctrl+P, Ctrl+S as well as Ctrl+F/Ctrl+B), since the
-  views they would focus don't exist. Ctrl+Q stays the app quit key.
+- **All of `_VI_TDB_KEYS` go to the vi engine under `--vi`** (Ctrl+C,
+  Ctrl+O, Ctrl+E, Ctrl+V, Ctrl+P as well as Ctrl+F/Ctrl+B), since the
+  views they would focus don't exist. Ctrl+Q stays the app quit key and
+  Ctrl+S stays Save (as in today's vim-scheme Edit mode; vim itself
+  gives Ctrl+S no meaning, so keeping Save loses nothing).
   The parked Ctrl+V-in-normal-mode residual is not in scope to fix.
 
 ### Left to the builder
