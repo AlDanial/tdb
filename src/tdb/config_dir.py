@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 from tdb.persist import CONFIG_DIR_ENV, config_dir, config_dir_overridden
+from tdb.tool_env import apply_tool_redirects
 
 
 def apply_config_dir(raw: str | None) -> Path | None:
@@ -27,4 +28,7 @@ def apply_config_dir(raw: str | None) -> Path | None:
         d.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
         print(f"tdb: warning: cannot create config dir {d}: {exc}", file=sys.stderr)
+    # Tools tdb runs inherit os.environ: point their caches/history here
+    # too, so nothing they write lands under $HOME.
+    apply_tool_redirects(d)
     return d

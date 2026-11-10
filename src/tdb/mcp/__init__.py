@@ -34,6 +34,11 @@ def mcp_import_error() -> str | None:
 def main() -> None:
     """`tdb-mcp` / `tdb --mcp` / `python -m tdb.mcp`: run the MCP server,
     or exit with an install hint when the optional extra is absent."""
+    # `tdb-mcp` skips cli.main(): honor TDB_CONFIG_DIR (dir + tool
+    # redirects) here too. Idempotent when cli.main() already did it.
+    from tdb.config_dir import apply_config_dir
+
+    apply_config_dir(None)
     error = mcp_import_error()
     if error is not None:
         sys.exit(

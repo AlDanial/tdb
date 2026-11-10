@@ -54,9 +54,28 @@ def _clear_tdb_config_dir():
     Uses a private MonkeyPatch rather than the `monkeypatch` fixture: an
     autouse fixture requesting `monkeypatch` makes the shared instance be
     set up first and undone last, so tests that patch sys.platform would
-    still have it patched while their own autouse teardowns run."""
+    still have it patched while their own autouse teardowns run.
+
+    apply_config_dir() also fills tool-redirect variables into the real
+    os.environ (tdb.tool_env); register each for restoration so they
+    never leak into later tests. Only TDB_CONFIG_DIR is removed."""
+    import os
+    from pathlib import Path
+
+    from tdb.tool_env import tool_redirects
+
+    # MonkeyPatch.delenv() registers nothing for an absent key, so a value
+    # written later would survive undo(); setenv() first records "absent"
+    # as the state to restore.
     mp = pytest.MonkeyPatch()
-    mp.delenv("TDB_CONFIG_DIR", raising=False)
+    mp.setenv("TDB_CONFIG_DIR", "")
+    mp.delenv("TDB_CONFIG_DIR")
+    for key in tool_redirects(Path(".")):
+        if key in os.environ:
+            mp.setenv(key, os.environ[key])
+        else:
+            mp.setenv(key, "")
+            mp.delenv(key)
     yield
     mp.undo()
 
