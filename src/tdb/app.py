@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -27,7 +28,8 @@ from tdb.session.state import SessionPhase
 from tdb.session.textual_handler import TextualEventHandler
 from tdb.keybindings import KeybindingConfig, Mode
 from tdb.source_edit import remap_breakpoints
-from tdb.source_discovery import discover_sources
+from tdb.source_discovery import ImportRequest, discover_sources
+from tdb.source_search import SourceSelection, search_module_files
 from tdb.widgets.source_modal import SourceModal
 from tdb.widgets.breakpoint_view import BreakpointView
 from tdb.widgets.code_editor import _UnsavedChangesModal
@@ -209,11 +211,15 @@ class TdbApp(_AppMessageRoutes, App):
         adopted_stop: tuple | None = None,
         replay_driver: "ReplayDriver | None" = None,
         source_files: list[Path] | None = None,
+        source_filename: str | None = None,
     ) -> None:
         super().__init__()
         keep_writer_draining()
         self._program = program
         self._source_files = source_files or []
+        self._source_selection = SourceSelection(
+            filename=Path(source_filename).resolve() if source_filename else None
+        )
         self._replay_driver = replay_driver
         # Set by the DAP stopped/terminated handlers once the panels
         # reflect a *final* stop (statement-mode intermediate stops never
@@ -1844,12 +1850,14 @@ class TdbApp(_AppMessageRoutes, App):
         ):
             return
         self._close_open_menu()
+        requests: list[ImportRequest] = []
         paths = await asyncio.to_thread(
             discover_sources,
             self._program,
             self._cwd,
             self._source_files,
             python=self.controller.profile.id == "python",
+            requests=requests,
         )
         if any(
             isinstance(screen, (SourceModal, _UnsavedChangesModal))
@@ -1861,6 +1869,17 @@ class TdbApp(_AppMessageRoutes, App):
                 paths,
                 Path.cwd().resolve(),
                 program=Path(self._program).resolve() if self._program else None,
+                selection=self._source_selection,
+                dynamic_search=(
+                    partial(
+                        search_module_files,
+                        requests,
+                        python=self._python,
+                        cwd=self._cwd,
+                        just_my_code=self._just_my_code,
+                    )
+                    if self.controller.profile.id == "python" else None
+                ),
             ),
             wait_for_dismiss=True,
         )

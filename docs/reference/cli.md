@@ -67,9 +67,28 @@ For Python, `tdb` reads the entry script's imports and recursively follows
 matching modules in the script directory and debuggee working directory.
 Packages, local namespace packages, relative imports, aliases, and package
 initializers are supported. Discovery reads saved files each time the picker
-opens and never executes imports. It does not search installed libraries or
-`PYTHONPATH`, resolve dynamic imports, or correct misspelled module names.
+opens and never executes imports. This initial search does not search installed
+libraries or `PYTHONPATH`, resolve dynamic imports, or correct misspelled names.
 Files with syntax errors remain selectable, but their imports are not followed.
+
+Press **d** in Source to resolve the static import list using the selected
+debuggee Python interpreter's search paths (including its installed libraries
+and `PYTHONPATH`). This uses `--python` or `--pv`, or the default Python
+interpreter. Missing search directories are ignored. Standard-library sources
+are excluded unless `--no-just-my-code` is given; third-party Python sources
+remain eligible. The search does not import found modules or follow imports in
+newly found files. Only ordinary Python source files are included, not built-ins,
+native extensions, or files inside archives. It uses the interpreter's startup
+paths, not changes a running program makes to `sys.path`; remote attach still
+searches locally available files.
+
+Press **x** to remove the highlighted entry without deleting the file. Dynamic
+discoveries and removals persist when Source is reopened during the same app
+session, and repeated **d** searches respect removals. Press **s** to save the
+displayed list. With `--source FILE`, this replaces that file; otherwise, a
+filename prompt appears. Enter saves and Escape cancels the prompt. Later saves
+reuse the last successful filename. Saved lists contain absolute paths, one per
+line, and may be empty. A save error leaves the list open and reports the problem.
 
 To include other files, create a UTF-8 list such as `sources.txt`:
 
@@ -83,6 +102,8 @@ src/helper.py  # Local helper
 
 Then run `tdb --source=sources.txt main.py`. List entries supplement automatic
 discovery, and listed Python files are also scanned in Python sessions.
+Saved lists likewise supplement static discovery on a future launch; session
+removals do not become permanent exclusions from that discovery.
 Relative entries resolve from the directory where `tdb` is launched, regardless
 of where `sources.txt` is stored or the debuggee working directory (`--cwd`). Everything from the first `#` to the end of each line is ignored,
 including full-line comments. Remaining whitespace is trimmed and blank lines
@@ -91,5 +112,5 @@ cannot be listed. Duplicate paths appear once. An unreadable list
 file is a command-line error; unavailable individual files produce warnings.
 
 For other languages, Source shows an available source entry file plus the
-explicit list, without automatic dependency discovery. Explicit files also
+explicit list, with **x** and **s** available but no module search. Explicit files also
 work in attach sessions where no entry script is known.

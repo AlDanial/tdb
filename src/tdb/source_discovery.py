@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import tokenize
 from collections.abc import Iterable
+from dataclasses import dataclass
 from pathlib import Path
 
 # Only used to distinguish source entry points from native executables.
@@ -35,6 +36,15 @@ _SOURCE_SUFFIXES = {
     ".f90",
     ".f95",
 }
+
+
+@dataclass(frozen=True)
+class ImportRequest:
+    """A static import and its original lookup context, without executing it."""
+
+    name: str
+    roots: tuple[Path, ...]
+    relative: bool = False
 
 
 def read_source_list(filename: str) -> tuple[list[Path], list[str]]:
@@ -99,6 +109,7 @@ def discover_sources(
     additional: Iterable[Path] = (),
     *,
     python: bool = True,
+    requests: list[ImportRequest] | None = None,
 ) -> list[Path]:
     """Follow static Python imports within local roots, returning unique paths.
 
@@ -159,5 +170,13 @@ def discover_sources(
             else:
                 continue
             for name in names:
+                if requests is not None:
+                    request = ImportRequest(
+                        name,
+                        tuple(search_roots),
+                        isinstance(node, ast.ImportFrom) and bool(node.level),
+                    )
+                    if request not in requests:
+                        requests.append(request)
                 pending.extend(_resolve_module(search_roots, name.split(".")))
     return sorted(sources)

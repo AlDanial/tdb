@@ -37,6 +37,13 @@ end-of-line and paste (`End` and the terminal's own paste still work).
 | `Alt+A` | Async Tasks |
 | `Alt+H` | Help (Documentation, About) |
 
+Within **Source**, Up/Down or j/k selects a file and Enter opens it. Press `d`
+to locate statically imported Python modules on the selected interpreter's
+search paths, `x` to remove the highlighted entry, and `s` to save the list.
+Escape closes Source or cancels its filename prompt. Removing an entry never
+deletes the file. See [Source files](../reference/cli.md#source-files) for search
+scope and save behavior.
+
 File > Open works for every supported language: the file picker filters to
 the current session's language (by extension) and refuses a pick that
 detects as a different language, so you can only switch to another script

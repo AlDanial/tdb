@@ -1287,7 +1287,10 @@ def _run_post_mortem(args: argparse.Namespace) -> None:
         program="",
         config=config,
         post_mortem_snapshot=snapshot,
+        python=args.python,
+        just_my_code=not args.no_just_my_code,
         source_files=args.source_files,
+        source_filename=args.source,
     )
     app.run()
 
@@ -1336,6 +1339,7 @@ def _run_run(args: argparse.Namespace) -> None:
             examine_dests=args.examine_log,
             cli_breakpoints=args.cli_bps,
             source_files=args.source_files,
+            source_filename=args.source,
         )
     )
     sys.exit(code)
@@ -1370,6 +1374,7 @@ def build_replay_tui_app(
     announce: bool = True,
     interval: float | None = None,
     source_files: list[Path] | None = None,
+    source_filename: str | None = None,
 ) -> "tuple[TdbApp, ReplayDriver]":
     """Build the TUI + driver pair for `--replay-tui` from a recording.
 
@@ -1396,7 +1401,10 @@ def build_replay_tui_app(
         config=config,
         profile=profile_from_header(h),
         replay_driver=driver,
+        python=h.get("python"),
+        just_my_code=not h.get("no_just_my_code", False),
         source_files=source_files,
+        source_filename=source_filename,
     )
     if h["mode"] == "launch":
         app = TdbApp(
@@ -1404,8 +1412,6 @@ def build_replay_tui_app(
             args=list(h.get("args") or []),
             cwd=h["cwd"],
             stop_on_entry=True,
-            just_my_code=not h.get("no_just_my_code", False),
-            python=h.get("python"),
             **common,
         )
     else:
@@ -1443,6 +1449,7 @@ def _run_replay_tui(args: argparse.Namespace) -> None:
         announce=not args.replay_quiet,
         interval=args.replay_interval,
         source_files=args.source_files,
+        source_filename=args.source,
     )
     app.run()
     _exit_on_startup_error(app)
@@ -1493,6 +1500,7 @@ def _run_tui(args: argparse.Namespace) -> None:
         profile=args.profile,
         recorder=recorder,
         source_files=args.source_files,
+        source_filename=args.source,
     )
     try:
         app.run()
