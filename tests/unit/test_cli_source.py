@@ -81,6 +81,7 @@ def test_cli_passes_sources_to_real_app(source_args, monkeypatch, mode):
     (_run_post_mortem if mode == "post_mortem" else _run_tui)(args)
     app = apps[0]
     assert external in discover_sources(app._program, app._cwd, app._source_files)
+    assert app._source_selection.filename == listing
 
 
 def test_cli_run_mode_receives_sources(source_args, monkeypatch):
@@ -98,6 +99,7 @@ def test_cli_run_mode_receives_sources(source_args, monkeypatch):
         _run_run(args)
     assert result.value.code == 0
     assert received["source_files"] == [external]
+    assert received["source_filename"] == str(listing)
 
 
 async def test_default_run_episode_configures_real_app(source_args, monkeypatch):
@@ -105,7 +107,7 @@ async def test_default_run_episode_configures_real_app(source_args, monkeypatch)
     from tdb.session.controller import DebugController
     from tdb.session.event_bus import SwappableEventHandler
 
-    main, external, _ = source_args
+    main, external, listing = source_args
     console = ConsoleRunHandler()
     handler = SwappableEventHandler(console)
     controller = DebugController(handler)
@@ -122,9 +124,15 @@ async def test_default_run_episode_configures_real_app(source_args, monkeypatch)
         TdbConfig(),
         str(main),
         source_files=[external],
+        source_filename=str(listing),
+        python="chosen-python",
+        just_my_code=False,
         cwd=str(main.parent),
     )
     assert apps[0]._source_files == [external]
+    assert apps[0]._source_selection.filename == listing
+    assert apps[0]._python == "chosen-python"
+    assert apps[0]._just_my_code is False
     assert apps[0]._cwd == str(main.parent)
 
 
@@ -142,6 +150,11 @@ def test_replay_builder_retains_explicit_sources(source_args):
         records=[],
     )
     app, _ = build_replay_tui_app(
-        recording, label="session", config=TdbConfig(), source_files=args.source_files
+        recording,
+        label="session",
+        config=TdbConfig(),
+        source_files=args.source_files,
+        source_filename=args.source,
     )
     assert external in discover_sources(app._program, app._cwd, app._source_files)
+    assert app._source_selection.filename == listing

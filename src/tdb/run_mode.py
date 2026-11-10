@@ -283,7 +283,10 @@ async def _default_tui_episode(
     program: str,
     *,
     source_files: list[Path] | None = None,
+    source_filename: str | None = None,
     cwd: str | None = None,
+    python: str | None = None,
+    just_my_code: bool = True,
 ) -> bool:
     from tdb.app import TdbApp
 
@@ -295,6 +298,9 @@ async def _default_tui_episode(
         adopted_handler=handler,
         adopted_stop=console.last_stop,
         source_files=source_files,
+        source_filename=source_filename,
+        python=python,
+        just_my_code=just_my_code,
         cwd=cwd,
     )
     await app.run_async()
@@ -315,6 +321,7 @@ async def run(
     examine_dests: list[str] | None = None,
     cli_breakpoints: list[tuple[str, int, bool, str | None]] | None = None,
     source_files: list[Path] | None = None,
+    source_filename: str | None = None,
 ) -> int:
     """Run `program` headless; signals open TUI episodes. Returns tdb's
     exit code (the debuggee's when it exits during the run phase).
@@ -386,7 +393,9 @@ async def run(
                 examine_ev.set()
 
             episode = tui_episode or partial(
-                _default_tui_episode, source_files=source_files, cwd=cwd
+                _default_tui_episode, source_files=source_files,
+                source_filename=source_filename, cwd=cwd,
+                python=python, just_my_code=just_my_code,
             )
             installed = _arm_signals(loop, interrupt.set, on_examine)
             exit_code = 0

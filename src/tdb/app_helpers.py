@@ -39,7 +39,8 @@ def about_text(*, markup: bool) -> str:
         A TUI debugger for many languages based on textual and the Debug Adapter Protocol.
 
         GitHub: https://github.com/AlDanial/tdb
-        PyPI  : https://pypi.org/project/textual-debugger/""")
+        PyPI  : https://pypi.org/project/textual-debugger/
+        RTD   : https://textual-debugger.readthedocs.io/""")
 
 
 def info_text() -> str:
