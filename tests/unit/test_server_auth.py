@@ -192,3 +192,8 @@ def test_setup_token_generated_is_written(monkeypatch, tmp_path):
 
 def test_setup_token_insecure(monkeypatch):
     assert auth.setup_token(insecure=True, port=PORT) == (None, None)
+
+
+def test_token_file_path_follows_config_dir(monkeypatch, tmp_path):
+    monkeypatch.setenv("TDB_CONFIG_DIR", str(tmp_path))
+    assert auth.token_file_path(5000) == tmp_path / "server-5000.token"

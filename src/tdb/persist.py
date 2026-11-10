@@ -32,10 +32,34 @@ def _default_config_dir() -> Path:
     return Path.home() / ".config" / "tdb"
 
 
-CONFIG_DIR = _default_config_dir()
-STATE_FILE = CONFIG_DIR / "breakpoints.json"
-CONFIG_FILE = CONFIG_DIR / "config.json"
-_LEGACY_STATE_FILE = CONFIG_DIR / "last_run.json"
+CONFIG_DIR_ENV = "TDB_CONFIG_DIR"
+
+
+def config_dir_overridden() -> bool:
+    """True when ``TDB_CONFIG_DIR`` is set to a non-empty value."""
+    return bool(os.environ.get(CONFIG_DIR_ENV))
+
+
+def config_dir() -> Path:
+    """The active config dir: ``$TDB_CONFIG_DIR`` if set and non-empty
+    (bypasses the per-platform default), else the platform default.
+    Resolved on every call so the override can be set after import."""
+    override = os.environ.get(CONFIG_DIR_ENV)
+    if override:
+        return Path(override)
+    return _default_config_dir()
+
+
+def state_file() -> Path:
+    return config_dir() / "breakpoints.json"
+
+
+def config_file() -> Path:
+    return config_dir() / "config.json"
+
+
+def legacy_state_file() -> Path:
+    return config_dir() / "last_run.json"
 
 
 def _encode_bps(
@@ -78,22 +102,22 @@ def _decode_bps(raw: dict) -> dict[str, list[SourceBreakpoint]]:
 
 def _read_state() -> dict:
     # One-time migration from the old name (renamed 2026-05).
-    if not STATE_FILE.is_file() and _LEGACY_STATE_FILE.is_file():
+    if not state_file().is_file() and legacy_state_file().is_file():
         try:
-            _LEGACY_STATE_FILE.rename(STATE_FILE)
-            log.info("Migrated %s -> %s", _LEGACY_STATE_FILE, STATE_FILE)
+            legacy_state_file().rename(state_file())
+            log.info("Migrated %s -> %s", legacy_state_file(), state_file())
         except Exception:
             log.exception(
                 "Failed to migrate %s to %s",
-                _LEGACY_STATE_FILE,
-                STATE_FILE,
+                legacy_state_file(),
+                state_file(),
             )
-    if not STATE_FILE.is_file():
+    if not state_file().is_file():
         return {}
     try:
-        return json.loads(STATE_FILE.read_text())
+        return json.loads(state_file().read_text())
     except Exception:
-        log.exception("Failed to read state file %s", STATE_FILE)
+        log.exception("Failed to read state file %s", state_file())
         return {}
 
 
@@ -111,13 +135,13 @@ def save_breakpoints(
         else:
             programs.pop(program, None)
         existing["programs"] = programs
-        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-        STATE_FILE.write_text(json.dumps(existing, indent=2) + "\n")
+        config_dir().mkdir(parents=True, exist_ok=True)
+        state_file().write_text(json.dumps(existing, indent=2) + "\n")
         log.debug(
             "Saved %d breakpoint(s) for %s", sum(len(v) for v in data.values()), program
         )
     except Exception:
-        log.exception("Failed to save breakpoints to %s", STATE_FILE)
+        log.exception("Failed to save breakpoints to %s", state_file())
 
 
 def load_breakpoints(program: str) -> dict[str, list[SourceBreakpoint]]:
@@ -127,7 +151,7 @@ def load_breakpoints(program: str) -> dict[str, list[SourceBreakpoint]]:
         programs = raw.get("programs", {})
         return _decode_bps(programs.get(program, {}))
     except Exception:
-        log.exception("Failed to load breakpoints from %s", STATE_FILE)
+        log.exception("Failed to load breakpoints from %s", state_file())
         return {}
 
 
@@ -200,12 +224,12 @@ def load_config() -> TdbConfig:
     """Read config.json into a TdbConfig. Always returns a usable config
     (defaults for missing/invalid fields, empty config on file errors).
     """
-    if not CONFIG_FILE.is_file():
+    if not config_file().is_file():
         return TdbConfig()
     try:
-        raw = json.loads(CONFIG_FILE.read_text())
+        raw = json.loads(config_file().read_text())
     except Exception:
-        log.exception("Failed to load config from %s", CONFIG_FILE)
+        log.exception("Failed to load config from %s", config_file())
         return TdbConfig()
     if not isinstance(raw, dict):
         return TdbConfig()
@@ -227,8 +251,8 @@ def seed_native_adapters(config: TdbConfig) -> None:
 def log_file() -> Path:
     """Where tdb writes its log: ``$TDB_LOG_DIR/tdb.log`` when the
     variable is set (tests use it to keep noise out of the user's config
-    dir), else ``CONFIG_DIR/tdb.log``."""
-    return Path(os.environ.get("TDB_LOG_DIR") or CONFIG_DIR) / "tdb.log"
+    dir), else ``config_dir()/tdb.log``."""
+    return Path(os.environ.get("TDB_LOG_DIR") or config_dir()) / "tdb.log"
 
 
 def save_config(config: TdbConfig) -> None:
@@ -239,13 +263,13 @@ def save_config(config: TdbConfig) -> None:
     ``seed_native_adapters``); later writes leave the map alone so a
     deliberately removed key stays removed."""
     try:
-        if not CONFIG_FILE.exists():
+        if not config_file().exists():
             seed_native_adapters(config)
-        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-        CONFIG_FILE.write_text(json.dumps(config.to_dict(), indent=2) + "\n")
-        log.debug("Saved config to %s", CONFIG_FILE)
+        config_dir().mkdir(parents=True, exist_ok=True)
+        config_file().write_text(json.dumps(config.to_dict(), indent=2) + "\n")
+        log.debug("Saved config to %s", config_file())
     except Exception:
-        log.exception("Failed to save config to %s", CONFIG_FILE)
+        log.exception("Failed to save config to %s", config_file())
 
 
 def backup_suffix(now: datetime | None = None) -> str:
@@ -263,16 +287,17 @@ def write_default_config(now: datetime | None = None) -> tuple[Path | None, Path
     default (with the native ``adapters`` keys seeded, exactly like the
     file tdb writes on first run).
 
-    Returns ``(backup_path_or_None, CONFIG_FILE)``. Unlike ``save_config``
+    Returns ``(backup_path_or_None, config_path)``. Unlike ``save_config``
     this raises OSError: the user asked for the write explicitly and
     must hear about a failure."""
     backup: Path | None = None
-    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    if CONFIG_FILE.exists():
-        backup = CONFIG_FILE.with_name(f"{CONFIG_FILE.name}-{backup_suffix(now)}")
-        CONFIG_FILE.replace(backup)
+    config_dir().mkdir(parents=True, exist_ok=True)
+    path = config_file()
+    if path.exists():
+        backup = path.with_name(f"{path.name}-{backup_suffix(now)}")
+        path.replace(backup)
     config = TdbConfig()
     seed_native_adapters(config)
-    CONFIG_FILE.write_text(json.dumps(config.to_dict(), indent=2) + "\n")
-    log.info("Wrote default config to %s (previous: %s)", CONFIG_FILE, backup)
-    return backup, CONFIG_FILE
+    path.write_text(json.dumps(config.to_dict(), indent=2) + "\n")
+    log.info("Wrote default config to %s (previous: %s)", path, backup)
+    return backup, path

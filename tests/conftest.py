@@ -47,6 +47,20 @@ def _isolate_padwalker_cache(tmp_path_factory):
         os.environ[key] = previous
 
 
+@pytest.fixture(autouse=True)
+def _clear_tdb_config_dir():
+    """A developer's own TDB_CONFIG_DIR must never leak into tests.
+
+    Uses a private MonkeyPatch rather than the `monkeypatch` fixture: an
+    autouse fixture requesting `monkeypatch` makes the shared instance be
+    set up first and undone last, so tests that patch sys.platform would
+    still have it patched while their own autouse teardowns run."""
+    mp = pytest.MonkeyPatch()
+    mp.delenv("TDB_CONFIG_DIR", raising=False)
+    yield
+    mp.undo()
+
+
 @pytest.fixture(scope="session")
 def tcsh_path() -> Path:
     found = shutil.which("tcsh")

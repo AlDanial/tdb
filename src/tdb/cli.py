@@ -1089,7 +1089,7 @@ def main(argv: list[str] | None = None) -> None:
     from tdb.persist import log_file
 
     # Tests set TDB_LOG_DIR to keep their log noise out of the user's
-    # config dir; production writes under CONFIG_DIR (XDG on Unix,
+    # config dir; production writes under config_dir() (XDG on Unix,
     # %APPDATA%/tdb on Windows).
     log_path = log_file()
     try:

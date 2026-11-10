@@ -213,7 +213,7 @@ def info_text() -> str:
     ruby_module_dir = str(importlib.resources.files("tdb.adapters.ruby"))
     native_header_dir = str(importlib.resources.files("tdb.adapters.native"))
     from tdb.app_helpers import about_text, install_dir
-    from tdb.persist import CONFIG_FILE, STATE_FILE, load_config, log_file
+    from tdb.persist import config_file, load_config, log_file, state_file
 
     adapters = load_config().adapters
 
@@ -223,8 +223,8 @@ def info_text() -> str:
             [
                 row("tdb executable", install_dir()),
                 row("version", __version__),
-                row("config file", CONFIG_FILE),
-                row("breakpoints file", STATE_FILE),
+                row("config file", config_file()),
+                row("breakpoints file", state_file()),
                 _log_row(log_file()),
                 row("examples dir", examples_dir()),
                 _mcp_row(),

@@ -16,10 +16,9 @@ FROZEN = datetime(2026, 10, 5, 14, 7, 9)
 
 @pytest.fixture
 def isolated_config(tmp_path, monkeypatch):
-    """Point persist's module-level CONFIG_DIR / CONFIG_FILE at tmp_path."""
+    """Point persist's config dir at tmp_path via TDB_CONFIG_DIR."""
     cfg_dir = tmp_path / "tdb"
-    monkeypatch.setattr(persist, "CONFIG_DIR", cfg_dir)
-    monkeypatch.setattr(persist, "CONFIG_FILE", cfg_dir / "config.json")
+    monkeypatch.setenv("TDB_CONFIG_DIR", str(cfg_dir))
     return cfg_dir
 
 

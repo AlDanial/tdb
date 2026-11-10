@@ -101,9 +101,9 @@ def cache_root() -> Path:
     override = os.environ.get("TDB_PADWALKER_CACHE")
     if override:
         return Path(override)
-    from tdb.persist import CONFIG_DIR
+    from tdb.persist import config_dir
 
-    return CONFIG_DIR / "padwalker"
+    return config_dir() / "padwalker"
 
 
 def _run(
