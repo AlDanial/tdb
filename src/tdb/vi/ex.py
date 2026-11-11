@@ -133,6 +133,10 @@ class ExHost(Protocol):
 
     def set_last_search(self, pattern: str) -> None: ...
 
+    def hide_search_highlight(self) -> None:
+        """``:nohlsearch``: stop highlighting the last search's matches."""
+        ...
+
     def last_substitute(self) -> SubstituteSpec | None: ...
 
     def set_last_substitute(self, spec: SubstituteSpec) -> None: ...
@@ -182,6 +186,7 @@ _NAMES: dict[str, str] = {
     "substitute": "s",
     "global": "g",
     "vglobal": "v",
+    "nohlsearch": "noh",
 }
 _ALIASES = {"t": "copy"}
 
@@ -465,6 +470,16 @@ def _write_quit(cmd: ExCommand, host: ExHost) -> None:
     host.leave(False)
 
 
+def _nohlsearch(cmd: ExCommand, host: ExHost) -> None:
+    """``:noh[lsearch]``: hide the search highlighting until the next search."""
+    if cmd.range is not None:
+        raise ExError("No range allowed")
+    if cmd.bang:
+        raise ExError("No ! allowed")
+    _no_args(cmd)
+    host.hide_search_highlight()
+
+
 def _substitute(cmd: ExCommand, host: ExHost) -> None:
     """``:[range]s/pat/rep/[flags]`` (``:s [flags]`` repeats the last one)."""
     _substitute_with(cmd.args, cmd, host)
@@ -565,6 +580,7 @@ _OTHER_COMMANDS: dict[str, Callable[[ExCommand, ExHost], None]] = {
     "quit": _quit,
     "wq": _write_quit,
     "xit": _write_quit,
+    "nohlsearch": _nohlsearch,
 }
 
 

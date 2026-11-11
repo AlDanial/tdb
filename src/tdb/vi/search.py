@@ -84,3 +84,43 @@ def find_nth(
         offset = place(text, found[0])
     assert found is not None
     return found[0], found[1], wrapped
+
+
+def match_spans(
+    text: str, pattern: re.Pattern, *, limit: int = 100_000
+) -> dict[int, list[tuple[int, int]]]:
+    """Every non-empty match of *pattern* in *text*, as ``row -> [(start
+    column, end column), ...]`` (end exclusive) for ``'hlsearch'``.
+
+    A match spanning lines is split at each line break (the break itself
+    is not drawn).  Zero-width matches are skipped.  At most *limit*
+    matches are collected, so a pattern such as ``.`` on a huge file
+    stays cheap.
+    """
+    spans: dict[int, list[tuple[int, int]]] = {}
+    row, row_start = 0, 0  # the row holding offset `row_start`
+    for count, m in enumerate(pattern.finditer(text)):
+        if count >= limit:
+            break
+        start, end = m.span()
+        if start == end:
+            continue
+        # Advance to the row of `start` (matches arrive in order).
+        nl = text.count("\n", row_start, start)
+        if nl:
+            row += nl
+            row_start = text.rfind("\n", 0, start) + 1
+        r, line_start = row, row_start
+        while True:
+            line_end = text.find("\n", line_start)
+            if line_end == -1:
+                line_end = len(text)
+            seg_end = min(end, line_end)
+            if seg_end > start:
+                spans.setdefault(r, []).append(
+                    (start - line_start, seg_end - line_start)
+                )
+            if end <= line_end + 1:
+                break
+            r, line_start, start = r + 1, line_end + 1, line_end + 1
+    return spans

@@ -20,6 +20,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, ClassVar, Protocol
 
+from rich.text import Text
 from textual import events
 from textual.binding import Binding, BindingType
 from textual.containers import Vertical
@@ -39,6 +40,7 @@ from tdb.vi import (
     ViSession,
     diff_text,
 )
+from tdb.vi.search import ViPatternError, compile_pattern, match_spans
 
 if TYPE_CHECKING:
     from tdb.vi.marks import MarkTable
@@ -85,7 +87,15 @@ class CodeEditor(TextArea):
         border: none;
         padding: 0;
     }
+    CodeEditor > .code-editor--search-match {
+        background: $warning 45%;
+    }
     """
+
+    # Matches of the vim scheme's search pattern ('hlsearch').
+    COMPONENT_CLASSES: ClassVar[set[str]] = TextArea.COMPONENT_CLASSES | {
+        "code-editor--search-match"
+    }
 
     # Footer hints only. `_on_key` stops these keys before the binding
     # system sees them, so the no-op action methods never run (same
@@ -140,6 +150,10 @@ class CodeEditor(TextArea):
         self.standalone = standalone
         self._clean_text = text
         self._layer: KeyLayer | None = None
+        # 'hlsearch': (pattern, text it is matched in) and the matches,
+        # row -> [(start col, end col)], computed when first drawn.
+        self._hl_key: tuple[str, str] | None = None
+        self._hl_spans: dict[int, list[tuple[int, int]]] | None = None
 
     # ---- state ----
 
@@ -178,6 +192,11 @@ class CodeEditor(TextArea):
     @property
     def command_text(self) -> str:
         return self._layer.command_text if self._layer is not None else ""
+
+    @property
+    def vi_engine(self) -> ViEngine | None:
+        """The vi engine in the vim scheme, else None."""
+        return self._layer.engine if isinstance(self._layer, ViLayer) else None
 
     def _set_layer(self, layer: KeyLayer | None) -> None:
         self._layer = layer
@@ -267,6 +286,43 @@ class CodeEditor(TextArea):
 
     def scroll_to_top_row(self, row: int) -> None:
         self.scroll_to(y=row, animate=False)
+
+    # ---- search highlighting (vim scheme) ----
+
+    def set_search_highlight(self, pattern: str | None, text: str = "") -> None:
+        """Highlight every match of *pattern* (a vi search pattern) found
+        in *text* (the engine's text; rows and columns are the TextArea's).
+        None turns highlighting off."""
+        key = None if not pattern else (pattern, text)
+        if key == self._hl_key:
+            return
+        self._hl_key = key
+        self._hl_spans = None
+        self._line_cache.clear()
+        self.refresh()
+
+    def search_spans(self) -> dict[int, list[tuple[int, int]]]:
+        """The highlighted matches: row -> [(start col, end col)]."""
+        if self._hl_key is None:
+            return {}
+        if self._hl_spans is None:
+            pattern, text = self._hl_key
+            try:
+                rx = compile_pattern(pattern)
+            except ViPatternError:
+                self._hl_spans = {}
+            else:
+                self._hl_spans = match_spans(text, rx)
+        return self._hl_spans
+
+    def get_line(self, line_index: int) -> Text:
+        line = super().get_line(line_index)
+        spans = self.search_spans().get(line_index) if self._hl_key else None
+        if spans:
+            style = self.get_component_rich_style("code-editor--search-match")
+            for start, end in spans:
+                line.stylize(style, start, end)
+        return line
 
     # ---- paste / mouse: the vi engine owns the buffer ----
 
@@ -655,6 +711,7 @@ class ViLayer:
                 ed.post_message(CodeEditor.LeaveRequested(discard=event.discard))
             elif isinstance(event, Notify):
                 ed.app.notify(event.text, title="Edit", severity=event.severity)
+        ed.set_search_highlight(engine.highlight_pattern, new)
         label = (engine.mode, engine.status)
         if label != self._label:
             self._label = label

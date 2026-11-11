@@ -291,6 +291,9 @@ class _Scope:
     def set_last_search(self, pattern: str) -> None:
         self._host.set_last_search(pattern)
 
+    def hide_search_highlight(self) -> None:
+        self._host.hide_search_highlight()
+
     def last_substitute(self) -> SubstituteSpec | None:
         return self._host.last_substitute()
 

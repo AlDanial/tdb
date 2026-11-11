@@ -1612,6 +1612,7 @@ def _add_search(kb: KeyBindings, engine: ViEngine) -> None:
                 notify("No previous regular expression", "error")
                 return None
             pattern, backward = last
+            engine.session.hl_hidden = False
             offset = event.current_buffer.cursor_position
             return motion(event, pattern, backward != reverse, offset)
 
@@ -1642,6 +1643,7 @@ def _add_search(kb: KeyBindings, engine: ViEngine) -> None:
                     return None
                 pattern = re.escape(m.group())
             engine.session.last_search = (pattern, backward)
+            engine.session.hl_hidden = False
             engine._remember_search(pattern)
             # From the word's start, so the word itself is skipped.
             offset = doc.cursor_position - col + m.start()

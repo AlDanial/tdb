@@ -20,6 +20,8 @@ TEXT = "one\ntwo\nthree\n"
 _KEY_NAMES = {
     "\r": "enter",
     ":": "colon",
+    "/": "slash",
+    "?": "question_mark",
     "!": "exclamation_mark",
     " ": "space",
 }
@@ -68,10 +70,14 @@ async def test_layout_full_screen(tmp_path):
         top_ids = [
             w.id for w in app.screen.children if not isinstance(w, _MenuDropdown)
         ]
-        assert top_ids == ["menu-bar", "code-view"]
+        assert top_ids == ["menu-bar", "code-view", "vi-status"]
         menu = app.query_one("#menu-bar", MenuBar)
         cv = _cv(app)
-        assert cv.size.height == app.screen.size.height - menu.size.height
+        footer = app.query_one("#vi-status")
+        assert footer.size.height == 2
+        assert cv.size.height == (
+            app.screen.size.height - menu.size.height - footer.size.height
+        )
         assert cv.size.width == app.screen.size.width
 
 
@@ -422,3 +428,94 @@ async def test_existing_file_without_final_newline_saves_without(tmp_path):
         await pilot.pause()
     assert app.return_code == 0
     assert f.read_bytes() == b"ne\ntwo"
+
+
+# ---- footer (status line + command line) and search highlighting ----
+
+
+def _footer(app) -> tuple[str, str, str, str]:
+    """(file, ruler, message, showcmd) as drawn."""
+    return tuple(
+        str(app.query_one(f"#vi-{part}", Label).render())
+        for part in ("file", "ruler", "message", "showcmd")
+    )
+
+
+async def test_footer_file_dirty_and_ruler(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _write(tmp_path)
+    app = ViApp("f.txt")
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        assert _footer(app) == ("f.txt", "1,1", "", "")
+        await _type(pilot, "jll")
+        assert _footer(app)[:2] == ("f.txt", "2,3")
+        await _type(pilot, "x")
+        assert _footer(app)[:2] == ("f.txt [+]", "2,2")
+        await _type(pilot, ":w\r")
+        assert _footer(app)[0] == "f.txt"
+
+
+async def test_footer_insert_mode_message(tmp_path):
+    app = ViApp(str(_write(tmp_path)))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await _type(pilot, "A")
+        assert _footer(app)[1:3] == ("1,4", "-- INSERT --")
+        await pilot.press("escape")
+        await pilot.pause()
+        assert _footer(app)[2] == ""
+        await _type(pilot, "V")
+        assert _footer(app)[2] == "-- VISUAL LINE --"
+
+
+async def test_footer_shows_command_lines(tmp_path):
+    app = ViApp(str(_write(tmp_path)))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await _type(pilot, ":2")
+        assert _footer(app)[2] == ":2"
+        await _type(pilot, "\r")
+        assert _footer(app)[1:3] == ("2,1", ":2")  # stays after Enter
+        await _type(pilot, "/thr")
+        assert _footer(app)[2] == "/thr"
+        await _type(pilot, "ee\rj")
+        assert _footer(app)[2] == "/three"  # stays while moving
+        await _type(pilot, "2d")
+        assert _footer(app)[2:] == ("/three", "2d")
+        await pilot.press("escape")
+        await _type(pilot, ":xyz")
+        await pilot.press("escape")
+        await pilot.pause()
+        assert _footer(app)[2] == ""  # abandoned with Esc
+        await _type(pilot, "/two\ri")
+        assert _footer(app)[2] == "-- INSERT --"
+        await pilot.press("escape")
+        await pilot.pause()
+        assert _footer(app)[2] == ""  # the mode message replaced it
+
+
+async def test_backward_search_and_highlight(tmp_path):
+    p = _write(tmp_path, text="foo\nbar\nfoo bar foo\n")
+    app = ViApp(str(p))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        editor = _cv(app)._editor
+        await _type(pilot, "G$?ba")
+        assert _footer(app)[2] == "?ba"
+        assert editor.search_spans() == {1: [(0, 2)], 2: [(4, 6)]}  # as typed
+        await _type(pilot, "r\r")
+        assert editor.cursor_location == (2, 4)
+        assert editor.search_spans() == {1: [(0, 3)], 2: [(4, 7)]}
+        styled = [(sp.start, sp.end) for sp in editor.get_line(2).spans]
+        assert styled == [(4, 7)]
+        await _type(pilot, "n")
+        assert editor.cursor_location == (1, 0)
+        await _type(pilot, ":noh\r")
+        assert editor.search_spans() == {}
+        assert editor.get_line(2).spans == []
+        await _type(pilot, "N")
+        assert editor.cursor_location == (2, 4)
+        assert editor.search_spans() == {1: [(0, 3)], 2: [(4, 7)]}
+        await _type(pilot, "x")  # the highlight follows edits
+        assert editor.search_spans() == {1: [(0, 3)]}

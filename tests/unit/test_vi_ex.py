@@ -58,6 +58,9 @@ class FakeHost:
     def set_last_search(self, pattern):
         self.search = pattern
 
+    def hide_search_highlight(self):
+        self.hl_hidden = True
+
     def set_mark(self, name, pos):
         self.marks[name] = pos
 
@@ -365,3 +368,24 @@ def test_substitute_errors(line, message):
         run_ex(line, host)
     assert str(info.value) == message
     assert host.lines() == ["l1", "l2", "l3", "l4", "l5"]
+
+
+def test_nohlsearch_hides_highlight():
+    for line in ("noh", "nohl", "nohlsearch"):
+        host = FakeHost()
+        run_ex(line, host)
+        assert host.hl_hidden is True
+
+
+@pytest.mark.parametrize(
+    ("line", "error"),
+    [("1noh", "No range allowed"), ("noh!", "No ! allowed"), ("noh x", "Trailing")],
+)
+def test_nohlsearch_refuses_range_bang_args(line, error):
+    with pytest.raises(ExError, match=error):
+        run_ex(line, FakeHost())
+
+
+def test_no_is_not_nohlsearch():
+    with pytest.raises(ExError, match="Not an editor command"):
+        run_ex("no", FakeHost())
