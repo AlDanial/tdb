@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import importlib
 import json
 import sys
 
@@ -13,20 +12,16 @@ from tdb.dap.types import SourceBreakpoint
 
 @pytest.fixture
 def isolated_persist(tmp_path, monkeypatch):
-    """Reload persist with CONFIG_DIR pointing inside tmp_path.
-
-    Reloading is the cleanest way to flip the module-level constants
-    that depend on Path.home().
-    """
+    """persist with its config dir pointing inside tmp_path."""
     monkeypatch.setenv("HOME", str(tmp_path))
     # Windows uses USERPROFILE for Path.home(); set it too so the same fixture
     # works on either platform.
     monkeypatch.setenv("USERPROFILE", str(tmp_path))
     monkeypatch.setenv("APPDATA", str(tmp_path / "AppData" / "Roaming"))
+    monkeypatch.setenv("TDB_CONFIG_DIR", str(tmp_path / ".config" / "tdb"))
 
     import tdb.persist as persist_module
 
-    persist_module = importlib.reload(persist_module)
     return persist_module
 
 
@@ -35,8 +30,7 @@ def test_default_config_dir_unix(monkeypatch, tmp_path):
     monkeypatch.setenv("HOME", str(tmp_path))
     import tdb.persist as persist_module
 
-    persist_module = importlib.reload(persist_module)
-    assert persist_module.CONFIG_DIR == tmp_path / ".config" / "tdb"
+    assert persist_module._default_config_dir() == tmp_path / ".config" / "tdb"
 
 
 def test_default_config_dir_windows_with_appdata(monkeypatch, tmp_path):
@@ -45,8 +39,7 @@ def test_default_config_dir_windows_with_appdata(monkeypatch, tmp_path):
     monkeypatch.setenv("APPDATA", str(appdata))
     import tdb.persist as persist_module
 
-    persist_module = importlib.reload(persist_module)
-    assert persist_module.CONFIG_DIR == appdata / "tdb"
+    assert persist_module._default_config_dir() == appdata / "tdb"
 
 
 def test_default_config_dir_windows_no_appdata(monkeypatch, tmp_path):
@@ -56,9 +49,8 @@ def test_default_config_dir_windows_no_appdata(monkeypatch, tmp_path):
     monkeypatch.setenv("HOME", str(tmp_path))
     import tdb.persist as persist_module
 
-    persist_module = importlib.reload(persist_module)
     expected = tmp_path / "AppData" / "Roaming" / "tdb"
-    assert persist_module.CONFIG_DIR == expected
+    assert persist_module._default_config_dir() == expected
 
 
 def test_save_and_load_breakpoints_per_program(isolated_persist):
@@ -107,8 +99,8 @@ def test_breakpoint_round_trip_preserves_condition_and_disabled(isolated_persist
 
 def test_legacy_last_run_json_is_migrated(isolated_persist):
     """If breakpoints.json is missing but last_run.json is present, rename."""
-    legacy = isolated_persist._LEGACY_STATE_FILE
-    state = isolated_persist.STATE_FILE
+    legacy = isolated_persist.legacy_state_file()
+    state = isolated_persist.state_file()
     legacy.parent.mkdir(parents=True, exist_ok=True)
     legacy.write_text(
         json.dumps({"programs": {"/abs/x.py": {"/abs/x.py": [{"line": 11}]}}})
@@ -161,8 +153,8 @@ def test_config_from_dict_rejects_invalid_step_mode(isolated_persist):
 
 
 def test_load_breakpoints_corrupt_json_returns_empty(isolated_persist):
-    isolated_persist.STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    isolated_persist.STATE_FILE.write_text("{not json")
+    isolated_persist.state_file().parent.mkdir(parents=True, exist_ok=True)
+    isolated_persist.state_file().write_text("{not json")
     assert isolated_persist.load_breakpoints(program="/abs/x.py") == {}
 
 
@@ -221,10 +213,10 @@ def test_first_save_seeds_native_adapters(isolated_persist, monkeypatch):
     monkeypatch.setattr(
         shutil, "which", _fake_which({"gdb": "/usr/bin/gdb", "lldb-dap": None})
     )
-    assert not isolated_persist.CONFIG_FILE.exists()
+    assert not isolated_persist.config_file().exists()
     cfg = isolated_persist.TdbConfig()
     isolated_persist.save_config(cfg)
-    on_disk = json.loads(isolated_persist.CONFIG_FILE.read_text())
+    on_disk = json.loads(isolated_persist.config_file().read_text())
     assert on_disk["adapters"] == {"gdb": "/usr/bin/gdb", "lldb-dap": None}
     # The in-memory config matches what was written.
     assert cfg.adapters == {"gdb": "/usr/bin/gdb", "lldb-dap": None}
@@ -244,7 +236,7 @@ def test_first_save_keeps_explicit_adapter_entries(isolated_persist, monkeypatch
     )
     cfg = isolated_persist.TdbConfig(adapters={"gdb": "/opt/gdb", "perl": "/opt/perl"})
     isolated_persist.save_config(cfg)
-    on_disk = json.loads(isolated_persist.CONFIG_FILE.read_text())
+    on_disk = json.loads(isolated_persist.config_file().read_text())
     assert on_disk["adapters"] == {
         "gdb": "/opt/gdb",
         "perl": "/opt/perl",
@@ -258,10 +250,10 @@ def test_later_saves_do_not_reseed(isolated_persist, monkeypatch):
     import shutil
 
     monkeypatch.setattr(shutil, "which", _fake_which({"gdb": "/usr/bin/gdb"}))
-    isolated_persist.CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
-    isolated_persist.CONFIG_FILE.write_text("{}\n")
+    isolated_persist.config_file().parent.mkdir(parents=True, exist_ok=True)
+    isolated_persist.config_file().write_text("{}\n")
     isolated_persist.save_config(isolated_persist.TdbConfig())
-    on_disk = json.loads(isolated_persist.CONFIG_FILE.read_text())
+    on_disk = json.loads(isolated_persist.config_file().read_text())
     assert on_disk["adapters"] == {}
 
 
@@ -278,3 +270,40 @@ def test_transient_breakpoints_not_saved(isolated_persist):
     loaded = isolated_persist.load_breakpoints(program="/abs/x.py")
     assert [b.line for b in loaded["/abs/x.py"]] == [5]
     assert "/abs/only_transient.py" not in loaded
+
+
+def test_config_dir_env_override(monkeypatch, tmp_path):
+    monkeypatch.setenv("TDB_CONFIG_DIR", str(tmp_path / "cfg"))
+    from tdb import persist
+
+    assert persist.config_dir() == tmp_path / "cfg"
+    assert persist.config_file() == tmp_path / "cfg" / "config.json"
+    assert persist.state_file() == tmp_path / "cfg" / "breakpoints.json"
+    assert persist.config_dir_overridden() is True
+
+
+def test_config_dir_env_override_windows(monkeypatch, tmp_path):
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setenv("APPDATA", str(tmp_path / "AppData"))
+    monkeypatch.setenv("TDB_CONFIG_DIR", str(tmp_path / "cfg"))
+    from tdb import persist
+
+    assert persist.config_dir() == tmp_path / "cfg"  # APPDATA bypassed
+
+
+def test_empty_env_means_default(monkeypatch, tmp_path):
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("TDB_CONFIG_DIR", "")
+    from tdb import persist
+
+    assert persist.config_dir() == tmp_path / ".config" / "tdb"
+    assert persist.config_dir_overridden() is False
+
+
+def test_log_file_follows_config_dir(monkeypatch, tmp_path):
+    monkeypatch.delenv("TDB_LOG_DIR", raising=False)
+    monkeypatch.setenv("TDB_CONFIG_DIR", str(tmp_path))
+    from tdb import persist
+
+    assert persist.log_file() == tmp_path / "tdb.log"

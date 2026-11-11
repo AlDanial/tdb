@@ -162,8 +162,9 @@ def test_tdb_section_lists_files(stub_tools, tmp_path, monkeypatch):
     assert lines == [
         f"    tdb executable           : {install_dir()}",
         f"    version                  : {__version__}",
-        f"    config file              : {persist.CONFIG_FILE}",
-        f"    breakpoints file         : {persist.STATE_FILE}",
+        f"    config dir               : {persist.config_dir()}",
+        f"    config file              : {persist.config_file()}",
+        f"    breakpoints file         : {persist.state_file()}",
         f"    log file                 : {log} [15 KB]",
         f"    examples dir             : {info.examples_dir()}",
         info._mcp_row(),
@@ -217,7 +218,7 @@ def test_log_file_honors_tdb_log_dir(tmp_path, monkeypatch):
     monkeypatch.setenv("TDB_LOG_DIR", str(tmp_path))
     assert persist.log_file() == tmp_path / "tdb.log"
     monkeypatch.delenv("TDB_LOG_DIR")
-    assert persist.log_file() == persist.CONFIG_DIR / "tdb.log"
+    assert persist.log_file() == persist.config_dir() / "tdb.log"
 
 
 # --- minimum version check ------------------------------------------------------

@@ -205,7 +205,9 @@ class ReplayDriver:
                 CodeView.BreakpointToggled(path, line)
             )
         bp = _breakpoint(app, path, line)
-        current = (bp.condition or None, bp.hit_condition or None) if bp else (None, None)
+        current = (
+            (bp.condition or None, bp.hit_condition or None) if bp else (None, None)
+        )
         if current != (condition, hit_condition):
             await app.on_tdb_app__apply_breakpoint_condition(
                 app._ApplyBreakpointCondition(path, line, condition, hit_condition)
@@ -303,7 +305,11 @@ class ReplayDriver:
 
 def _breakpoint(app: TdbApp, path: str, line: int):
     return next(
-        (bp for bp in app.controller.state.breakpoints.get(path, []) if bp.line == line),
+        (
+            bp
+            for bp in app.controller.state.breakpoints.get(path, [])
+            if bp.line == line
+        ),
         None,
     )
 
@@ -313,7 +319,9 @@ def _has_breakpoint(app: TdbApp, path: str, line: int) -> bool:
 
 
 # Non-step actions: name -> handler(driver, app, params).
-_ACTIONS: dict[str, Callable[[ReplayDriver, "TdbApp", list], Awaitable[tuple[bool, str]]]] = {
+_ACTIONS: dict[
+    str, Callable[[ReplayDriver, "TdbApp", list], Awaitable[tuple[bool, str]]]
+] = {
     "evaluate": lambda d, app, p: d._evaluate(app, p),
     "stack_up": lambda d, app, p: d._stack(app, up=True),
     "stack_down": lambda d, app, p: d._stack(app, up=False),

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -22,7 +23,7 @@ from textual.widget import Widget
 from textual.widgets import Input, Label
 
 from tdb.keybindings import KeybindingConfig, Mode
-from tdb.source_edit import atomic_write_text
+from tdb.source_edit import save_text
 from tdb.terminal_text import visible_controls
 from tdb.vi import MarkTable, ViSession
 from tdb.widgets.code_editor import CodeEditor, _UnsavedChangesModal
@@ -434,6 +435,10 @@ class CodeView(ScrollableContainer, can_focus=True):
     class ShowLastTraceback(Message):
         pass
 
+    class EditClosed(Message):
+        """Standalone mode: Edit mode was left (clean, saved, or
+        discarded). The editor stays mounted; the app is about to exit."""
+
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
         self._lines: list[str] = []
@@ -471,6 +476,10 @@ class CodeView(ScrollableContainer, can_focus=True):
         # ---- Edit mode ----
         # Cleared by the App for replay / post-mortem sessions.
         self.edit_enabled: bool = True
+        # `tdb --vi FILE`: the editor is the whole app. Leaving Edit mode
+        # posts EditClosed instead of tearing the editor down, and Esc
+        # never leaves.
+        self.standalone: bool = False
         self._editor: CodeEditor | None = None
         # vim scheme: registers/history shared by every Edit session, and
         # marks per file (filled in by the marks support).
@@ -498,6 +507,10 @@ class CodeView(ScrollableContainer, can_focus=True):
         self._deferred_is_local: bool = True
         self._deferred_is_lossy: bool = False
         self._deferred_is_placeholder: bool = False
+        # Files opened by load_new_file (did not exist yet): saving them
+        # ends the text with a newline, like vim's 'fixeol'. Files read
+        # from disk keep whatever final-newline state they had.
+        self._fix_eol_paths: set[str] = set()
 
     def compose(self):
         self._content = _CodeContent(self)
@@ -518,7 +531,11 @@ class CodeView(ScrollableContainer, can_focus=True):
             if key == "escape":
                 event.stop()
                 event.prevent_default()
-                self.leave_edit_mode()
+                if self.standalone:
+                    if self._editor is not None:
+                        self._editor.focus()
+                else:
+                    self.leave_edit_mode()
             return
 
         # ESC cycles mode: Debug -> Navigation -> Edit -> Debug
@@ -709,6 +726,7 @@ class CodeView(ScrollableContainer, can_focus=True):
             self._editor_text(),
             scheme=self.keybindings.scheme,
             lexer=self.lexer_name,
+            standalone=self.standalone,
         )
         self._install_key_layer(editor)
         self._editor = editor
@@ -743,27 +761,63 @@ class CodeView(ScrollableContainer, can_focus=True):
                 )
             )
 
-    def leave_edit_mode(self, discard: bool = False) -> None:
-        """The one exit from Edit mode. Prompts when there are unsaved
-        changes (unless `discard`), then tears the editor down."""
-        if self._editor is None:
-            return
-        if discard or not self._editor.is_dirty:
-            self._teardown_editor(reload_from_disk=discard)
+    def confirm_unsaved(self, then: Callable[[], None]) -> None:
+        """Run *then* once unsaved edits are dealt with: now when the
+        editor is clean or absent, else after the Save / Discard / Cancel
+        prompt (save: only if the save succeeded; discard: with the
+        buffer still dirty; cancel: never). Back in the editor after a
+        cancel or failed save."""
+        if self._editor is None or not self._editor.is_dirty:
+            then()
             return
 
         def on_dismiss(result: str | None) -> None:
             if result == "save":
                 if self.save_file():
-                    self._teardown_editor(reload_from_disk=False)
+                    then()
             elif result == "discard":
-                self._teardown_editor(reload_from_disk=True)
+                then()
             # cancel: stay in Edit mode
             if self._editor is not None:
                 self._editor.focus()
 
         name = Path(self.source_path).name if self.source_path else "buffer"
         self.app.push_screen(_UnsavedChangesModal(name), callback=on_dismiss)
+
+    def leave_edit_mode(self, discard: bool = False) -> None:
+        """The one exit from Edit mode. Prompts when there are unsaved
+        changes (unless `discard`), then tears the editor down — or, in
+        standalone mode, posts EditClosed and leaves it mounted."""
+        if self._editor is None:
+            return
+        if discard:
+            self._close_editor(reload_from_disk=True)
+            return
+        # Still dirty after the prompt only when the user chose discard.
+        self.confirm_unsaved(
+            lambda: self._close_editor(
+                reload_from_disk=self._editor is not None and self._editor.is_dirty
+            )
+        )
+
+    def _close_editor(self, *, reload_from_disk: bool) -> None:
+        if self.standalone:
+            self.post_message(self.EditClosed())
+        else:
+            self._teardown_editor(reload_from_disk=reload_from_disk)
+
+    def replace_file(self, path: str) -> None:
+        """Standalone mode: switch the editor to `path` (an empty buffer
+        when it does not exist yet). Drops the current buffer without a
+        prompt and without posting EditClosed — callers run it through
+        confirm_unsaved first."""
+        self._teardown_editor(reload_from_disk=False)
+        if Path(path).exists():
+            self.load_file(path)
+        else:
+            self.load_new_file(path)
+        self.cursor_line = 1
+        self.call_after_refresh(self.enter_edit_mode)
 
     def discard_edits(self) -> None:
         """Drop unsaved edits and leave Edit mode (no prompt)."""
@@ -791,13 +845,15 @@ class CodeView(ScrollableContainer, can_focus=True):
         return True
 
     def save_file(self) -> bool:
-        """Atomically write the editor buffer to source_path. On OSError
+        """Write (atomically if possible) the editor buffer to source_path. On OSError
         notify and keep the buffer dirty. Posts FileSaved on success."""
         if self._editor is None or self.source_path is None:
             return False
         text = self._editor.file_text
+        if self.source_path in self._fix_eol_paths and text and not text.endswith("\n"):
+            text += "\n"  # an empty buffer still writes 0 bytes, as vim does
         try:
-            atomic_write_text(self.source_path, text)
+            save_text(self.source_path, text)
         except OSError as exc:
             self.app.notify(f"Save failed: {exc}", title="Edit", severity="error")
             return False
@@ -1075,6 +1131,12 @@ class CodeView(ScrollableContainer, can_focus=True):
             text = raw.decode("utf-8", errors="replace")
             is_lossy = True
         self._install_source(text, path, is_local=is_local, is_lossy=is_lossy)
+
+    def load_new_file(self, path: str) -> None:
+        """Show an empty, editable buffer for `path`, a file that does
+        not exist yet. Nothing is written until the user saves."""
+        self._fix_eol_paths.add(path)
+        self._install_source("", path, is_local=True)
 
     def load_placeholder(self, message: str, path: str) -> None:
         """Show `message` in place of source for `path`.

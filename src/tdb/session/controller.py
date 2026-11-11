@@ -1511,8 +1511,10 @@ class DebugController:
             self._active_client = child
             generation = self.state.generation
             threads = await child.threads()
-            if not threads or self.state.generation != generation or (
-                self._active_client is not child
+            if (
+                not threads
+                or self.state.generation != generation
+                or (self._active_client is not child)
             ):
                 return
             # debugpy reports threads in creation order; index 0 is the
@@ -1549,7 +1551,11 @@ class DebugController:
         context are published only if it is still current -- a reply
         landing after a resume, or after the user picked another thread
         or process, describes a state that is gone."""
-        return (self.state.generation, self._active_client, self.state.current_thread_id)
+        return (
+            self.state.generation,
+            self._active_client,
+            self.state.current_thread_id,
+        )
 
     def _still_current(self, ctx: tuple) -> bool:
         generation, client, thread_id = ctx
@@ -1629,10 +1635,14 @@ class DebugController:
                 if (var := await self._read_display(ac, expr, frame_id)) is not None
             ]
             if shown:
-                scopes.insert(0, Scope(name="Display", variables_reference=DISPLAY_SCOPE_REF))
+                scopes.insert(
+                    0, Scope(name="Display", variables_reference=DISPLAY_SCOPE_REF)
+                )
                 variables[DISPLAY_SCOPE_REF] = shown
         if not self._still_current(ctx) or self.state.current_frame_id != frame_id:
-            log.debug("scopes for frame %s of a passed stop/selection; dropped", frame_id)
+            log.debug(
+                "scopes for frame %s of a passed stop/selection; dropped", frame_id
+            )
             return
         self.state.scopes = scopes
         # In place: other holders of the dict see the new contents.

@@ -81,6 +81,40 @@ are characters of their line, as is a `\r` in a file that is not all
 CRLF. They are shown as `␌ ␋ ␜ ␝ ␞ ␤ ¶ ␍` and saved unchanged, whether
 they were in the file, pasted, or put there by `:s`.
 
+## Using tdb as an editor
+
+`tdb --vi FILE` opens `FILE` in this editor with nothing else: the Code
+View fills the terminal, and no program, debug adapter or other process
+is started. It starts in vim normal mode whatever `keybindings` says in
+`config.json`; the color theme still comes from `config.json`, and
+`--config-dir DIR` is honored (useful with a read-only `$HOME`). Every
+other option is ignored. Nothing is written to `breakpoints.json`.
+
+- Exactly one file. A directory, a binary file, or a file that is not
+  valid UTF-8 is refused with a message and a non-zero exit.
+- A file that does not exist yet opens as an empty buffer; it appears
+  on disk only at the first `:w`, so quitting without saving leaves
+  nothing behind (its directory must already exist). As in vim, a new
+  file is saved with a final newline; an existing file keeps whatever
+  final-newline state it had.
+- `:w` saves and stays; `:wq` and `:x` save and exit; `:q!` exits
+  without saving. `:q` and `Ctrl+Q` exit, but with unsaved changes they
+  open the Save / Discard / Cancel dialog first (not vim's E37
+  refusal): Save then exits, Discard exits, Cancel stays.
+- `Escape` never exits, and `Ctrl+C` is not a quit key. All other
+  Ctrl keys, including `Ctrl+F` / `Ctrl+B` (page forward / back),
+  `Ctrl+P`, `Ctrl+O`, `Ctrl+E` and `Ctrl+V`, go to the vi engine;
+  `Ctrl+S` still saves.
+- The menu bar has only **File** (`Alt+F`) and **Help** (`Alt+H`:
+  Documentation, About). File opens a picker showing every file under
+  the current directory; picking one switches the editor to it, after
+  the Save / Discard / Cancel dialog if the current buffer has unsaved
+  changes. Directories and files the editor cannot open are refused
+  with a notification.
+- Saving writes atomically when it can, and falls back to writing the
+  file in place when its directory is not writable (as vim does), e.g.
+  a writable `~/.bashrc` in a read-only `$HOME`.
+
 ## Differences from vim
 
 tdb tries to match vim (the engine is checked against real nvim by a

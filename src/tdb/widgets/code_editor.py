@@ -122,8 +122,12 @@ class CodeEditor(TextArea):
         *,
         scheme: str,
         lexer: str | None = None,
+        standalone: bool = False,
         **kwargs,
     ) -> None:
+        """*standalone*: the editor is the whole app (`tdb --vi FILE`).
+        Esc never asks to leave, and in the vim scheme every key except
+        Ctrl+Q / Ctrl+S goes to the vi engine (Ctrl+B/Ctrl+F page)."""
         super().__init__(
             text,
             language=editor_language_for(lexer),
@@ -133,6 +137,7 @@ class CodeEditor(TextArea):
             **kwargs,
         )
         self.scheme = scheme
+        self.standalone = standalone
         self._clean_text = text
         self._layer: KeyLayer | None = None
 
@@ -191,6 +196,8 @@ class CodeEditor(TextArea):
     def check_action(self, action: str, parameters: tuple) -> bool | None:
         if action == "footer_hint_save":
             return self.scheme != "emacs"
+        if action == "footer_hint_leave" and self.standalone:
+            return False  # Esc never leaves a standalone editor
         # With ViLayer the vi engine owns the buffer: TextArea's own
         # bindings (ctrl+e line end, ctrl+v paste, ...) would bypass it.
         # Declining them lets keys ViLayer did not take (pane keys) reach
@@ -210,6 +217,10 @@ class CodeEditor(TextArea):
         # vim and Notepad users keep the command palette.
         if key == "ctrl+p" and self.scheme == "emacs":
             return True
+        # Standalone (`tdb --vi`), the vi engine gets Ctrl+P / Ctrl+C
+        # too: strip them from the App's priority bindings likewise.
+        if key in ("ctrl+p", "ctrl+c") and self.standalone:
+            return True
         return super().check_consume_key(key, character)
 
     async def _on_key(self, event: Key) -> None:
@@ -223,7 +234,8 @@ class CodeEditor(TextArea):
             # it turns Esc into screen.focus_next().
             event.stop()
             event.prevent_default()
-            self.post_message(self.LeaveRequested())
+            if not self.standalone:  # a standalone editor is left by :q
+                self.post_message(self.LeaveRequested())
             return
         if key == "ctrl+s" and self.scheme != "emacs":
             event.stop()
@@ -397,6 +409,8 @@ class EmacsLayer:
 _VI_TDB_KEYS = frozenset(
     {"ctrl+c", "ctrl+o", "ctrl+e", "ctrl+v", "ctrl+s", "ctrl+b", "ctrl+q", "ctrl+p"}
 )
+# What tdb keeps in a standalone editor (`tdb --vi`): Save and Quit.
+_VI_STANDALONE_TDB_KEYS = frozenset({"ctrl+q", "ctrl+s"})
 # Textual key names that are ViKey names as they are.
 _VI_NAMED_KEYS = frozenset(
     {
@@ -562,7 +576,8 @@ class ViLayer:
     def handle_key(self, event: Key) -> bool:
         engine = self.engine
         if event.key == "escape" and not engine.has_pending:
-            return False  # CodeEditor turns this into LeaveRequested
+            # CodeEditor turns this into LeaveRequested (standalone: swallows it)
+            return False
         keys = self._translate(event.key, event.character)
         if keys is None:
             return False
@@ -573,7 +588,8 @@ class ViLayer:
 
     def _translate(self, key: str, character: str | None) -> list[ViKey] | None:
         """ViKeys for a Textual key; None when the key belongs to tdb."""
-        if key in _VI_TDB_KEYS or _is_function_key(key):
+        tdb_keys = _VI_STANDALONE_TDB_KEYS if self.ed.standalone else _VI_TDB_KEYS
+        if key in tdb_keys or _is_function_key(key):
             return None
         inserting = self.engine.mode in ("insert", "replace")
         if key in _VI_ESC_REWRITES:

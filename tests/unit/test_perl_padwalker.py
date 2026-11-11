@@ -348,3 +348,11 @@ def test_fallback_root_created_private(monkeypatch, cache, tmp_path):
         os.umask(old)
     assert r.source == "built"
     assert (os.stat(_fallback_root(tmp_path)).st_mode & 0o077) == 0
+
+
+def test_cache_root_follows_config_dir(monkeypatch, tmp_path):
+    from tdb.adapters.perl import padwalker as pw
+
+    monkeypatch.delenv("TDB_PADWALKER_CACHE", raising=False)
+    monkeypatch.setenv("TDB_CONFIG_DIR", str(tmp_path))
+    assert pw.cache_root() == tmp_path / "padwalker"

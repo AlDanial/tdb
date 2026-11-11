@@ -303,16 +303,22 @@ class _OpenFileModal(ModalScreen[str | None]):
         Binding("backspace", "go_up", "Parent", show=False),
     ]
 
-    def __init__(self, initial_path: str, suffixes: tuple[str, ...] = ()) -> None:
+    def __init__(
+        self,
+        initial_path: str,
+        suffixes: tuple[str, ...] = (),
+        title: str = "Open file to debug",
+    ) -> None:
         super().__init__()
         self._current_path = Path(initial_path).resolve()
         self._suffixes = suffixes
+        self._title = title
 
     def compose(self):
         with Vertical(id="dialog"):
             kinds = ", ".join(self._suffixes) if self._suffixes else "all"
             yield Static(
-                f"[bold]Open file to debug[/bold]  ({kinds} files)",
+                f"[bold]{self._title}[/bold]  ({kinds} files)",
                 id="open-header",
                 markup=True,
             )

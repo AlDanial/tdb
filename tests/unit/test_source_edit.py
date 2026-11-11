@@ -3,7 +3,9 @@ line remap across an edit, and $EDITOR resolution."""
 
 from __future__ import annotations
 
+import errno
 import os
+import sys
 
 import pytest
 
@@ -13,6 +15,7 @@ from tdb.source_edit import (
     remap_breakpoints,
     remap_line_numbers,
     resolve_external_editor,
+    save_text,
 )
 
 # ---- atomic_write_text ----
@@ -203,3 +206,109 @@ def test_resolve_editor_windows_splits_with_posix_false():
         '"My Dir"',
     ]
     assert resolve_external_editor({}, "win32") == ["notepad"]
+
+
+# ---- save_text ----
+
+_no_perm = pytest.mark.skipif(
+    sys.platform == "win32" or (hasattr(os, "geteuid") and os.geteuid() == 0),
+    reason="needs POSIX permission enforcement (non-root)",
+)
+
+
+@_no_perm
+def test_fallback_when_dir_readonly(tmp_path):
+    f = tmp_path / "d" / "f.txt"
+    f.parent.mkdir()
+    f.write_text("old")
+    f.parent.chmod(0o500)
+    try:
+        save_text(str(f), "new")
+        assert f.read_text() == "new"
+        assert [p.name for p in f.parent.iterdir()] == ["f.txt"]
+    finally:
+        f.parent.chmod(0o700)
+
+
+def test_fallback_on_ebusy(tmp_path, monkeypatch):
+    f = tmp_path / "hosts"
+    f.write_text("old")
+
+    def busy(*a):
+        raise OSError(errno.EBUSY, "busy")
+
+    monkeypatch.setattr(os, "replace", busy)
+    save_text(str(f), "new")
+    assert f.read_text() == "new"
+    assert [p.name for p in tmp_path.iterdir()] == ["hosts"]
+
+
+@_no_perm
+def test_fallback_writes_through_symlink(tmp_path):
+    real = tmp_path / "real.txt"
+    real.write_text("old")
+    d = tmp_path / "ro"
+    d.mkdir()
+    (d / "link").symlink_to(real)
+    d.chmod(0o500)
+    try:
+        save_text(str(d / "link"), "new")
+        assert real.read_text() == "new"
+        assert (d / "link").is_symlink()
+    finally:
+        d.chmod(0o700)
+
+
+@_no_perm
+def test_both_fail_raises(tmp_path):
+    f = tmp_path / "f"
+    f.write_text("x")
+    f.chmod(0o400)
+    tmp_path.chmod(0o500)
+    try:
+        with pytest.raises(PermissionError):
+            save_text(str(f), "y")
+        assert f.read_text() == "x"
+    finally:
+        tmp_path.chmod(0o700)
+        f.chmod(0o600)
+
+
+def test_other_errors_not_retried(tmp_path, monkeypatch):
+    f = tmp_path / "f"
+    f.write_text("old")
+
+    def full(*a):
+        raise OSError(errno.ENOSPC, "no space")
+
+    monkeypatch.setattr(os, "replace", full)
+    with pytest.raises(OSError) as ei:
+        save_text(str(f), "new")
+    assert ei.value.errno == errno.ENOSPC
+    assert f.read_text() == "old"
+
+
+def _sharing_violation(*a):
+    # Windows ERROR_SHARING_VIOLATION-style failure: a PermissionError
+    # whose errno is not in the POSIX retry set.
+    raise PermissionError("file is in use by another process")
+
+
+def test_windows_permission_error_falls_back_to_direct_write(tmp_path, monkeypatch):
+    f = tmp_path / "f.py"
+    f.write_text("old")
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(os, "replace", _sharing_violation)
+    save_text(str(f), "new")
+    assert f.read_text() == "new"
+    assert [p.name for p in tmp_path.iterdir()] == ["f.py"]
+
+
+def test_non_windows_unlisted_permission_error_not_retried(tmp_path, monkeypatch):
+    f = tmp_path / "f.py"
+    f.write_text("old")
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(os, "replace", _sharing_violation)
+    with pytest.raises(PermissionError):
+        save_text(str(f), "new")
+    assert f.read_text() == "old"

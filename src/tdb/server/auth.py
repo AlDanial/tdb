@@ -51,9 +51,9 @@ def setup_token(*, insecure: bool, port: int) -> tuple[str | None, Path | None]:
 
 def token_file_path(port: int, directory: Path | None = None) -> Path:
     if directory is None:
-        from tdb.persist import CONFIG_DIR
+        from tdb.persist import config_dir
 
-        directory = CONFIG_DIR
+        directory = config_dir()
     return Path(directory) / f"server-{port}.token"
 
 
@@ -88,7 +88,9 @@ def describe_token(token: str | None, token_file: Path | None) -> str:
     if os.environ.get(TOKEN_ENV) == token:
         return f"Clients must send 'Authorization: Bearer ${TOKEN_ENV}'"
     if token_file is not None:
-        return f"Clients must send 'Authorization: Bearer <token>'; token in {token_file}"
+        return (
+            f"Clients must send 'Authorization: Bearer <token>'; token in {token_file}"
+        )
     return f"Clients must send 'Authorization: Bearer {token}'"
 
 
