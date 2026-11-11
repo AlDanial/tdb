@@ -139,6 +139,44 @@ _MAX_LAUNCH_ATTEMPTS = 2
 _RDBG_READY_MARKER = "wait for debugger connection..."
 _RDBG_READY_TIMEOUT = 10.0
 
+# externalTerminal launches get the same gate through a file instead:
+# ready/tdb_rdbg_ready.rb, preloaded into rdbg via RUBYLIB + RUBYOPT,
+# creates TDB_RDBG_READY_FILE when the debug gem warns the marker.
+# RUBYLIB (not `RUBYOPT=-r/abs/path`) because RUBYOPT splits on
+# whitespace and the install path may contain spaces (Windows profiles).
+_READY_HOOK_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ready")
+_READY_HOOK_FEATURE = "tdb_rdbg_ready"
+_READY_FILE_ENV = "TDB_RDBG_READY_FILE"
+
+
+def _ready_hook_env(base: dict[str, str], ready_file: str) -> dict[str, str]:
+    """Env additions that preload the ready hook into a terminal rdbg.
+    `base` is the environment the debuggee would otherwise get (the
+    client merges our `env` over its own, which is what we inherited)."""
+    rubylib = base.get("RUBYLIB")
+    rubyopt = base.get("RUBYOPT")
+    return {
+        _READY_FILE_ENV: ready_file,
+        "RUBYLIB": _READY_HOOK_DIR + (os.pathsep + rubylib if rubylib else ""),
+        "RUBYOPT": (rubyopt + " " if rubyopt else "") + f"-r{_READY_HOOK_FEATURE}",
+    }
+
+
+async def _wait_for_ready_file(path: str, timeout: float = _RDBG_READY_TIMEOUT) -> bool:
+    """Poll for the hook's ready file; False (connect anyway, the old
+    behavior) if it does not appear within `timeout`."""
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
+    while not os.path.exists(path):
+        if loop.time() > deadline:
+            log.warning(
+                "rdbg ready file did not appear within %.0fs; connecting anyway",
+                timeout,
+            )
+            return False
+        await asyncio.sleep(0.05)
+    return True
+
 
 class _BannerFilter:
     """Drop rdbg's own "DEBUGGER: ..." lines from a *chunked* stderr stream.
@@ -735,8 +773,13 @@ class RubyDapServer:
             self._transport = pick_transport()
             cmd = self._build_rdbg_cmd(rdbg, program, args)
             pre_connect_stderr: list[str] = []
+            ready_dir: str | None = None
             try:
                 if terminal:
+                    ready_dir = tempfile.mkdtemp(prefix="tdb-rdbg-ready-")
+                    ready_file = os.path.join(ready_dir, "ready")
+                    term_env = dict(args.get("env") or {})
+                    term_env.update(_ready_hook_env(env, ready_file))
                     await self._reverse.request(
                         "runInTerminal",
                         {
@@ -744,9 +787,10 @@ class RubyDapServer:
                             "title": "tdb ruby debuggee",
                             "cwd": cwd,
                             "args": cmd,
-                            "env": args.get("env") or {},
+                            "env": term_env,
                         },
                     )
+                    await _wait_for_ready_file(ready_file)
                 else:
                     popen_kwargs: dict[str, Any] = {}
                     if os.name == "nt":
@@ -795,6 +839,9 @@ class RubyDapServer:
                 self.send_error(request, f"{e}\n{detail}".strip())
                 await self._writer.drain()
                 return
+            finally:
+                if ready_dir is not None:
+                    shutil.rmtree(ready_dir, ignore_errors=True)
             self._rdbg_writer = writer
             self._launched = True
             self._entry_stop_pending = self._stop_on_entry

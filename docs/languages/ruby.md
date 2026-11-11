@@ -22,8 +22,12 @@ yet. Bundler projects work when your environment resolves `rdbg`
 exec` integration yet.
 
 > **Startup note:** the debug gem's `rdbg` has an occasional handshake
-> race on launch; tdb detects a stalled/corrupted handshake and retries
-> once automatically with a fresh `rdbg`, so this is usually invisible.
+> race on launch. tdb avoids it by connecting only once `rdbg` says it is
+> waiting for a client, and also retries once with a fresh `rdbg` if a
+> handshake still stalls. Under `--terminal` there is no retry (it would
+> open a second window), and tdb learns that `rdbg` is waiting through a
+> small hook it preloads with `RUBYLIB` and `RUBYOPT`, which tdb adds to
+> any values you have set.
 
 **Live breakpoint hook:** the Ruby counterpart of Python's
 [`tdb.breakpoint()`](../python/breakpoint-hook.md). Run your program normally (not
