@@ -52,8 +52,12 @@ undoes everything it changed so far, as in vim.
 **Marks.** `ma` to `mz` set, `'a` and `` `a `` jump. `'<` and `'>` are the
 visual-area marks and `''` / ` `` ` return to the previous position.
 
-**Search.** `/` and `?` with `n N`, and `* #` for the word under the
-cursor. Up / Down on the `/` and `:` lines recall history.
+**Search.** `/` (forward) and `?` (backward) with `n N`, and `* #` for
+the word under the cursor. Up / Down on the `/` and `:` lines recall
+history. Every match of the last search pattern is highlighted (vim's
+`'hlsearch'`), and while you type a `/` or `?` pattern its matches are
+highlighted as you go. `:noh` (`:nohlsearch`) hides the highlighting
+until the next search (`/ ? n N * #`, or a `:s` / `:g` with a pattern).
 
 **Paste.** A terminal paste goes in at the cursor as one undo step, in any
 mode; an unfinished command (`d`, a count, `"a`) is dropped first. While
@@ -69,6 +73,7 @@ the `:`, `/` or `?` line is open the paste goes into that line instead
 | `:d` `:y` `:m` `:t` `:co` | Delete, yank, move, copy |
 | `:normal keys` | Run normal-mode keys on each line of the range |
 | `:w` `:q` `:q!` `:wq` `:x` | Save, leave Edit mode, discard, save and leave |
+| `:noh` | Hide the search highlighting until the next search |
 | `:N` | Go to line N |
 
 Ranges: `N`, `.`, `$`, `%`, `.+N`, `.-N`, `$-N`, `'a`, `'<`, `'>`, and
@@ -101,6 +106,16 @@ other option is ignored. Nothing is written to `breakpoints.json`.
   without saving. `:q` and `Ctrl+Q` exit, but with unsaved changes they
   open the Save / Discard / Cancel dialog first (not vim's E37
   refusal): Save then exits, Discard exits, Cancel stays.
+- A two-line footer works like vim's status and command lines. The
+  first line shows the file name, `[+]` when the buffer has unsaved
+  changes, and the cursor position on the right (`23,19`: line, then
+  byte column; `1,1-5` when the screen column differs, as after a tab;
+  `0-1` on an empty line). The second line shows the `:`, `/` or `?`
+  line as you type it and keeps the last one entered (`:w`, `/pattern`)
+  until a mode message replaces it: `-- INSERT --`, `-- REPLACE --`,
+  `-- VISUAL --`, `-- VISUAL LINE --`, or `recording @a`. Keys of an
+  unfinished command (`2d`, `"a`) appear on its right. Messages such
+  as "Pattern not found" still appear as notifications.
 - `Escape` never exits, and `Ctrl+C` is not a quit key. All other
   Ctrl keys, including `Ctrl+F` / `Ctrl+B` (page forward / back),
   `Ctrl+P`, `Ctrl+O`, `Ctrl+E` and `Ctrl+V`, go to the vi engine;

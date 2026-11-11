@@ -13,13 +13,14 @@ from pathlib import Path
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.widgets import OptionList
+from textual.widgets import OptionList, TextArea
 
 from tdb.keybindings import KeybindingConfig
 from tdb.widgets.code_editor import _UnsavedChangesModal
 from tdb.widgets.code_view import _BINARY_PROBE_BYTES, CodeView
 from tdb.widgets.menu_bar import MenuBar, _MenuDropdown
 from tdb.widgets.modals import _AboutModal, _DocumentationModal, _OpenFileModal
+from tdb.widgets.vi_status_bar import ViStatusBar
 
 
 def validate_vi_target(path: str) -> str | None:
@@ -93,6 +94,7 @@ class ViApp(App):
         view = CodeView(id="code-view")
         view.standalone = True
         yield view
+        yield ViStatusBar(id="vi-status")
 
     async def on_mount(self) -> None:
         from tdb.persist import load_config
@@ -107,10 +109,26 @@ class ViApp(App):
         else:
             view.load_new_file(self._path)
         await view.enter_edit_mode()
+        self.watch(view, "source_path", self._refresh_status)
+        self._refresh_status()
 
     @property
     def _view(self) -> CodeView:
         return self.query_one("#code-view", CodeView)
+
+    # --- Status bar -------------------------------------------------------
+
+    def _refresh_status(self, *_args: object) -> None:
+        self.query_one("#vi-status", ViStatusBar).show(self._view)
+
+    def on_code_view_mode_changed(self, message: CodeView.ModeChanged) -> None:
+        # Posted on every vi mode / command-line / dirty change.
+        self._refresh_status()
+
+    def on_text_area_selection_changed(
+        self, message: TextArea.SelectionChanged
+    ) -> None:
+        self._refresh_status()
 
     def _focus_editor(self) -> None:
         editor = self._view._editor

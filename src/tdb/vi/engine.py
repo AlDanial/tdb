@@ -321,6 +321,9 @@ class ViSession:
     vi_state: object = field(default_factory=ViState)
     clipboard: object = field(default_factory=InMemoryClipboard)
     last_search: tuple[str, bool] | None = None
+    # ``:nohlsearch`` hid the last search's highlighting; the next search
+    # (``/ ? n N * #``, ``:s``, ``:g``) shows it again.
+    hl_hidden: bool = False
     last_substitute: SubstituteSpec | None = None
     ex_history: list[str] = field(default_factory=list)
     search_history: list[str] = field(default_factory=list)
@@ -835,6 +838,11 @@ class ViEngine:
         # open, else None.
         self._cmdline: str | None = None
         self._line_kind = ":"
+        # The last ':' '/' '?' line closed, as shown (``":w"``; ``""``
+        # when Esc abandoned it), and how many lines have closed: a
+        # status line shows it until a mode message replaces it.
+        self.last_line = ""
+        self.lines_closed = 0
         # Browsing the line's history: index of the entry shown (None when
         # not browsing) and the text typed before browsing began.
         self._history_pos: int | None = None
@@ -1566,6 +1574,8 @@ class ViEngine:
         line = self._cmdline or ""
         name = key.name
         if name == "escape" or (name == "backspace" and not line):
+            self.last_line = ""
+            self.lines_closed += 1
             self._close_line()
             if searching:
                 self._cancel_operator()
@@ -1581,6 +1591,8 @@ class ViEngine:
                 # (<Up>, <BS>...) that produced it; a macro keeps those.
                 self._change[at:] = [ViKey(c) for c in line] + [key]
             self._remember(self._history(), line)
+            self.last_line = self._line_kind + line
+            self.lines_closed += 1
             self._close_line()
             if searching:
                 self._run_search(line)
@@ -1676,6 +1688,7 @@ class ViEngine:
             self.fail()
             return
         self.session.last_search = (pattern, backward)
+        self.session.hl_hidden = False
         start, text = self.cursor, self.buffer.text
         self.app.key_processor.arg = self._search_arg
         self._process(KeyPress(SEARCH_KEY, ""))  # SEARCH_KEY's binding: `n`
@@ -1926,6 +1939,18 @@ class ViEngine:
         )
 
     @property
+    def highlight_pattern(self) -> str | None:
+        """The pattern whose matches are highlighted (vim's ``'hlsearch'``):
+        the one being typed on the ``/`` ``?`` line, else the last search
+        unless ``:nohlsearch`` hid it.  None: highlight nothing."""
+        if self._cmdline and self._line_kind != ":":
+            return self._cmdline
+        last = self.session.last_search
+        if last is None or self.session.hl_hidden:
+            return None
+        return last[0]
+
+    @property
     def has_pending(self) -> bool:
         """True while a command is incomplete or the mode is not normal."""
         return self._key_pending() or self.mode != "normal"
@@ -2153,6 +2178,10 @@ class _ExHost:
         session = self._e.session
         backward = session.last_search[1] if session.last_search else False
         session.last_search = (pattern, backward)
+        session.hl_hidden = False
+
+    def hide_search_highlight(self) -> None:
+        self._e.session.hl_hidden = True
 
     def last_substitute(self) -> SubstituteSpec | None:
         return self._e.session.last_substitute

@@ -1658,3 +1658,48 @@ async def test_s_stops_at_the_line_end(text, cursor, keys, expected):
     e = ViEngine(text, cursor=cursor)
     e.feed_keys(keys)
     assert e.text == expected
+
+
+# ---- 'hlsearch' and the last command line (tdb --vi footer) ----
+
+
+async def test_highlight_pattern_follows_searches():
+    e = ViEngine("foo bar\nbar foo\n", session=ViSession())
+    assert e.highlight_pattern is None
+    e.feed_keys("/ba")
+    assert e.highlight_pattern == "ba"  # as typed (incsearch)
+    e.feed_keys("r<CR>")
+    assert e.highlight_pattern == "bar"
+    e.feed_keys(":noh<CR>")
+    assert e.highlight_pattern is None
+    e.feed_keys("n")
+    assert e.highlight_pattern == "bar"
+    e.feed_keys(":nohlsearch<CR>*")
+    assert e.highlight_pattern == r"\bbar\b"
+    e.feed_keys(":noh<CR>?fo")
+    assert e.highlight_pattern == "fo"
+    e.feed_keys("<Esc>")
+    assert e.highlight_pattern is None  # still hidden: no search ran
+    e.feed_keys(":s/foo/x/<CR>")
+    assert e.highlight_pattern == "foo"
+
+
+async def test_question_mark_searches_backward():
+    e = ViEngine("foo\nbar\nfoo\nbar\n", cursor=(3, 0))
+    e.feed_keys("?foo<CR>")
+    assert e.cursor == (2, 0)
+    e.feed_keys("n")
+    assert e.cursor == (0, 0)
+    e.feed_keys("N")
+    assert e.cursor == (2, 0)
+
+
+async def test_last_line_records_entered_and_abandoned_lines():
+    e = ViEngine("foo\nbar\n")
+    assert (e.last_line, e.lines_closed) == ("", 0)
+    e.feed_keys("/bar<CR>")
+    assert (e.last_line, e.lines_closed) == ("/bar", 1)
+    e.feed_keys(":1<CR>")
+    assert (e.last_line, e.lines_closed) == (":1", 2)
+    e.feed_keys(":junk<Esc>")
+    assert (e.last_line, e.lines_closed) == ("", 3)

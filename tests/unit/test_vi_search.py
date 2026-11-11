@@ -11,6 +11,7 @@ from tdb.vi.search import (
     compile_pattern,
     find,
     find_nth,
+    match_spans,
     word_pattern,
 )
 
@@ -103,3 +104,37 @@ def test_patterns_are_case_sensitive():
         7,
         False,
     )
+
+
+# ---- match_spans ('hlsearch') ----
+
+
+def test_match_spans_per_row():
+    rx = compile_pattern("foo")
+    assert match_spans(TEXT, rx) == {0: [(0, 3)], 1: [(4, 7)]}
+
+
+def test_match_spans_several_on_one_row():
+    rx = compile_pattern("a")
+    assert match_spans("aXa\nb\na", rx) == {0: [(0, 1), (2, 3)], 2: [(0, 1)]}
+
+
+def test_match_spans_split_across_lines():
+    rx = compile_pattern(r"bar\nbaz")
+    assert match_spans(TEXT, rx) == {0: [(4, 7)], 1: [(0, 3)]}
+
+
+def test_match_spans_starting_at_line_break():
+    rx = compile_pattern(r"\nbaz")
+    assert match_spans(TEXT, rx) == {1: [(0, 3)]}
+
+
+def test_match_spans_skips_zero_width():
+    assert match_spans(TEXT, compile_pattern("^")) == {}
+    assert match_spans("ab", compile_pattern("x*")) == {}
+
+
+def test_match_spans_limit():
+    rx = compile_pattern(".")
+    spans = match_spans("abcdef", rx, limit=3)
+    assert spans == {0: [(0, 1), (1, 2), (2, 3)]}
