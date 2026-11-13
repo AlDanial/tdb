@@ -490,3 +490,20 @@ class BashDapServer:
             self.send_error(request, str(e))
             return
         self.send_response(request)
+
+    # ---- Ctrl-C after detach (tdb-private request) ----
+    async def _on_tdbSignal(self, request: Request) -> None:
+        # Like tdbStdin, not gated on "stopped": the script is running.
+        name = request.arguments.get("signal")
+        if name != "SIGINT":
+            self.send_error(request, f"unsupported signal: {name!r}")
+            return
+        if self.session is None:
+            self.send_error(request, "no debuggee to signal: no launch yet")
+            return
+        try:
+            self.session.send_sigint()
+        except BashProtocolError as e:
+            self.send_error(request, str(e))
+            return
+        self.send_response(request)
