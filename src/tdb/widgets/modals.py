@@ -594,7 +594,8 @@ class _PauseFailedModal(ModalScreen):
 
 
 class _QuitConfirmModal(ModalScreen):
-    """Small modal: `q` confirms quit, escape/other cancels."""
+    """Quit choice: `q` quits, `d` (when offered) runs the program
+    detached, escape cancels. Dismisses with "quit", "detach" or None."""
 
     DEFAULT_CSS = """
     _QuitConfirmModal {
@@ -602,30 +603,53 @@ class _QuitConfirmModal(ModalScreen):
     }
     _QuitConfirmModal #dialog {
         width: 42;
-        height: 5;
+        height: 7;
         border: solid $warning;
         background: $surface;
         padding: 1 2;
         content-align: center middle;
     }
+    _QuitConfirmModal #dialog.two-lines {
+        height: 6;
+    }
     """
 
     BINDINGS = [
         Binding("q", "confirm", "Quit", show=False),
+        Binding("d", "detach", "Run detached", show=False),
         Binding("escape", "cancel", "Cancel", show=False),
     ]
 
+    def __init__(self, can_detach: bool = False, ends_program: bool = True) -> None:
+        super().__init__()
+        self._can_detach = can_detach
+        self._ends_program = ends_program
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        # Without a detach choice `d` is not bound at all.
+        if action == "detach" and not self._can_detach:
+            return False
+        return True
+
     def compose(self) -> ComposeResult:
-        with Vertical(id="dialog"):
-            yield Static(
-                "[bold]Hit q again to quit[/bold]     ESC: cancel", markup=True
-            )
+        quit_text = "q: quit (ends the program)" if self._ends_program else "q: quit"
+        with Vertical(
+            id="dialog", classes="" if self._can_detach else "two-lines"
+        ):
+            yield Static(quit_text, markup=False)
+            if self._can_detach:
+                yield Static("d: run detached", markup=False)
+            yield Static("ESC: cancel", markup=False)
 
     def action_confirm(self) -> None:
-        self.dismiss(True)
+        self.dismiss("quit")
+
+    def action_detach(self) -> None:
+        if self._can_detach:
+            self.dismiss("detach")
 
     def action_cancel(self) -> None:
-        self.dismiss(False)
+        self.dismiss(None)
 
 
 class _DetachQuitModal(ModalScreen):

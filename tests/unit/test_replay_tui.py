@@ -546,4 +546,5 @@ def test_every_recorded_action_is_replayable_in_both_replayers():
     recorded = _recorded_action_names()
     assert {"pause", "set_breakpoint", "next", "stack_up"} <= recorded  # sanity
     assert recorded - REPLAYABLE_ACTIONS == set()
-    assert recorded - set(RpcHandlers.ACTIONS) == set()
+    # "detach" is TUI-only by design (never exposed over RPC/MCP).
+    assert recorded - {"detach"} - set(RpcHandlers.ACTIONS) == set()
