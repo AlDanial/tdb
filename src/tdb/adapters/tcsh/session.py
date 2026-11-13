@@ -623,6 +623,71 @@ class DebugSession:
             raise InvalidStateError("program has already exited")
         return process.stdin
 
+    def send_sigint(self) -> None:
+        """Deliver SIGINT to the script the way a terminal Ctrl-C would
+        (tdbSignal, after tdb detached).
+
+        The debuggee is addressed like teardown addresses it: through the
+        guardian's session. tcsh runs in a process group of its own (the
+        guardian starts it with process_group=0), so the signal goes to
+        every group of the session except the guardian's own -- the
+        guardian, the adapter and tdb never see it. The script's `onintr`
+        handling stays in charge of what happens next.
+
+        Raises InvalidStateError when there is nothing to signal.
+        """
+
+        if os.name == "nt":
+            raise InvalidStateError("SIGINT delivery is not supported on Windows")
+        process = self.process
+        if self.state is SessionState.TERMINATED or (
+            process is not None and process.returncode is not None
+        ):
+            raise InvalidStateError("program has already exited")
+        guardian_group = self._process_group_id
+        if guardian_group is None or guardian_group <= 1:
+            raise InvalidStateError("no program has been launched yet")
+        if process is not None:
+            groups = self._owned_process_group_ids()
+        else:
+            groups = self._terminal_session_group_ids(guardian_group)
+        groups.discard(guardian_group)
+        if not groups:
+            raise InvalidStateError("no running program to signal")
+        try:
+            for group in groups:
+                os.killpg(group, signal.SIGINT)
+        except (ProcessLookupError, PermissionError) as error:
+            raise InvalidStateError(f"cannot signal the program: {error}") from error
+
+    @staticmethod
+    def _terminal_session_group_ids(guardian_pid: int) -> set[int]:
+        """Process groups of the guardian's session (terminal mode, where the
+        guardian is not our child, so `_owned_process_group_ids` has no root
+        to validate against). The guardian must still lead its own session."""
+
+        try:
+            if os.getsid(guardian_pid) != guardian_pid:
+                return set()
+        except OSError:
+            return set()
+        snapshot = process_table_snapshot()
+        if snapshot is None:
+            return set()
+        groups: set[int] = set()
+        for line in snapshot.splitlines():
+            fields = line.split()
+            if len(fields) < 2:
+                continue
+            try:
+                candidate_pid, candidate_group = map(int, fields[:2])
+                if candidate_pid > 0 and candidate_group > 1:
+                    if os.getsid(candidate_pid) == guardian_pid:
+                        groups.add(candidate_group)
+            except (ValueError, OSError):
+                continue
+        return groups
+
     def threads(self) -> tuple[ThreadInfo, ...]:
         """Return the adapter's single logical tcsh thread."""
 

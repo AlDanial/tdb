@@ -137,6 +137,7 @@ class DAPServer:
             "variables": self._variables,
             "evaluate": self._evaluate,
             "tdbStdin": self._tdb_stdin,
+            "tdbSignal": self._tdb_signal,
             "continue": self._continue,
             "pause": self._pause,
             "next": self._next,
@@ -564,6 +565,18 @@ class DAPServer:
         if not isinstance(text, str):
             raise RequestError("text must be a string (or eof must be true)")
         await session.write_stdin(text)
+        return {}
+
+    async def _tdb_signal(
+        self, arguments: Mapping[str, object]
+    ) -> Mapping[str, object]:
+        """tdb-private request: deliver Ctrl-C to the running script after
+        tdb detached. Only SIGINT; not gated on "stopped" (the script is
+        running). The script's own `onintr` decides what the interrupt does."""
+        name = arguments.get("signal")
+        if name != "SIGINT":
+            raise RequestError(f"unsupported signal: {name!r}")
+        self._require_session().send_sigint()
         return {}
 
     async def _continue(self, arguments: Mapping[str, object]) -> Mapping[str, object]:
