@@ -59,6 +59,12 @@ class AdapterQuirks:
     # the DAP `process` event; None -> no way to deliver one.
     interrupt_route: str | None = None
 
+    # Exit codes this adapter reports when the program dies of the SIGINT
+    # tdb delivered (gdb DAP: 0; lldb-dap: the signal number, 2). They are
+    # indistinguishable from a deliberate exit with that code, so the relay
+    # maps them to 130 only after it delivered a Ctrl-C itself.
+    sigint_death_codes: tuple[int, ...] = ()
+
     # True -> tdb spawns the adapter subprocess for attach too and sends
     # the DAP attach request through it (the adapter dials the debuggee).
     # False (debugpy) -> tdb connects straight to the remote DAP server.

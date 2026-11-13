@@ -334,3 +334,57 @@ async def test_interrupted_program_exit_254_maps_to_130(ctl, console):
 async def test_exit_254_without_interrupt_is_kept(ctl, console):
     asyncio.get_running_loop().call_later(0.05, console.on_exited, 254)
     assert await _run(ctl, console) == 254
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX status")
+@pytest.mark.parametrize("code", [0, 2])
+async def test_adapter_sigint_death_code_maps_to_130_only_after_interrupt(
+    ctl, console, code
+):
+    from types import SimpleNamespace
+
+    ctl.profile = SimpleNamespace(
+        adapter=SimpleNamespace(quirks=SimpleNamespace(sigint_death_codes=(code,)))
+    )
+
+    async def interrupt():
+        ctl.interrupts += 1
+        console.on_exited(code)
+        return True
+
+    ctl.interrupt_debuggee = interrupt
+    asyncio.get_running_loop().call_later(0.05, os.kill, os.getpid(), signal.SIGINT)
+    assert await asyncio.wait_for(relay(ctl, console), 5) == 130
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX status")
+async def test_adapter_sigint_death_code_kept_without_interrupt(ctl, console):
+    from types import SimpleNamespace
+
+    ctl.profile = SimpleNamespace(
+        adapter=SimpleNamespace(quirks=SimpleNamespace(sigint_death_codes=(0,)))
+    )
+    asyncio.get_running_loop().call_later(0.05, console.on_exited, 0)
+    assert await _run(ctl, console) == 0
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX job-control signals")
+async def test_relay_neutralises_textual_sigcont_handler(ctl, console):
+    """Textual's driver leaves SIGCONT/SIGTSTP handlers behind that would
+    restart the closed TUI when gdb resumes the program."""
+    seen = {}
+    old = {s: signal.getsignal(s) for s in (signal.SIGCONT, signal.SIGTSTP)}
+    for s in old:
+        signal.signal(s, lambda *_: None)
+    try:
+
+        async def probe():
+            seen.update({s: signal.getsignal(s) for s in old})
+            console.on_exited(0)
+
+        asyncio.get_running_loop().call_later(0.05, lambda: asyncio.ensure_future(probe()))
+        await asyncio.wait_for(relay(ctl, console), 5)
+        assert all(h == signal.SIG_DFL for h in seen.values())
+    finally:
+        for s, h in old.items():
+            signal.signal(s, h)

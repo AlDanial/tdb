@@ -116,9 +116,26 @@ def is_breakpoint_hook_frame(frame) -> bool:
     return is_native_hook_name(hook_frame_base(frame.name or ""))
 
 
+# Run at detach so a Ctrl-C signalled to the program reaches it instead of
+# being swallowed as a debugger stop.
+LLDB_PASS_SIGINT = ("process handle SIGINT --pass true --stop false --notify false",)
+GDB_PASS_SIGINT = ("handle SIGINT nostop noprint pass",)
+
+
 class LldbDapAdapter(AdapterSpec):
     id = "lldb-dap"
-    quirks = AdapterQuirks(attach_via_adapter=True, attach_requires_local_program=True)
+    # interrupt_route="pid": lldb-dap reports the inferior in its `process`
+    # event (systemProcessId), and detach_prep_commands() makes lldb pass
+    # SIGINT through instead of stopping on it.
+    quirks = AdapterQuirks(
+        attach_via_adapter=True,
+        attach_requires_local_program=True,
+        interrupt_route="pid",
+        sigint_death_codes=(2,),
+    )
+
+    def detach_prep_commands(self) -> tuple[str, ...]:
+        return LLDB_PASS_SIGINT
 
     def __init__(
         self, executable: str | None = None, attach_pid: int | None = None
@@ -274,7 +291,12 @@ class GdbDapAdapter(AdapterSpec):
         attach_via_adapter=True,
         attach_requires_local_program=True,
         resume_after_remote_attach=True,
+        interrupt_route="pid",  # `process` event systemProcessId
+        sigint_death_codes=(0,),
     )
+
+    def detach_prep_commands(self) -> tuple[str, ...]:
+        return GDB_PASS_SIGINT
 
     def __init__(
         self, executable: str | None = None, attach_pid: int | None = None

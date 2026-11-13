@@ -117,6 +117,14 @@ def _install_signals(
         signum = getattr(signal, name)
         undo.append((signum, signal.getsignal(signum)))
         loop.add_signal_handler(signum, queue.put_nowait, int(signum))
+    # Textual's driver installed SIGTSTP/SIGCONT handlers that it never
+    # removes; a stray SIGCONT (gdb sends one when it resumes a program)
+    # would re-enter application mode and restart the closed TUI's input
+    # thread in the middle of the relay.
+    for name in ("SIGTSTP", "SIGCONT"):
+        signum = getattr(signal, name)
+        undo.append((signum, signal.getsignal(signum)))
+        signal.signal(signum, signal.SIG_DFL)
     return undo
 
 
@@ -132,17 +140,23 @@ def _is_terminated(controller: Any) -> bool:
     return bool(getattr(getattr(controller, "state", None), "is_terminated", False))
 
 
-def _exit_code(console: "ConsoleRunHandler", interrupted: bool = False) -> int:
+def _exit_code(
+    console: "ConsoleRunHandler",
+    interrupted: bool = False,
+    sigint_death_codes: tuple[int, ...] = (),
+) -> int:
     """tdb's exit code; a program killed by a signal (negative status) maps
     to the shell convention 128+signal. debugpy's launcher reports a
     SIGINT death as -2 truncated to 254, so after we delivered Ctrl-C
-    that value also means "interrupted" (130)."""
+    that value also means "interrupted" (130); so do the codes an adapter
+    declares it reports for a SIGINT death (gdb and lldb-dap hide the
+    signal behind 0 / 2)."""
     code = final_exit_code(console)
     if os.name == "nt":
         return code
     if code < 0:
         return 128 - code
-    if interrupted and code == 256 - signal.SIGINT:
+    if interrupted and (code == 256 - signal.SIGINT or code in sigint_death_codes):
         return INTERRUPT_EXIT
     return code
 
@@ -171,6 +185,8 @@ async def relay(
     undo: list[tuple[int, Any]] = []
     forwarder: asyncio.Task | None = None
     interrupted = False
+    adapter = getattr(getattr(controller, "profile", None), "adapter", None)
+    death_codes = tuple(getattr(getattr(adapter, "quirks", None), "sigint_death_codes", ()))
     try:
         # Install handlers first so no signal arrives before they exist.
         if install_signals:
@@ -186,7 +202,7 @@ async def relay(
         while True:
             if console.exited.is_set():
                 await _cleanup(controller)
-                return _exit_code(console, interrupted)
+                return _exit_code(console, interrupted, death_codes)
             waiters = {
                 asyncio.ensure_future(console.exited.wait()): "exited",
                 asyncio.ensure_future(console.stopped.wait()): "stopped",
