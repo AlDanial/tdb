@@ -31,10 +31,7 @@ from tdb.languages.errors import parse_perl_error
 
 class PerlAdapter(AdapterSpec):
     id = "perl-tdb"
-    # Unverified: whether the --terminal debuggee outlives this adapter
-    # (needs a real terminal emulator). False = tdb stays attached on
-    # run-detached rather than guess.
-    quirks = AdapterQuirks(attach_via_adapter=True, stdin_route="request", survives_disconnect=False)
+    quirks = AdapterQuirks(attach_via_adapter=True, stdin_route="request")
 
     def __init__(self, perl_executable: str | None = None) -> None:
         self._perl = perl_executable

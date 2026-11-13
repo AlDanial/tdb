@@ -48,6 +48,10 @@ _DISPLAY_COMMAND = re.compile(r"^\s*(?P<verb>(?:un)?display)(?:\s+(?P<expr>.+?))
 # TerminalLauncher there.
 
 
+class DetachNotConfirmed(RuntimeError):
+    """The adapter did not acknowledge a non-terminating disconnect."""
+
+
 class DebugController:
     """Orchestrates the debug session between DAP client and event consumers."""
 
@@ -777,37 +781,77 @@ class DebugController:
         if self.state.phase == SessionPhase.NOT_STARTED:
             self.state.transition_to(SessionPhase.RUNNING)
 
-    async def _disconnect_and_stop(self, *, terminate: bool) -> None:
-        """Close child clients, send `disconnect`, stop the DAP client."""
+    async def _disconnect_and_stop(self, *, terminate: bool) -> bool:
+        """Close child clients, send `disconnect`, stop the DAP client.
+
+        Returns True when the parent's disconnect was acknowledged.
+        """
         from tdb._timeouts import DAP_DISCONNECT_PARENT
 
         await self._settle_attach_hook()
         await self._children.close_all()
+        acknowledged = True
         try:
-            await asyncio.wait_for(
+            # `is not False`: only a client that says so reports a failure.
+            result = await asyncio.wait_for(
                 self.client.disconnect(terminate=terminate),
                 timeout=DAP_DISCONNECT_PARENT,
             )
+            acknowledged = result is not False
         except (asyncio.TimeoutError, Exception):
-            pass
+            acknowledged = False
         await self.client.stop()
+        return acknowledged
+
+    async def _resume_all_for_detach(self) -> None:
+        """Send a resume to the parent and every child, awaiting each send.
+
+        Independent of `continue_()`'s background tasks and of
+        `current_thread_id`: a debuggee left stopped with no debugger
+        attached would hang for good. Best-effort and bounded per client.
+        """
+        from tdb._timeouts import DAP_DISCONNECT_CHILD
+
+        tid = self.state.current_thread_id
+        active = self._active_client
+        clients = [self.client, *self._child_clients.values()]
+        if active not in clients:
+            clients.append(active)
+
+        async def resume(client: Any) -> None:
+            if client is active and tid is not None:
+                await client.continue_nowait(tid)
+            else:
+                await self._resume_client(client)
+
+        for client in clients:
+            try:
+                await asyncio.wait_for(resume(client), timeout=DAP_DISCONNECT_CHILD)
+            except (asyncio.TimeoutError, Exception):
+                log.debug("detach: resume failed for %r", client, exc_info=True)
 
     async def detach_disconnect(self) -> bool:
         """Disconnect without terminating so the debuggee lives on.
 
         For `--terminal` and remote/pid attach sessions, whose program
-        does not depend on tdb's pipes. Returns True if the debuggee is
-        expected to keep running; False (doing nothing) when the adapter
-        is not known to let a `--terminal` debuggee outlive it, so the
-        caller must keep the session instead.
+        does not depend on tdb's pipes. Resumes every client first, then
+        disconnects. Returns True if the debuggee is expected to keep
+        running; False (doing nothing) when the adapter is not verified
+        to let a `--terminal` debuggee outlive it, so the caller must
+        keep the session instead. Raises DetachNotConfirmed (after
+        tearing the client down) when the disconnect was not acknowledged.
         """
         if (
             not self._is_remote_attach
             and not self.profile.adapter.quirks.survives_disconnect
         ):
             return False
-        await self._disconnect_and_stop(terminate=False)
+        await self._resume_all_for_detach()
+        acknowledged = await self._disconnect_and_stop(terminate=False)
         self._mark_terminated()
+        if not acknowledged:
+            log.warning("detach: disconnect request was not acknowledged")
+            raise DetachNotConfirmed
         return True
 
     async def stop(self) -> None:

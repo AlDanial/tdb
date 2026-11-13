@@ -261,14 +261,27 @@ async def run_after_tui(app: Any, program: str) -> int:
 
         if controller.is_remote_attach or controller.used_terminal:
             # The program does not depend on tdb's pipes: nothing to
-            # replay, no stdin to forward.
-            if not state.is_terminated and not state.is_running:
-                await controller.continue_()
-            if not state.is_terminated and await controller.detach_disconnect():
-                sys.stderr.write(f"tdb: detached \u2014 {program or 'program'} keeps running\n")
-                sys.stderr.flush()
-                return 0
-            # Not known to survive the adapter: hold the session silently.
+            # replay, no stdin to forward. detach_disconnect resumes
+            # every client itself before disconnecting.
+            if not state.is_terminated:
+                from tdb.session.controller import DetachNotConfirmed
+
+                name = program or "program"
+                try:
+                    detached = await controller.detach_disconnect()
+                except DetachNotConfirmed:
+                    sys.stderr.write(
+                        f"tdb: detached \u2014 could not confirm {name} is still running\n"
+                    )
+                    sys.stderr.flush()
+                    return 1
+                if detached:
+                    sys.stderr.write(f"tdb: detached \u2014 {name} keeps running\n")
+                    sys.stderr.flush()
+                    return 0
+                # Not verified to survive the adapter: hold the session silently.
+                if not state.is_running:
+                    await controller.continue_()
             return await relay(controller, console)
 
         if app.program_output_truncated:

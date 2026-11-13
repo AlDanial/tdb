@@ -33,10 +33,7 @@ from tdb.languages.errors import parse_ruby_error
 
 class RdbgAdapter(AdapterSpec):
     id = "rdbg"
-    # Unverified: whether the --terminal debuggee outlives this adapter
-    # (needs a real terminal emulator). False = tdb stays attached on
-    # run-detached rather than guess.
-    quirks = AdapterQuirks(stdin_route="request", survives_disconnect=False)
+    quirks = AdapterQuirks(stdin_route="request")
 
     def __init__(self, rdbg_executable: str | None = None) -> None:
         self._rdbg = rdbg_executable

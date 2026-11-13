@@ -37,10 +37,7 @@ from tdb.languages.errors import parse_powershell_error
 
 class PsesAdapter(AdapterSpec):
     id = "pses"
-    # Unverified: whether the --terminal debuggee outlives this adapter
-    # (needs a real terminal emulator). False = tdb stays attached on
-    # run-detached rather than guess.
-    quirks = AdapterQuirks(stdin_route="request", survives_disconnect=False)
+    quirks = AdapterQuirks(stdin_route="request")
 
     def __init__(
         self, pwsh_executable: str | None = None, pses_dir: str | None = None

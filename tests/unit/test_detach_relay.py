@@ -21,6 +21,7 @@ class FakeController:
         self.is_remote_attach = False
         self.used_terminal = False
         self.survives = True
+        self.confirmed = True
         self.disconnects = 0
         self.interrupt_result = True
         self.continues = 0
@@ -43,6 +44,10 @@ class FakeController:
     async def detach_disconnect(self):
         if not self.survives:
             return False
+        if not self.confirmed:
+            from tdb.session.controller import DetachNotConfirmed
+
+            raise DetachNotConfirmed
         self.disconnects += 1
         return True
 

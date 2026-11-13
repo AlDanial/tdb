@@ -795,11 +795,13 @@ class DAPClient:
     async def pause(self, thread_id: int) -> None:
         await self._send("pause", {"threadId": thread_id})
 
-    async def disconnect(self, terminate: bool = True) -> None:
+    async def disconnect(self, terminate: bool = True) -> bool:
+        """Send `disconnect`; True when the adapter acknowledged it."""
         try:
             await self._send("disconnect", {"terminateDebuggee": terminate})
         except (DAPError, asyncio.TimeoutError, ConnectionError):
-            pass
+            return False
+        return True
 
 
 class DAPError(Exception):

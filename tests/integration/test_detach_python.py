@@ -121,3 +121,37 @@ def test_remote_attach_detach_disconnects_and_program_keeps_running(env, heartbe
     time.sleep(0.5)
     assert proc.poll() is None
     assert int(beat.read_text() or 0) > first
+
+
+TERMINAL_PROG = """\
+import pathlib, time
+beat = pathlib.Path({beat!r})
+for i in range(1, 80):
+    beat.write_text(str(i))
+    time.sleep(0.1)
+pathlib.Path({done!r}).write_text("done")
+"""
+
+
+def test_terminal_session_detach_keeps_debugger_attached(env, tmp_path):
+    """A launched debugpy `--terminal` session does NOT survive a
+    disconnect (measured: the program dies when the adapter goes, even
+    reparented to init), so Python's survives_disconnect stays False:
+    `qd` must leave tdb attached, silently, until the program finishes."""
+    import os
+
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    xterm = bindir / "xterm"
+    # Stand-in emulator: runs the command in its own session, like a window.
+    xterm.write_text('#!/bin/sh\nshift\nexec setsid "$@" >/dev/null 2>&1 </dev/null\n')
+    xterm.chmod(0o755)
+    beat, done = tmp_path / "beat", tmp_path / "done"
+    prog = tmp_path / "term_prog.py"
+    prog.write_text(TERMINAL_PROG.format(beat=str(beat), done=str(done)))
+    env["env"]["PATH"] = f"{bindir}{os.pathsep}{os.environ['PATH']}"
+    out, code = run_detached(["--terminal", "xterm", str(prog)], **env)
+    assert code == 0, out[-1500:]
+    assert "keeps running" not in out
+    assert "could not confirm" not in out
+    assert done.exists(), "the program must have been allowed to finish"

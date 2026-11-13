@@ -100,12 +100,13 @@ class AdapterQuirks:
     stdin_route: str | None = None
 
     # `--terminal` only: True when the debuggee, running in its own
-    # terminal window, outlives the adapter after `disconnect` without
-    # terminate. run-detached then really disconnects; False keeps tdb
-    # attached (silently) so the program is not killed with the adapter.
+    # terminal window, is verified to outlive the adapter after a
+    # `disconnect` without terminate, so run-detached may really
+    # disconnect. Default False (tdb stays attached silently): an
+    # adapter opts in only after an empirical check, never by guess.
     # Remote/pid attach sessions ignore this: the debuggee is not the
     # adapter's child there.
-    survives_disconnect: bool = True
+    survives_disconnect: bool = False
 
 
 class AdapterSpec:
