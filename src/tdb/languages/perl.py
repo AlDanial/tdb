@@ -36,6 +36,18 @@ class PerlAdapter(AdapterSpec):
     def __init__(self, perl_executable: str | None = None) -> None:
         self._perl = perl_executable
 
+    def detach_prep_commands(self) -> tuple[str, ...]:
+        # perl5db owns $SIG{INT} (DB::catch), which turns Ctrl-C into a
+        # debugger stop that cannot land while the script is blocked in a
+        # read. Hand the default disposition back now, while the script is
+        # stopped; a handler the program installed itself is left alone.
+        # (Refused harmlessly when the script is running: the adapter's
+        # tdbSignal then re-raises the interrupt at the stop instead.)
+        return (
+            "my $h = $SIG{INT}; "
+            "$SIG{INT} = 'DEFAULT' if ref $h eq 'CODE' && $h == \\&DB::catch; 1",
+        )
+
     def command(self) -> list[str]:
         return [sys.executable, "-P", "-m", "tdb.adapters.perl"]
 

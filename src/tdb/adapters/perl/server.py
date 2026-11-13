@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import time
 from typing import Any, Awaitable, Callable
 
 from tdb.dap.messages import Event, Request, Response, parse_message
@@ -56,7 +57,8 @@ class PerlDapServer:
         self._stop_on_entry = True
         self._classifying = False
         self._pause_pending = False
-        self._sigint_pending = False  # tdbSignal sent, stop not yet resolved
+        # monotonic time of the last tdbSignal whose stop is not yet resolved
+        self._sigint_pending: float | None = None
         # (file, line) the debuggee was stopped at when the user issued
         # the last step command (n/s/r) -- None after a continue or once
         # consumed. Lets _classify_and_emit_stop coalesce the several
@@ -1259,7 +1261,7 @@ class PerlDapServer:
             return
         # perl5db's $SIG{INT} (DB::catch) will turn this into a stop at the
         # next statement; _classify_and_emit_stop then re-raises it.
-        self._sigint_pending = True
+        self._sigint_pending = time.monotonic()
         self.send_response(request)
 
     async def _deliver_pending_sigint(self) -> None:
@@ -1268,7 +1270,11 @@ class PerlDapServer:
         default disposition and re-raise it, so the program dies of SIGINT
         as it would natively. (A program with its own handler never gets
         here: its handler replaced DB::catch and ran directly.)"""
-        self._sigint_pending = False
+        started, self._sigint_pending = self._sigint_pending, None
+        # A stale request (the program ran its own handler, no stop
+        # followed) must not turn a later, unrelated stop into a kill.
+        if started is None or time.monotonic() - started > 5.0:
+            return
         session = self.session
         if session is None or session.eof:
             return

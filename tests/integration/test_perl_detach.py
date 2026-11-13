@@ -63,6 +63,13 @@ def test_perl_detach_ctrl_c_runs_program_handler(env):
     assert detach_harness.leftovers == []
 
 
+def test_perl_detach_ctrl_c_kills_script_blocked_in_stdin(env):
+    out, code = run_detached([PROG, "read"], interrupt_after=1.5, timeout=15, **env)
+    assert "looping-now" in out
+    assert code == 130
+    assert detach_harness.leftovers == []
+
+
 @pytest.mark.asyncio
 async def test_tdbsignal_rejects_other_signals_and_missing_debuggee():
     client = AdapterClient()

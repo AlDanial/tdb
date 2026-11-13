@@ -11,6 +11,7 @@ if ($mode eq 'loop' || $mode eq 'trap') {
     print "looping-" . join('', 'now'), "\n";
     while (1) { select(undef, undef, undef, 0.2); }
 }
+print "looping-" . join('', 'now'), "\n" if $mode eq 'read';
 my $line = <STDIN>;
 chomp $line;
 print "got:$line\n";
