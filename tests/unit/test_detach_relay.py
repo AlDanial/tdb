@@ -286,3 +286,36 @@ def test_no_abort_at_shutdown_with_open_stdin():
         os.close(w)
     assert proc.returncode == 5, proc.stderr
     assert proc.stderr == b""
+
+
+async def test_continue_failure_on_terminated_session_returns(ctl, console):
+    from types import SimpleNamespace
+
+    ctl.state = SimpleNamespace(is_terminated=True, last_exit_code=4)
+    ctl.continue_error = RuntimeError("session ended")
+    asyncio.get_running_loop().call_later(0.05, console.on_stopped, 1, "breakpoint")
+    assert await _run(ctl, console) == 4
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX status")
+async def test_signal_killed_program_maps_to_shell_code(ctl, console):
+    asyncio.get_running_loop().call_later(0.05, console.on_exited, -2)
+    assert await _run(ctl, console) == 130
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX status")
+async def test_interrupted_program_exit_254_maps_to_130(ctl, console):
+    async def interrupt():
+        ctl.interrupts += 1
+        console.on_exited(254)
+        return True
+
+    ctl.interrupt_debuggee = interrupt
+    asyncio.get_running_loop().call_later(0.05, os.kill, os.getpid(), signal.SIGINT)
+    assert await asyncio.wait_for(relay(ctl, console), 5) == 130
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX status")
+async def test_exit_254_without_interrupt_is_kept(ctl, console):
+    asyncio.get_running_loop().call_later(0.05, console.on_exited, 254)
+    assert await _run(ctl, console) == 254

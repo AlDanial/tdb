@@ -76,7 +76,11 @@ def test_cli_passes_sources_to_real_app(source_args, monkeypatch, mode):
         argv += ["--post-mortem", str(snapshot)]
     args = parse_args(argv)
     apps = []
+    async def run_async(self, *args, **kwargs):
+        apps.append(self)
+
     monkeypatch.setattr(TdbApp, "run", lambda self: apps.append(self))
+    monkeypatch.setattr(TdbApp, "run_async", run_async)
     monkeypatch.setattr("tdb.persist.load_config", TdbConfig)
     (_run_post_mortem if mode == "post_mortem" else _run_tui)(args)
     app = apps[0]

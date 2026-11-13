@@ -132,6 +132,21 @@ def _is_terminated(controller: Any) -> bool:
     return bool(getattr(getattr(controller, "state", None), "is_terminated", False))
 
 
+def _exit_code(console: "ConsoleRunHandler", interrupted: bool = False) -> int:
+    """tdb's exit code; a program killed by a signal (negative status) maps
+    to the shell convention 128+signal. debugpy's launcher reports a
+    SIGINT death as -2 truncated to 254, so after we delivered Ctrl-C
+    that value also means "interrupted" (130)."""
+    code = final_exit_code(console)
+    if os.name == "nt":
+        return code
+    if code < 0:
+        return 128 - code
+    if interrupted and code == 256 - signal.SIGINT:
+        return INTERRUPT_EXIT
+    return code
+
+
 async def _cleanup(controller: Any) -> None:
     try:
         await controller.stop()
@@ -149,12 +164,13 @@ async def relay(
     """Run until the program exits; return tdb's exit code."""
     if console.exited.is_set():
         await _cleanup(controller)
-        return final_exit_code(console)
+        return _exit_code(console)
 
     loop = asyncio.get_running_loop()
     sig_queue: asyncio.Queue[int] = asyncio.Queue()
     undo: list[tuple[int, Any]] = []
     forwarder: asyncio.Task | None = None
+    interrupted = False
     try:
         # Install handlers first so no signal arrives before they exist.
         if install_signals:
@@ -170,7 +186,7 @@ async def relay(
         while True:
             if console.exited.is_set():
                 await _cleanup(controller)
-                return final_exit_code(console)
+                return _exit_code(console, interrupted)
             waiters = {
                 asyncio.ensure_future(console.exited.wait()): "exited",
                 asyncio.ensure_future(console.stopped.wait()): "stopped",
@@ -195,6 +211,7 @@ async def relay(
                     if not delivered:
                         await _cleanup(controller)
                         return INTERRUPT_EXIT
+                    interrupted = True
                 else:
                     await _cleanup(controller)
                     return 128 + signum
@@ -206,7 +223,14 @@ async def relay(
                     await controller.continue_()
                 except Exception:
                     log.debug("continue_ failed", exc_info=True)
-                    if console.exited.is_set() or _is_terminated(controller):
+                    if _is_terminated(controller) and not console.exited.is_set():
+                        # The session ended under us without an event
+                        # reaching the console; nothing more will arrive.
+                        console.exit_code = getattr(
+                            controller.state, "last_exit_code", None
+                        )
+                        console.exited.set()
+                    if console.exited.is_set():
                         continue
                     # A program we cannot resume must not be left frozen.
                     await _cleanup(controller)
@@ -216,3 +240,34 @@ async def relay(
             forwarder.cancel()
         if undo:
             _restore_signals(loop, undo)
+
+
+async def run_after_tui(app: Any, program: str) -> int:
+    """Hand a still-live session from the closed TUI to the relay.
+
+    Runs on the loop the TUI ran on, after Textual has restored the
+    terminal. Returns tdb's exit code.
+    """
+    from tdb.run_mode import ConsoleRunHandler, stop_session_on_error
+
+    controller = app.controller
+    console = ConsoleRunHandler()
+    async with stop_session_on_error(controller):
+        state = controller.state
+        if state.is_terminated:
+            console.exit_code = state.last_exit_code
+            console.exited.set()
+        app.event_switch.retarget(console)
+
+        if app.program_output_truncated:
+            sys.stderr.write("tdb: earlier program output truncated\n")
+        for text, category in app.program_output:
+            (sys.stderr if category == "stderr" else sys.stdout).write(text)
+        sys.stdout.flush()
+        sys.stderr.flush()
+        sys.stderr.write(f"tdb: detached \u2014 {program} running; Ctrl-C interrupts it\n")
+        sys.stderr.flush()
+
+        if not state.is_terminated and not state.is_running:
+            await controller.continue_()
+        return await relay(controller, console)

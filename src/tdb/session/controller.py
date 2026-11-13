@@ -1194,6 +1194,23 @@ class DebugController:
         and did not fail; False when impossible. Never raises."""
         try:
             if self._pipe_launcher is not None:
+                # POSIX: the launcher we spawned is debugpy's, not the
+                # program; SIGINT to it prints a launcher traceback and
+                # leaves the real program running. Signal the program.
+                pid = self._debuggee_pid
+                launcher_proc = getattr(self._pipe_launcher, "_process", None)
+                if (
+                    os.name != "nt"
+                    and pid is not None
+                    and launcher_proc is not None
+                    and launcher_proc.returncode is None
+                    and pid != launcher_proc.pid
+                ):
+                    try:
+                        os.kill(pid, signal.SIGINT)
+                        return True
+                    except OSError:
+                        pass
                 return self._pipe_launcher.send_interrupt()
             route = self.profile.adapter.quirks.interrupt_route
             if route == "request":

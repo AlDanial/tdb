@@ -1552,11 +1552,25 @@ def _run_tui(args: argparse.Namespace) -> None:
         source_files=args.source_files,
         source_filename=args.source,
     )
+    import asyncio
+
+    async def main() -> int | None:
+        await app.run_async()
+        if app.run_detached:
+            from tdb.detach_relay import run_after_tui
+
+            return await run_after_tui(app, args.program or "")
+        return None
+
     try:
-        app.run()
+        code = asyncio.run(main())
     finally:
         recorder.close()
     # Fatal startup error (e.g. remote-attach connection refused). The
     # TUI has already torn down; surface the reason on stderr so the
     # user doesn't just see a blank terminal and a non-zero exit code.
     _exit_on_startup_error(app)
+    if code is not None:
+        sys.stdout.flush()
+        sys.stderr.flush()
+        sys.exit(code)

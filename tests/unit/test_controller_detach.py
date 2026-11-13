@@ -87,6 +87,7 @@ async def test_strip_stops_noop_when_terminated():
 class _FakeProc:
     def __init__(self):
         self.returncode = None
+        self.pid = 1
         self.signals = []
 
     def send_signal(self, sig):
@@ -103,6 +104,23 @@ async def test_interrupt_uses_pipe_launcher():
     assert await ctrl.interrupt_debuggee() is True
     expected = signal.CTRL_BREAK_EVENT if os.name == "nt" else signal.SIGINT
     assert launcher._process.signals == [expected]
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX signal delivery")
+async def test_interrupt_prefers_the_program_over_the_launcher(monkeypatch):
+    from tdb.session.terminal import PipeLauncher
+
+    ctrl, _, _ = _make()
+    launcher = PipeLauncher(lambda t, c: None)
+    launcher._process = _FakeProc()
+    launcher._process.pid = 100
+    ctrl._pipe_launcher = launcher
+    ctrl._debuggee_pid = 4242
+    killed = []
+    monkeypatch.setattr(os, "kill", lambda pid, sig: killed.append((pid, sig)))
+    assert await ctrl.interrupt_debuggee() is True
+    assert killed == [(4242, signal.SIGINT)]
+    assert launcher._process.signals == []
 
 
 async def test_interrupt_pipe_launcher_without_process_is_false():
