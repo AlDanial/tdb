@@ -1224,7 +1224,9 @@ class DebugController:
 
     def _on_process(self, event: Event) -> None:
         pid = (event.body or {}).get("systemProcessId")
-        if isinstance(pid, int):
+        # Never keep 0 / 1 / negatives / bool: os.kill(0|-1, ...) would
+        # signal tdb's own group or everything the user owns.
+        if isinstance(pid, int) and not isinstance(pid, bool) and pid > 1:
             self._debuggee_pid = pid
 
     async def strip_stops(self) -> None:
@@ -1276,6 +1278,7 @@ class DebugController:
                 if (
                     os.name != "nt"
                     and pid is not None
+                    and pid > 1
                     and launcher_proc is not None
                     and launcher_proc.returncode is None
                     and pid != launcher_proc.pid
@@ -1290,8 +1293,9 @@ class DebugController:
             if route == "request":
                 await self.client.send_signal("SIGINT")
                 return True
-            if route == "pid" and self._debuggee_pid is not None:
-                os.kill(self._debuggee_pid, signal.SIGINT)
+            pid = self._debuggee_pid
+            if route == "pid" and pid is not None and pid > 1:
+                os.kill(pid, signal.SIGINT)
                 return True
         except asyncio.CancelledError:
             raise
@@ -1919,6 +1923,7 @@ class DebugController:
         # set this, so headless mode left state.is_terminated stuck at False
         # after the program ended naturally.
         self.state.transition_to(SessionPhase.TERMINATED)
+        self._debuggee_pid = None  # a reused pid must never be signalled
         # Wake any pause()-style waiters so they unblock on termination
         # rather than running out the clock — they'll see is_terminated.
         self._stopped_event.set()
@@ -1932,6 +1937,7 @@ class DebugController:
         # engage no matter which event we get.
         self.state.transition_to(SessionPhase.TERMINATED)
         self.state.last_exit_code = exit_code
+        self._debuggee_pid = None
         self._stopped_event.set()
         self.event_handler.on_exited(exit_code)
 

@@ -26,6 +26,11 @@ pytestmark = [
 
 C_SRC = FIXTURES_DIR / "native_detach" / "prog.c"
 
+# The fixture's first statement: the line lldb-dap stops on.
+C_FIRST_LINE = next(
+    n for n, text in enumerate(C_SRC.read_text().splitlines(), 1) if '"before"' in text
+)
+
 RUST_SRC = """\
 use std::io::Write;
 fn main() {
@@ -141,7 +146,7 @@ def _stop_at(program: str, line: int) -> list[str]:
 # id -> (available, builder, tdb options, first line of main's body)
 CASES = {
     "c-gdb": (HAVE_GDB and HAVE_CC, _build_c, ["--lang", "cpp", "--adapter", "gdb"], None),
-    "c-lldb": (HAVE_LLDB and HAVE_CC, _build_c, ["--lang", "cpp", "--adapter", "lldb-dap"], 15),
+    "c-lldb": (HAVE_LLDB and HAVE_CC, _build_c, ["--lang", "cpp", "--adapter", "lldb-dap"], C_FIRST_LINE),
     "rust-gdb": (HAVE_GDB and HAVE_RUSTC, _build_rust, ["--lang", "rust", "--adapter", "gdb"], None),
     "go-dlv": (HAVE_GO, _build_go, [], None),
     "ocaml-gdb": (HAVE_GDB and HAVE_OCAML, _build_ocaml, ["--lang", "ocaml", "--adapter", "gdb"], None),
@@ -218,4 +223,22 @@ def test_native_detach_function_entry_breakpoint_cleared(case, tmp_path):
     after_quit = log.split("on_code_view_debug_action called: quit")[-1]
     assert "Request: continue" in after_quit
     assert "Event: stopped" not in after_quit
+    assert detach_harness.leftovers == []
+
+
+@pytest.mark.skipif(not (HAVE_GDB and HAVE_CC), reason="needs gdb >= 14 and a C compiler")
+def test_gdb_detach_slow_clean_exit_after_ctrl_c_keeps_exit_code_0(tmp_path):
+    """gdb reports exit 0 both for a SIGINT death and a clean exit; only an
+    exit right after Ctrl-C is taken for the death. A handler that cleans up
+    for 3s (> the grace window) and exits 0 stays 0."""
+    prog = _build_c(tmp_path)
+    out, code = run_detached(
+        ["--lang", "cpp", "--adapter", "gdb", prog, "slow0"],
+        interrupt_after=1.5,
+        cwd=tmp_path,
+        env={"TDB_LOG_DIR": str(tmp_path), "TDB_CONFIG_DIR": str(tmp_path)},
+        timeout=60,
+    )
+    assert "caught-int" in out
+    assert code == 0
     assert detach_harness.leftovers == []

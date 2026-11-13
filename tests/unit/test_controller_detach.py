@@ -204,3 +204,34 @@ async def test_strip_stops_pending_run_to_cursor_does_not_rearm_bps():
     for client in (fake, child):
         sent = [c for c in client.calls_to("setBreakpoints") if c[1] == "/a.py"]
         assert sent and sent[-1] == ("setBreakpoints", "/a.py", ())
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX signal delivery")
+@pytest.mark.parametrize("bad", [0, 1, -1, -4242, True, False, "7", None])
+async def test_untrustworthy_process_pid_is_never_stored_or_signalled(monkeypatch, bad):
+    ctrl, fake, _ = _make()
+    _set_adapter(monkeypatch, ctrl, route="pid")
+    ctrl._setup_event_handlers()
+    for h in fake._event_handlers["process"]:
+        h(Event(seq=1, event="process", body={"systemProcessId": bad}))
+    assert ctrl._debuggee_pid is None
+    killed = []
+    monkeypatch.setattr(os, "kill", lambda pid, sig: killed.append((pid, sig)))
+    assert await ctrl.interrupt_debuggee() is False
+    # Even a bad value planted directly is refused right before os.kill.
+    ctrl._debuggee_pid = bad if isinstance(bad, int) else 0
+    assert await ctrl.interrupt_debuggee() is False
+    assert killed == []
+
+
+@pytest.mark.parametrize("name", ["exited", "terminated"])
+async def test_debuggee_pid_cleared_when_session_ends(monkeypatch, name):
+    ctrl, fake, _ = _make()
+    _set_adapter(monkeypatch, ctrl, route="pid")
+    ctrl._setup_event_handlers()
+    for h in fake._event_handlers["process"]:
+        h(Event(seq=1, event="process", body={"systemProcessId": 4242}))
+    assert ctrl._debuggee_pid == 4242
+    for h in fake._event_handlers[name]:
+        h(Event(seq=2, event=name, body={"exitCode": 0}))
+    assert ctrl._debuggee_pid is None

@@ -16,6 +16,7 @@ import os
 import signal
 import sys
 import threading
+import time
 from typing import TYPE_CHECKING, Any, BinaryIO
 
 from tdb.run_mode import final_exit_code
@@ -26,6 +27,9 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 INTERRUPT_EXIT = 130
+# gdb / lldb-dap hide a SIGINT death behind exit 0 / 2. An exit that code
+# arrives this soon after tdb delivered Ctrl-C is taken for that death.
+SIGINT_DEATH_GRACE = 2.0
 
 _READ_SIZE = 65536
 
@@ -144,19 +148,27 @@ def _exit_code(
     console: "ConsoleRunHandler",
     interrupted: bool = False,
     sigint_death_codes: tuple[int, ...] = (),
+    since_interrupt: float | None = None,
 ) -> int:
     """tdb's exit code; a program killed by a signal (negative status) maps
     to the shell convention 128+signal. debugpy's launcher reports a
     SIGINT death as -2 truncated to 254, so after we delivered Ctrl-C
     that value also means "interrupted" (130); so do the codes an adapter
     declares it reports for a SIGINT death (gdb and lldb-dap hide the
-    signal behind 0 / 2)."""
+    signal behind 0 / 2), but only within SIGINT_DEATH_GRACE seconds of the
+    delivered Ctrl-C (`since_interrupt`); a later identical code is real."""
     code = final_exit_code(console)
     if os.name == "nt":
         return code
     if code < 0:
         return 128 - code
-    if interrupted and (code == 256 - signal.SIGINT or code in sigint_death_codes):
+    if interrupted and code == 256 - signal.SIGINT:
+        return INTERRUPT_EXIT
+    if (
+        code in sigint_death_codes
+        and since_interrupt is not None
+        and since_interrupt <= SIGINT_DEATH_GRACE
+    ):
         return INTERRUPT_EXIT
     return code
 
@@ -185,6 +197,7 @@ async def relay(
     undo: list[tuple[int, Any]] = []
     forwarder: asyncio.Task | None = None
     interrupted = False
+    interrupted_at: float | None = None
     adapter = getattr(getattr(controller, "profile", None), "adapter", None)
     death_codes = tuple(getattr(getattr(adapter, "quirks", None), "sigint_death_codes", ()))
     try:
@@ -202,7 +215,8 @@ async def relay(
         while True:
             if console.exited.is_set():
                 await _cleanup(controller)
-                return _exit_code(console, interrupted, death_codes)
+                since = None if interrupted_at is None else time.monotonic() - interrupted_at
+                return _exit_code(console, interrupted, death_codes, since)
             waiters = {
                 asyncio.ensure_future(console.exited.wait()): "exited",
                 asyncio.ensure_future(console.stopped.wait()): "stopped",
@@ -228,6 +242,7 @@ async def relay(
                         await _cleanup(controller)
                         return INTERRUPT_EXIT
                     interrupted = True
+                    interrupted_at = time.monotonic()
                 else:
                     await _cleanup(controller)
                     return 128 + signum

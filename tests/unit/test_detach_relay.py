@@ -388,3 +388,38 @@ async def test_relay_neutralises_textual_sigcont_handler(ctl, console):
     finally:
         for s, h in old.items():
             signal.signal(s, h)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX status")
+@pytest.mark.parametrize("delay,expected", [(0.5, 130), (2.0, 130), (2.5, 0), (600.0, 0)])
+async def test_sigint_death_code_only_inside_the_grace_window(
+    ctl, console, monkeypatch, delay, expected
+):
+    from types import SimpleNamespace
+
+    from tdb import detach_relay
+
+    clock = [1000.0]
+    # Replace the module's `time` only: patching time.monotonic itself
+    # would freeze asyncio's own timers.
+    monkeypatch.setattr(
+        detach_relay, "time", SimpleNamespace(monotonic=lambda: clock[0])
+    )
+    ctl.profile = SimpleNamespace(
+        adapter=SimpleNamespace(quirks=SimpleNamespace(sigint_death_codes=(0,)))
+    )
+
+    async def interrupt():
+        ctl.interrupts += 1
+        return True  # delivered; the program is still running
+
+    ctl.interrupt_debuggee = interrupt
+
+    def exit_later():
+        clock[0] += delay
+        console.on_exited(0)
+
+    loop = asyncio.get_running_loop()
+    loop.call_later(0.05, os.kill, os.getpid(), signal.SIGINT)
+    loop.call_later(0.3, exit_later)
+    assert await asyncio.wait_for(relay(ctl, console), 5) == expected
