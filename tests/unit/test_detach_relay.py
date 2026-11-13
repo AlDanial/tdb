@@ -1,0 +1,225 @@
+"""The detach relay loop, driven with a fake controller and a real
+ConsoleRunHandler. Signal tests raise real signals at the pytest process
+only after the handler is installed."""
+
+from __future__ import annotations
+
+import asyncio
+import io
+import os
+import signal
+
+import pytest
+
+from tdb.detach_relay import INTERRUPT_EXIT, relay
+from tdb.run_mode import ConsoleRunHandler
+
+
+class FakeController:
+    def __init__(self):
+        self.supports_stdin = False
+        self.interrupt_result = True
+        self.continues = 0
+        self.stops = 0
+        self.interrupts = 0
+        self.written: list[str] = []
+        self.stdin_closed = False
+        self.write_error: Exception | None = None
+
+    async def continue_(self):
+        self.continues += 1
+
+    async def stop(self):
+        self.stops += 1
+
+    async def interrupt_debuggee(self):
+        self.interrupts += 1
+        return self.interrupt_result
+
+    async def write_stdin(self, text):
+        if self.write_error:
+            raise self.write_error
+        self.written.append(text)
+
+    async def close_stdin(self):
+        self.stdin_closed = True
+
+
+@pytest.fixture
+def ctl():
+    return FakeController()
+
+
+@pytest.fixture
+def console():
+    return ConsoleRunHandler()
+
+
+async def _run(ctl, console, **kw):
+    kw.setdefault("install_signals", False)
+    return await asyncio.wait_for(relay(ctl, console, **kw), 5)
+
+
+async def _after(delay, fn):
+    await asyncio.sleep(delay)
+    fn()
+
+
+async def test_returns_program_exit_code(ctl, console):
+    asyncio.get_running_loop().call_later(0.05, console.on_exited, 3)
+    assert await _run(ctl, console) == 3
+    assert ctl.stops == 1
+
+
+async def test_terminated_without_exit_code_is_1(ctl, console):
+    asyncio.get_running_loop().call_later(0.05, console.on_terminated)
+    assert await _run(ctl, console) == 1
+
+
+async def test_already_exited_returns_immediately(ctl, console):
+    console.on_exited(7)
+    assert await _run(ctl, console) == 7
+    assert ctl.stops == 1
+
+
+async def test_stop_is_auto_continued(ctl, console):
+    task = asyncio.create_task(relay(ctl, console, install_signals=False))
+    for _ in range(3):
+        console.on_stopped(1, "breakpoint")
+        await asyncio.sleep(0.05)
+    assert ctl.continues == 3
+    console.on_exited(0)
+    assert await asyncio.wait_for(task, 5) == 0
+
+
+async def test_idle_relay_does_not_spin(ctl, console):
+    task = asyncio.create_task(relay(ctl, console, install_signals=False))
+    await asyncio.sleep(0.2)
+    assert ctl.continues == 0
+    console.on_exited(0)
+    assert await asyncio.wait_for(task, 5) == 0
+
+
+async def test_stdin_forwarded_then_eof(ctl, console):
+    ctl.supports_stdin = True
+    task = asyncio.create_task(
+        relay(ctl, console, stdin=io.BytesIO(b"a\nb\n"), install_signals=False)
+    )
+    for _ in range(100):
+        if ctl.stdin_closed:
+            break
+        await asyncio.sleep(0.02)
+    assert "".join(ctl.written) == "a\nb\n"
+    assert ctl.stdin_closed
+    console.on_exited(0)
+    assert await asyncio.wait_for(task, 5) == 0
+
+
+async def test_stdin_ignored_without_route(ctl, console):
+    buf = io.BytesIO(b"hello")
+    console.on_exited(0)
+    task = asyncio.create_task(relay(ctl, console, stdin=buf, install_signals=False))
+    await asyncio.sleep(0.1)
+    await task
+    assert buf.tell() == 0
+    assert ctl.written == []
+
+
+async def test_stdin_ignored_without_route_while_running(ctl, console):
+    buf = io.BytesIO(b"hello")
+    task = asyncio.create_task(relay(ctl, console, stdin=buf, install_signals=False))
+    await asyncio.sleep(0.1)
+    assert buf.tell() == 0
+    console.on_exited(0)
+    await asyncio.wait_for(task, 5)
+
+
+async def test_write_stdin_runtime_error_is_quiet(ctl, console):
+    ctl.supports_stdin = True
+    ctl.write_error = RuntimeError("closed")
+    task = asyncio.create_task(
+        relay(ctl, console, stdin=io.BytesIO(b"x\n"), install_signals=False)
+    )
+    await asyncio.sleep(0.2)
+    console.on_exited(4)
+    assert await asyncio.wait_for(task, 5) == 4
+
+
+posix = pytest.mark.skipif(os.name == "nt", reason="POSIX signals")
+
+
+async def _signal_when_installed(signum, original):
+    for _ in range(200):
+        if signal.getsignal(signum) is not original or _has_loop_handler(signum):
+            break
+        await asyncio.sleep(0.01)
+    os.kill(os.getpid(), signum)
+
+
+def _has_loop_handler(signum):
+    loop = asyncio.get_running_loop()
+    return signum in getattr(loop, "_signal_handlers", {})
+
+
+@posix
+async def test_sigint_delivered_to_program(ctl, console):
+    original = signal.getsignal(signal.SIGINT)
+    task = asyncio.create_task(relay(ctl, console))
+    try:
+        await _signal_when_installed(signal.SIGINT, original)
+        for _ in range(100):
+            if ctl.interrupts:
+                break
+            await asyncio.sleep(0.02)
+        assert ctl.interrupts == 1
+        assert not task.done()
+        console.on_exited(0)
+        assert await asyncio.wait_for(task, 5) == 0
+    finally:
+        if not task.done():
+            task.cancel()
+        signal.signal(signal.SIGINT, original)
+
+
+@posix
+async def test_sigint_fallback_stops_and_returns_130(ctl, console):
+    ctl.interrupt_result = False
+    original = signal.getsignal(signal.SIGINT)
+    task = asyncio.create_task(relay(ctl, console))
+    try:
+        await _signal_when_installed(signal.SIGINT, original)
+        assert await asyncio.wait_for(task, 5) == INTERRUPT_EXIT == 130
+        assert ctl.stops == 1
+    finally:
+        if not task.done():
+            task.cancel()
+        signal.signal(signal.SIGINT, original)
+
+
+@posix
+async def test_sigterm_stops_and_returns_143(ctl, console):
+    original = signal.getsignal(signal.SIGTERM)
+    task = asyncio.create_task(relay(ctl, console))
+    try:
+        await _signal_when_installed(signal.SIGTERM, original)
+        assert await asyncio.wait_for(task, 5) == 143
+        assert ctl.stops == 1
+    finally:
+        if not task.done():
+            task.cancel()
+        signal.signal(signal.SIGTERM, original)
+
+
+@posix
+async def test_signal_handlers_restored(ctl, console):
+    before = {s: signal.getsignal(s) for s in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)}
+    console.on_exited(0)
+    await asyncio.wait_for(relay(ctl, console), 5)
+    after = {s: signal.getsignal(s) for s in before}
+    assert before == after
+    # also restored on the exit-after-wait path
+    task = asyncio.create_task(relay(ctl, console := ConsoleRunHandler()))
+    await asyncio.sleep(0.1)
+    console.on_exited(0)
+    await asyncio.wait_for(task, 5)
+    assert {s: signal.getsignal(s) for s in before} == before
