@@ -28,7 +28,10 @@ from tdb.languages.base import (
 
 class BashAdapter(AdapterSpec):
     id = "bash-tdb"
-    quirks = AdapterQuirks(stdin_route="request")
+    # Unverified: whether the --terminal debuggee outlives this adapter
+    # (needs a real terminal emulator). False = tdb stays attached on
+    # run-detached rather than guess.
+    quirks = AdapterQuirks(stdin_route="request", survives_disconnect=False)
 
     def __init__(self, bash_executable: str | None = None) -> None:
         self._bash = bash_executable

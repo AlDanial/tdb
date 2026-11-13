@@ -259,6 +259,18 @@ async def run_after_tui(app: Any, program: str) -> int:
             console.exited.set()
         app.event_switch.retarget(console)
 
+        if controller.is_remote_attach or controller.used_terminal:
+            # The program does not depend on tdb's pipes: nothing to
+            # replay, no stdin to forward.
+            if not state.is_terminated and not state.is_running:
+                await controller.continue_()
+            if not state.is_terminated and await controller.detach_disconnect():
+                sys.stderr.write(f"tdb: detached \u2014 {program or 'program'} keeps running\n")
+                sys.stderr.flush()
+                return 0
+            # Not known to survive the adapter: hold the session silently.
+            return await relay(controller, console)
+
         if app.program_output_truncated:
             sys.stderr.write("tdb: earlier program output truncated\n")
         for text, category in app.program_output:

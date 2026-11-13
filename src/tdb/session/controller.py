@@ -177,6 +177,11 @@ class DebugController:
         return self._is_remote_attach
 
     @property
+    def used_terminal(self) -> bool:
+        """True when the debuggee runs in an external terminal (`--terminal`)."""
+        return self._terminal is not None
+
+    @property
     def supports_restart(self) -> bool:
         """True when `_restart_session` can meaningfully relaunch.
 
@@ -772,26 +777,51 @@ class DebugController:
         if self.state.phase == SessionPhase.NOT_STARTED:
             self.state.transition_to(SessionPhase.RUNNING)
 
-    async def stop(self) -> None:
-        # Child disconnects run in parallel with a short timeout: when
-        # the parent's `disconnect(terminate=True)` lands, debugpy
-        # cascades the termination to all subprocesses, so per-child
-        # DAP disconnect is cleanup, not load-bearing. See
-        # ChildProcessManager.close_all for the per-child loop.
+    async def _disconnect_and_stop(self, *, terminate: bool) -> None:
+        """Close child clients, send `disconnect`, stop the DAP client."""
         from tdb._timeouts import DAP_DISCONNECT_PARENT
 
         await self._settle_attach_hook()
         await self._children.close_all()
         try:
             await asyncio.wait_for(
-                self.client.disconnect(terminate=not self._is_remote_attach),
+                self.client.disconnect(terminate=terminate),
                 timeout=DAP_DISCONNECT_PARENT,
             )
         except (asyncio.TimeoutError, Exception):
             pass
         await self.client.stop()
+
+    async def detach_disconnect(self) -> bool:
+        """Disconnect without terminating so the debuggee lives on.
+
+        For `--terminal` and remote/pid attach sessions, whose program
+        does not depend on tdb's pipes. Returns True if the debuggee is
+        expected to keep running; False (doing nothing) when the adapter
+        is not known to let a `--terminal` debuggee outlive it, so the
+        caller must keep the session instead.
+        """
+        if (
+            not self._is_remote_attach
+            and not self.profile.adapter.quirks.survives_disconnect
+        ):
+            return False
+        await self._disconnect_and_stop(terminate=False)
+        self._mark_terminated()
+        return True
+
+    async def stop(self) -> None:
+        # Child disconnects run in parallel with a short timeout: when
+        # the parent's `disconnect(terminate=True)` lands, debugpy
+        # cascades the termination to all subprocesses, so per-child
+        # DAP disconnect is cleanup, not load-bearing. See
+        # ChildProcessManager.close_all for the per-child loop.
+        await self._disconnect_and_stop(terminate=not self._is_remote_attach)
         if self._pipe_launcher is not None:
             await self._pipe_launcher.close()
+        self._mark_terminated()
+
+    def _mark_terminated(self) -> None:
         self.state.transition_to(SessionPhase.TERMINATED)
         # Remove any lingering Processes-modal snapshot file from this
         # tdb session so it doesn't get picked up by a future tdb that

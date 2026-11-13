@@ -33,7 +33,10 @@ from tdb.languages.base import (
 
 class TcshAdapter(AdapterSpec):
     id = "tcsh-tdb"
-    quirks = AdapterQuirks(stdin_route="request")
+    # Unverified: whether the --terminal debuggee outlives this adapter
+    # (needs a real terminal emulator). False = tdb stays attached on
+    # run-detached rather than guess.
+    quirks = AdapterQuirks(stdin_route="request", survives_disconnect=False)
 
     def __init__(self, tcsh_executable: str | None = None) -> None:
         self._tcsh = tcsh_executable

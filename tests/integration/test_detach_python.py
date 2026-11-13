@@ -61,3 +61,63 @@ def test_q_escape_keeps_tui(env):
     assert "tdb: detached" not in out
     assert "after-ran" not in out
     assert code == 0
+
+
+HEARTBEAT_SRC = """\
+import pathlib, socket, sys, time
+import debugpy
+
+debugpy.listen(("127.0.0.1", {port}))
+pathlib.Path({ready!r}).touch()
+beat = pathlib.Path({beat!r})
+i = 0
+while True:
+    i += 1
+    beat.write_text(str(i))
+    time.sleep(0.05)
+"""
+
+
+def _free_port() -> int:
+    import socket
+
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+@pytest.fixture
+def heartbeat_target(tmp_path):
+    import subprocess
+    import time
+
+    port = _free_port()
+    ready, beat = tmp_path / "ready", tmp_path / "beat"
+    script = tmp_path / "target.py"
+    script.write_text(HEARTBEAT_SRC.format(port=port, ready=str(ready), beat=str(beat)))
+    proc = subprocess.Popen(
+        [sys.executable, str(script)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+    )
+    try:
+        deadline = time.monotonic() + 30
+        while not ready.exists():
+            assert proc.poll() is None and time.monotonic() < deadline, "target did not start"
+            time.sleep(0.05)
+        yield proc, port, beat
+    finally:
+        proc.kill()
+        proc.wait(timeout=5)
+
+
+def test_remote_attach_detach_disconnects_and_program_keeps_running(env, heartbeat_target):
+    import time
+
+    proc, port, beat = heartbeat_target
+    out, code = run_detached(["-r", f"127.0.0.1:{port}"], **env)
+    assert code == 0
+    assert "keeps running" in out
+    assert proc.poll() is None
+    first = int(beat.read_text() or 0)
+    time.sleep(0.5)
+    assert proc.poll() is None
+    assert int(beat.read_text() or 0) > first

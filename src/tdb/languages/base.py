@@ -99,6 +99,14 @@ class AdapterQuirks:
     #   None: no stdin (gdb, lldb-dap, dlv spawn the debuggee themselves).
     stdin_route: str | None = None
 
+    # `--terminal` only: True when the debuggee, running in its own
+    # terminal window, outlives the adapter after `disconnect` without
+    # terminate. run-detached then really disconnects; False keeps tdb
+    # attached (silently) so the program is not killed with the adapter.
+    # Remote/pid attach sessions ignore this: the debuggee is not the
+    # adapter's child there.
+    survives_disconnect: bool = True
+
 
 class AdapterSpec:
     """How to spawn and speak to one debug adapter. Subclass per adapter.

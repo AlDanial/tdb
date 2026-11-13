@@ -18,6 +18,10 @@ from tdb.run_mode import ConsoleRunHandler
 class FakeController:
     def __init__(self):
         self.supports_stdin = False
+        self.is_remote_attach = False
+        self.used_terminal = False
+        self.survives = True
+        self.disconnects = 0
         self.interrupt_result = True
         self.continues = 0
         self.stops = 0
@@ -35,6 +39,12 @@ class FakeController:
 
     async def stop(self):
         self.stops += 1
+
+    async def detach_disconnect(self):
+        if not self.survives:
+            return False
+        self.disconnects += 1
+        return True
 
     async def interrupt_debuggee(self):
         self.interrupts += 1
