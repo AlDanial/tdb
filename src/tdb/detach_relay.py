@@ -30,6 +30,9 @@ INTERRUPT_EXIT = 130
 # gdb / lldb-dap hide a SIGINT death behind exit 0 / 2. An exit that code
 # arrives this soon after tdb delivered Ctrl-C is taken for that death.
 SIGINT_DEATH_GRACE = 2.0
+# How often the relay checks that the adapter connection is still alive:
+# a dead adapter delivers no event, so nothing else would wake the loop.
+LIVENESS_POLL = 1.0
 
 _READ_SIZE = 65536
 
@@ -223,7 +226,9 @@ async def relay(
                 asyncio.ensure_future(sig_queue.get()): "signal",
             }
             try:
-                done, _ = await asyncio.wait(waiters, return_when=asyncio.FIRST_COMPLETED)
+                done, _ = await asyncio.wait(
+                    waiters, timeout=LIVENESS_POLL, return_when=asyncio.FIRST_COMPLETED
+                )
             finally:
                 for task in waiters:
                     if not task.done():
@@ -248,8 +253,16 @@ async def relay(
                     return 128 + signum
             if console.exited.is_set():
                 continue
+            if getattr(controller, "connection_lost", False) is True:
+                # The adapter is gone and took the session with it; no
+                # event will ever say so. Nothing can resume the program.
+                sys.stderr.write("tdb: lost the connection to the debug adapter\n")
+                sys.stderr.flush()
+                await _cleanup(controller)
+                return 1
             if console.stopped.is_set():
                 console.stopped.clear()
+                log.debug("detach relay: auto-continuing after a stop")
                 try:
                     await controller.continue_()
                 except Exception:

@@ -34,6 +34,10 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
+# Bound for each best-effort request strip_stops sends, so one hung adapter
+# cannot stall `d` for the DAP's own (much longer) timeout per request.
+STRIP_REQUEST_TIMEOUT = 3.0
+
 # How long a pid attach may take to report its stop after the attach
 # response (gdb `attach PID` order). Module-level so tests can shrink it.
 ATTACH_STOP_TIMEOUT = 10.0
@@ -1229,6 +1233,11 @@ class DebugController:
         if isinstance(pid, int) and not isinstance(pid, bool) and pid > 1:
             self._debuggee_pid = pid
 
+    @property
+    def connection_lost(self) -> bool:
+        """The adapter connection ended without the session finishing."""
+        return self.client.connection_lost
+
     async def strip_stops(self) -> None:
         """Remove every stop condition from the live session (parent and
         child clients) so the program can run free. `state.breakpoints`
@@ -1259,10 +1268,12 @@ class DebugController:
     @staticmethod
     async def _best_effort(what: str, awaitable: Any) -> None:
         try:
-            await awaitable
+            await asyncio.wait_for(awaitable, STRIP_REQUEST_TIMEOUT)
         except asyncio.CancelledError:
             raise
-        except Exception as e:  # DAPError, timeout, dead connection
+        except asyncio.TimeoutError:
+            log.warning("strip_stops: %s timed out after %ss", what, STRIP_REQUEST_TIMEOUT)
+        except Exception as e:  # DAPError, dead connection
             log.warning("strip_stops: %s failed: %s", what, e)
 
     async def interrupt_debuggee(self) -> bool:

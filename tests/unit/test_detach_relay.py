@@ -303,6 +303,44 @@ def test_no_abort_at_shutdown_with_open_stdin():
     assert proc.stderr == b""
 
 
+@posix
+def test_stdin_from_a_file_reaches_the_program_then_eof(tmp_path):
+    """tdb's own stdin is a regular file (`tdb prog < input.txt`), not a
+    tty: its content is forwarded and the end of file closes the program's
+    stdin. (The TUI itself cannot run on such a stdin, so this is covered
+    at the relay level rather than through the pty harness.)"""
+    import subprocess
+    import sys
+    import textwrap
+
+    code = textwrap.dedent("""
+        import asyncio, sys
+        sys.path.insert(0, %r)
+        from tests.unit.test_detach_relay import FakeController
+        from tdb.detach_relay import relay
+        from tdb.run_mode import ConsoleRunHandler
+
+        async def main():
+            ctl = FakeController(); ctl.supports_stdin = True
+            con = ConsoleRunHandler()
+            asyncio.get_running_loop().call_later(0.5, con.on_exited, 5)
+            code = await relay(ctl, con, install_signals=False)
+            print(repr("".join(ctl.written)), ctl.stdin_closed)
+            return code
+
+        sys.exit(asyncio.run(main()))
+    """) % os.getcwd()
+    infile = tmp_path / "input.txt"
+    infile.write_text("one\ntwo\n")
+    with open(infile, "rb") as f:
+        proc = subprocess.run(
+            [sys.executable, "-c", code], stdin=f, capture_output=True, timeout=30,
+            cwd=os.getcwd(),
+        )
+    assert proc.returncode == 5, proc.stderr
+    assert proc.stdout.decode().strip() == "'one\\ntwo\\n' True"
+
+
 async def test_continue_failure_on_terminated_session_returns(ctl, console):
     from types import SimpleNamespace
 
@@ -423,3 +461,13 @@ async def test_sigint_death_code_only_inside_the_grace_window(
     loop.call_later(0.05, os.kill, os.getpid(), signal.SIGINT)
     loop.call_later(0.3, exit_later)
     assert await asyncio.wait_for(relay(ctl, console), 5) == expected
+
+
+async def test_adapter_connection_lost_ends_relay_nonzero(ctl, console, monkeypatch):
+    from tdb import detach_relay
+
+    monkeypatch.setattr(detach_relay, "LIVENESS_POLL", 0.05)
+    ctl.connection_lost = False
+    asyncio.get_running_loop().call_later(0.1, setattr, ctl, "connection_lost", True)
+    assert await _run(ctl, console) == 1
+    assert ctl.stops == 1

@@ -15,6 +15,9 @@ or a log file, then resumes the program.
 tdb --run my_program.py args...
 ```
 
+To leave an ordinary TUI session and let the program finish without a TUI, press
+`q` then `d`; see [Run Detached](run-detached.md).
+
 The debuggee's stdout/stderr stream straight to the terminal, and for the
 languages with stdin forwarding (see
 [Console Output and Input](console.md)) the program reads

@@ -150,7 +150,7 @@ async def test_program_output_captured_in_order_and_capped(calls):
         h_on_output("note", "console")
         h_on_output("b", "stderr")
         await pilot.pause()
-        assert app.program_output == [("a", "stdout"), ("b", "stderr")]
+        assert list(app.program_output) == [("a", "stdout"), ("b", "stderr")]
         assert app.program_output_truncated is False
         chunk = "x" * (1024 * 1024)
         for _ in range(6):
@@ -173,7 +173,7 @@ async def test_controller_handler_is_swappable_after_restart(calls):
         assert app.event_switch is not old
         assert isinstance(app.event_switch, SwappableEventHandler)
         assert app.event_switch.target is app._event_handler
-        assert app.program_output == []
+        assert list(app.program_output) == []
 
 
 async def test_ctrl_q_still_quits_immediately(calls):

@@ -68,6 +68,23 @@ async def test_strip_stops_survives_failing_request(monkeypatch):
     assert fake.calls_to("evaluate") == [("evaluate", "x", None)]
 
 
+async def test_strip_stops_bounds_a_request_that_never_returns(monkeypatch):
+    import asyncio
+
+    from tdb.session import controller as controller_mod
+
+    monkeypatch.setattr(controller_mod, "STRIP_REQUEST_TIMEOUT", 0.05)
+    ctrl, fake, _ = _make()
+    _set_adapter(monkeypatch, ctrl, prep=("x",))
+
+    async def hang(filters):
+        await asyncio.Event().wait()
+
+    fake.set_exception_breakpoints = hang
+    await asyncio.wait_for(ctrl.strip_stops(), 5)
+    assert fake.calls_to("evaluate") == [("evaluate", "x", None)]
+
+
 async def test_strip_stops_runs_detach_prep_commands(monkeypatch):
     ctrl, fake, _ = _make()
     _set_adapter(monkeypatch, ctrl, prep=("x", "y"))

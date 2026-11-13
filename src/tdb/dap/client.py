@@ -174,6 +174,12 @@ class DAPClient:
             return ""
         return data.decode("utf-8", errors="replace").strip()
 
+    @property
+    def connection_lost(self) -> bool:
+        """True once the adapter connection has ended (adapter died or
+        closed the stream); nothing more will ever arrive on it."""
+        return self._death_error is not None
+
     def _fail_connection(self, err: ConnectionError) -> None:
         """The connection is gone: remember why, so later requests fail
         at once, and fail every request still waiting for an answer."""

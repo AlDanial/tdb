@@ -47,6 +47,9 @@ def test_python_detach_saved_breakpoint_does_not_stop(env):
     out, code = run_detached(["-k", "6", PROG], stdin_lines=["hi"], **env)
     assert "got:hi" in out
     assert code == 7
+    # The relay auto-continues any stop, so a passing run alone proves
+    # nothing: it must never have had a stop to answer.
+    assert "auto-continuing" not in (env["cwd"] / "tdb.log").read_text()
 
 
 def test_q_q_still_kills_program(env):
@@ -155,3 +158,109 @@ def test_terminal_session_detach_keeps_debugger_attached(env, tmp_path):
     assert "keeps running" not in out
     assert "could not confirm" not in out
     assert done.exists(), "the program must have been allowed to finish"
+
+
+# ---- exit-path audit -------------------------------------------------------
+
+
+def _cmdline(pid: int) -> str:
+    try:
+        with open(f"/proc/{pid}/cmdline", "rb") as f:
+            return f.read().replace(b"\0", b" ").decode(errors="replace")
+    except OSError:
+        return ""
+
+
+def _find(family: list[int], *needles: str, exclude: tuple[str, ...] = ()) -> list[int]:
+    from .detach_harness import _alive, _tree
+
+    pids = {p for root in family for p in _tree(root)}
+    return [
+        pid
+        for pid in sorted(pids)
+        if _alive(pid)
+        and all(n in _cmdline(pid) for n in needles)
+        and not any(x in _cmdline(pid) for x in exclude)
+    ]
+
+
+def test_program_exits_while_modal_open_then_d(env):
+    """The program dies under the open quit modal; `d` must not traceback
+    or hang: tdb just ends."""
+    import os
+    import signal
+
+    def kill_program(key, term, tdb, family):
+        if key != b"q":
+            return
+        for pid in _find(family, "--connect", "detach_prog.py"):
+            os.kill(pid, signal.SIGKILL)
+        term.send(b"", settle=1.0)
+
+    out, code = run_detached([PROG], keys=b"qd", on_key=kill_program, **env)
+    assert "Traceback" not in out
+    assert "after-ran" not in out
+    assert detach_harness.leftovers == []
+
+
+def test_d_during_unsaved_edits_prompt_cancel(env):
+    """Dirty the edit buffer, `q` from another pane, `d`, then ESC at the
+    unsaved-changes prompt: nothing was detached, tdb is still in the TUI.
+    (Ctrl+Q quits at once and never shows the modal.)"""
+    # Esc Esc: Edit mode; i X: dirty it; Esc: vi normal; Ctrl+B: focus the
+    # breakpoints pane (the console would take `q`
+    # as input) so `q` is the app's quit key, not an editor key.
+    keys = b"\x1b\x1biX\x1b\x02qd\x1b"
+    out, code = run_detached([PROG], keys=keys, expect_exit=False, **env)
+    assert code is None
+    assert "unsaved" in out
+    assert "Edit*" in out
+    assert "tdb: detached" not in out
+    assert "after-ran" not in out
+
+
+def test_terminal_hangup_during_relay_kills_program(env):
+    def hang_up(term, tdb, family):
+        assert term.wait_for("looping-now", __import__("time").monotonic() + 20, tdb)
+        term.close()
+
+    _, code = run_detached([PROG, "loop"], on_detached=hang_up, **env)
+    assert code != 0
+    assert detach_harness.leftovers == []
+
+
+def test_sigterm_during_relay_kills_program_exit_143(env):
+    import os
+    import signal
+
+    def terminate(term, tdb, family):
+        assert term.wait_for("looping-now", __import__("time").monotonic() + 20, tdb)
+        os.kill(tdb.pid, signal.SIGTERM)
+
+    _, code = run_detached([PROG, "loop"], on_detached=terminate, **env)
+    assert code == 143
+    assert detach_harness.leftovers == []
+
+
+def test_adapter_death_during_relay_exits_nonzero_no_orphan(env):
+    import os
+    import signal
+
+    def kill_adapter(term, tdb, family):
+        assert term.wait_for("looping-now", __import__("time").monotonic() + 20, tdb)
+        pids = _find(family, "debugpy", "adapter")
+        assert pids, "no adapter process found"
+        for pid in pids:
+            os.kill(pid, signal.SIGKILL)
+
+    _, code = run_detached([PROG, "loop"], on_detached=kill_adapter, **env)
+    assert code not in (0, None)
+    assert detach_harness.leftovers == []
+
+
+def test_detach_with_child_process_program(env):
+    out, code = run_detached([str(FIXTURES_DIR / "detach_mp_prog.py")], **env)
+    assert "child-says-hi" in out
+    assert "child-code-3" in out
+    assert code == 5
+    assert detach_harness.leftovers == []

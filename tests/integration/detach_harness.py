@@ -20,7 +20,7 @@ import subprocess
 import sys
 import termios
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
 from .conftest import SRC_DIR
 
@@ -49,9 +49,19 @@ class _Pty:
     def __init__(self, master: int) -> None:
         self.master = master
         self.buf = b""
+        self.closed = False
+
+    def close(self) -> None:
+        """Hang up: close the master end (idempotent)."""
+        if not self.closed:
+            self.closed = True
+            os.close(self.master)
 
     def pump(self, wait: float = 0.05) -> bool:
         """Read what is available; False once the pty is closed."""
+        if self.closed:
+            time.sleep(wait)
+            return False
         if select.select([self.master], [], [], wait)[0]:
             try:
                 data = os.read(self.master, 65536)
@@ -90,8 +100,16 @@ def run_detached(
     cwd: str | os.PathLike | None = None,
     env: dict[str, str] | None = None,
     entry: str = "Paused",
-) -> tuple[str, int]:
-    """Returns (terminal output with escape codes removed, tdb's exit code)."""
+    on_key: Callable[[bytes, "_Pty", subprocess.Popen, list[int]], None] | None = None,
+    on_detached: Callable[["_Pty", subprocess.Popen, list[int]], None] | None = None,
+    expect_exit: bool = True,
+) -> tuple[str, int | None]:
+    """Returns (terminal output with escape codes removed, tdb's exit code).
+
+    `on_key(key, term, tdb, family)` runs after each key is sent;
+    `on_detached(term, tdb, family)` runs once "tdb: detached" shows (and
+    replaces the stdin / Ctrl-C steps). With expect_exit=False tdb must
+    still be running after the keys; the code returned is then None."""
     master, slave = pty.openpty()
     fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 40, 120, 0, 0))
     tdb = subprocess.Popen(
@@ -117,8 +135,16 @@ def run_detached(
         family = _tree(tdb.pid)
         for key in keys:
             term.send(bytes([key]), settle=_KEY_DELAY)
+            if on_key is not None:
+                on_key(bytes([key]), term, tdb, family)
+        if not expect_exit:
+            assert tdb.poll() is None, f"tdb exited:\n{term.text()[-2000:]}"
+            return term.text(), None
         detached = b"d" in keys.lower() and keys.lower().rfind(b"d") > keys.lower().find(b"q")
-        if detached and (stdin_lines or interrupt_after is not None):
+        if detached and on_detached is not None:
+            assert term.wait_for("tdb: detached", deadline, tdb), term.text()[-2000:]
+            on_detached(term, tdb, family)
+        elif detached and (stdin_lines or interrupt_after is not None):
             assert term.wait_for("tdb: detached", deadline, tdb), term.text()[-2000:]
             for line in stdin_lines:
                 term.send(line.encode() + b"\n", settle=0.3)
@@ -133,7 +159,7 @@ def run_detached(
             pass
         return term.text(), tdb.returncode
     finally:
-        os.close(master)
+        term.close()
         everyone = family + _tree(tdb.pid)
         if tdb.poll() is not None:
             # tdb is gone: whatever it started should follow it promptly.

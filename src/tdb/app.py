@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+from collections import deque
 from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -272,7 +273,7 @@ class TdbApp(_AppMessageRoutes, App):
         self.event_switch = SwappableEventHandler(self._event_handler)
         # Set by the detach flow; read by the CLI after the app exits.
         self.run_detached = False
-        self.program_output: list[tuple[str, str]] = []
+        self.program_output: deque[tuple[str, str]] = deque()
         self.program_output_truncated = False
         self._program_output_size = 0
 
@@ -2135,7 +2136,7 @@ class TdbApp(_AppMessageRoutes, App):
         while self._program_output_size > self._PROGRAM_OUTPUT_CAP and (
             self.program_output
         ):
-            dropped, _ = self.program_output.pop(0)
+            dropped, _ = self.program_output.popleft()
             self._program_output_size -= len(dropped)
             self.program_output_truncated = True
 
