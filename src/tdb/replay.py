@@ -24,6 +24,10 @@ class Recording:
     records: list[dict]
 
 
+# Actions the TUI records that are deliberately not RPC actions. The
+# headless replayer handles each one explicitly (see run_replay).
+TUI_ONLY_ACTIONS = frozenset({"detach"})
+
 _LAUNCH_REQUIRED = ("language", "program", "cwd")
 _ATTACH_REQUIRED = ("language", "host", "port")
 
@@ -31,7 +35,7 @@ _ATTACH_REQUIRED = ("language", "host", "port")
 def load_recording(path: str) -> Recording:
     from tdb.server.handlers import RpcHandlers
 
-    known_actions = set(RpcHandlers.ACTIONS)
+    known_actions = set(RpcHandlers.ACTIONS) | TUI_ONLY_ACTIONS
     lines = Path(path).read_text(encoding="utf-8").splitlines()
     if not lines or not lines[0].strip():
         raise RecordingError(f"{path}: empty file (not a tdb recording)")
@@ -177,7 +181,10 @@ async def run_replay(
             if rec["action"] in BLOCKING_ACTIONS and not params:
                 params = [replay_timeout]
             try:
-                resp = await table[rec["action"]](params)
+                # A recorded detach ends the session exactly as quit does:
+                # replay has no live program to hand over.
+                action = "quit" if rec["action"] == "detach" else rec["action"]
+                resp = await table[action](params)
             except Exception as e:
                 # A handler exception (e.g. action_restart hitting an
                 # attach controller's empty _launch_params) must not abort
@@ -190,7 +197,7 @@ async def run_replay(
             _print_command(echo, rec, resp.success, resp.value)
             if not resp.success:
                 errors += 1
-            if rec["action"] == "quit":
+            if rec["action"] in ("quit", "detach"):
                 saw_quit = True
             # Any debuggee output emitted between this drain and process
             # exit/replay end (e.g. right after `quit`, or after the loop's
@@ -200,6 +207,8 @@ async def run_replay(
             pending = handler.drain_output()
             if pending:
                 _print_program_output(echo, pending)
+            if rec["action"] == "detach":
+                break
     finally:
         if not saw_quit:
             try:

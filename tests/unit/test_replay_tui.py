@@ -1,6 +1,7 @@
 """ReplayDriver feeds a recording through the TUI's own gesture handlers."""
 
 import asyncio
+import json
 
 import pytest
 
@@ -538,13 +539,41 @@ def _recorded_action_names() -> set[str]:
 
 
 def test_every_recorded_action_is_replayable_in_both_replayers():
-    """Recorder/replay action contract: what the TUI records, both the
-    TUI replay driver and the headless (RPC) replay must accept."""
+    """Recorder/replay action contract: what the TUI records, the TUI
+    replay driver must accept, and the headless replay must accept as an
+    RPC action or as a TUI-only action it handles explicitly."""
+    from tdb.replay import TUI_ONLY_ACTIONS
     from tdb.replay_tui import REPLAYABLE_ACTIONS
     from tdb.server.handlers import RpcHandlers
 
     recorded = _recorded_action_names()
     assert {"pause", "set_breakpoint", "next", "stack_up"} <= recorded  # sanity
     assert recorded - REPLAYABLE_ACTIONS == set()
-    # "detach" is TUI-only by design (never exposed over RPC/MCP).
-    assert recorded - {"detach"} - set(RpcHandlers.ACTIONS) == set()
+    assert recorded - set(RpcHandlers.ACTIONS) - TUI_ONLY_ACTIONS == set()
+    # TUI-only actions are never exposed over RPC/MCP.
+    assert not TUI_ONLY_ACTIONS & set(RpcHandlers.ACTIONS)
+
+
+async def test_replay_tui_detach_quits_app(app_pilot, monkeypatch, tmp_path):
+    from tdb.replay import load_recording
+
+    app, pilot = app_pilot
+
+    async def fake_stop():
+        return None
+
+    monkeypatch.setattr(app.controller, "stop", fake_stop)
+    path = tmp_path / "rec.jsonl"
+    path.write_text(
+        json.dumps(HEADER)
+        + "\n"
+        + '{"t": 1, "action": "detach", "params": []}\n'
+        + '{"t": 2, "action": "evaluate", "params": ["never"]}\n'
+    )
+    # Loaded through load_recording, so the loader must accept "detach".
+    driver = make_driver(load_recording(str(path)))
+    assert await driver.run(app) == 0
+    await pilot.pause()
+    assert app._exit
+    assert len(driver.transcript) == 1
+    assert "detach" in driver.transcript[0] and "ok: detach" in driver.transcript[0]

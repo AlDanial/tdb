@@ -93,3 +93,47 @@ def test_attach_header_requires_host_port(tmp_path):
     )
     with pytest.raises(RecordingError, match="port"):
         load_recording(write(tmp_path, attach))
+
+
+def test_loads_recording_with_detach(tmp_path):
+    path = write(tmp_path, HEADER, '{"t": 1, "action": "detach", "params": []}')
+    assert [r["action"] for r in load_recording(path).records] == ["detach"]
+
+
+def test_detach_is_not_an_rpc_action():
+    from tdb.server.handlers import RpcHandlers
+
+    assert "detach" not in RpcHandlers.ACTIONS
+
+
+async def test_replay_detach_ends_session_like_quit(tmp_path, monkeypatch):
+    import tdb.replay as replay
+    import tdb.server.runner as runner
+
+    stopped = []
+
+    class FakeController:
+        async def stop(self):
+            stopped.append(True)
+
+    class FakeHandler:
+        def drain_output(self):
+            return ""
+
+    async def fake_setup(**kw):
+        return FakeController(), FakeHandler()
+
+    monkeypatch.setattr(runner, "setup_headless_session", fake_setup)
+    monkeypatch.setattr(replay, "profile_from_header", lambda h: None)
+    path = write(
+        tmp_path,
+        HEADER,
+        '{"t": 1, "action": "detach", "params": []}',
+        '{"t": 2, "action": "evaluate", "params": ["never"]}',
+    )
+    lines = []
+    errors = await replay.run_replay(load_recording(path), echo=lines.append)
+    assert errors == 0
+    assert stopped == [True]  # ended once (via the quit handler), no relay
+    assert not any("never" in ln for ln in lines)
+    assert any("ok:" in ln for ln in lines)
