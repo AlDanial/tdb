@@ -171,3 +171,18 @@ async def test_interrupt_never_raises(monkeypatch):
 
     monkeypatch.setattr(os, "kill", boom)
     assert await ctrl.interrupt_debuggee() is False
+
+
+async def test_strip_stops_pending_run_to_cursor_does_not_rearm_bps():
+    ctrl, fake, _ = _make()
+    child = _FakeDAP("child")
+    ctrl._child_clients[100] = child
+    ctrl.state.breakpoints["/a.py"] = [
+        SourceBreakpoint(line=1),
+        SourceBreakpoint(line=9),  # temp run-to-cursor bp
+    ]
+    ctrl._run_to_cursor_cleanup = ("/a.py", 9)
+    await ctrl.strip_stops()
+    for client in (fake, child):
+        sent = [c for c in client.calls_to("setBreakpoints") if c[1] == "/a.py"]
+        assert sent and sent[-1] == ("setBreakpoints", "/a.py", ())

@@ -1160,6 +1160,9 @@ class DebugController:
         if self.state.is_terminated:
             return
         clients: list[DAPClient] = [self.client, *self._child_clients.values()]
+        # First: it re-sends the remaining breakpoints for its source, which
+        # must not happen after (and so undo) the clearing below.
+        await self._best_effort("run-to-cursor cleanup", self.cleanup_run_to_cursor())
         for client in clients:
             for source_path in list(self.state.breakpoints):
                 await self._best_effort(
@@ -1171,7 +1174,6 @@ class DebugController:
             await self._best_effort(
                 "setExceptionBreakpoints", client.set_exception_breakpoints([])
             )
-        await self._best_effort("run-to-cursor cleanup", self.cleanup_run_to_cursor())
         for client in clients:
             for cmd in self.profile.adapter.detach_prep_commands():
                 await self._best_effort(
