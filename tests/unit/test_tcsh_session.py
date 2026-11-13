@@ -2956,3 +2956,63 @@ async def test_evaluate_drops_cached_variables_so_same_stop_reads_are_fresh(
         assert after["newvar"] == "42"
     finally:
         await session.terminate()
+
+
+def _signalling_session(
+    tmp_path: Path, basic_program: Path, monkeypatch, groups: set[int], killed
+) -> DebugSession:
+    session = DebugSession(
+        launch_config(basic_program, Path("/bin/sh")), collecting_sink([])
+    )
+
+    class _Proc:
+        returncode = None
+
+    session.process = _Proc()  # type: ignore[assignment]
+    session._process_group_id = 4_000_001
+    monkeypatch.setattr(session, "_owned_process_group_ids", lambda: set(groups))
+    monkeypatch.setattr("tdb.adapters.tcsh.session.os.killpg", killed)
+    return session
+
+
+def test_send_sigint_terminal_mode_refuses(tmp_path, basic_program, monkeypatch):
+    session = DebugSession(
+        launch_config(basic_program, Path("/bin/sh"), external_terminal=True),
+        collecting_sink([]),
+    )
+    session._process_group_id = 4_000_001
+    called: list[int] = []
+    monkeypatch.setattr(
+        "tdb.adapters.tcsh.session.os.killpg", lambda g, s: called.append(g)
+    )
+    with pytest.raises(InvalidStateError, match="own terminal"):
+        session.send_sigint()
+    assert called == []
+
+
+def test_send_sigint_survives_a_vanished_group(tmp_path, basic_program, monkeypatch):
+    hits: list[int] = []
+
+    def killpg(group: int, sig: int) -> None:
+        if group == 4_000_002:
+            raise ProcessLookupError
+        hits.append(group)
+
+    session = _signalling_session(
+        tmp_path, basic_program, monkeypatch, {4_000_001, 4_000_002, 4_000_003}, killpg
+    )
+    session.send_sigint()  # the guardian's own group 4_000_001 is excluded
+    assert hits == [4_000_003]
+
+
+def test_send_sigint_errors_when_no_group_is_signalled(
+    tmp_path, basic_program, monkeypatch
+):
+    def killpg(group: int, sig: int) -> None:
+        raise ProcessLookupError
+
+    session = _signalling_session(
+        tmp_path, basic_program, monkeypatch, {4_000_002, 4_000_003}, killpg
+    )
+    with pytest.raises(InvalidStateError, match="cannot signal"):
+        session.send_sigint()
