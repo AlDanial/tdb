@@ -25,15 +25,21 @@ class FakeController:
         self.written: list[str] = []
         self.stdin_closed = False
         self.write_error: Exception | None = None
+        self.continue_error: Exception | None = None
+        self.interrupt_error: Exception | None = None
 
     async def continue_(self):
         self.continues += 1
+        if self.continue_error:
+            raise self.continue_error
 
     async def stop(self):
         self.stops += 1
 
     async def interrupt_debuggee(self):
         self.interrupts += 1
+        if self.interrupt_error:
+            raise self.interrupt_error
         return self.interrupt_result
 
     async def write_stdin(self, text):
@@ -223,3 +229,60 @@ async def test_signal_handlers_restored(ctl, console):
     console.on_exited(0)
     await asyncio.wait_for(task, 5)
     assert {s: signal.getsignal(s) for s in before} == before
+
+
+async def test_continue_failure_stops_and_returns_1(ctl, console):
+    ctl.continue_error = RuntimeError("boom")
+    console.on_stopped(1, "breakpoint")
+    assert await _run(ctl, console) == 1
+    assert ctl.stops == 1
+
+
+@posix
+async def test_interrupt_failure_stops_and_returns_130(ctl, console):
+    ctl.interrupt_error = RuntimeError("boom")
+    original = signal.getsignal(signal.SIGINT)
+    task = asyncio.create_task(relay(ctl, console))
+    try:
+        await _signal_when_installed(signal.SIGINT, original)
+        assert await asyncio.wait_for(task, 5) == 130
+        assert ctl.stops == 1
+    finally:
+        if not task.done():
+            task.cancel()
+        signal.signal(signal.SIGINT, original)
+
+
+@posix
+def test_no_abort_at_shutdown_with_open_stdin():
+    """A reader still blocked on a held-open stdin must not abort Python."""
+    import subprocess
+    import sys
+    import textwrap
+
+    code = textwrap.dedent("""
+        import asyncio, sys
+        sys.path.insert(0, %r)
+        from tests.unit.test_detach_relay import FakeController
+        from tdb.detach_relay import relay
+        from tdb.run_mode import ConsoleRunHandler
+
+        async def main():
+            ctl = FakeController(); ctl.supports_stdin = True
+            con = ConsoleRunHandler()
+            asyncio.get_running_loop().call_later(0.3, con.on_exited, 5)
+            return await relay(ctl, con, install_signals=False)
+
+        sys.exit(asyncio.run(main()))
+    """) % os.getcwd()
+    r, w = os.pipe()
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-c", code], stdin=r, capture_output=True, timeout=30,
+            cwd=os.getcwd(),
+        )
+    finally:
+        os.close(r)
+        os.close(w)
+    assert proc.returncode == 5, proc.stderr
+    assert proc.stderr == b""

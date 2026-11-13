@@ -57,10 +57,21 @@ def _start_stdin_reader(
         except RuntimeError:  # loop already closed
             pass
 
+    # os.read on the raw fd never takes the BufferedReader lock, so a read
+    # still blocked at interpreter shutdown cannot abort Python. Objects
+    # without a real fd (BytesIO in tests) fall back to read1.
+    try:
+        fd: int | None = stdin.fileno()
+    except (OSError, ValueError, AttributeError):
+        fd = None
+
     def reader() -> None:
         while True:
             try:
-                chunk = stdin.read1(_READ_SIZE)  # type: ignore[attr-defined]
+                if fd is not None:
+                    chunk = os.read(fd, _READ_SIZE)
+                else:
+                    chunk = stdin.read1(_READ_SIZE)  # type: ignore[attr-defined]
             except (OSError, ValueError):
                 chunk = b""
             if not chunk:
@@ -115,6 +126,10 @@ def _restore_signals(loop: asyncio.AbstractEventLoop, undo: "list[tuple[int, Any
             if os.name != "nt":
                 loop.remove_signal_handler(signum)
             signal.signal(signum, previous if previous is not None else signal.SIG_DFL)
+
+
+def _is_terminated(controller: Any) -> bool:
+    return bool(getattr(getattr(controller, "state", None), "is_terminated", False))
 
 
 async def _cleanup(controller: Any) -> None:
@@ -172,7 +187,12 @@ async def relay(
             signums = [t.result() for t in done if waiters[t] == "signal"]
             for signum in signums:
                 if signum == signal.SIGINT:
-                    if not await controller.interrupt_debuggee():
+                    try:
+                        delivered = await controller.interrupt_debuggee()
+                    except Exception:
+                        log.debug("interrupt_debuggee failed", exc_info=True)
+                        delivered = False
+                    if not delivered:
                         await _cleanup(controller)
                         return INTERRUPT_EXIT
                 else:
@@ -182,7 +202,15 @@ async def relay(
                 continue
             if console.stopped.is_set():
                 console.stopped.clear()
-                await controller.continue_()
+                try:
+                    await controller.continue_()
+                except Exception:
+                    log.debug("continue_ failed", exc_info=True)
+                    if console.exited.is_set() or _is_terminated(controller):
+                        continue
+                    # A program we cannot resume must not be left frozen.
+                    await _cleanup(controller)
+                    return 1
     finally:
         if forwarder is not None:
             forwarder.cancel()
