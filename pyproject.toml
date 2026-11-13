@@ -111,3 +111,8 @@
   ]
   show_missing = true
   skip_covered = false
+
+[dependency-groups]
+dev = [
+    "pytest-xdist>=3.8.0",
+]
