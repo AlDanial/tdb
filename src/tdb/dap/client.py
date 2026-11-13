@@ -561,6 +561,11 @@ class DAPClient:
         tcsh, ruby, powershell). `eof=True` closes that pipe."""
         await self._send("tdbStdin", {"eof": True} if eof else {"text": text or ""})
 
+    async def send_signal(self, name: str = "SIGINT") -> None:
+        """tdb-private `tdbSignal` request: ask a tdb-owned adapter to
+        deliver signal `name` (default SIGINT) to the debuggee it spawned."""
+        await self._send("tdbSignal", {"signal": name})
+
     async def attach(
         self,
         host: str = "127.0.0.1",

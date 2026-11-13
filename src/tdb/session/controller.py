@@ -5,7 +5,9 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import os
 import re
+import signal
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -66,6 +68,9 @@ class DebugController:
         # PipeLauncher when this session owns the debuggee's stdio
         # (debugpy launches without --terminal); see supports_stdin.
         self._pipe_launcher: PipeLauncher | None = None
+        # OS pid of the debuggee from the DAP `process` event; used by
+        # interrupt_debuggee for the "pid" route.
+        self._debuggee_pid: int | None = None
         self._launch_params: dict[str, Any] = {}
         # How an injected target was reached (Python pid attach), and
         # the signal that it got there.
@@ -267,6 +272,7 @@ class DebugController:
         self.client.on_event("output", self._on_output)
         self.client.on_event("initialized", self._on_initialized)
         self.client.on_event("breakpoint", self._on_breakpoint_event)
+        self.client.on_event("process", self._on_process)
         # Child process debugging: ChildProcessManager registers its
         # own debugpyAttach handler that fires _spawn_bg(_attach(...)).
         # This is a debugpy-proprietary mechanism (the `debugpyAttach`
@@ -1141,6 +1147,64 @@ class DebugController:
         if self.state.is_ready and not self.state.is_terminated:
             for source_path, bps in self.state.breakpoints.items():
                 await self._send_breakpoints(source_path, self._enabled_bps(bps))
+
+    def _on_process(self, event: Event) -> None:
+        pid = (event.body or {}).get("systemProcessId")
+        if isinstance(pid, int):
+            self._debuggee_pid = pid
+
+    async def strip_stops(self) -> None:
+        """Remove every stop condition from the live session (parent and
+        child clients) so the program can run free. `state.breakpoints`
+        is left intact. Each request is best-effort."""
+        if self.state.is_terminated:
+            return
+        clients: list[DAPClient] = [self.client, *self._child_clients.values()]
+        for client in clients:
+            for source_path in list(self.state.breakpoints):
+                await self._best_effort(
+                    "setBreakpoints", client.set_breakpoints(source_path, [])
+                )
+            await self._best_effort(
+                "setFunctionBreakpoints", client.set_function_breakpoints([])
+            )
+            await self._best_effort(
+                "setExceptionBreakpoints", client.set_exception_breakpoints([])
+            )
+        await self._best_effort("run-to-cursor cleanup", self.cleanup_run_to_cursor())
+        for client in clients:
+            for cmd in self.profile.adapter.detach_prep_commands():
+                await self._best_effort(
+                    f"detach prep {cmd!r}", client.evaluate(cmd, context="repl")
+                )
+
+    @staticmethod
+    async def _best_effort(what: str, awaitable: Any) -> None:
+        try:
+            await awaitable
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:  # DAPError, timeout, dead connection
+            log.warning("strip_stops: %s failed: %s", what, e)
+
+    async def interrupt_debuggee(self) -> bool:
+        """Deliver Ctrl-C to the debuggee. True if delivery was attempted
+        and did not fail; False when impossible. Never raises."""
+        try:
+            if self._pipe_launcher is not None:
+                return self._pipe_launcher.send_interrupt()
+            route = self.profile.adapter.quirks.interrupt_route
+            if route == "request":
+                await self.client.send_signal("SIGINT")
+                return True
+            if route == "pid" and self._debuggee_pid is not None:
+                os.kill(self._debuggee_pid, signal.SIGINT)
+                return True
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            log.warning("interrupt_debuggee failed: %s", e)
+        return False
 
     async def clear_all_breakpoints(self) -> None:
         """Remove all breakpoints from state and debugpy."""

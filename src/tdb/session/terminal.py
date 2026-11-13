@@ -228,6 +228,26 @@ class PipeLauncher:
             if text:
                 self._on_output(text, category)
 
+    def send_interrupt(self) -> bool:
+        """Deliver Ctrl-C to the debuggee: SIGINT on POSIX,
+        CTRL_BREAK_EVENT on Windows (it was spawned in its own process
+        group). False when there is no live process or delivery failed."""
+        proc = self._process
+        if proc is None or proc.returncode is not None:
+            return False
+        try:
+            if os.name == "nt":
+                import signal
+
+                proc.send_signal(signal.CTRL_BREAK_EVENT)  # type: ignore[attr-defined]
+            else:
+                import signal
+
+                proc.send_signal(signal.SIGINT)
+        except (ProcessLookupError, OSError):
+            return False
+        return True
+
     def write_stdin(self, text: str) -> None:
         """Feed `text` to the debuggee's stdin. Raises RuntimeError when
         there is no writable stdin (inherited, closed, or program gone)."""

@@ -675,6 +675,15 @@ async def test_send_stdin_text_and_eof(dap):
     assert reqs[1].arguments == {"eof": True}
 
 
+async def test_send_signal_sends_tdbSignal_request(dap):
+    client, adapter = dap
+    await client.send_signal("SIGINT")
+    await client.send_signal()
+    reqs = await adapter.wait_for_requests("tdbSignal", count=2)
+    assert reqs[0].arguments == {"signal": "SIGINT"}
+    assert reqs[1].arguments == {"signal": "SIGINT"}
+
+
 # --- Source-lookup priming before stackTrace ---------------------------
 #
 # Some gdb builds (RHEL 8) report no source location for a frame until a

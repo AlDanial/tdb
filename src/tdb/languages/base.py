@@ -53,6 +53,12 @@ class AdapterQuirks:
     # every adapter.)
     pre_arm_pause_on_attach: bool = False
 
+    # How run-detached delivers Ctrl-C to the debuggee when tdb did not
+    # spawn it on pipes itself. "request" -> tdb-owned adapters, via the
+    # tdb-private `tdbSignal` request; "pid" -> tdb signals the pid from
+    # the DAP `process` event; None -> no way to deliver one.
+    interrupt_route: str | None = None
+
     # True -> tdb spawns the adapter subprocess for attach too and sends
     # the DAP attach request through it (the adapter dials the debuggee).
     # False (debugpy) -> tdb connects straight to the remote DAP server.
@@ -185,6 +191,16 @@ class AdapterSpec:
         Attach adapters may need source-path configuration that DAP has
         no portable request for.  The controller runs these commands
         after `initialized` and before `setBreakpoints`.
+        """
+        return ()
+
+    def detach_prep_commands(self) -> tuple[str, ...]:
+        """Debugger console commands run when the user detaches (run
+        detached), after every DAP breakpoint has been cleared.
+
+        For adapters whose debugger keeps stop conditions of its own
+        (e.g. watchpoints, catchpoints) that DAP cannot clear.  Each is
+        sent best-effort via `evaluate` with context "repl".
         """
         return ()
 
