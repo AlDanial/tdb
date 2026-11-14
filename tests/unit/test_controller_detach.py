@@ -296,3 +296,14 @@ async def test_no_detach_prep_is_never_pending(monkeypatch):
     await ctrl.strip_stops()
     assert ctrl.detach_prep_pending is False
 
+
+async def test_interrupt_pid_route_on_windows_is_false(monkeypatch):
+    """On Windows os.kill(pid, SIGINT) is TerminateProcess: never use it."""
+    ctrl, _, _ = _make()
+    _set_adapter(monkeypatch, ctrl, route="pid")
+    ctrl._debuggee_pid = 4242
+    killed = []
+    monkeypatch.setattr(os, "kill", lambda pid, sig: killed.append((pid, sig)))
+    monkeypatch.setattr(os, "name", "nt")
+    assert await ctrl.interrupt_debuggee() is False
+    assert killed == []

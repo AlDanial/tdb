@@ -1333,7 +1333,9 @@ class DebugController:
                 await self.client.send_signal("SIGINT")
                 return True
             pid = self._debuggee_pid
-            if route == "pid" and pid is not None and pid > 1:
+            # Windows: os.kill(pid, SIGINT) is TerminateProcess, not an
+            # interrupt; report "impossible" so the documented fallback runs.
+            if route == "pid" and os.name != "nt" and pid is not None and pid > 1:
                 os.kill(pid, signal.SIGINT)
                 return True
         except asyncio.CancelledError:

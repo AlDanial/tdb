@@ -555,7 +555,9 @@ class BashSession:
                 if self._process.returncode is not None:
                     raise BashProtocolError("the script has already exited")
                 os.killpg(self._process.pid, signal.SIGINT)
-            elif self.debuggee_pid is not None:
+            elif self.debuggee_pid is not None and self.debuggee_pid > 1:
+                # Never 0 / 1: os.kill(0|1, ...) would hit tdb's own group
+                # or init.
                 os.kill(self.debuggee_pid, signal.SIGINT)
             else:
                 raise BashProtocolError("no debuggee to signal")
