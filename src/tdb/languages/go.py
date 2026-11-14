@@ -88,9 +88,7 @@ class DelveAdapter(AdapterSpec):
         if attach_pid is not None:
             # Local pid attach spawns dlv locally (like launch) and
             # sends the attach request through it.
-            self.quirks = AdapterQuirks(
-                attach_via_adapter=True, interrupt_route="pid"
-            )
+            self.quirks = AdapterQuirks(attach_via_adapter=True, interrupt_route="pid")
 
     def command(self) -> list[str]:
         exe = self._executable or shutil.which("dlv")

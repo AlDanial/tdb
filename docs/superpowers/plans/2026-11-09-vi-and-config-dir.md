@@ -52,30 +52,37 @@
 def test_config_dir_env_override(monkeypatch, tmp_path):
     monkeypatch.setenv("TDB_CONFIG_DIR", str(tmp_path / "cfg"))
     from tdb import persist
+
     assert persist.config_dir() == tmp_path / "cfg"
     assert persist.config_file() == tmp_path / "cfg" / "config.json"
     assert persist.state_file() == tmp_path / "cfg" / "breakpoints.json"
     assert persist.config_dir_overridden() is True
+
 
 def test_config_dir_env_override_windows(monkeypatch, tmp_path):
     monkeypatch.setattr(sys, "platform", "win32")
     monkeypatch.setenv("APPDATA", str(tmp_path / "AppData"))
     monkeypatch.setenv("TDB_CONFIG_DIR", str(tmp_path / "cfg"))
     from tdb import persist
-    assert persist.config_dir() == tmp_path / "cfg"   # APPDATA bypassed
+
+    assert persist.config_dir() == tmp_path / "cfg"  # APPDATA bypassed
+
 
 def test_empty_env_means_default(monkeypatch, tmp_path):
     monkeypatch.setattr(sys, "platform", "linux")
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("TDB_CONFIG_DIR", "")
     from tdb import persist
+
     assert persist.config_dir() == tmp_path / ".config" / "tdb"
     assert persist.config_dir_overridden() is False
+
 
 def test_log_file_follows_config_dir(monkeypatch, tmp_path):
     monkeypatch.delenv("TDB_LOG_DIR", raising=False)
     monkeypatch.setenv("TDB_CONFIG_DIR", str(tmp_path))
     from tdb import persist
+
     assert persist.log_file() == tmp_path / "tdb.log"
 ```
 
@@ -200,28 +207,42 @@ def test_sets_unset_vars(tmp_path):
     assert env["GOCACHE"] == str(tmp_path / "tools" / "go" / "build")
     assert env["XDG_CACHE_HOME"] == str(tmp_path / "tools" / "cache")
 
+
 def test_user_value_wins(tmp_path):
     env = {"GOCACHE": "/mine", "XDG_CACHE_HOME": "/c"}
     apply_tool_redirects(tmp_path, env)
     assert env["GOCACHE"] == "/mine" and env["XDG_CACHE_HOME"] == "/c"
 
+
 def test_never_touches_lookup_locations(tmp_path):
     env = {}
     apply_tool_redirects(tmp_path, env)
-    for k in ("HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "GOROOT", "GOPATH",
-              "CARGO_HOME", "RUSTUP_HOME", "GEM_HOME", "OPAMROOT"):
+    for k in (
+        "HOME",
+        "XDG_CONFIG_HOME",
+        "XDG_DATA_HOME",
+        "GOROOT",
+        "GOPATH",
+        "CARGO_HOME",
+        "RUSTUP_HOME",
+        "GEM_HOME",
+        "OPAMROOT",
+    ):
         assert k not in env
+
 
 def test_gomodcache_skipped_when_gopath_set(tmp_path):
     env = {"GOPATH": "/g"}
     apply_tool_redirects(tmp_path, env)
     assert "GOMODCACHE" not in env
 
+
 def test_not_applied_without_override(monkeypatch):
     monkeypatch.delenv("TDB_CONFIG_DIR", raising=False)
     monkeypatch.delenv("GOCACHE", raising=False)
     apply_config_dir(None)
     assert "GOCACHE" not in os.environ
+
 
 def test_applied_with_override(monkeypatch, tmp_path):
     monkeypatch.delenv("GOCACHE", raising=False)

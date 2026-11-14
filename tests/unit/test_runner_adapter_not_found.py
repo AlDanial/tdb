@@ -65,6 +65,7 @@ async def test_run_headless_prints_hint_and_exits_on_adapter_not_found(capsys):
         await run_headless(
             program="does_not_matter.bin",
             profile=_missing_adapter_profile(),
+            port=0,
         )
     assert exc_info.value.code == 2
     captured = capsys.readouterr()

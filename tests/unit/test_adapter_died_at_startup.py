@@ -89,7 +89,7 @@ async def test_tui_surfaces_adapter_death_and_exits(argv):
 @pytest.mark.parametrize("argv", SPEEDS, ids=["slow", "fast"][: len(SPEEDS)])
 async def test_run_headless_prints_adapter_death_and_exits(argv, capsys):
     with pytest.raises(SystemExit) as exc_info:
-        await run_headless(program="prog", profile=_dying_profile(argv))
+        await run_headless(program="prog", profile=_dying_profile(argv), port=0)
     assert exc_info.value.code == 2
     err = capsys.readouterr().err
     assert GDB_ERROR in err and "install GDB >= 14" in err

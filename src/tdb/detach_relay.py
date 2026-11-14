@@ -346,7 +346,9 @@ async def run_after_tui(app: Any, program: str) -> int:
 
     controller = app.controller
     target = getattr(app.event_switch, "target", None)
-    console = target if isinstance(target, DetachHandoffHandler) else DetachHandoffHandler()
+    console = (
+        target if isinstance(target, DetachHandoffHandler) else DetachHandoffHandler()
+    )
     async with stop_session_on_error(controller):
         state = controller.state
         if state.is_terminated:
@@ -397,7 +399,9 @@ async def run_after_tui(app: Any, program: str) -> int:
             # The program ended before the handover: no notice, just its
             # exit code.
             return await relay(controller, console)
-        sys.stderr.write(f"tdb: detached \u2014 {program} running; Ctrl-C interrupts it\n")
+        sys.stderr.write(
+            f"tdb: detached \u2014 {program} running; Ctrl-C interrupts it\n"
+        )
         sys.stderr.flush()
 
         if not state.is_running:

@@ -76,6 +76,7 @@ def test_cli_passes_sources_to_real_app(source_args, monkeypatch, mode):
         argv += ["--post-mortem", str(snapshot)]
     args = parse_args(argv)
     apps = []
+
     async def run_async(self, *args, **kwargs):
         apps.append(self)
 

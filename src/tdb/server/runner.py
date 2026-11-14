@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import socket
 import sys
 from pathlib import Path
 from typing import Any, Awaitable, TYPE_CHECKING
@@ -193,20 +194,36 @@ async def run_headless(
     forwarded to debugpy for bidirectional path translation — see
     `dap/client.py::attach`.
     """
-    controller, handler = await setup_headless_session(
-        program,
-        args=args,
-        cwd=cwd,
-        stop_on_entry=stop_on_entry,
-        just_my_code=just_my_code,
-        python=python,
-        cli_breakpoints=cli_breakpoints,
-        attach_host=attach_host,
-        attach_port=attach_port,
-        path_mappings=path_mappings,
-        profile=profile,
-        pre_arm_pause=pre_arm_pause,
-    )
+    # Claim the port first. Session setup can take seconds (a pid attach
+    # injects into the target) and opens ephemeral ports of its own, so a
+    # port bound only afterwards can be lost with the target already
+    # injected.
+    try:
+        listener = socket.create_server((host, port))
+    except OSError as exc:
+        print(
+            f"tdb: cannot listen on {host}:{port} — {exc.strerror or exc}",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    try:
+        controller, handler = await setup_headless_session(
+            program,
+            args=args,
+            cwd=cwd,
+            stop_on_entry=stop_on_entry,
+            just_my_code=just_my_code,
+            python=python,
+            cli_breakpoints=cli_breakpoints,
+            attach_host=attach_host,
+            attach_port=attach_port,
+            path_mappings=path_mappings,
+            profile=profile,
+            pre_arm_pause=pre_arm_pause,
+        )
+    except BaseException:
+        listener.close()
+        raise
 
     # Create and start the FastAPI server
     handlers = RpcHandlers(ControllerRef(controller), handler)
@@ -228,8 +245,9 @@ async def run_headless(
         print(f"Debugging: {program}")
 
     try:
-        await server.serve()
+        await server.serve(sockets=[listener])
     finally:
+        listener.close()
         auth.remove_token_file(token_file)
 
     # Clean up
