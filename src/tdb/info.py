@@ -88,11 +88,22 @@ def _config_dir_row() -> str:
     return row("config dir", f"{config_dir()}{note}")
 
 
-def _log_row(path: Path) -> str:
+def _log_row(path: Path, setting: bool | str = "DEBUG") -> str:
+    """``log file : <path> [size]``, noting config.json's ``logging``
+    key when it turns the log off or sets a level other than DEBUG."""
+    import logging
+
+    from tdb.persist import log_level
+
     try:
         suffix = f"[{size_label(path.stat().st_size)}]"
     except OSError:
         suffix = "[not found]"
+    level = log_level(setting)
+    if level is None:
+        suffix += " (disabled by config)"
+    elif level != logging.DEBUG:
+        suffix += f" (level {logging.getLevelName(level)})"
     return row("log file", f"{path} {suffix}")
 
 
@@ -222,7 +233,8 @@ def info_text() -> str:
     from tdb.app_helpers import about_text, install_dir
     from tdb.persist import config_file, load_config, log_file, state_file
 
-    adapters = load_config().adapters
+    config = load_config()
+    adapters = config.adapters
 
     sections: list[tuple[str, list[str]]] = [
         (
@@ -233,7 +245,7 @@ def info_text() -> str:
                 _config_dir_row(),
                 row("config file", config_file()),
                 row("breakpoints file", state_file()),
-                _log_row(log_file()),
+                _log_row(log_file(), config.logging),
                 row("examples dir", examples_dir()),
                 _mcp_row(),
             ],

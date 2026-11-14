@@ -185,6 +185,12 @@ class TdbConfig:
     # (e.g. {"cpp": "gdb"}).
     default_adapters: dict[str, str] = field(default_factory=dict)
 
+    # tdb.log: false writes no log file; true or a level name ("DEBUG",
+    # "INFO", "WARNING"/"WARN", "ERROR", "CRITICAL", any case) writes it
+    # at that level. Kept as the user wrote it so a save round-trips it;
+    # ``log_level`` turns it into a logging level.
+    logging: bool | str = "DEBUG"
+
     @classmethod
     def from_dict(cls, data: dict) -> TdbConfig:
         """Build a TdbConfig from a raw dict (typically the parsed JSON).
@@ -214,10 +220,39 @@ class TdbConfig:
             for k, v in default_adapters.items()
         ):
             kwargs["default_adapters"] = default_adapters
+        if "logging" in data and _valid_logging_setting(data["logging"]):
+            kwargs["logging"] = data["logging"]
         return cls(**kwargs)
 
     def to_dict(self) -> dict:
         return {f.name: getattr(self, f.name) for f in fields(self)}
+
+
+_LOG_LEVELS = {
+    "DEBUG": logging.DEBUG,
+    "INFO": logging.INFO,
+    "WARNING": logging.WARNING,
+    "WARN": logging.WARNING,
+    "ERROR": logging.ERROR,
+    "CRITICAL": logging.CRITICAL,
+}
+
+
+def _valid_logging_setting(value: object) -> bool:
+    return isinstance(value, bool) or (
+        isinstance(value, str) and value.upper() in _LOG_LEVELS
+    )
+
+
+def log_level(setting: bool | str) -> int | None:
+    """The logging level for a ``TdbConfig.logging`` value, or None when
+    the log file is disabled (``false``). ``true`` means DEBUG, the
+    default; an unrecognized value also falls back to DEBUG."""
+    if setting is False:
+        return None
+    if isinstance(setting, str):
+        return _LOG_LEVELS.get(setting.upper(), logging.DEBUG)
+    return logging.DEBUG
 
 
 def load_config() -> TdbConfig:
