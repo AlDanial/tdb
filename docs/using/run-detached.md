@@ -48,33 +48,45 @@ the same as in the TUI's console (see [Console Output and Input](console.md)).
 ## Ctrl-C
 
 After detaching, `Ctrl-C` goes to the program and never reopens the
-debugger. `tdb` then exits with status 130.
+debugger. If the program dies of it, or `Ctrl-C` ends it (right-hand
+column), `tdb` exits with status 130; if the program's own handler runs,
+`tdb` exits with whatever code the program then exits with.
 
 | Ctrl-C is delivered to the program (its own handler runs, otherwise it dies) | Ctrl-C ends the program (its handlers do not run) |
 |---|---|
 | Python, Bash, Perl, tcsh, Ruby | PowerShell |
 | C, C++, Rust and native OCaml, under gdb or lldb-dap | bytecode OCaml (ocamlearlybird) |
-| Go, under dlv | Any session on Windows where delivery is unavailable (Perl on Windows) |
-| | tcsh and Ruby `--terminal` sessions: interrupt the script in its own terminal instead |
+| Go, under dlv | Every language on Windows |
+| | `--terminal` sessions other than Bash, Perl and lldb-dap (see below) |
 
 Caveats:
 
-- **Perl:** if you press `d` while the script is already running and blocked
-  reading stdin, `Ctrl-C` takes effect only once you enter a line. Pressing
-  `d` while the program is stopped is unaffected.
+- **`d` while the program is running:** this works like `d` at a stop,
+  with one exception. **Perl:** if the script is blocked reading stdin
+  when you press `d`, `Ctrl-C` takes effect only once you enter a line.
+  Pressing `d` while the program is stopped is unaffected.
 - **gdb and lldb-dap** report a program killed by SIGINT as exit 0 (gdb) or
   2 (lldb-dap). So `tdb` reports 130 when the program exits with that code
   within 2 seconds of a `Ctrl-C`. A program that catches `Ctrl-C` and
   deliberately exits with 0 (gdb) or 2 (lldb-dap) that quickly is also
-  reported as 130.
+  reported as 130, and a program that dies of SIGINT more than 2 seconds
+  after the `Ctrl-C` is reported as exit 0 (gdb) or 2 (lldb-dap).
+- **Windows:** on Windows, `Ctrl-C` after detaching ends the program for
+  every language (the right-hand column applies). Run detached has not
+  been verified on Windows.
 - **Python:** an exit status of 254 after a delivered `Ctrl-C` is reported
   as 130.
 
 ## `--terminal` and attach sessions
 
 - With [`--terminal`](external-terminal.md), the program does not survive the
-  debugger disconnecting, so `d` leaves `tdb` attached, silently, until the
-  program exits.
+  debugger disconnecting, so `d` leaves `tdb` attached until the program
+  exits, and prints
+  `tdb: detached — my_program keeps running in its terminal; tdb waits here until it exits`.
+  To interrupt the program, press `Ctrl-C` in its own terminal. `Ctrl-C`
+  in `tdb`'s terminal reaches the program only for Bash, Perl and
+  lldb-dap (C, C++, Rust and native OCaml); for Python, tcsh and Ruby it
+  ends the program.
 - With [remote attach](remote-attach.md) or `tdb -a PID`, `d` removes the
   stops, resumes the program, and really disconnects. `tdb` prints
   `tdb: detached — my_program keeps running` and exits 0. If the disconnect
