@@ -79,6 +79,10 @@ class DebugController:
         # OS pid of the debuggee from the DAP `process` event; used by
         # interrupt_debuggee for the "pid" route.
         self._debuggee_pid: int | None = None
+        # Detach prep commands strip_stops could not install (gdb refuses
+        # `evaluate` while the inferior runs): (client, command) pairs,
+        # retried by run_pending_detach_prep at the next stop.
+        self._pending_detach_prep: list[tuple[DAPClient, str]] = []
         self._launch_params: dict[str, Any] = {}
         # How an injected target was reached (Python pid attach), and
         # the signal that it got there.
@@ -1259,22 +1263,46 @@ class DebugController:
             await self._best_effort(
                 "setExceptionBreakpoints", client.set_exception_breakpoints([])
             )
-        for client in clients:
-            for cmd in self.profile.adapter.detach_prep_commands():
-                await self._best_effort(
-                    f"detach prep {cmd!r}", client.evaluate(cmd, context="repl")
-                )
+        self._pending_detach_prep = [
+            (client, cmd)
+            for client in clients
+            for cmd in self.profile.adapter.detach_prep_commands()
+        ]
+        await self.run_pending_detach_prep()
+
+    @property
+    def detach_prep_pending(self) -> bool:
+        """Some detach prep command (e.g. gdb's SIGINT pass-through) is not
+        installed yet: the adapter refused it while the program ran."""
+        return bool(self._pending_detach_prep)
+
+    async def run_pending_detach_prep(self) -> bool:
+        """Send the detach prep commands not yet installed; call it while
+        the program is stopped. True once none remain pending."""
+        still: list[tuple[DAPClient, str]] = []
+        for client, cmd in self._pending_detach_prep:
+            if not await self._best_effort(
+                f"detach prep {cmd!r}", client.evaluate(cmd, context="repl")
+            ):
+                still.append((client, cmd))
+        self._pending_detach_prep = still
+        return not still
 
     @staticmethod
-    async def _best_effort(what: str, awaitable: Any) -> None:
+    async def _best_effort(what: str, awaitable: Any) -> bool:
+        """Await one strip/prep request; False (logged) if it failed."""
         try:
             await asyncio.wait_for(awaitable, STRIP_REQUEST_TIMEOUT)
+            return True
         except asyncio.CancelledError:
             raise
         except asyncio.TimeoutError:
-            log.warning("strip_stops: %s timed out after %ss", what, STRIP_REQUEST_TIMEOUT)
+            log.warning(
+                "strip_stops: %s timed out after %ss", what, STRIP_REQUEST_TIMEOUT
+            )
         except Exception as e:  # DAPError, dead connection
             log.warning("strip_stops: %s failed: %s", what, e)
+        return False
 
     async def interrupt_debuggee(self) -> bool:
         """Deliver Ctrl-C to the debuggee. True if delivery was attempted

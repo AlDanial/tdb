@@ -26,6 +26,12 @@ from .conftest import SRC_DIR
 
 _ANSI = re.compile(r"\x1b\[[0-9;?]*[a-zA-Z]|\x1b[()][A-Z0-9]|\x1b[=>]")
 _KEY_DELAY = 0.4
+_ALT_SCREEN_EXIT = b"\x1b[?1049l"
+# Printed by every loop fixture once it is running free. After a `c` key
+# run_detached waits for it, so `q` `d` lands while the program runs.
+RUNNING_MARKER = "looping-now"
+# Keys: continue, then quit-detach while the program is running.
+CONTINUE_THEN_DETACH = b"cqd"
 
 
 def _tree(root: int) -> list[int]:
@@ -74,6 +80,11 @@ class _Pty:
 
     def text(self) -> str:
         return _ANSI.sub("", self.buf.decode("utf-8", errors="replace"))
+
+    def text_after_tui(self) -> str:
+        """What was written after the TUI left the alternate screen."""
+        _, _, tail = self.buf.rpartition(_ALT_SCREEN_EXIT)
+        return _ANSI.sub("", tail.decode("utf-8", errors="replace"))
 
     def wait_for(self, needle: str, deadline: float, proc: subprocess.Popen) -> bool:
         while time.monotonic() < deadline:
@@ -131,16 +142,26 @@ def run_detached(
     family: list[int] = []
     deadline = time.monotonic() + timeout
     try:
-        assert term.wait_for(entry, deadline, tdb), f"no entry stop:\n{term.text()[-2000:]}"
+        assert term.wait_for(entry, deadline, tdb), (
+            f"no entry stop:\n{term.text()[-2000:]}"
+        )
         family = _tree(tdb.pid)
         for key in keys:
             term.send(bytes([key]), settle=_KEY_DELAY)
+            if key == ord("c"):
+                # Continue: let the program really run before the next key.
+                assert term.wait_for(RUNNING_MARKER, deadline, tdb), (
+                    f"program not running after c:\n{term.text()[-2000:]}"
+                )
+                term.send(b"", settle=_KEY_DELAY)
             if on_key is not None:
                 on_key(bytes([key]), term, tdb, family)
         if not expect_exit:
             assert tdb.poll() is None, f"tdb exited:\n{term.text()[-2000:]}"
             return term.text(), None
-        detached = b"d" in keys.lower() and keys.lower().rfind(b"d") > keys.lower().find(b"q")
+        detached = b"d" in keys.lower() and keys.lower().rfind(
+            b"d"
+        ) > keys.lower().find(b"q")
         if detached and on_detached is not None:
             assert term.wait_for("tdb: detached", deadline, tdb), term.text()[-2000:]
             on_detached(term, tdb, family)
@@ -159,6 +180,7 @@ def run_detached(
             pass
         return term.text(), tdb.returncode
     finally:
+        after_tui[:] = [term.text_after_tui()]
         term.close()
         everyone = family + _tree(tdb.pid)
         if tdb.poll() is not None:
@@ -184,3 +206,7 @@ def _alive(pid: int) -> bool:
 # Processes from the last run_detached (seen under tdb at its entry stop)
 # that were still alive 5s after tdb exited.
 leftovers: list[int] = []
+
+# [text] the last run_detached wrote to the terminal after the TUI closed
+# (the replayed transcript, the detach notice, the relayed output).
+after_tui: list[str] = []

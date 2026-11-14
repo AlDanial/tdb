@@ -135,12 +135,18 @@ def _install_signals(
     return undo
 
 
-def _restore_signals(loop: asyncio.AbstractEventLoop, undo: "list[tuple[int, Any]]") -> None:
+def _restore_signals(
+    loop: asyncio.AbstractEventLoop, undo: "list[tuple[int, Any]]"
+) -> None:
     for signum, previous in undo:
         with contextlib.suppress(Exception):
             if os.name != "nt":
                 loop.remove_signal_handler(signum)
             signal.signal(signum, previous if previous is not None else signal.SIG_DFL)
+
+
+def _prep_pending(controller: Any) -> bool:
+    return getattr(controller, "detach_prep_pending", False) is True
 
 
 def _is_terminated(controller: Any) -> bool:
@@ -201,8 +207,13 @@ async def relay(
     forwarder: asyncio.Task | None = None
     interrupted = False
     interrupted_at: float | None = None
+    # Ctrl-C was delivered while the adapter's SIGINT pass-through was not
+    # installed yet: the adapter stops on it instead of passing it on.
+    interrupt_awaits_stop = False
     adapter = getattr(getattr(controller, "profile", None), "adapter", None)
-    death_codes = tuple(getattr(getattr(adapter, "quirks", None), "sigint_death_codes", ()))
+    death_codes = tuple(
+        getattr(getattr(adapter, "quirks", None), "sigint_death_codes", ())
+    )
     try:
         # Install handlers first so no signal arrives before they exist.
         if install_signals:
@@ -218,7 +229,11 @@ async def relay(
         while True:
             if console.exited.is_set():
                 await _cleanup(controller)
-                since = None if interrupted_at is None else time.monotonic() - interrupted_at
+                since = (
+                    None
+                    if interrupted_at is None
+                    else time.monotonic() - interrupted_at
+                )
                 return _exit_code(console, interrupted, death_codes, since)
             waiters = {
                 asyncio.ensure_future(console.exited.wait()): "exited",
@@ -248,6 +263,7 @@ async def relay(
                         return INTERRUPT_EXIT
                     interrupted = True
                     interrupted_at = time.monotonic()
+                    interrupt_awaits_stop = _prep_pending(controller)
                 else:
                     await _cleanup(controller)
                     return 128 + signum
@@ -262,6 +278,18 @@ async def relay(
                 return 1
             if console.stopped.is_set():
                 console.stopped.clear()
+                if _prep_pending(controller):
+                    # gdb refused the prep while the program ran; it is
+                    # stopped now, so install it before resuming. On resume
+                    # gdb then passes the pending SIGINT to the program.
+                    installed = await controller.run_pending_detach_prep()
+                    if not installed and interrupt_awaits_stop:
+                        # The adapter would swallow this Ctrl-C (and every
+                        # later one): end the program instead.
+                        log.warning("detach relay: SIGINT pass-through not installed")
+                        await _cleanup(controller)
+                        return INTERRUPT_EXIT
+                interrupt_awaits_stop = False
                 log.debug("detach relay: auto-continuing after a stop")
                 try:
                     await controller.continue_()
@@ -334,7 +362,9 @@ async def run_after_tui(app: Any, program: str) -> int:
             (sys.stderr if category == "stderr" else sys.stdout).write(text)
         sys.stdout.flush()
         sys.stderr.flush()
-        sys.stderr.write(f"tdb: detached \u2014 {program} running; Ctrl-C interrupts it\n")
+        sys.stderr.write(
+            f"tdb: detached \u2014 {program} running; Ctrl-C interrupts it\n"
+        )
         sys.stderr.flush()
 
         if not state.is_terminated and not state.is_running:

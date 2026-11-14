@@ -38,9 +38,7 @@ async def test_strip_stops_clears_source_function_exception_bps():
         ("setBreakpoints", "/b.py", ()),
     ]
     assert fake.calls_to("setFunctionBreakpoints") == [("setFunctionBreakpoints", ())]
-    assert fake.calls_to("setExceptionBreakpoints") == [
-        ("setExceptionBreakpoints", ())
-    ]
+    assert fake.calls_to("setExceptionBreakpoints") == [("setExceptionBreakpoints", ())]
     assert [bp.line for bp in ctrl.state.breakpoints["/a.py"]] == [1]
     assert [bp.line for bp in ctrl.state.breakpoints["/b.py"]] == [2]
 
@@ -252,3 +250,49 @@ async def test_debuggee_pid_cleared_when_session_ends(monkeypatch, name):
     for h in fake._event_handlers[name]:
         h(Event(seq=2, event=name, body={"exitCode": 0}))
     assert ctrl._debuggee_pid is None
+
+
+async def test_detach_prep_refused_while_running_stays_pending(monkeypatch):
+    """gdb answers `evaluate` with notStopped while the inferior runs: the
+    prep is recorded as pending and installed by a later retry."""
+    ctrl, fake, _ = _make()
+    _set_adapter(monkeypatch, ctrl, prep=("handle SIGINT nostop noprint pass",))
+    child = _FakeDAP("child")
+    ctrl._child_clients[100] = child
+    running = [True]
+
+    async def evaluate(expression, frame_id=None, context="repl"):
+        if running[0]:
+            raise DAPError("notStopped")
+        fake.calls.append(("evaluate", expression, frame_id))
+
+    fake.evaluate = evaluate
+    await ctrl.strip_stops()
+    assert ctrl.detach_prep_pending is True
+    # The child accepted it; only the parent's command is retried.
+    assert len(child.calls_to("evaluate")) == 1
+    assert await ctrl.run_pending_detach_prep() is False  # still running
+    assert ctrl.detach_prep_pending is True
+    running[0] = False  # stopped now
+    assert await ctrl.run_pending_detach_prep() is True
+    assert ctrl.detach_prep_pending is False
+    assert fake.calls_to("evaluate") == [
+        ("evaluate", "handle SIGINT nostop noprint pass", None)
+    ]
+    assert len(child.calls_to("evaluate")) == 1
+
+
+async def test_detach_prep_accepted_is_not_pending(monkeypatch):
+    ctrl, _, _ = _make()
+    _set_adapter(monkeypatch, ctrl, prep=("x",))
+    await ctrl.strip_stops()
+    assert ctrl.detach_prep_pending is False
+    assert await ctrl.run_pending_detach_prep() is True
+
+
+async def test_no_detach_prep_is_never_pending(monkeypatch):
+    ctrl, _, _ = _make()
+    _set_adapter(monkeypatch, ctrl, prep=())
+    await ctrl.strip_stops()
+    assert ctrl.detach_prep_pending is False
+

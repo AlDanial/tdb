@@ -233,7 +233,9 @@ async def test_sigterm_stops_and_returns_143(ctl, console):
 
 @posix
 async def test_signal_handlers_restored(ctl, console):
-    before = {s: signal.getsignal(s) for s in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)}
+    before = {
+        s: signal.getsignal(s) for s in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
+    }
     console.on_exited(0)
     await asyncio.wait_for(relay(ctl, console), 5)
     after = {s: signal.getsignal(s) for s in before}
@@ -275,7 +277,8 @@ def test_no_abort_at_shutdown_with_open_stdin():
     import sys
     import textwrap
 
-    code = textwrap.dedent("""
+    code = (
+        textwrap.dedent("""
         import asyncio, sys
         sys.path.insert(0, %r)
         from tests.unit.test_detach_relay import FakeController
@@ -289,11 +292,16 @@ def test_no_abort_at_shutdown_with_open_stdin():
             return await relay(ctl, con, install_signals=False)
 
         sys.exit(asyncio.run(main()))
-    """) % os.getcwd()
+    """)
+        % os.getcwd()
+    )
     r, w = os.pipe()
     try:
         proc = subprocess.run(
-            [sys.executable, "-c", code], stdin=r, capture_output=True, timeout=30,
+            [sys.executable, "-c", code],
+            stdin=r,
+            capture_output=True,
+            timeout=30,
             cwd=os.getcwd(),
         )
     finally:
@@ -313,7 +321,8 @@ def test_stdin_from_a_file_reaches_the_program_then_eof(tmp_path):
     import sys
     import textwrap
 
-    code = textwrap.dedent("""
+    code = (
+        textwrap.dedent("""
         import asyncio, sys
         sys.path.insert(0, %r)
         from tests.unit.test_detach_relay import FakeController
@@ -329,12 +338,17 @@ def test_stdin_from_a_file_reaches_the_program_then_eof(tmp_path):
             return code
 
         sys.exit(asyncio.run(main()))
-    """) % os.getcwd()
+    """)
+        % os.getcwd()
+    )
     infile = tmp_path / "input.txt"
     infile.write_text("one\ntwo\n")
     with open(infile, "rb") as f:
         proc = subprocess.run(
-            [sys.executable, "-c", code], stdin=f, capture_output=True, timeout=30,
+            [sys.executable, "-c", code],
+            stdin=f,
+            capture_output=True,
+            timeout=30,
             cwd=os.getcwd(),
         )
     assert proc.returncode == 5, proc.stderr
@@ -420,7 +434,9 @@ async def test_relay_neutralises_textual_sigcont_handler(ctl, console):
             seen.update({s: signal.getsignal(s) for s in old})
             console.on_exited(0)
 
-        asyncio.get_running_loop().call_later(0.05, lambda: asyncio.ensure_future(probe()))
+        asyncio.get_running_loop().call_later(
+            0.05, lambda: asyncio.ensure_future(probe())
+        )
         await asyncio.wait_for(relay(ctl, console), 5)
         assert all(h == signal.SIG_DFL for h in seen.values())
     finally:
@@ -429,7 +445,9 @@ async def test_relay_neutralises_textual_sigcont_handler(ctl, console):
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX status")
-@pytest.mark.parametrize("delay,expected", [(0.5, 130), (2.0, 130), (2.5, 0), (600.0, 0)])
+@pytest.mark.parametrize(
+    "delay,expected", [(0.5, 130), (2.0, 130), (2.5, 0), (600.0, 0)]
+)
 async def test_sigint_death_code_only_inside_the_grace_window(
     ctl, console, monkeypatch, delay, expected
 ):
@@ -471,3 +489,103 @@ async def test_adapter_connection_lost_ends_relay_nonzero(ctl, console, monkeypa
     asyncio.get_running_loop().call_later(0.1, setattr, ctl, "connection_lost", True)
     assert await _run(ctl, console) == 1
     assert ctl.stops == 1
+
+
+class _PrepController(FakeController):
+    """Adapter that refuses the detach prep until `prep_ok` (gdb while the
+    inferior runs); logs the order of prep attempts and continues."""
+
+    def __init__(self, prep_ok=True):
+        super().__init__()
+        self.detach_prep_pending = True
+        self.prep_ok = prep_ok
+        self.order: list[str] = []
+
+    async def run_pending_detach_prep(self):
+        self.order.append("prep")
+        if self.prep_ok:
+            self.detach_prep_pending = False
+        return not self.detach_prep_pending
+
+    async def continue_(self):
+        self.order.append("continue")
+        await super().continue_()
+
+
+async def test_pending_prep_runs_at_a_stop_before_continuing(console):
+    ctl = _PrepController()
+    task = asyncio.create_task(relay(ctl, console, install_signals=False))
+    console.on_stopped(1, "signal")
+    await asyncio.sleep(0.1)
+    console.on_stopped(1, "breakpoint")
+    await asyncio.sleep(0.1)
+    assert ctl.order == ["prep", "continue", "continue"]  # installed once
+    console.on_exited(0)
+    assert await asyncio.wait_for(task, 5) == 0
+
+
+async def test_prep_failing_at_an_ordinary_stop_still_continues(console):
+    ctl = _PrepController(prep_ok=False)
+    task = asyncio.create_task(relay(ctl, console, install_signals=False))
+    console.on_stopped(1, "breakpoint")
+    await asyncio.sleep(0.1)
+    assert ctl.order == ["prep", "continue"]  # never left frozen
+    console.on_exited(3)
+    assert await asyncio.wait_for(task, 5) == 3
+
+
+@posix
+async def test_ctrl_c_while_prep_pending_installs_it_and_resumes(console):
+    """gdb stops on the Ctrl-C it was not yet told to pass; once the prep
+    is in, the continue hands the pending SIGINT to the program, so tdb
+    does not deliver it again."""
+    ctl = _PrepController()
+
+    async def interrupt():
+        ctl.interrupts += 1
+        ctl.order.append("interrupt")
+        asyncio.get_running_loop().call_soon(console.on_stopped, 1, "signal")
+        return True
+
+    ctl.interrupt_debuggee = interrupt
+    original = signal.getsignal(signal.SIGINT)
+    task = asyncio.create_task(relay(ctl, console))
+    try:
+        await _signal_when_installed(signal.SIGINT, original)
+        for _ in range(100):
+            if "continue" in ctl.order:
+                break
+            await asyncio.sleep(0.02)
+        assert ctl.order == ["interrupt", "prep", "continue"]
+        assert not task.done()
+        console.on_exited(5)
+        assert await asyncio.wait_for(task, 5) == 5
+    finally:
+        if not task.done():
+            task.cancel()
+        signal.signal(signal.SIGINT, original)
+
+
+@posix
+async def test_ctrl_c_falls_back_when_prep_cannot_be_installed(console):
+    """The adapter keeps refusing the pass-through: continuing would drop
+    the Ctrl-C, so tdb ends the program and exits 130."""
+    ctl = _PrepController(prep_ok=False)
+
+    async def interrupt():
+        ctl.interrupts += 1
+        asyncio.get_running_loop().call_soon(console.on_stopped, 1, "signal")
+        return True
+
+    ctl.interrupt_debuggee = interrupt
+    original = signal.getsignal(signal.SIGINT)
+    task = asyncio.create_task(relay(ctl, console))
+    try:
+        await _signal_when_installed(signal.SIGINT, original)
+        assert await asyncio.wait_for(task, 5) == INTERRUPT_EXIT
+        assert ctl.stops == 1
+        assert ctl.order == ["prep"]
+    finally:
+        if not task.done():
+            task.cancel()
+        signal.signal(signal.SIGINT, original)

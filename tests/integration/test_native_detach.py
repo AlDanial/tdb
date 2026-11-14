@@ -17,7 +17,7 @@ import pytest
 
 from . import detach_harness
 from .conftest import FIXTURES_DIR
-from .detach_harness import run_detached
+from .detach_harness import CONTINUE_THEN_DETACH, run_detached
 
 pytestmark = [
     pytest.mark.skipif(sys.platform == "win32", reason="needs a pty"),
@@ -96,7 +96,9 @@ HAVE_LLDB = shutil.which("lldb-dap") is not None
 HAVE_CC = shutil.which("gcc") is not None or shutil.which("cc") is not None
 HAVE_RUSTC = shutil.which("rustc") is not None
 HAVE_GO = shutil.which("go") is not None and shutil.which("dlv") is not None
-HAVE_OCAML = shutil.which("ocamlfind") is not None or shutil.which("ocamlopt") is not None
+HAVE_OCAML = (
+    shutil.which("ocamlfind") is not None or shutil.which("ocamlopt") is not None
+)
 
 
 def _build_c(d: Path) -> str:
@@ -125,8 +127,17 @@ def _build_ocaml(d: Path) -> str:
     src.write_text(OCAML_SRC)
     out = d / "oprog"
     subprocess.run(
-        ["ocamlfind", "ocamlopt", "-package", "unix", "-linkpkg", "-g",
-         "-o", str(out), str(src)]
+        [
+            "ocamlfind",
+            "ocamlopt",
+            "-package",
+            "unix",
+            "-linkpkg",
+            "-g",
+            "-o",
+            str(out),
+            str(src),
+        ]
         if shutil.which("ocamlfind")
         else ["ocamlopt", "-g", "-I", "+unix", "unix.cmxa", "-o", str(out), str(src)],
         cwd=d,
@@ -139,19 +150,51 @@ def _stop_at(program: str, line: int) -> list[str]:
     """lldb-dap's entry stop is in the dynamic loader, with no source and
     an exception modal; a breakpoint on the program's first line gives it
     the ordinary stopped TUI the detach keys expect."""
-    src = {"cprog": str(C_SRC), "rprog": "rprog.rs", "oprog": "oprog.ml"}[Path(program).name]
+    src = {"cprog": str(C_SRC), "rprog": "rprog.rs", "oprog": "oprog.ml"}[
+        Path(program).name
+    ]
     return ["-k", f"{src}:{line}"]
 
 
 # id -> (available, builder, tdb options, first line of main's body)
 CASES = {
-    "c-gdb": (HAVE_GDB and HAVE_CC, _build_c, ["--lang", "cpp", "--adapter", "gdb"], None),
-    "c-lldb": (HAVE_LLDB and HAVE_CC, _build_c, ["--lang", "cpp", "--adapter", "lldb-dap"], C_FIRST_LINE),
-    "rust-gdb": (HAVE_GDB and HAVE_RUSTC, _build_rust, ["--lang", "rust", "--adapter", "gdb"], None),
+    "c-gdb": (
+        HAVE_GDB and HAVE_CC,
+        _build_c,
+        ["--lang", "cpp", "--adapter", "gdb"],
+        None,
+    ),
+    "c-lldb": (
+        HAVE_LLDB and HAVE_CC,
+        _build_c,
+        ["--lang", "cpp", "--adapter", "lldb-dap"],
+        C_FIRST_LINE,
+    ),
+    "rust-gdb": (
+        HAVE_GDB and HAVE_RUSTC,
+        _build_rust,
+        ["--lang", "rust", "--adapter", "gdb"],
+        None,
+    ),
     "go-dlv": (HAVE_GO, _build_go, [], None),
-    "ocaml-gdb": (HAVE_GDB and HAVE_OCAML, _build_ocaml, ["--lang", "ocaml", "--adapter", "gdb"], None),
-    "ocaml-lldb": (HAVE_LLDB and HAVE_OCAML, _build_ocaml, ["--lang", "ocaml", "--adapter", "lldb-dap"], 2),
-    "rust-lldb": (HAVE_LLDB and HAVE_RUSTC, _build_rust, ["--lang", "rust", "--adapter", "lldb-dap"], 4),
+    "ocaml-gdb": (
+        HAVE_GDB and HAVE_OCAML,
+        _build_ocaml,
+        ["--lang", "ocaml", "--adapter", "gdb"],
+        None,
+    ),
+    "ocaml-lldb": (
+        HAVE_LLDB and HAVE_OCAML,
+        _build_ocaml,
+        ["--lang", "ocaml", "--adapter", "lldb-dap"],
+        2,
+    ),
+    "rust-lldb": (
+        HAVE_LLDB and HAVE_RUSTC,
+        _build_rust,
+        ["--lang", "rust", "--adapter", "lldb-dap"],
+        4,
+    ),
 }
 
 
@@ -189,7 +232,9 @@ def test_native_detach_ctrl_c_ends_loop(lang):
     assert detach_harness.leftovers == []
 
 
-@pytest.mark.skipif(not (HAVE_GDB and HAVE_CC), reason="needs gdb >= 14 and a C compiler")
+@pytest.mark.skipif(
+    not (HAVE_GDB and HAVE_CC), reason="needs gdb >= 14 and a C compiler"
+)
 def test_gdb_detach_ctrl_c_reaches_program_handler(tmp_path):
     prog = _build_c(tmp_path)
     out, code = run_detached(
@@ -226,7 +271,9 @@ def test_native_detach_function_entry_breakpoint_cleared(case, tmp_path):
     assert detach_harness.leftovers == []
 
 
-@pytest.mark.skipif(not (HAVE_GDB and HAVE_CC), reason="needs gdb >= 14 and a C compiler")
+@pytest.mark.skipif(
+    not (HAVE_GDB and HAVE_CC), reason="needs gdb >= 14 and a C compiler"
+)
 def test_gdb_detach_slow_clean_exit_after_ctrl_c_keeps_exit_code_0(tmp_path):
     """gdb reports exit 0 both for a SIGINT death and a clean exit; only an
     exit right after Ctrl-C is taken for the death. A handler that cleans up
@@ -241,4 +288,38 @@ def test_gdb_detach_slow_clean_exit_after_ctrl_c_keeps_exit_code_0(tmp_path):
     )
     assert "caught-int" in out
     assert code == 0
+    assert detach_harness.leftovers == []
+
+
+def test_native_detach_while_running_ctrl_c_ends_loop(lang):
+    """`d` pressed while the program runs (after `c`): gdb refuses the
+    SIGINT pass-through prep while the inferior runs, so it must be
+    installed at the first stop instead, and Ctrl-C must still end it."""
+    out, code = run_detached(
+        [*lang["opts"], lang["program"], "loop"],
+        keys=CONTINUE_THEN_DETACH,
+        interrupt_after=1.5,
+        **lang["kw"],
+    )
+    assert "tdb: detached" in out
+    assert code == 130
+    assert detach_harness.leftovers == []
+
+
+@pytest.mark.skipif(
+    not (HAVE_GDB and HAVE_CC), reason="needs gdb >= 14 and a C compiler"
+)
+def test_gdb_detach_while_running_ctrl_c_reaches_program_handler(tmp_path):
+    prog = _build_c(tmp_path)
+    out, code = run_detached(
+        ["--lang", "cpp", "--adapter", "gdb", prog, "handler"],
+        keys=CONTINUE_THEN_DETACH,
+        interrupt_after=1.5,
+        cwd=tmp_path,
+        env={"TDB_LOG_DIR": str(tmp_path), "TDB_CONFIG_DIR": str(tmp_path)},
+        timeout=60,
+    )
+    # Delivered once, not swallowed and not twice.
+    assert detach_harness.after_tui[0].count("caught-int") == 1
+    assert code == 5
     assert detach_harness.leftovers == []

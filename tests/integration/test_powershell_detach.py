@@ -9,7 +9,7 @@ import pytest
 
 from . import detach_harness
 from .conftest import FIXTURES_DIR
-from .detach_harness import run_detached
+from .detach_harness import CONTINUE_THEN_DETACH, run_detached
 from .powershell_adapter_harness import pwsh_ok
 
 pytestmark = [
@@ -26,7 +26,10 @@ SLOW = 90  # pwsh + PSES start slowly
 
 @pytest.fixture
 def env(tmp_path):
-    return {"cwd": tmp_path, "env": {"TDB_LOG_DIR": str(tmp_path), "TDB_CONFIG_DIR": str(tmp_path)}}
+    return {
+        "cwd": tmp_path,
+        "env": {"TDB_LOG_DIR": str(tmp_path), "TDB_CONFIG_DIR": str(tmp_path)},
+    }
 
 
 def test_powershell_detach_output_stdin_exit_code(env):
@@ -48,5 +51,15 @@ def test_powershell_detach_ctrl_c_kills_loop(env):
 def test_powershell_detach_ctrl_c_kills_script_blocked_in_stdin(env):
     out, code = run_detached([PROG, "read"], interrupt_after=3, timeout=SLOW, **env)
     assert "looping-now" in out
+    assert code == 130
+    assert detach_harness.leftovers == []
+
+
+def test_powershell_detach_while_running_ctrl_c_kills_loop(env):
+    """`d` pressed while the script runs (after `c`)."""
+    out, code = run_detached(
+        [PROG, "loop"], keys=CONTINUE_THEN_DETACH, interrupt_after=3, timeout=SLOW, **env
+    )
+    assert "tdb: detached" in out
     assert code == 130
     assert detach_harness.leftovers == []

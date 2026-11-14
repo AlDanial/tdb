@@ -12,7 +12,7 @@ import pytest
 
 from . import detach_harness
 from .conftest import FIXTURES_DIR
-from .detach_harness import run_detached
+from .detach_harness import CONTINUE_THEN_DETACH, run_detached
 
 pytestmark = [
     pytest.mark.skipif(sys.platform == "win32", reason="needs a pty"),
@@ -24,7 +24,10 @@ PROG = str(FIXTURES_DIR / "detach_prog.py")
 
 @pytest.fixture
 def env(tmp_path):
-    return {"cwd": tmp_path, "env": {"TDB_LOG_DIR": str(tmp_path), "TDB_CONFIG_DIR": str(tmp_path)}}
+    return {
+        "cwd": tmp_path,
+        "env": {"TDB_LOG_DIR": str(tmp_path), "TDB_CONFIG_DIR": str(tmp_path)},
+    }
 
 
 def test_python_detach_output_stdin_exit_code(env):
@@ -39,6 +42,16 @@ def test_python_detach_output_stdin_exit_code(env):
 def test_python_detach_ctrl_c_kills_looping_program(env):
     out, code = run_detached([PROG, "loop"], interrupt_after=1.0, **env)
     assert "looping-now" in out
+    assert code == 130
+    assert detach_harness.leftovers == []
+
+
+def test_python_detach_while_running_ctrl_c_kills_loop(env):
+    """`d` pressed while the program runs (after `c`)."""
+    out, code = run_detached(
+        [PROG, "loop"], keys=CONTINUE_THEN_DETACH, interrupt_after=1.0, **env
+    )
+    assert "tdb: detached" in out
     assert code == 130
     assert detach_harness.leftovers == []
 
@@ -99,12 +112,16 @@ def heartbeat_target(tmp_path):
     script = tmp_path / "target.py"
     script.write_text(HEARTBEAT_SRC.format(port=port, ready=str(ready), beat=str(beat)))
     proc = subprocess.Popen(
-        [sys.executable, str(script)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        [sys.executable, str(script)],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
     )
     try:
         deadline = time.monotonic() + 30
         while not ready.exists():
-            assert proc.poll() is None and time.monotonic() < deadline, "target did not start"
+            assert proc.poll() is None and time.monotonic() < deadline, (
+                "target did not start"
+            )
             time.sleep(0.05)
         yield proc, port, beat
     finally:
@@ -112,7 +129,9 @@ def heartbeat_target(tmp_path):
         proc.wait(timeout=5)
 
 
-def test_remote_attach_detach_disconnects_and_program_keeps_running(env, heartbeat_target):
+def test_remote_attach_detach_disconnects_and_program_keeps_running(
+    env, heartbeat_target
+):
     import time
 
     proc, port, beat = heartbeat_target

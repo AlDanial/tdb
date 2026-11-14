@@ -9,7 +9,7 @@ import pytest
 
 from . import detach_harness
 from .conftest import FIXTURES_DIR
-from .detach_harness import run_detached
+from .detach_harness import CONTINUE_THEN_DETACH, run_detached
 from .ruby_adapter_harness import launch_stopped, rdbg_ok, start_ruby_adapter
 
 pytestmark = [
@@ -25,7 +25,10 @@ PROG = str(FIXTURES_DIR / "ruby_detach_prog.rb")
 
 @pytest.fixture
 def env(tmp_path):
-    return {"cwd": tmp_path, "env": {"TDB_LOG_DIR": str(tmp_path), "TDB_CONFIG_DIR": str(tmp_path)}}
+    return {
+        "cwd": tmp_path,
+        "env": {"TDB_LOG_DIR": str(tmp_path), "TDB_CONFIG_DIR": str(tmp_path)},
+    }
 
 
 def test_ruby_detach_output_stdin_exit_code(env):
@@ -63,6 +66,27 @@ def test_ruby_detach_ctrl_c_kills_script_blocked_in_stdin(env):
     out, code = run_detached([PROG, "read"], interrupt_after=1.5, timeout=15, **env)
     assert "looping-now" in out
     assert code == 130
+    assert detach_harness.leftovers == []
+
+
+def test_ruby_detach_while_running_ctrl_c_kills_loop(env):
+    """`d` pressed while the script runs (after `c`)."""
+    out, code = run_detached(
+        [PROG, "loop"], keys=CONTINUE_THEN_DETACH, interrupt_after=1.5, **env
+    )
+    assert "tdb: detached" in out
+    assert code == 130
+    assert detach_harness.leftovers == []
+
+
+def test_ruby_detach_while_running_ctrl_c_runs_program_handler(env):
+    """`d` pressed while the script runs (after `c`)."""
+    out, code = run_detached(
+        [PROG, "trap"], keys=CONTINUE_THEN_DETACH, interrupt_after=1.5, **env
+    )
+    assert "tdb: detached" in out
+    assert "caught-int" in detach_harness.after_tui[0]
+    assert code == 5
     assert detach_harness.leftovers == []
 
 
