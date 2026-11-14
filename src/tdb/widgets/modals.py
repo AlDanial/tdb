@@ -633,9 +633,7 @@ class _QuitConfirmModal(ModalScreen):
 
     def compose(self) -> ComposeResult:
         quit_text = "q: quit (ends the program)" if self._ends_program else "q: quit"
-        with Vertical(
-            id="dialog", classes="" if self._can_detach else "two-lines"
-        ):
+        with Vertical(id="dialog", classes="" if self._can_detach else "two-lines"):
             yield Static(quit_text, markup=False)
             if self._can_detach:
                 yield Static("d: run detached", markup=False)

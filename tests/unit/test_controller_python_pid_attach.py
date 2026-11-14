@@ -477,6 +477,7 @@ async def test_headless_reports_failure_during_configure(monkeypatch, capsys):
             attach_host="127.0.0.1",
             attach_port=0,
             profile=build_python_profile(),
+            port=0,
         )
     assert exc_info.value.code == 2
     assert "tdb: cannot attach to pid 4242: silent" in capsys.readouterr().err
@@ -493,6 +494,7 @@ async def test_headless_reports_injection_failure(monkeypatch, capsys):
             attach_host="127.0.0.1",
             attach_port=0,
             profile=build_python_profile(),
+            port=0,
         )
     assert exc_info.value.code == 2
     assert "tdb: cannot attach to pid 4242: nope" in capsys.readouterr().err

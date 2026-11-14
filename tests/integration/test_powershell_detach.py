@@ -58,7 +58,11 @@ def test_powershell_detach_ctrl_c_kills_script_blocked_in_stdin(env):
 def test_powershell_detach_while_running_ctrl_c_kills_loop(env):
     """`d` pressed while the script runs (after `c`)."""
     out, code = run_detached(
-        [PROG, "loop"], keys=CONTINUE_THEN_DETACH, interrupt_after=3, timeout=SLOW, **env
+        [PROG, "loop"],
+        keys=CONTINUE_THEN_DETACH,
+        interrupt_after=3,
+        timeout=SLOW,
+        **env,
     )
     assert "tdb: detached" in out
     assert code == 130
