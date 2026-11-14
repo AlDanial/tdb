@@ -17,7 +17,9 @@ from tests.unit.test_controller_actions import _FakeDAP, _make
 def _surviving(monkeypatch, ctrl, value):
     adapter = ctrl.profile.adapter
     monkeypatch.setattr(
-        adapter, "quirks", dataclasses.replace(adapter.quirks, survives_disconnect=value)
+        adapter,
+        "quirks",
+        dataclasses.replace(adapter.quirks, survives_disconnect=value),
     )
 
 
@@ -101,7 +103,11 @@ async def test_terminal_session_non_surviving_adapter_falls_back_to_relay(capsys
     assert ctl.disconnects == 0
     assert ctl.continues == 1
     assert ctl.stops == 1  # relay cleaned up when the program exited
-    assert "detached" not in capsys.readouterr().err
+    # Not silent: the user must not think tdb hung.
+    assert capsys.readouterr().err == (
+        "tdb: detached — prog.py keeps running in its terminal;"
+        " tdb waits here until it exits\n"
+    )
 
 
 async def test_unconfirmed_disconnect_is_reported_honestly(capsys):

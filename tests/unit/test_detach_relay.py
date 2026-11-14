@@ -589,3 +589,16 @@ async def test_ctrl_c_falls_back_when_prep_cannot_be_installed(console):
         if not task.done():
             task.cancel()
         signal.signal(signal.SIGINT, original)
+
+
+async def test_exit_code_wins_over_a_lost_connection(ctl, console):
+    """The program exited and then the adapter went away: the program's own
+    code, not the lost-connection 1."""
+    ctl.connection_lost = True
+    console.on_exited(9)
+    assert await _run(ctl, console) == 9
+    ctl2 = FakeController()
+    ctl2.connection_lost = True
+    con2 = ConsoleRunHandler()
+    asyncio.get_running_loop().call_later(0.05, con2.on_exited, 9)
+    assert await _run(ctl2, con2) == 9

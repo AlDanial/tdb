@@ -17,12 +17,9 @@ import signal
 import sys
 import threading
 import time
-from typing import TYPE_CHECKING, Any, BinaryIO
+from typing import Any, BinaryIO
 
-from tdb.run_mode import final_exit_code
-
-if TYPE_CHECKING:
-    from tdb.run_mode import ConsoleRunHandler
+from tdb.run_mode import ConsoleRunHandler, final_exit_code
 
 log = logging.getLogger(__name__)
 
@@ -35,6 +32,31 @@ SIGINT_DEATH_GRACE = 2.0
 LIVENESS_POLL = 1.0
 
 _READ_SIZE = 65536
+
+
+class DetachHandoffHandler(ConsoleRunHandler):
+    """Event sink from `d` until run_after_tui takes over.
+
+    Between `app.exit()` and the handover Textual is tearing down, and
+    output posted to the closing app would be lost. This handler holds the
+    program's output until run_after_tui has replayed the earlier
+    transcript, then prints like ConsoleRunHandler; exit and stop events
+    are recorded as ConsoleRunHandler records them."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._held: list[tuple[str, str]] | None = []
+
+    def on_output(self, text: str, category: str) -> None:
+        if self._held is not None:
+            self._held.append((text, category))
+            return
+        super().on_output(text, category)
+
+    def release(self) -> list[tuple[str, str]]:
+        """Stop holding; return what was held (oldest first)."""
+        held, self._held = self._held or [], None
+        return held
 
 
 def _flush_pending_input(stdin: BinaryIO) -> None:
@@ -320,25 +342,28 @@ async def run_after_tui(app: Any, program: str) -> int:
     Runs on the loop the TUI ran on, after Textual has restored the
     terminal. Returns tdb's exit code.
     """
-    from tdb.run_mode import ConsoleRunHandler, stop_session_on_error
+    from tdb.run_mode import stop_session_on_error
 
     controller = app.controller
-    console = ConsoleRunHandler()
+    target = getattr(app.event_switch, "target", None)
+    console = target if isinstance(target, DetachHandoffHandler) else DetachHandoffHandler()
     async with stop_session_on_error(controller):
         state = controller.state
         if state.is_terminated:
             console.exit_code = state.last_exit_code
             console.exited.set()
         app.event_switch.retarget(console)
+        name = program or "program"
 
         if controller.is_remote_attach or controller.used_terminal:
             # The program does not depend on tdb's pipes: nothing to
             # replay, no stdin to forward. detach_disconnect resumes
             # every client itself before disconnecting.
+            for text, category in console.release():
+                console.on_output(text, category)
             if not state.is_terminated:
                 from tdb.session.controller import DetachNotConfirmed
 
-                name = program or "program"
                 try:
                     detached = await controller.detach_disconnect()
                 except DetachNotConfirmed:
@@ -351,22 +376,30 @@ async def run_after_tui(app: Any, program: str) -> int:
                     sys.stderr.write(f"tdb: detached \u2014 {name} keeps running\n")
                     sys.stderr.flush()
                     return 0
-                # Not verified to survive the adapter: hold the session silently.
+                # Not verified to survive the adapter: tdb stays attached.
+                if controller.used_terminal:
+                    sys.stderr.write(
+                        f"tdb: detached \u2014 {name} keeps running in its terminal;"
+                        " tdb waits here until it exits\n"
+                    )
+                    sys.stderr.flush()
                 if not state.is_running:
                     await controller.continue_()
             return await relay(controller, console)
 
         if app.program_output_truncated:
             sys.stderr.write("tdb: earlier program output truncated\n")
-        for text, category in app.program_output:
+        for text, category in [*app.program_output, *console.release()]:
             (sys.stderr if category == "stderr" else sys.stdout).write(text)
         sys.stdout.flush()
         sys.stderr.flush()
-        sys.stderr.write(
-            f"tdb: detached \u2014 {program} running; Ctrl-C interrupts it\n"
-        )
+        if state.is_terminated:
+            # The program ended before the handover: no notice, just its
+            # exit code.
+            return await relay(controller, console)
+        sys.stderr.write(f"tdb: detached \u2014 {program} running; Ctrl-C interrupts it\n")
         sys.stderr.flush()
 
-        if not state.is_terminated and not state.is_running:
+        if not state.is_running:
             await controller.continue_()
         return await relay(controller, console)

@@ -291,9 +291,7 @@ class TdbApp(_AppMessageRoutes, App):
             adopted_handler.retarget(self._textual_handler)
             self.event_switch = adopted_handler
         else:
-            self.controller = DebugController(
-                self.event_switch, profile=self._profile
-            )
+            self.controller = DebugController(self.event_switch, profile=self._profile)
             self.controller.step_mode = self._config.step_mode
         self._stderr_buffer: list[str] = []
         # Populated by _start_session on a fatal startup error (e.g.,
@@ -2149,12 +2147,17 @@ class TdbApp(_AppMessageRoutes, App):
 
     def detach_available(self) -> bool:
         """Whether `d: run detached` can be offered right now."""
+        return self._can_hand_over() and not self.controller.state.is_terminated
+
+    def _can_hand_over(self) -> bool:
+        """Whether the CLI can take this session over after the TUI closes:
+        detach_available, or the program already ended under the modal
+        (tdb then exits with the program's own code)."""
         state = self.controller.state
         return (
             not self._adopted
             and not self._is_quitting
             and self._startup_error is None
-            and not state.is_terminated
             and not state.is_post_mortem
             and self._replay_driver is None
             and state.is_ready
@@ -2167,16 +2170,21 @@ class TdbApp(_AppMessageRoutes, App):
             return
         if not await self._confirm_discard_edits():
             return
-        if not self.detach_available():
-            await self._finish_quit()  # program ended while we asked
+        if not self._can_hand_over():
+            await self._finish_quit()
             return
         self._is_quitting = True
         self.recorder.record("detach", [])
         self._save_breakpoints()
-        await self.controller.strip_stops()
+        await self.controller.strip_stops()  # no-op once the program ended
         if hasattr(self, "_uvicorn_server"):
             self._uvicorn_server.should_exit = True
         self.run_detached = True
+        # Output arriving while Textual tears down would be posted to a
+        # closing app and lost; hold it for run_after_tui to replay.
+        from tdb.detach_relay import DetachHandoffHandler
+
+        self.event_switch.retarget(DetachHandoffHandler())
         self.exit()
 
     async def _finish_quit(self) -> None:

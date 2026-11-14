@@ -52,12 +52,15 @@ def test_python_detach_while_running_ctrl_c_kills_loop(env):
         [PROG, "loop"], keys=CONTINUE_THEN_DETACH, interrupt_after=1.0, **env
     )
     assert "tdb: detached" in out
+    # What the program printed inside the TUI is replayed, ahead of the notice.
+    after = detach_harness.after_tui[0]
+    assert -1 < after.find("before-ran") < after.find("tdb: detached")
     assert code == 130
     assert detach_harness.leftovers == []
 
 
 def test_python_detach_saved_breakpoint_does_not_stop(env):
-    out, code = run_detached(["-k", "6", PROG], stdin_lines=["hi"], **env)
+    out, code = run_detached(["-k", "7", PROG], stdin_lines=["hi"], **env)
     assert "got:hi" in out
     assert code == 7
     # The relay auto-continues any stop, so a passing run alone proves
@@ -174,7 +177,13 @@ def test_terminal_session_detach_keeps_debugger_attached(env, tmp_path):
     env["env"]["PATH"] = f"{bindir}{os.pathsep}{os.environ['PATH']}"
     out, code = run_detached(["--terminal", "xterm", str(prog)], **env)
     assert code == 0, out[-1500:]
-    assert "keeps running" not in out
+    # Not silent (the user must not think tdb hung), and not the
+    # disconnect notice: tdb stays attached.
+    assert (
+        "keeps running in its terminal; tdb waits here until it exits"
+        in detach_harness.after_tui[0]
+    )
+    assert out.count("keeps running") == 1
     assert "could not confirm" not in out
     assert done.exists(), "the program must have been allowed to finish"
 
@@ -204,21 +213,22 @@ def _find(family: list[int], *needles: str, exclude: tuple[str, ...] = ()) -> li
 
 
 def test_program_exits_while_modal_open_then_d(env):
-    """The program dies under the open quit modal; `d` must not traceback
-    or hang: tdb just ends."""
-    import os
-    import signal
+    """The program exits (code 7) under the open quit modal, then `d`: no
+    traceback, no hang, no "running" notice; tdb replays what it printed
+    and exits with the program's own code."""
 
-    def kill_program(key, term, tdb, family):
-        if key != b"q":
-            return
-        for pid in _find(family, "--connect", "detach_prog.py"):
-            os.kill(pid, signal.SIGKILL)
-        term.send(b"", settle=1.0)
+    def let_it_exit(key, term, tdb, family):
+        if key == b"q":
+            term.send(b"", settle=3.0)  # the program exits 1.5s after looping-now
 
-    out, code = run_detached([PROG], keys=b"qd", on_key=kill_program, **env)
+    out, code = run_detached(
+        [PROG, "soon"], keys=CONTINUE_THEN_DETACH, on_key=let_it_exit, **env
+    )
     assert "Traceback" not in out
-    assert "after-ran" not in out
+    assert code == 7
+    after = detach_harness.after_tui[0]
+    assert "before-ran" in after
+    assert "tdb: detached" not in after
     assert detach_harness.leftovers == []
 
 
@@ -244,7 +254,7 @@ def test_terminal_hangup_during_relay_kills_program(env):
         term.close()
 
     _, code = run_detached([PROG, "loop"], on_detached=hang_up, **env)
-    assert code != 0
+    assert code == 129  # 128 + SIGHUP
     assert detach_harness.leftovers == []
 
 
@@ -272,8 +282,9 @@ def test_adapter_death_during_relay_exits_nonzero_no_orphan(env):
         for pid in pids:
             os.kill(pid, signal.SIGKILL)
 
-    _, code = run_detached([PROG, "loop"], on_detached=kill_adapter, **env)
-    assert code not in (0, None)
+    out, code = run_detached([PROG, "loop"], on_detached=kill_adapter, **env)
+    assert code == 1
+    assert "tdb: lost the connection to the debug adapter" in out
     assert detach_harness.leftovers == []
 
 

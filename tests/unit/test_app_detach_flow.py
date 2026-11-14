@@ -31,7 +31,10 @@ def calls(monkeypatch):
     monkeypatch.setattr(DebugController, "strip_stops", strip)
     monkeypatch.setattr(DebugController, "stop", stop)
     monkeypatch.setattr(DebugController, "continue_", cont)
-    monkeypatch.setattr("tdb.app.save_breakpoints", lambda *a, **k: log.setdefault("saved", []).append(a))
+    monkeypatch.setattr(
+        "tdb.app.save_breakpoints",
+        lambda *a, **k: log.setdefault("saved", []).append(a),
+    )
     return log
 
 
@@ -98,7 +101,8 @@ async def test_detach_unavailable_when_terminated_or_post_mortem_or_adopted(call
         app._is_quitting = False
 
 
-async def test_detach_flow_falls_back_to_quit_if_program_ended(calls):
+async def test_detach_flow_hands_over_a_program_that_ended_under_the_modal(calls):
+    """The CLI then exits with the program's own code (run_after_tui)."""
     app = _app()
     async with app.run_test() as pilot:
         await pilot.pause()
@@ -106,9 +110,41 @@ async def test_detach_flow_falls_back_to_quit_if_program_ended(calls):
         app.controller.state.transition_to(SessionPhase.TERMINATED)
         await app._detach_flow()
         await _settle(pilot)
+    assert calls["stop"] == 0
+    assert app.run_detached is True
+
+
+async def test_detach_flow_falls_back_to_quit_when_no_handover_is_possible(calls):
+    app = _app()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        _ready(app)
+        app.controller.state.phase = SessionPhase.POST_MORTEM
+        await app._detach_flow()
+        await _settle(pilot)
     assert calls["stop"] == 1
     assert calls["strip"] == 0
     assert app.run_detached is False
+
+
+async def test_detach_flow_holds_output_arriving_during_teardown(calls):
+    """Right before exit() the controller's events go to a handler that
+    keeps program output for run_after_tui instead of the closing app."""
+    from tdb.detach_relay import DetachHandoffHandler
+
+    app = _app()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        _ready(app)
+        await app._detach_flow()
+        handoff = app.event_switch.target
+        assert isinstance(handoff, DetachHandoffHandler)
+        app.event_switch.on_output("late\n", "stdout")
+        app.event_switch.on_exited(4)
+        await _settle(pilot)
+    assert handoff.release() == [("late\n", "stdout")]
+    assert handoff.exited.is_set() and handoff.exit_code == 4
+    assert ("late\n", "stdout") not in app.program_output
 
 
 async def test_detach_while_running_sends_no_continue(calls):

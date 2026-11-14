@@ -76,7 +76,9 @@ async def test_continues_only_when_stopped():
     running = AutoExit(0, is_running=True)
     running.switch = FakeSwitch()
     app = make_app(running)
-    asyncio.get_running_loop().call_later(0.05, lambda: app.event_switch.target.on_exited(0))
+    asyncio.get_running_loop().call_later(
+        0.05, lambda: app.event_switch.target.on_exited(0)
+    )
     await run_after_tui(app, "p")
     assert running.continues == 0
 
@@ -100,3 +102,44 @@ async def test_relay_error_stops_session(monkeypatch):
     with pytest.raises(RuntimeError, match="relay broke"):
         await run_after_tui(make_app(ctl), "p")
     assert ctl.stops == 1
+
+
+async def test_program_ended_before_handover_exits_with_its_code_no_notice(capsys):
+    """M2: the program exited under the open modal, then `d`: replay what
+    it printed, no "running" notice, and exit with the program's code."""
+    ctl = AutoExit(is_terminated=True, last_exit_code=7)
+    app = make_app(ctl, [("before-ran\n", "stdout")])
+    assert await asyncio.wait_for(run_after_tui(app, "prog.py"), 5) == 7
+    cap = capsys.readouterr()
+    assert cap.out == "before-ran\n"
+    assert "detached" not in cap.err
+    assert ctl.continues == 0
+
+
+async def test_output_held_during_teardown_is_replayed_after_the_transcript(capsys):
+    """M3: output that arrived between app.exit() and the handover follows
+    the earlier transcript, ahead of the notice, nothing lost."""
+    from tdb.detach_relay import DetachHandoffHandler
+
+    ctl = AutoExit(3)
+    app = make_app(ctl, [("early\n", "stdout")])
+    handoff = DetachHandoffHandler()
+    app.event_switch.retarget(handoff)
+    handoff.on_output("late\n", "stdout")
+    handoff.on_output("late-err\n", "stderr")
+    assert await asyncio.wait_for(run_after_tui(app, "prog.py"), 5) == 3
+    assert app.event_switch.target is handoff  # its recorded state is kept
+    cap = capsys.readouterr()
+    assert cap.out == "early\nlate\n"
+    assert cap.err == "late-err\n" + NOTICE + "\n"
+
+
+async def test_handoff_keeps_an_exit_seen_during_teardown():
+    from tdb.detach_relay import DetachHandoffHandler
+
+    ctl = AutoExit(0, is_running=True)
+    app = make_app(ctl)
+    handoff = DetachHandoffHandler()
+    app.event_switch.retarget(handoff)
+    handoff.on_exited(6)
+    assert await asyncio.wait_for(run_after_tui(app, "prog.py"), 5) == 6
