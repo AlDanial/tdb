@@ -105,7 +105,7 @@ class ReplayDriver:
                 )
                 if not ok:
                     self._report(app, f"{_describe(rec)}: {detail}", ok=False)
-                if rec["action"] == "quit":
+                if rec["action"] in ("quit", "detach"):
                     break
         finally:
             app.title = original_title
@@ -134,9 +134,9 @@ class ReplayDriver:
             return False, f"{action} is not replayable in the TUI"
         return await handler(self, app, params)
 
-    async def _quit(self, app: TdbApp) -> tuple[bool, str]:
+    async def _quit(self, app: TdbApp, label: str = "quit") -> tuple[bool, str]:
         await app.action_quit_debugger()
-        return True, "quit"
+        return True, label
 
     async def _step(self, app: TdbApp, gesture: str) -> tuple[bool, str]:
         from tdb.widgets.code_view import CodeView
@@ -332,6 +332,9 @@ _ACTIONS: dict[
     "stdin": lambda d, app, p: d._stdin(app, p),
     "stdin_eof": lambda d, app, p: d._stdin_eof(app),
     "quit": lambda d, app, p: d._quit(app),
+    # A recorded detach ends the session; replay has no live program to
+    # hand over, so it plays back as a quit.
+    "detach": lambda d, app, p: d._quit(app, "detach"),
 }
 
 # Every action this driver plays back; the recorder/replay contract test

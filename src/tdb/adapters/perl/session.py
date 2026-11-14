@@ -515,6 +515,32 @@ class PerlSession:
                 return False
         return False
 
+    def send_sigint(self) -> None:
+        """Deliver SIGINT to the program the way a terminal Ctrl-C would
+        (tdbSignal, after tdb detached). Launch mode: the whole process
+        group (spawned with start_new_session). --terminal mode: the
+        debuggee's pid only (it shares the emulator's group). Raises
+        PerlProtocolError when there is nothing to signal.
+
+        perl5db's own $SIG{INT} (DB::catch) turns the signal into a
+        debugger stop; the server resolves that stop (see
+        PerlDapServer._deliver_pending_sigint)."""
+        if os.name == "nt":
+            raise PerlProtocolError("SIGINT delivery is not supported on Windows")
+        try:
+            if self._process is not None:
+                if self._process.returncode is not None:
+                    raise PerlProtocolError("the program has already exited")
+                os.killpg(self._process.pid, signal.SIGINT)
+            elif self.debuggee_pid is not None and self.debuggee_pid > 1:
+                if self._terminal_debuggee_pid() is None:
+                    raise PerlProtocolError("the program has already exited")
+                os.kill(self.debuggee_pid, signal.SIGINT)
+            else:
+                raise PerlProtocolError("no debuggee to signal")
+        except (ProcessLookupError, PermissionError) as e:
+            raise PerlProtocolError(f"cannot signal the program: {e}") from e
+
     async def stop(self) -> None:
         # Before the reader is cancelled: whether the debuggee had
         # already gone (EOF) decides if its pid may still be signalled.

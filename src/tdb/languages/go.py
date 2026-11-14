@@ -72,6 +72,9 @@ class DelveAdapter(AdapterSpec):
     id = "dlv"
     connect_mode = "spawn_tcp"
     listen_regex = re.compile(r"DAP server listening at: (\S+):(\d+)")
+    # dlv reports the target in its `process` event and a SIGINT death as
+    # exit status -2, which the relay already maps to 130.
+    quirks = AdapterQuirks(interrupt_route="pid")
 
     def __init__(
         self,
@@ -85,7 +88,9 @@ class DelveAdapter(AdapterSpec):
         if attach_pid is not None:
             # Local pid attach spawns dlv locally (like launch) and
             # sends the attach request through it.
-            self.quirks = AdapterQuirks(attach_via_adapter=True)
+            self.quirks = AdapterQuirks(
+                attach_via_adapter=True, interrupt_route="pid"
+            )
 
     def command(self) -> list[str]:
         exe = self._executable or shutil.which("dlv")

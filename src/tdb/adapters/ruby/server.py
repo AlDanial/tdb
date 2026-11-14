@@ -31,6 +31,7 @@ import logging
 import os
 import re
 import shutil
+import signal
 import subprocess
 import tempfile
 from dataclasses import dataclass
@@ -1246,6 +1247,41 @@ class RubyDapServer:
             # The pipe's read end vanished under us (program died between
             # the exit check above and the write).
             self.send_error(request, f"could not write to the program's stdin: {e}")
+            return
+        self.send_response(request)
+
+    # ---- Ctrl-C after detach (tdb-private `tdbSignal`) ----
+    async def _on_tdbSignal(self, request: dict) -> None:
+        """Deliver Ctrl-C to the running program after tdb detached.
+
+        Only SIGINT; not gated on "stopped" (the script is running). The
+        proxy-owned rdbg leads a process group of its own and runs the
+        script in-process, so the group is signalled the way teardown
+        addresses it. rdbg's server mode takes SIGURG (not SIGINT) for
+        its pause trap, so the script sees an ordinary `Interrupt`."""
+        args = request.get("arguments") or {}
+        name = args.get("signal")
+        if name != "SIGINT":
+            self.send_error(request, f"unsupported signal: {name!r}")
+            return
+        proc = self._proc
+        if proc is None:
+            if self._launched or self._launch_task is not None:
+                msg = "the script runs in its own terminal; interrupt it there"
+            else:
+                msg = "no debuggee to signal: no launch yet"
+            self.send_error(request, msg)
+            return
+        if proc.returncode is not None:
+            self.send_error(request, "the program has already exited")
+            return
+        if os.name == "nt":
+            self.send_error(request, "SIGINT delivery is not supported on Windows")
+            return
+        try:
+            os.killpg(proc.pid, signal.SIGINT)
+        except (ProcessLookupError, PermissionError) as e:
+            self.send_error(request, f"cannot signal the program: {e}")
             return
         self.send_response(request)
 

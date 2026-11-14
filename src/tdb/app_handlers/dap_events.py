@@ -364,6 +364,8 @@ class DapEventCoordinator:
         try:
             if message.category == "stderr":
                 self.app._stderr_buffer.append(message.text)
+            if message.category in ("stdout", "stderr"):
+                self.app._record_program_output(message.text, message.category)
             console = self.app.query_one("#console-view", ConsoleView)
             console.write_output(message.text, message.category)
         except Exception:

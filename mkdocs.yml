@@ -94,6 +94,7 @@ nav:
       - Remote Attach: using/remote-attach.md
       - External Terminal: using/external-terminal.md
       - Run Mode: using/run-mode.md
+      - Run Detached: using/run-detached.md
       - Eval Mode: using/eval-mode.md
   - Python:
       - Post-Mortem Exception Hook: python/post-mortem.md

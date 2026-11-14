@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+from collections import deque
 from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -59,12 +60,12 @@ from tdb.persist import (
     save_breakpoints,
     save_config,
 )
+from tdb.session.event_bus import SwappableEventHandler
 from tdb.widgets.variable_view import VariableView
 
 if TYPE_CHECKING:
     from tdb.languages.base import LanguageProfile
     from tdb.replay_tui import ReplayDriver
-    from tdb.session.event_bus import SwappableEventHandler
 
 log = logging.getLogger(__name__)
 
@@ -267,6 +268,15 @@ class TdbApp(_AppMessageRoutes, App):
             self._server_handler = None
             self._event_handler = self._textual_handler
 
+        # What non-adopted controllers are built with, so the CLI can
+        # retarget it when the TUI closes and the program keeps running.
+        self.event_switch = SwappableEventHandler(self._event_handler)
+        # Set by the detach flow; read by the CLI after the app exits.
+        self.run_detached = False
+        self.program_output: deque[tuple[str, str]] = deque()
+        self.program_output_truncated = False
+        self._program_output_size = 0
+
         self._adopted = adopted_controller is not None
         self._adopted_handler = adopted_handler
         self._adopted_stop = adopted_stop
@@ -279,10 +289,9 @@ class TdbApp(_AppMessageRoutes, App):
             assert adopted_handler is not None
             self.controller = adopted_controller
             adopted_handler.retarget(self._textual_handler)
+            self.event_switch = adopted_handler
         else:
-            self.controller = DebugController(
-                self._event_handler, profile=self._profile
-            )
+            self.controller = DebugController(self.event_switch, profile=self._profile)
             self.controller.step_mode = self._config.step_mode
         self._stderr_buffer: list[str] = []
         # Populated by _start_session on a fatal startup error (e.g.,
@@ -937,7 +946,11 @@ class TdbApp(_AppMessageRoutes, App):
             )
         else:
             self._event_handler = self._textual_handler
-        self.controller = DebugController(self._event_handler, profile=self._profile)
+        self.event_switch = SwappableEventHandler(self._event_handler)
+        self.program_output.clear()
+        self.program_output_truncated = False
+        self._program_output_size = 0
+        self.controller = DebugController(self.event_switch, profile=self._profile)
         self.controller.step_mode = self._config.step_mode
         self.controller.state.breakpoints = saved_breakpoints
 
@@ -2111,16 +2124,75 @@ class TdbApp(_AppMessageRoutes, App):
         else:
             self.run_worker(self._finish_quit(), name="terminal-gone")
 
+    _PROGRAM_OUTPUT_CAP = 4 * 1024 * 1024
+
+    def _record_program_output(self, text: str, category: str) -> None:
+        """Keep program stdout/stderr (oldest dropped past the cap) so the
+        CLI can replay it to the terminal after a detach."""
+        self.program_output.append((text, category))
+        self._program_output_size += len(text)
+        while self._program_output_size > self._PROGRAM_OUTPUT_CAP and (
+            self.program_output
+        ):
+            dropped, _ = self.program_output.popleft()
+            self._program_output_size -= len(dropped)
+            self.program_output_truncated = True
+
+    def _save_breakpoints(self) -> None:
+        """Save this program's breakpoints under its own key, preserving
+        breakpoints saved for other programs."""
+        if self._program:
+            program_key = str(Path(self._program).resolve())
+            save_breakpoints(self.controller.state.breakpoints, program=program_key)
+
+    def detach_available(self) -> bool:
+        """Whether `d: run detached` can be offered right now."""
+        return self._can_hand_over() and not self.controller.state.is_terminated
+
+    def _can_hand_over(self) -> bool:
+        """Whether the CLI can take this session over after the TUI closes:
+        detach_available, or the program already ended under the modal
+        (tdb then exits with the program's own code)."""
+        state = self.controller.state
+        return (
+            not self._adopted
+            and not self._is_quitting
+            and self._startup_error is None
+            and not state.is_post_mortem
+            and self._replay_driver is None
+            and state.is_ready
+        )
+
+    async def _detach_flow(self) -> None:
+        """Prepare the live session to run on without the TUI. The CLI
+        continues the program after the terminal is restored."""
+        if self._is_quitting:
+            return
+        if not await self._confirm_discard_edits():
+            return
+        if not self._can_hand_over():
+            await self._finish_quit()
+            return
+        self._is_quitting = True
+        self.recorder.record("detach", [])
+        self._save_breakpoints()
+        await self.controller.strip_stops()  # no-op once the program ended
+        if hasattr(self, "_uvicorn_server"):
+            self._uvicorn_server.should_exit = True
+        self.run_detached = True
+        # Output arriving while Textual tears down would be posted to a
+        # closing app and lost; hold it for run_after_tui to replay.
+        from tdb.detach_relay import DetachHandoffHandler
+
+        self.event_switch.retarget(DetachHandoffHandler())
+        self.exit()
+
     async def _finish_quit(self) -> None:
         if self._is_quitting:
             return
         self._is_quitting = True
         self.recorder.record("quit", [])
-        # Save this program's breakpoints under its own key, preserving
-        # breakpoints saved for other programs.
-        if self._program:
-            program_key = str(Path(self._program).resolve())
-            save_breakpoints(self.controller.state.breakpoints, program=program_key)
+        self._save_breakpoints()
         await self.controller.stop()
         if hasattr(self, "_uvicorn_server"):
             self._uvicorn_server.should_exit = True
@@ -2250,8 +2322,16 @@ class TdbApp(_AppMessageRoutes, App):
         ):
             return
 
-        def on_dismiss(confirmed: bool | None) -> None:
-            if confirmed:
+        def on_dismiss(result: str | None) -> None:
+            if result == "quit":
                 self.run_worker(self.action_quit_debugger())
+            elif result == "detach":
+                self.run_worker(self._detach_flow(), name="detach")
 
-        self.push_screen(_QuitConfirmModal(), callback=on_dismiss)
+        self.push_screen(
+            _QuitConfirmModal(
+                can_detach=self.detach_available(),
+                ends_program=not self.controller.is_remote_attach,
+            ),
+            callback=on_dismiss,
+        )

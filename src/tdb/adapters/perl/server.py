@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import time
 from typing import Any, Awaitable, Callable
 
 from tdb.dap.messages import Event, Request, Response, parse_message
@@ -56,6 +57,8 @@ class PerlDapServer:
         self._stop_on_entry = True
         self._classifying = False
         self._pause_pending = False
+        # monotonic time of the last tdbSignal whose stop is not yet resolved
+        self._sigint_pending: float | None = None
         # (file, line) the debuggee was stopped at when the user issued
         # the last step command (n/s/r) -- None after a continue or once
         # consumed. Lets _classify_and_emit_stop coalesce the several
@@ -768,6 +771,10 @@ class PerlDapServer:
         try:
             if self.session is None:
                 return
+            if self._sigint_pending:
+                await self._deliver_pending_sigint()
+                if self.session is None or self.session.eof:
+                    return
             loc = await self._location_after_settling()
             loc = await self._coalesce_compile_phase_step(loc)
             if loc is None or loc.get("file") == "?":
@@ -1236,6 +1243,49 @@ class PerlDapServer:
             self.send_error(request, str(e))
             return
         self.send_response(request)
+
+    async def _on_tdbSignal(self, request: Request) -> None:
+        """tdb-private request: deliver Ctrl-C to the running program after
+        tdb detached. Not gated on "stopped" -- the program is running."""
+        name = request.arguments.get("signal")
+        if name != "SIGINT":
+            self.send_error(request, f"unsupported signal: {name!r}")
+            return
+        if self.session is None:
+            self.send_error(request, "no debuggee to signal: no launch yet")
+            return
+        try:
+            self.session.send_sigint()
+        except PerlProtocolError as e:
+            self.send_error(request, str(e))
+            return
+        # perl5db's $SIG{INT} (DB::catch) will turn this into a stop at the
+        # next statement; _classify_and_emit_stop then re-raises it.
+        self._sigint_pending = time.monotonic()
+        self.send_response(request)
+
+    async def _deliver_pending_sigint(self) -> None:
+        """Called at a stop that follows tdbSignal. If perl5db still owns
+        $SIG{INT} the program has not seen the interrupt: put back the
+        default disposition and re-raise it, so the program dies of SIGINT
+        as it would natively. (A program with its own handler never gets
+        here: its handler replaced DB::catch and ran directly.)"""
+        started, self._sigint_pending = self._sigint_pending, None
+        # A stale request (the program ran its own handler, no stop
+        # followed) must not turn a later, unrelated stop into a kill.
+        if started is None or time.monotonic() - started > 5.0:
+            return
+        session = self.session
+        if session is None or session.eof:
+            return
+        try:
+            await session.command(
+                ";{ my $h = $SIG{INT}; "
+                "if (ref $h eq 'CODE' && $h == \\&DB::catch) "
+                "{ $SIG{INT} = 'DEFAULT'; kill 'INT', $$; } }"
+            )
+        except PerlProtocolError:
+            pass  # the connection closed: the program died, EOF reports it
 
     async def _on_evaluate(self, request: Request) -> None:
         reason = self._not_ready()

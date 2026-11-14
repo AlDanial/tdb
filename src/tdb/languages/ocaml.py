@@ -195,7 +195,7 @@ class OCamlLldbAdapter(LldbDapAdapter):
     # not offer it yet, so opt back out of the attach-via-adapter quirk
     # the base class declares -- except for local pid attach, which the
     # live breakpoint hook (Tdb.breakpoint) relies on.
-    quirks = AdapterQuirks()
+    quirks = AdapterQuirks(interrupt_route="pid", sigint_death_codes=(2,))
 
     def __init__(
         self, executable: str | None = None, attach_pid: int | None = None
@@ -244,6 +244,8 @@ class OCamlGdbAdapter(GdbDapAdapter):
 
     quirks = AdapterQuirks(
         bootstrap_stop_for_entry_breakpoints=True,
+        interrupt_route="pid",
+        sigint_death_codes=(0,),
     )  # no native remote attach for OCaml yet
 
     def initial_source_breakpoints(
@@ -340,6 +342,9 @@ class EarlybirdAdapter(AdapterSpec):
     Field names below are the probe-verified ones (spec Q1)."""
 
     id = "ocamlearlybird"
+    # No interrupt_route: ocamlearlybird is not installed here, so neither
+    # its `process` event nor SIGINT behaviour could be verified; Ctrl-C
+    # after detach uses the fallback (stop the program, exit 130).
     quirks = AdapterQuirks()
 
     def __init__(self, executable: str | None = None) -> None:

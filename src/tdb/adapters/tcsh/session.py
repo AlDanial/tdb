@@ -623,6 +623,53 @@ class DebugSession:
             raise InvalidStateError("program has already exited")
         return process.stdin
 
+    def send_sigint(self) -> None:
+        """Deliver SIGINT to the script the way a terminal Ctrl-C would
+        (tdbSignal, after tdb detached).
+
+        The debuggee is addressed like teardown addresses it: through the
+        guardian's session. tcsh runs in a process group of its own (the
+        guardian starts it with process_group=0), so the signal goes to
+        every group of the session except the guardian's own -- the
+        guardian, the adapter and tdb never see it. The script's `onintr`
+        handling stays in charge of what happens next.
+
+        Raises InvalidStateError when there is nothing to signal.
+        """
+
+        if os.name == "nt":
+            raise InvalidStateError("SIGINT delivery is not supported on Windows")
+        process = self.process
+        if self.state is SessionState.TERMINATED or (
+            process is not None and process.returncode is not None
+        ):
+            raise InvalidStateError("program has already exited")
+        if self.config.external_terminal:
+            # The guardian is not our child there, so its pid cannot be
+            # validated against reuse: never signal by it.
+            raise InvalidStateError(
+                "the script runs in its own terminal; interrupt it there"
+            )
+        guardian_group = self._process_group_id
+        if process is None or guardian_group is None or guardian_group <= 1:
+            raise InvalidStateError("no program has been launched yet")
+        groups = self._owned_process_group_ids()
+        groups.discard(guardian_group)
+        if not groups:
+            raise InvalidStateError("no running program to signal")
+        # Like teardown's _signal_process_groups: a group that vanished
+        # since the snapshot must not stop the others being signalled.
+        signalled = False
+        last_error: OSError | None = None
+        for group in groups:
+            try:
+                os.killpg(group, signal.SIGINT)
+                signalled = True
+            except (ProcessLookupError, PermissionError) as error:
+                last_error = error
+        if not signalled:
+            raise InvalidStateError(f"cannot signal the program: {last_error}")
+
     def threads(self) -> tuple[ThreadInfo, ...]:
         """Return the adapter's single logical tcsh thread."""
 

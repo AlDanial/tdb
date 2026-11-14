@@ -542,6 +542,28 @@ class BashSession:
         self.stopped = False
         self._write_line(mode)
 
+    def send_sigint(self) -> None:
+        """Deliver SIGINT to the script the way a terminal Ctrl-C would.
+
+        Launched in-process: the whole process group (bash + children), the
+        same addressing stop() uses. --terminal mode: the debuggee is not
+        our child and shares the emulator's group, so signal its pid only.
+        Raises BashProtocolError when there is nothing to signal.
+        """
+        try:
+            if self._process is not None:
+                if self._process.returncode is not None:
+                    raise BashProtocolError("the script has already exited")
+                os.killpg(self._process.pid, signal.SIGINT)
+            elif self.debuggee_pid is not None and self.debuggee_pid > 1:
+                # Never 0 / 1: os.kill(0|1, ...) would hit tdb's own group
+                # or init.
+                os.kill(self.debuggee_pid, signal.SIGINT)
+            else:
+                raise BashProtocolError("no debuggee to signal")
+        except (ProcessLookupError, PermissionError) as e:
+            raise BashProtocolError(f"cannot signal the script: {e}") from e
+
     async def stop(self) -> None:
         for t in self._tasks:
             t.cancel()

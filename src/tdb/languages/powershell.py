@@ -37,6 +37,9 @@ from tdb.languages.errors import parse_powershell_error
 
 class PsesAdapter(AdapterSpec):
     id = "pses"
+    # No interrupt_route: Ctrl-C after detach uses the controller fallback
+    # (stop + exit 130). The script runs inside the pwsh process hosting
+    # PSES; SIGINT delivery to it was not verified.
     quirks = AdapterQuirks(stdin_route="request")
 
     def __init__(

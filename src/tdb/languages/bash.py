@@ -28,7 +28,7 @@ from tdb.languages.base import (
 
 class BashAdapter(AdapterSpec):
     id = "bash-tdb"
-    quirks = AdapterQuirks(stdin_route="request")
+    quirks = AdapterQuirks(stdin_route="request", interrupt_route="request")
 
     def __init__(self, bash_executable: str | None = None) -> None:
         self._bash = bash_executable

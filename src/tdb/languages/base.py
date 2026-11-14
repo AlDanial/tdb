@@ -53,6 +53,18 @@ class AdapterQuirks:
     # every adapter.)
     pre_arm_pause_on_attach: bool = False
 
+    # How run-detached delivers Ctrl-C to the debuggee when tdb did not
+    # spawn it on pipes itself. "request" -> tdb-owned adapters, via the
+    # tdb-private `tdbSignal` request; "pid" -> tdb signals the pid from
+    # the DAP `process` event; None -> no way to deliver one.
+    interrupt_route: str | None = None
+
+    # Exit codes this adapter reports when the program dies of the SIGINT
+    # tdb delivered (gdb DAP: 0; lldb-dap: the signal number, 2). They are
+    # indistinguishable from a deliberate exit with that code, so the relay
+    # maps them to 130 only after it delivered a Ctrl-C itself.
+    sigint_death_codes: tuple[int, ...] = ()
+
     # True -> tdb spawns the adapter subprocess for attach too and sends
     # the DAP attach request through it (the adapter dials the debuggee).
     # False (debugpy) -> tdb connects straight to the remote DAP server.
@@ -92,6 +104,15 @@ class AdapterQuirks:
     #     pipe and forwards the private `tdbStdin` request into it.
     #   None: no stdin (gdb, lldb-dap, dlv spawn the debuggee themselves).
     stdin_route: str | None = None
+
+    # `--terminal` only: True when the debuggee, running in its own
+    # terminal window, is verified to outlive the adapter after a
+    # `disconnect` without terminate, so run-detached may really
+    # disconnect. Default False (tdb stays attached silently): an
+    # adapter opts in only after an empirical check, never by guess.
+    # Remote/pid attach sessions ignore this: the debuggee is not the
+    # adapter's child there.
+    survives_disconnect: bool = False
 
 
 class AdapterSpec:
@@ -185,6 +206,16 @@ class AdapterSpec:
         Attach adapters may need source-path configuration that DAP has
         no portable request for.  The controller runs these commands
         after `initialized` and before `setBreakpoints`.
+        """
+        return ()
+
+    def detach_prep_commands(self) -> tuple[str, ...]:
+        """Debugger console commands run when the user detaches (run
+        detached), after every DAP breakpoint has been cleared.
+
+        For adapters whose debugger keeps stop conditions of its own
+        (e.g. watchpoints, catchpoints) that DAP cannot clear.  Each is
+        sent best-effort via `evaluate` with context "repl".
         """
         return ()
 

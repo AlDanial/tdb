@@ -174,6 +174,12 @@ class DAPClient:
             return ""
         return data.decode("utf-8", errors="replace").strip()
 
+    @property
+    def connection_lost(self) -> bool:
+        """True once the adapter connection has ended (adapter died or
+        closed the stream); nothing more will ever arrive on it."""
+        return self._death_error is not None
+
     def _fail_connection(self, err: ConnectionError) -> None:
         """The connection is gone: remember why, so later requests fail
         at once, and fail every request still waiting for an answer."""
@@ -561,6 +567,11 @@ class DAPClient:
         tcsh, ruby, powershell). `eof=True` closes that pipe."""
         await self._send("tdbStdin", {"eof": True} if eof else {"text": text or ""})
 
+    async def send_signal(self, name: str = "SIGINT") -> None:
+        """tdb-private `tdbSignal` request: ask a tdb-owned adapter to
+        deliver signal `name` (default SIGINT) to the debuggee it spawned."""
+        await self._send("tdbSignal", {"signal": name})
+
     async def attach(
         self,
         host: str = "127.0.0.1",
@@ -790,11 +801,13 @@ class DAPClient:
     async def pause(self, thread_id: int) -> None:
         await self._send("pause", {"threadId": thread_id})
 
-    async def disconnect(self, terminate: bool = True) -> None:
+    async def disconnect(self, terminate: bool = True) -> bool:
+        """Send `disconnect`; True when the adapter acknowledged it."""
         try:
             await self._send("disconnect", {"terminateDebuggee": terminate})
         except (DAPError, asyncio.TimeoutError, ConnectionError):
-            pass
+            return False
+        return True
 
 
 class DAPError(Exception):

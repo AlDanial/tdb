@@ -5,7 +5,9 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import os
 import re
+import signal
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -32,6 +34,10 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
+# Bound for each best-effort request strip_stops sends, so one hung adapter
+# cannot stall `d` for the DAP's own (much longer) timeout per request.
+STRIP_REQUEST_TIMEOUT = 3.0
+
 # How long a pid attach may take to report its stop after the attach
 # response (gdb `attach PID` order). Module-level so tests can shrink it.
 ATTACH_STOP_TIMEOUT = 10.0
@@ -44,6 +50,10 @@ _DISPLAY_COMMAND = re.compile(r"^\s*(?P<verb>(?:un)?display)(?:\s+(?P<expr>.+?))
 
 # Terminal emulator launching lives in tdb.session.terminal — see
 # TerminalLauncher there.
+
+
+class DetachNotConfirmed(RuntimeError):
+    """The adapter did not acknowledge a non-terminating disconnect."""
 
 
 class DebugController:
@@ -66,6 +76,13 @@ class DebugController:
         # PipeLauncher when this session owns the debuggee's stdio
         # (debugpy launches without --terminal); see supports_stdin.
         self._pipe_launcher: PipeLauncher | None = None
+        # OS pid of the debuggee from the DAP `process` event; used by
+        # interrupt_debuggee for the "pid" route.
+        self._debuggee_pid: int | None = None
+        # Detach prep commands strip_stops could not install (gdb refuses
+        # `evaluate` while the inferior runs): (client, command) pairs,
+        # retried by run_pending_detach_prep at the next stop.
+        self._pending_detach_prep: list[tuple[DAPClient, str]] = []
         self._launch_params: dict[str, Any] = {}
         # How an injected target was reached (Python pid attach), and
         # the signal that it got there.
@@ -172,6 +189,11 @@ class DebugController:
         return self._is_remote_attach
 
     @property
+    def used_terminal(self) -> bool:
+        """True when the debuggee runs in an external terminal (`--terminal`)."""
+        return self._terminal is not None
+
+    @property
     def supports_restart(self) -> bool:
         """True when `_restart_session` can meaningfully relaunch.
 
@@ -267,6 +289,7 @@ class DebugController:
         self.client.on_event("output", self._on_output)
         self.client.on_event("initialized", self._on_initialized)
         self.client.on_event("breakpoint", self._on_breakpoint_event)
+        self.client.on_event("process", self._on_process)
         # Child process debugging: ChildProcessManager registers its
         # own debugpyAttach handler that fires _spawn_bg(_attach(...)).
         # This is a debugpy-proprietary mechanism (the `debugpyAttach`
@@ -766,26 +789,91 @@ class DebugController:
         if self.state.phase == SessionPhase.NOT_STARTED:
             self.state.transition_to(SessionPhase.RUNNING)
 
+    async def _disconnect_and_stop(self, *, terminate: bool) -> bool:
+        """Close child clients, send `disconnect`, stop the DAP client.
+
+        Returns True when the parent's disconnect was acknowledged.
+        """
+        from tdb._timeouts import DAP_DISCONNECT_PARENT
+
+        await self._settle_attach_hook()
+        await self._children.close_all()
+        acknowledged = True
+        try:
+            # `is not False`: only a client that says so reports a failure.
+            result = await asyncio.wait_for(
+                self.client.disconnect(terminate=terminate),
+                timeout=DAP_DISCONNECT_PARENT,
+            )
+            acknowledged = result is not False
+        except (asyncio.TimeoutError, Exception):
+            acknowledged = False
+        await self.client.stop()
+        return acknowledged
+
+    async def _resume_all_for_detach(self) -> None:
+        """Send a resume to the parent and every child, awaiting each send.
+
+        Independent of `continue_()`'s background tasks and of
+        `current_thread_id`: a debuggee left stopped with no debugger
+        attached would hang for good. Best-effort and bounded per client.
+        """
+        from tdb._timeouts import DAP_DISCONNECT_CHILD
+
+        tid = self.state.current_thread_id
+        active = self._active_client
+        clients = [self.client, *self._child_clients.values()]
+        if active not in clients:
+            clients.append(active)
+
+        async def resume(client: Any) -> None:
+            if client is active and tid is not None:
+                await client.continue_nowait(tid)
+            else:
+                await self._resume_client(client)
+
+        for client in clients:
+            try:
+                await asyncio.wait_for(resume(client), timeout=DAP_DISCONNECT_CHILD)
+            except (asyncio.TimeoutError, Exception):
+                log.debug("detach: resume failed for %r", client, exc_info=True)
+
+    async def detach_disconnect(self) -> bool:
+        """Disconnect without terminating so the debuggee lives on.
+
+        For `--terminal` and remote/pid attach sessions, whose program
+        does not depend on tdb's pipes. Resumes every client first, then
+        disconnects. Returns True if the debuggee is expected to keep
+        running; False (doing nothing) when the adapter is not verified
+        to let a `--terminal` debuggee outlive it, so the caller must
+        keep the session instead. Raises DetachNotConfirmed (after
+        tearing the client down) when the disconnect was not acknowledged.
+        """
+        if (
+            not self._is_remote_attach
+            and not self.profile.adapter.quirks.survives_disconnect
+        ):
+            return False
+        await self._resume_all_for_detach()
+        acknowledged = await self._disconnect_and_stop(terminate=False)
+        self._mark_terminated()
+        if not acknowledged:
+            log.warning("detach: disconnect request was not acknowledged")
+            raise DetachNotConfirmed
+        return True
+
     async def stop(self) -> None:
         # Child disconnects run in parallel with a short timeout: when
         # the parent's `disconnect(terminate=True)` lands, debugpy
         # cascades the termination to all subprocesses, so per-child
         # DAP disconnect is cleanup, not load-bearing. See
         # ChildProcessManager.close_all for the per-child loop.
-        from tdb._timeouts import DAP_DISCONNECT_PARENT
-
-        await self._settle_attach_hook()
-        await self._children.close_all()
-        try:
-            await asyncio.wait_for(
-                self.client.disconnect(terminate=not self._is_remote_attach),
-                timeout=DAP_DISCONNECT_PARENT,
-            )
-        except (asyncio.TimeoutError, Exception):
-            pass
-        await self.client.stop()
+        await self._disconnect_and_stop(terminate=not self._is_remote_attach)
         if self._pipe_launcher is not None:
             await self._pipe_launcher.close()
+        self._mark_terminated()
+
+    def _mark_terminated(self) -> None:
         self.state.transition_to(SessionPhase.TERMINATED)
         # Remove any lingering Processes-modal snapshot file from this
         # tdb session so it doesn't get picked up by a future tdb that
@@ -1141,6 +1229,120 @@ class DebugController:
         if self.state.is_ready and not self.state.is_terminated:
             for source_path, bps in self.state.breakpoints.items():
                 await self._send_breakpoints(source_path, self._enabled_bps(bps))
+
+    def _on_process(self, event: Event) -> None:
+        pid = (event.body or {}).get("systemProcessId")
+        # Never keep 0 / 1 / negatives / bool: os.kill(0|-1, ...) would
+        # signal tdb's own group or everything the user owns.
+        if isinstance(pid, int) and not isinstance(pid, bool) and pid > 1:
+            self._debuggee_pid = pid
+
+    @property
+    def connection_lost(self) -> bool:
+        """The adapter connection ended without the session finishing."""
+        return self.client.connection_lost
+
+    async def strip_stops(self) -> None:
+        """Remove every stop condition from the live session (parent and
+        child clients) so the program can run free. `state.breakpoints`
+        is left intact. Each request is best-effort."""
+        if self.state.is_terminated:
+            return
+        clients: list[DAPClient] = [self.client, *self._child_clients.values()]
+        # First: it re-sends the remaining breakpoints for its source, which
+        # must not happen after (and so undo) the clearing below.
+        await self._best_effort("run-to-cursor cleanup", self.cleanup_run_to_cursor())
+        for client in clients:
+            for source_path in list(self.state.breakpoints):
+                await self._best_effort(
+                    "setBreakpoints", client.set_breakpoints(source_path, [])
+                )
+            await self._best_effort(
+                "setFunctionBreakpoints", client.set_function_breakpoints([])
+            )
+            await self._best_effort(
+                "setExceptionBreakpoints", client.set_exception_breakpoints([])
+            )
+        self._pending_detach_prep = [
+            (client, cmd)
+            for client in clients
+            for cmd in self.profile.adapter.detach_prep_commands()
+        ]
+        await self.run_pending_detach_prep()
+
+    @property
+    def detach_prep_pending(self) -> bool:
+        """Some detach prep command (e.g. gdb's SIGINT pass-through) is not
+        installed yet: the adapter refused it while the program ran."""
+        return bool(self._pending_detach_prep)
+
+    async def run_pending_detach_prep(self) -> bool:
+        """Send the detach prep commands not yet installed; call it while
+        the program is stopped. True once none remain pending."""
+        still: list[tuple[DAPClient, str]] = []
+        for client, cmd in self._pending_detach_prep:
+            if not await self._best_effort(
+                f"detach prep {cmd!r}", client.evaluate(cmd, context="repl")
+            ):
+                still.append((client, cmd))
+        self._pending_detach_prep = still
+        return not still
+
+    @staticmethod
+    async def _best_effort(what: str, awaitable: Any) -> bool:
+        """Await one strip/prep request; False (logged) if it failed."""
+        try:
+            await asyncio.wait_for(awaitable, STRIP_REQUEST_TIMEOUT)
+            return True
+        except asyncio.CancelledError:
+            raise
+        except asyncio.TimeoutError:
+            log.warning(
+                "strip_stops: %s timed out after %ss", what, STRIP_REQUEST_TIMEOUT
+            )
+        except Exception as e:  # DAPError, dead connection
+            log.warning("strip_stops: %s failed: %s", what, e)
+        return False
+
+    async def interrupt_debuggee(self) -> bool:
+        """Deliver Ctrl-C to the debuggee. True if delivery was attempted
+        and did not fail; False when impossible. Never raises."""
+        try:
+            if self._pipe_launcher is not None:
+                # POSIX: the launcher we spawned is debugpy's, not the
+                # program; SIGINT to it prints a launcher traceback and
+                # leaves the real program running. Signal the program.
+                pid = self._debuggee_pid
+                launcher_proc = getattr(self._pipe_launcher, "_process", None)
+                if (
+                    os.name != "nt"
+                    and pid is not None
+                    and pid > 1
+                    and launcher_proc is not None
+                    and launcher_proc.returncode is None
+                    and pid != launcher_proc.pid
+                ):
+                    try:
+                        os.kill(pid, signal.SIGINT)
+                        return True
+                    except OSError:
+                        pass
+                return self._pipe_launcher.send_interrupt()
+            route = self.profile.adapter.quirks.interrupt_route
+            if route == "request":
+                await self.client.send_signal("SIGINT")
+                return True
+            pid = self._debuggee_pid
+            # Windows: os.kill(pid, SIGINT) is TerminateProcess, not an
+            # interrupt; report "impossible" so the documented fallback runs.
+            if route == "pid" and os.name != "nt" and pid is not None and pid > 1:
+                os.kill(pid, signal.SIGINT)
+                return True
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            log.warning("interrupt_debuggee failed: %s", e)
+        return False
 
     async def clear_all_breakpoints(self) -> None:
         """Remove all breakpoints from state and debugpy."""
@@ -1762,6 +1964,7 @@ class DebugController:
         # set this, so headless mode left state.is_terminated stuck at False
         # after the program ended naturally.
         self.state.transition_to(SessionPhase.TERMINATED)
+        self._debuggee_pid = None  # a reused pid must never be signalled
         # Wake any pause()-style waiters so they unblock on termination
         # rather than running out the clock — they'll see is_terminated.
         self._stopped_event.set()
@@ -1775,6 +1978,7 @@ class DebugController:
         # engage no matter which event we get.
         self.state.transition_to(SessionPhase.TERMINATED)
         self.state.last_exit_code = exit_code
+        self._debuggee_pid = None
         self._stopped_event.set()
         self.event_handler.on_exited(exit_code)
 
