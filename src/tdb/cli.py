@@ -1124,30 +1124,60 @@ def _exit_on_startup_error(app: Any) -> None:
         sys.exit(app.return_code or 2)
 
 
+def _setup_logging() -> None:
+    """Point the root logger at tdb.log at the level config.json's
+    ``logging`` key asks for, or silence it when that key is false."""
+    import logging
+    import logging.handlers
+
+    from tdb.persist import load_config, log_file, log_level
+
+    root = logging.getLogger()
+    # Reading config.json can itself log (a parse error). Hold those
+    # records until we know whether, and at what level, they're wanted,
+    # so they neither leak onto the terminal nor create a log file the
+    # user turned off.
+    pending = logging.handlers.MemoryHandler(capacity=1000)
+    root.addHandler(pending)
+    root.setLevel(logging.DEBUG)
+    try:
+        level = log_level(load_config().logging)
+    finally:
+        root.removeHandler(pending)
+    held, pending.buffer = pending.buffer, []
+    pending.close()
+
+    if level is not None:
+        # Tests set TDB_LOG_DIR to keep their log noise out of the user's
+        # config dir; production writes under config_dir() (XDG on Unix,
+        # %APPDATA%/tdb on Windows).
+        log_path = log_file()
+        try:
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            logging.basicConfig(
+                filename=str(log_path),
+                level=level,
+                format="%(asctime)s %(name)s %(levelname)s %(message)s",
+            )
+        except OSError:
+            # Read-only filesystem (or perm denied): run without on-disk
+            # logging, as if it were turned off.
+            level = None
+    if level is None:
+        # Route everything to a NullHandler so stray log calls don't
+        # fall through to lastResort and corrupt the TUI on stderr.
+        root.addHandler(logging.NullHandler())
+        root.setLevel(logging.CRITICAL + 1)
+        return
+    for record in held:
+        if record.levelno >= level:
+            root.handle(record)
+
+
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)  # also applies --config-dir / TDB_CONFIG_DIR
 
-    import logging
-    from tdb.persist import log_file
-
-    # Tests set TDB_LOG_DIR to keep their log noise out of the user's
-    # config dir; production writes under config_dir() (XDG on Unix,
-    # %APPDATA%/tdb on Windows).
-    log_path = log_file()
-    try:
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        logging.basicConfig(
-            filename=str(log_path),
-            level=logging.DEBUG,
-            format="%(asctime)s %(name)s %(levelname)s %(message)s",
-        )
-    except OSError:
-        # Read-only filesystem (or perm denied). Run without on-disk
-        # logging; route everything to a NullHandler so stray log calls
-        # don't fall through to lastResort and corrupt the TUI on stderr.
-        root = logging.getLogger()
-        root.addHandler(logging.NullHandler())
-        root.setLevel(logging.CRITICAL + 1)
+    _setup_logging()
 
     if args.vi:
         from tdb.vi_app import ViApp

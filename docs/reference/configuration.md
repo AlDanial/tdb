@@ -81,7 +81,8 @@ default instead of stopping `tdb`.
     "cpp": "gdb",
     "rust": "gdb",
     "ocaml": "lldb-dap"
-  }
+  },
+  "logging": "DEBUG"
 }
 ```
 
@@ -92,6 +93,7 @@ default instead of stopping `tdb`.
 | `step_mode` | `"statement"` (default), `"line"` | How `n`/`s` treat multi-line statements (see **Step mode** below) |
 | `adapters` | adapter id → executable path, or `null` | Where to find a debugger or interpreter instead of searching `PATH`. Ids: `gdb`, `lldb-dap`, `dlv` (debuggers); `perl`, `rdbg`, `bash`, `tcsh`, `pwsh` (interpreters `tdb` spawns); `pses` (the PowerShell Editor Services module directory); `ocamlearlybird`. Only list the ones you need |
 | `default_adapters` | language id → adapter id | Which adapter a language uses when `--adapter` isn't given. Languages with a choice: `cpp` and `rust` (`gdb` or `lldb-dap`), `ocaml` (`lldb-dap`, `gdb`, or `ocamlearlybird`) |
+| `logging` | `"DEBUG"` (default), `"INFO"`, `"WARNING"` (or `"WARN"`), `"ERROR"`, `"CRITICAL"`, `true`, `false` | The log file `tdb.log` (path shown by `tdb --info`): a level name writes messages at that level and above, `true` is the same as `"DEBUG"`, and `false` turns the log file off entirely. Level names are case-insensitive |
 
 The file is plain JSON: no comments, no trailing commas. `tdb` rewrites it
 when you change a setting from the **Configure** menu, so hand edits made
