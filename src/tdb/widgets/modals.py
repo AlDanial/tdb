@@ -602,7 +602,7 @@ class _QuitConfirmModal(ModalScreen):
         align: center middle;
     }
     _QuitConfirmModal #dialog {
-        width: 42;
+        width: 46;
         height: 7;
         border: solid $warning;
         background: $surface;
@@ -622,7 +622,9 @@ class _QuitConfirmModal(ModalScreen):
 
     def __init__(self, can_detach: bool = False, ends_program: bool = True) -> None:
         super().__init__()
-        self._can_detach = can_detach
+        # In attach mode quitting already leaves the program running, so
+        # a separate "run detached" choice would be redundant.
+        self._can_detach = can_detach and ends_program
         self._ends_program = ends_program
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
@@ -632,7 +634,11 @@ class _QuitConfirmModal(ModalScreen):
         return True
 
     def compose(self) -> ComposeResult:
-        quit_text = "q: quit (ends the program)" if self._ends_program else "q: quit"
+        quit_text = (
+            "q: quit (ends the program)"
+            if self._ends_program
+            else "q: exit tdb (program continues running)"
+        )
         with Vertical(id="dialog", classes="" if self._can_detach else "two-lines"):
             yield Static(quit_text, markup=False)
             if self._can_detach:
