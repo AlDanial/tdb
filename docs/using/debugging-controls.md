@@ -16,6 +16,7 @@ those for gdb/pdb, with some aliases and extras thrown in for convenience.
 | `G` | Go to last line (with count: `42G` jumps to line 42) |
 | `e` | Re-display the last error (traceback) |
 | `R` | Restart the debug session |
+| `T` | Color theme picker: `↑`/`↓` preview each theme live, `Enter` keeps it, `Esc` reverts |
 | `q q` | Quit (ends the program) |
 | `q d` | Run detached: close the TUI and let the program finish; see [Run Detached](run-detached.md) |
 | `Ctrl+q` | Quit |
