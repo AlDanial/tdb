@@ -222,3 +222,42 @@ async def test_ctrl_q_still_quits_immediately(calls):
     assert calls["stop"] == 1
     assert calls["strip"] == 0
     assert app.run_detached is False
+
+
+async def test_ctrl_q_in_attach_mode_detaches(calls):
+    app = _app()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        _ready(app)
+        app.controller._is_remote_attach = True
+        await pilot.press("ctrl+q")
+        await _settle(pilot)
+    assert calls["strip"] == 1
+    assert calls["stop"] == 0
+    assert app.run_detached is True
+
+
+async def test_ctrl_q_in_attach_mode_quits_when_detach_unavailable(calls):
+    app = _app()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        _ready(app)
+        app.controller._is_remote_attach = True
+        app.controller.state.phase = SessionPhase.POST_MORTEM
+        await pilot.press("ctrl+q")
+        await _settle(pilot)
+    assert calls["strip"] == 0
+    assert calls["stop"] == 1
+    assert app.run_detached is False
+
+
+async def test_ctrl_q_in_launch_mode_still_quits(calls):
+    app = _app()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        _ready(app)
+        await pilot.press("ctrl+q")
+        await _settle(pilot)
+    assert calls["strip"] == 0
+    assert calls["stop"] == 1
+    assert app.run_detached is False

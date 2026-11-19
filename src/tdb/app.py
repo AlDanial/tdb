@@ -2103,6 +2103,12 @@ class TdbApp(_AppMessageRoutes, App):
         self.run_worker(self._quit_debugger_flow(), name="quit")
 
     async def _quit_debugger_flow(self) -> None:
+        if self.controller.is_remote_attach and self.detach_available():
+            # Attach mode: quitting leaves the program running, so every
+            # quit (Ctrl+Q, the modal's `q`) is a full detach: stops
+            # stripped, program resumed, "keeps running" notice.
+            await self._detach_flow()
+            return
         if not await self._confirm_discard_edits():
             return
         # Idempotent: Ctrl+Q and the q-confirm path both land here, and

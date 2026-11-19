@@ -46,9 +46,12 @@ async def test_modal_attach_wording():
             assert static.size.height == 1
 
 
-async def test_attach_mode_ignores_d():
+async def test_attach_mode_q_detaches_and_ignores_d():
     assert await _press("d", can_detach=True, ends_program=False) == []
-    assert await _press("q", can_detach=True, ends_program=False) == ["quit"]
+    assert await _press("q", can_detach=True, ends_program=False) == ["detach"]
+    # Detach unavailable (e.g. session not ready): q falls back to quit,
+    # which in attach mode still disconnects without terminating.
+    assert await _press("q", can_detach=False, ends_program=False) == ["quit"]
 
 
 async def test_modal_without_detach_ignores_d():

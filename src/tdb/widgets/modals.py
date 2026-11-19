@@ -595,7 +595,8 @@ class _PauseFailedModal(ModalScreen):
 
 class _QuitConfirmModal(ModalScreen):
     """Quit choice: `q` quits, `d` (when offered) runs the program
-    detached, escape cancels. Dismisses with "quit", "detach" or None."""
+    detached, escape cancels. Dismisses with "quit", "detach" or None.
+    In attach mode (ends_program=False) `q` is the detach choice."""
 
     DEFAULT_CSS = """
     _QuitConfirmModal {
@@ -622,9 +623,11 @@ class _QuitConfirmModal(ModalScreen):
 
     def __init__(self, can_detach: bool = False, ends_program: bool = True) -> None:
         super().__init__()
-        # In attach mode quitting already leaves the program running, so
-        # a separate "run detached" choice would be redundant.
+        # In attach mode quitting leaves the program running, so `q`
+        # itself takes the detach path (when available) and there is no
+        # separate "run detached" choice.
         self._can_detach = can_detach and ends_program
+        self._quit_detaches = can_detach and not ends_program
         self._ends_program = ends_program
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
@@ -646,7 +649,7 @@ class _QuitConfirmModal(ModalScreen):
             yield Static("ESC: cancel", markup=False)
 
     def action_confirm(self) -> None:
-        self.dismiss("quit")
+        self.dismiss("detach" if self._quit_detaches else "quit")
 
     def action_detach(self) -> None:
         if self._can_detach:
