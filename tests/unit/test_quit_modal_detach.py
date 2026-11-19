@@ -35,8 +35,23 @@ async def test_modal_attach_wording():
     async with app.run_test() as pilot:
         await pilot.pause()
         text = _text(app)
-        assert "q: quit" in text
+        assert "q: exit tdb (program continues running)" in text
         assert "(ends the program)" not in text
+        assert "run detached" not in text
+        assert "ESC: cancel" in text
+        # The attach-mode quit line fits on one row.
+        dialog = app.screen.query_one("#dialog")
+        assert dialog.has_class("two-lines")
+        for static in app.screen.query(Static):
+            assert static.size.height == 1
+
+
+async def test_attach_mode_q_detaches_and_ignores_d():
+    assert await _press("d", can_detach=True, ends_program=False) == []
+    assert await _press("q", can_detach=True, ends_program=False) == ["detach"]
+    # Detach unavailable (e.g. session not ready): q falls back to quit,
+    # which in attach mode still disconnects without terminating.
+    assert await _press("q", can_detach=False, ends_program=False) == ["quit"]
 
 
 async def test_modal_without_detach_ignores_d():

@@ -138,7 +138,8 @@ def test_remote_attach_detach_disconnects_and_program_keeps_running(
     import time
 
     proc, port, beat = heartbeat_target
-    out, code = run_detached(["-r", f"127.0.0.1:{port}"], **env)
+    # Attach mode has no `d` choice: the modal's `q` is the detach.
+    out, code = run_detached(["-r", f"127.0.0.1:{port}"], keys=b"qq", **env)
     assert code == 0
     assert "keeps running" in out
     assert proc.poll() is None
