@@ -38,6 +38,7 @@ from tdb.widgets.code_view import CodeView, _BreakpointConditionModal, looks_bin
 from tdb.widgets.console_view import ConsoleView
 from tdb.widgets.evaluate_console import EvaluateConsole
 from tdb.widgets.menu_bar import MenuBar, _MenuDropdown
+from tdb.widgets.theme_picker import ThemePickerModal
 from tdb.widgets.modals import (
     DEFAULT_TRACEBACK_HEADER,
     _AboutModal,
@@ -236,6 +237,9 @@ class TdbApp(_AppMessageRoutes, App):
         # change via save_config(self._config). Owners of the values:
         # the App for in-session reads, persist.py for on-disk format.
         self._config = config if config is not None else TdbConfig()
+        # True while ThemePickerModal is previewing themes: watch_theme
+        # must not persist those; only Enter in the picker saves.
+        self._theme_previewing = False
         self._cli_breakpoints = cli_breakpoints or []
         self._attach_host = attach_host
         self._attach_port = attach_port
@@ -1769,14 +1773,33 @@ class TdbApp(_AppMessageRoutes, App):
         )
 
     def action_color_theme(self) -> None:
-        # Opens textual's built-in fuzzy-search theme palette. The watch_theme
-        # hook below persists the choice when the user selects one.
-        self.action_change_theme()
+        # Opens the live-preview picker (Configure -> Color Theme, or `T`
+        # in the Code View). Previews are not saved; Enter keeps + saves,
+        # any other way out leaves the saved theme as it was.
+        if any(isinstance(s, ThemePickerModal) for s in self.screen_stack):
+            return
+
+        def on_dismiss(result: str | None) -> None:
+            self._theme_previewing = False
+            if result is not None:
+                self._config.theme = result
+                save_config(self._config)
+
+        self._theme_previewing = True
+        self.push_screen(ThemePickerModal(self.theme), callback=on_dismiss)
+
+    def on_code_view_theme_picker_requested(
+        self, message: CodeView.ThemePickerRequested
+    ) -> None:
+        self.action_color_theme()
 
     def watch_theme(self, theme: str) -> None:
-        # Fires on any theme change (startup + user-initiated). Save the
-        # user-facing picks; startup-restored value is already what's on
-        # disk so re-saving is a harmless no-op.
+        # Fires on any theme change (startup, Ctrl+P palette, picker
+        # previews). Previews are skipped; the picker's Enter saves. The
+        # startup-restored value is already what's on disk, so re-saving
+        # it is a harmless no-op.
+        if self._theme_previewing:
+            return
         self._config.theme = theme
         save_config(self._config)
 

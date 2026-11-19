@@ -436,6 +436,9 @@ class CodeView(ScrollableContainer, can_focus=True):
     class ShowLastTraceback(Message):
         pass
 
+    class ThemePickerRequested(Message):
+        """`T`: open the live-preview color-theme picker."""
+
     class EditClosed(Message):
         """Standalone mode: Edit mode was left (clean, saved, or
         discarded). The editor stays mounted; the app is about to exit."""
@@ -682,6 +685,8 @@ class CodeView(ScrollableContainer, can_focus=True):
             self.post_message(self.DebugAction("quit"))
         elif action == "show_traceback":
             self.post_message(self.ShowLastTraceback())
+        elif action == "theme_picker":
+            self.post_message(self.ThemePickerRequested())
 
     # ---- Edit mode ----
 
@@ -1350,9 +1355,13 @@ class CodeView(ScrollableContainer, can_focus=True):
 
         # Line number
         if is_current:
-            output.append(f"{line_num:>4} ", style=f"{self._line_num_fg} on {self._current_bg}")
+            output.append(
+                f"{line_num:>4} ", style=f"{self._line_num_fg} on {self._current_bg}"
+            )
         elif is_cursor:
-            output.append(f"{line_num:>4} ", style=f"{self._line_num_fg} on {self._cursor_bg}")
+            output.append(
+                f"{line_num:>4} ", style=f"{self._line_num_fg} on {self._cursor_bg}"
+            )
         else:
             output.append(f"{line_num:>4} ", style="bright_black")
 

@@ -33,6 +33,7 @@ _VIM_NAV = {
     "question_mark": "search_back",  # ?
     "n": "search_next",  # n = next search result
     "N": "search_prev",  # N = previous search result
+    "T": "theme_picker",  # T = color theme picker (live preview)
     "pageup": "page_up",
     "pagedown": "page_down",
 }
@@ -46,6 +47,7 @@ _EMACS_NAV = {
     "ctrl+end": "goto_end",
     "ctrl+s_search": "search",
     "ctrl+r": "search_back",
+    "T": "theme_picker",
     "n": "search_next",
     "N": "search_prev",
     "right_square_bracket": "paragraph_down",
@@ -55,6 +57,7 @@ _EMACS_NAV = {
 }
 
 _DEFAULT_NAV = {
+    "T": "theme_picker",
     "slash": "search",
     "question_mark": "search_back",
     "n": "search_next",
@@ -80,6 +83,7 @@ _DEBUG = {
     "d": "stack_down",
     "L": "goto_line_prompt",
     "R": "restart",
+    "T": "theme_picker",
     # vim-style cursor movement also usable in debug mode (k/j/G with
     # count prefix). Convenient for stepping the cursor without leaving
     # debug mode just to scroll a few lines.
@@ -245,6 +249,7 @@ class KeybindingConfig:
             "stack_down": "Move down the stack",
             "restart": "Restart program",
             "quit": "Quit tdb",
+            "theme_picker": "Color theme (live preview)",
         }
         KEY_DISPLAY = {
             "right_square_bracket": "]",
