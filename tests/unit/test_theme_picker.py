@@ -211,3 +211,19 @@ async def test_picker_does_not_dim_screen(saved):
         app.action_color_theme()
         await pilot.pause()
         assert app.screen.styles.background.a == 0
+
+
+async def test_enter_saves_theme_on_screen_after_palette_change(tmp_path, saved):
+    # Ctrl+P's palette can change the theme on top of the open picker;
+    # Enter must then save what the user is looking at.
+    app = TdbApp(program="", config=TdbConfig(theme=START))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await _open(app, pilot, tmp_path)
+        app.theme = "nord"
+        await pilot.pause()
+        await pilot.press("enter")
+        await pilot.pause()
+        assert app.theme == "nord"
+        assert app._config.theme == "nord"
+        assert saved and saved[-1] == "nord"

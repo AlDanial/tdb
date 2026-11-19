@@ -1302,6 +1302,17 @@ class CodeView(ScrollableContainer, can_focus=True):
         text = syntax.highlight(source)
         lines = text.split("\n")
         for line in lines:
+            # Syntax.highlight() also puts the Pygments background on the
+            # Text's base style (copied to every split line); drop it so
+            # the pane's own theme background shows through.
+            base = line.style
+            if isinstance(base, Style) and base.bgcolor:
+                line.style = Style(
+                    color=base.color,
+                    bold=base.bold,
+                    italic=base.italic,
+                    underline=base.underline,
+                )
             new_spans = []
             for span in line._spans:
                 style = span.style

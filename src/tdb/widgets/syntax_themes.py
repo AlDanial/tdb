@@ -31,6 +31,11 @@ _PYGMENTS_FOR_THEME: dict[str, str] = {
 _DARK_FALLBACK = "monokai"
 _LIGHT_FALLBACK = "default"
 
+# Line backgrounds for themes whose colors are ANSI (terminal palette)
+# references, which can't be tinted: (current_line_bg, cursor_line_bg).
+_ANSI_DARK = ("rgb(120,100,30)", "rgb(60,60,80)")
+_ANSI_LIGHT = ("rgb(250,232,170)", "rgb(215,225,245)")
+
 
 def pygments_style_for(theme: Theme) -> str:
     """Pygments style name to highlight source with under `theme`."""
@@ -53,6 +58,12 @@ def line_backgrounds(theme: Theme) -> tuple[str, str]:
     the warning color, the cursor line the primary color.
     """
     base = Color.parse(theme.background or ("#1e1e1e" if theme.dark else "#ffffff"))
-    current = _blend(base, theme.warning or "#ffa62b", 0.35)
-    cursor = _blend(base, theme.primary, 0.20)
+    warning = Color.parse(theme.warning or "#ffa62b")
+    primary = Color.parse(theme.primary)
+    if any(c.ansi is not None for c in (base, warning, primary)):
+        # ANSI colors (the ansi-* themes) don't blend: Color.blend returns
+        # the raw tint, e.g. pure red. Use fixed washes instead.
+        return _ANSI_DARK if theme.dark else _ANSI_LIGHT
+    current = _blend(base, warning.hex, 0.35)
+    cursor = _blend(base, primary.hex, 0.20)
     return current, cursor

@@ -76,7 +76,9 @@ class ThemePickerModal(ModalScreen[str | None]):
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         event.stop()
-        self.dismiss(event.option.id)
+        # Keep what is on screen: Ctrl+P's palette (an App binding) can
+        # change the theme on top of this list without moving its cursor.
+        self.dismiss(self.app.theme)
 
     def action_revert(self) -> None:
         if self.app.theme != self._original:

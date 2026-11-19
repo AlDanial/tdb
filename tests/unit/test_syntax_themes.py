@@ -125,3 +125,28 @@ async def test_placeholder_not_rehighlighted_on_theme_change(tmp_path):
         assert cv._highlighted
         for line in cv._highlighted:
             assert line.style.italic and line.style.dim
+
+
+def test_ansi_theme_line_bgs_are_not_raw_ansi():
+    # ansi-* themes have background="ansi_default": Color.blend would
+    # return the raw tint (pure red / navy) instead of a subtle wash.
+    for s in line_backgrounds(BUILTIN_THEMES["ansi-light"]):
+        assert sum(_rgb(s)) / 3 > 150, s
+    for s in line_backgrounds(BUILTIN_THEMES["ansi-dark"]):
+        assert sum(_rgb(s)) / 3 < 120, s
+
+
+@pytest.mark.parametrize("theme", ["textual-light", "rose-pine", "textual-dark"])
+async def test_no_pygments_background_on_highlighted_lines(tmp_path, theme):
+    app = TdbApp(program="", config=TdbConfig(theme=theme))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        cv = app.query_one("#code-view", CodeView)
+        cv.load_file(_write(tmp_path))
+        await pilot.pause()
+        for line in cv._highlighted:
+            base = line.style
+            if isinstance(base, Style):
+                assert base.bgcolor is None, (theme, base)
+            else:
+                assert not base or " on " not in str(base), (theme, base)
