@@ -37,6 +37,11 @@ end-of-line and paste (`End` and the terminal's own paste still work).
 | `Alt+A` | Async Tasks |
 | `Alt+H` | Help (Documentation, About) |
 
+**Color Theme** (also `T` in the Code View's Debug and Navigate modes) opens a
+list docked on the right. Moving through it applies each theme immediately,
+including the Code View's syntax colors and line highlights; `Enter` keeps
+and saves the theme, `Esc` or `q` restores the one you started with.
+
 Within **Source**, Up/Down or j/k selects a file and Enter opens it. Press `d`
 to locate statically imported Python modules on the selected interpreter's
 search paths, `x` to remove the highlighted entry, and `s` to save the list.
@@ -64,6 +69,7 @@ In Navigate mode, you can move around the file with the following keys:
 | `?` | Search backward |
 | `n` / `N` | Next / previous search result |
 | `PageUp` / `PageDown` | Scroll by page |
+| `T` | Color theme picker (live preview; `Enter` keeps, `Esc` reverts) |
 
 Press `Escape` again to enter Edit mode (below), and once more to return to Debug mode.
 

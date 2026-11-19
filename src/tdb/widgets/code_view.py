@@ -27,6 +27,7 @@ from tdb.source_edit import save_text
 from tdb.terminal_text import visible_controls
 from tdb.vi import MarkTable, ViSession
 from tdb.widgets.code_editor import CodeEditor, _UnsavedChangesModal
+from tdb.widgets.syntax_themes import line_backgrounds, pygments_style_for
 
 if TYPE_CHECKING:
     from tdb.dap.types import SourceBreakpoint
@@ -435,6 +436,9 @@ class CodeView(ScrollableContainer, can_focus=True):
     class ShowLastTraceback(Message):
         pass
 
+    class ThemePickerRequested(Message):
+        """`T`: open the live-preview color-theme picker."""
+
     class EditClosed(Message):
         """Standalone mode: Edit mode was left (clean, saved, or
         discarded). The editor stays mounted; the app is about to exit."""
@@ -512,9 +516,40 @@ class CodeView(ScrollableContainer, can_focus=True):
         # from disk keep whatever final-newline state they had.
         self._fix_eol_paths: set[str] = set()
 
+        # Theme-derived colors (see tdb.widgets.syntax_themes). Defaults
+        # match the pre-theming look until on_mount reads the app theme.
+        self._syntax_style: str = "monokai"
+        self._current_bg: str = "rgb(120,100,30)"
+        self._cursor_bg: str = "rgb(60,60,80)"
+        self._line_num_fg: str = "bright_white"
+
     def compose(self):
         self._content = _CodeContent(self)
         yield self._content
+
+    def on_mount(self) -> None:
+        self._apply_theme(self.app.current_theme)
+        self.app.theme_changed_signal.subscribe(self, self._on_theme_changed)
+
+    def _on_theme_changed(self, theme) -> None:
+        self.refresh_theme()
+
+    def _apply_theme(self, theme) -> None:
+        self._syntax_style = pygments_style_for(theme)
+        self._current_bg, self._cursor_bg = line_backgrounds(theme)
+        self._line_num_fg = "bright_white" if theme.dark else "black"
+
+    def refresh_theme(self) -> None:
+        """Recolor for the app's current theme: syntax style, line
+        highlights, and a re-highlight of the loaded source (placeholders
+        are plain text and stay as they are)."""
+        self._apply_theme(self.app.current_theme)
+        if self._lines and not self._source_is_placeholder:
+            self._highlighted = self._highlight_source(
+                visible_controls(self._source_text)
+            )
+        if self._lines:
+            self._render_code()
 
     # ---- Key handling with mode + count prefix ----
 
@@ -650,6 +685,8 @@ class CodeView(ScrollableContainer, can_focus=True):
             self.post_message(self.DebugAction("quit"))
         elif action == "show_traceback":
             self.post_message(self.ShowLastTraceback())
+        elif action == "theme_picker":
+            self.post_message(self.ThemePickerRequested())
 
     # ---- Edit mode ----
 
@@ -1259,10 +1296,23 @@ class CodeView(ScrollableContainer, can_focus=True):
         self.scroll_to(y=max(0, target_y - half_height), animate=False)
 
     def _highlight_source(self, source: str) -> list[Text]:
-        syntax = Syntax(source, self.lexer_name, theme="monokai", line_numbers=False)
+        syntax = Syntax(
+            source, self.lexer_name, theme=self._syntax_style, line_numbers=False
+        )
         text = syntax.highlight(source)
         lines = text.split("\n")
         for line in lines:
+            # Syntax.highlight() also puts the Pygments background on the
+            # Text's base style (copied to every split line); drop it so
+            # the pane's own theme background shows through.
+            base = line.style
+            if isinstance(base, Style) and base.bgcolor:
+                line.style = Style(
+                    color=base.color,
+                    bold=base.bold,
+                    italic=base.italic,
+                    underline=base.underline,
+                )
             new_spans = []
             for span in line._spans:
                 style = span.style
@@ -1316,9 +1366,13 @@ class CodeView(ScrollableContainer, can_focus=True):
 
         # Line number
         if is_current:
-            output.append(f"{line_num:>4} ", style="bright_white on rgb(120,100,30)")
+            output.append(
+                f"{line_num:>4} ", style=f"{self._line_num_fg} on {self._current_bg}"
+            )
         elif is_cursor:
-            output.append(f"{line_num:>4} ", style="bright_white on rgb(60,60,80)")
+            output.append(
+                f"{line_num:>4} ", style=f"{self._line_num_fg} on {self._cursor_bg}"
+            )
         else:
             output.append(f"{line_num:>4} ", style="bright_black")
 
@@ -1329,9 +1383,9 @@ class CodeView(ScrollableContainer, can_focus=True):
             hl_line = Text(visible_controls(self._lines[index]))
 
         if is_current:
-            hl_line = self._apply_line_bg(hl_line, "rgb(120,100,30)")
+            hl_line = self._apply_line_bg(hl_line, self._current_bg)
         elif is_cursor:
-            hl_line = self._apply_line_bg(hl_line, "rgb(60,60,80)")
+            hl_line = self._apply_line_bg(hl_line, self._cursor_bg)
         else:
             hl_line = hl_line.copy()
 
