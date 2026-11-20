@@ -42,6 +42,12 @@ list docked on the right. Moving through it applies each theme immediately,
 including the Code View's syntax colors and line highlights; `Enter` keeps
 and saves the theme, `Esc` or `q` restores the one you started with.
 
+In **Documentation** (and `tdb --doc`), `/` or `Ctrl+F` opens a search bar.
+Matches highlight as you type once the query is 4 characters long; `Enter`
+searches shorter queries and jumps to the next match. `n`/`N` step
+forward/back, `Esc` closes the search bar. Search is case-insensitive unless
+the query has an uppercase letter.
+
 Within **Source**, Up/Down or j/k selects a file and Enter opens it. Press `d`
 to locate statically imported Python modules on the selected interpreter's
 search paths, `x` to remove the highlighted entry, and `s` to save the list.
