@@ -7,11 +7,13 @@ from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass
 
+from textual.actions import SkipAction
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal
 from textual.content import Content
 from textual.css.query import NoMatches
+from textual.geometry import Offset, Region
 from textual.widget import Widget
 from textual.widgets import Input, Label, Markdown, MarkdownViewer, Static
 from textual.widgets._markdown import (
@@ -177,6 +179,7 @@ class SearchableMarkdownViewer(MarkdownViewer):
         Binding("ctrl+f", "open_search", "Search", show=False),
         Binding("n", "next_match", "Next match", show=False),
         Binding("N", "prev_match", "Previous match", show=False),
+        Binding("escape", "escape_search", show=False),
     ]
 
     def __init__(self, *args, **kwargs) -> None:
@@ -227,13 +230,20 @@ class SearchableMarkdownViewer(MarkdownViewer):
         with search_input.prevent(Input.Changed):
             search_input.value = ""
         self.query_one("#doc-search-bar").remove_class("-active")
-        self.document.focus()
+        self.document.focus(scroll_visible=False)
 
     def action_next_match(self) -> None:
         self._step(1)
 
     def action_prev_match(self) -> None:
         self._step(-1)
+
+    def action_escape_search(self) -> None:
+        """ESC with the bar still showing (focus back in the document after
+        Enter) closes the bar; otherwise ESC goes on to the modal / app."""
+        if not self.search_active:
+            raise SkipAction()
+        self.action_close_search()
 
     # -- input events ------------------------------------------------------
 
@@ -254,7 +264,7 @@ class SearchableMarkdownViewer(MarkdownViewer):
             self._step(1)
         elif event.value:
             self._search(event.value)
-        self.document.focus()
+        self.document.focus(scroll_visible=False)
 
     # -- search machinery --------------------------------------------------
 
@@ -321,8 +331,47 @@ class SearchableMarkdownViewer(MarkdownViewer):
     def _show_current(self) -> None:
         self._update_count()
         if self._current is not None:
-            widget = self._matches[self._current][0].widget
-            self.scroll_to_widget(widget, center=True, animate=False)
+            target, start, _end = self._matches[self._current]
+            self._scroll_to_match(target, start)
+
+    def _scroll_to_match(self, target: _Target, start: int) -> None:
+        """Center the row holding the match, not the block's top: a block
+        can be taller than the viewport. Fences give the exact row (one
+        code line per row); wrapped text gets a proportional estimate."""
+        widget: Widget = target.widget
+        plain = target.get().plain
+        if isinstance(widget, _SearchFence):
+            with suppress(NoMatches):
+                widget = widget.query_one("#code-content", Label)
+            row = plain.count("\n", 0, start)
+        else:
+            row = widget.content_size.height * start // max(len(plain), 1)
+        region = widget.virtual_region_with_margin
+        if not region.size:
+            return
+        styles = widget.styles
+        row += styles.margin.top + styles.border.spacing.top + styles.padding.top
+        region = Region(region.x, region.y + row, region.width, 1)
+        # Same container walk as Widget.scroll_to_widget, from that row.
+        while isinstance(widget.parent, Widget) and widget is not self:
+            if not region:
+                break
+            container = widget.parent
+            if widget.styles.dock != "none":
+                offset = Offset(0, 0)
+            else:
+                offset = container.scroll_to_region(
+                    region, spacing=widget.dock_gutter, animate=False, center=True
+                )
+            region = (
+                region.translate(-offset)
+                .translate(container.styles.margin.top_left)
+                .translate(container.styles.border.spacing.top_left)
+                .translate(container.virtual_region_with_margin.offset)
+                .grow(container.styles.margin)
+                .intersection(container.virtual_region_with_margin)
+            )
+            widget = container
 
     def _update_count(self) -> None:
         if self._last_query is None:

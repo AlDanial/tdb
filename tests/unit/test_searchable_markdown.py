@@ -356,3 +356,71 @@ async def test_documentation_modal_footer_mentions_search(tdb_app):
         footer = str(app.screen.query_one("#doc-footer", Static).visual)
         assert SEARCH_HINT in footer
         assert "ESC or q to close" in footer
+
+
+# --- final-review fixes -------------------------------------------------------
+
+
+async def test_escape_after_enter_closes_bar_not_viewer():
+    app = _Host()
+    async with app.run_test(size=(100, 40)) as pilot:
+        await pilot.pause()
+        await _press(pilot, "slash", *"gdb", "enter")
+        assert isinstance(app.focused, Markdown)
+        await _press(pilot, "escape")
+        assert not _viewer(app).search_active
+        assert _search_spans(app) == []
+        assert not app.quit_called
+        await _press(pilot, "escape")
+        assert app.quit_called
+
+
+TALL_FENCE = (
+    "# Tall\n\n```text\n"
+    + "".join(f"filler line {i}\n" for i in range(150))
+    + "the needle line\n"
+    + "".join(f"filler line {i}\n" for i in range(5))
+    + "```\n"
+)
+
+TALL_PARAGRAPH = (
+    "# Tall\n\n" + " ".join(f"word{i}" for i in range(1500)) + " needle.\n\nend\n"
+)
+
+
+class _TallHost(App):
+    def __init__(self, doc: str) -> None:
+        super().__init__()
+        self._doc = doc
+
+    def compose(self):
+        yield SearchableMarkdownViewer(self._doc, show_table_of_contents=False)
+
+
+async def test_match_deep_in_tall_fence_is_scrolled_into_view():
+    app = _TallHost(TALL_FENCE)
+    async with app.run_test(size=(100, 30)) as pilot:
+        await pilot.pause()
+        await _press(pilot, "slash", *"needle", "enter")
+        await pilot.pause()
+        viewer = _viewer(app)
+        label = app.query_one(MarkdownFence).query_one("#code-content", Label)
+        match_y = label.region.y + label.styles.padding.top + 150
+        visible = viewer.scrollable_content_region
+        assert visible.y <= match_y < visible.bottom
+
+
+async def test_match_at_end_of_tall_paragraph_is_scrolled_into_view():
+    app = _TallHost(TALL_PARAGRAPH)
+    async with app.run_test(size=(100, 30)) as pilot:
+        await pilot.pause()
+        await _press(pilot, "slash", *"needle", "enter")
+        await pilot.pause()
+        viewer = _viewer(app)
+        para = next(
+            p for p in app.query(MarkdownParagraph) if "needle" in p._content.plain
+        )
+        assert para.region.height > 30  # taller than the viewport
+        last_row = para.region.bottom - 1
+        visible = viewer.scrollable_content_region
+        assert visible.y <= last_row < visible.bottom
