@@ -3,6 +3,7 @@ Help -> Documentation)."""
 
 from __future__ import annotations
 
+import pytest
 from textual.app import App
 from textual.widgets import Input, Label, Markdown, Static
 from textual.widgets._markdown import (
@@ -13,6 +14,7 @@ from textual.widgets._markdown import (
 
 from tdb.widgets.searchable_markdown import (
     MIN_INCREMENTAL,
+    SEARCH_HINT,
     SearchableMarkdownViewer,
     find_matches,
 )
@@ -275,3 +277,82 @@ async def test_n_without_search_is_noop():
         await _press(pilot, "n", "N")
         assert _viewer(app).current_index is None
         assert not app.quit_called
+
+
+# --- the two places the viewer is used ---------------------------------------
+
+
+async def test_doc_app_uses_searchable_viewer():
+    from tdb.cli import make_doc_app
+
+    app = make_doc_app(DOC)
+    async with app.run_test(size=(100, 40)) as pilot:
+        await pilot.pause()
+        viewer = app.query_one(SearchableMarkdownViewer)
+        await _press(pilot, "slash", "q")
+        assert app.is_running
+        assert app.query_one("#doc-search-input", Input).value == "q"
+        await _press(pilot, "escape")
+        assert not viewer.search_active
+        assert app.is_running
+        await _press(pilot, "escape")
+        assert not app.is_running
+
+
+async def test_doc_app_footer_shows_search_binding():
+    from tdb.cli import make_doc_app
+
+    app = make_doc_app(DOC)
+    async with app.run_test(size=(100, 40)) as pilot:
+        await pilot.pause()
+        active = app.screen.active_bindings
+        assert "slash" in active
+        assert active["slash"].binding.show
+        assert active["slash"].binding.description == "Search"
+
+
+@pytest.fixture
+def tdb_app(monkeypatch):
+    from tdb.app import TdbApp
+    from tdb.persist import TdbConfig
+    from tdb.session.controller import DebugController
+
+    async def no_op(self, *args, **kwargs):
+        pass
+
+    monkeypatch.setattr(DebugController, "start", no_op)
+    monkeypatch.setattr(DebugController, "stop", no_op)
+    monkeypatch.setattr("tdb.documentation.load_docs", lambda: DOC)
+    return TdbApp(program="", config=TdbConfig())
+
+
+async def test_documentation_modal_search_and_q(tdb_app):
+    from tdb.widgets.modals import _DocumentationModal
+
+    app = tdb_app
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        app.action_documentation()
+        await pilot.pause()
+        assert isinstance(app.screen, _DocumentationModal)
+        app.screen.query_one(SearchableMarkdownViewer)
+        await _press(pilot, "slash", "q")
+        assert isinstance(app.screen, _DocumentationModal)
+        await _press(pilot, "escape")
+        assert isinstance(app.screen, _DocumentationModal)
+        await _press(pilot, "escape")
+        assert not isinstance(app.screen, _DocumentationModal)
+
+
+async def test_documentation_modal_footer_mentions_search(tdb_app):
+    from tdb.widgets.modals import _DocumentationModal
+
+    app = tdb_app
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        app.action_documentation()
+        await pilot.pause()
+        assert isinstance(app.screen, _DocumentationModal)
+        footer = str(app.screen.query_one("#doc-footer", Static).visual)
+        assert SEARCH_HINT in footer
+        assert "ESC or q to close" in footer

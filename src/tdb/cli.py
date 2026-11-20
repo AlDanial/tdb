@@ -1227,18 +1227,13 @@ def _run_mcp() -> None:
     mcp_main()
 
 
-def _run_doc() -> None:
-    """Display the bundled documentation in a Textual MarkdownViewer."""
-    from tdb.documentation import load_docs
-
-    docs = load_docs()
-    if docs is None:
-        print("Documentation not found in the installation.", file=sys.stderr)
-        sys.exit(1)
-
+def make_doc_app(docs: str):
+    """The `tdb --doc` app: the documentation in a searchable viewer."""
     from textual.app import App, ComposeResult
     from textual.binding import Binding
-    from textual.widgets import Footer, MarkdownViewer
+    from textual.widgets import Footer
+
+    from tdb.widgets.searchable_markdown import SearchableMarkdownViewer
 
     class _DocApp(App):
         TITLE = "tdb documentation"
@@ -1248,13 +1243,25 @@ def _run_doc() -> None:
         ]
 
         def compose(self) -> ComposeResult:
-            yield MarkdownViewer(docs, show_table_of_contents=True)
+            yield SearchableMarkdownViewer(docs, show_table_of_contents=True)
             yield Footer()
+
+    return _DocApp()
+
+
+def _run_doc() -> None:
+    """Display the bundled documentation in a searchable Markdown viewer."""
+    from tdb.documentation import load_docs
+
+    docs = load_docs()
+    if docs is None:
+        print("Documentation not found in the installation.", file=sys.stderr)
+        sys.exit(1)
 
     from tdb.terminal_text import keep_writer_draining
 
     keep_writer_draining()
-    _DocApp().run()
+    make_doc_app(docs).run()
 
 
 def _run_info() -> None:

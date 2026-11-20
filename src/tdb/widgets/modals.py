@@ -472,11 +472,20 @@ class _DocumentationModal(ModalScreen):
         self._markdown_text = markdown_text
 
     def compose(self) -> ComposeResult:
-        from textual.widgets import MarkdownViewer
+        from tdb.widgets.searchable_markdown import (
+            SEARCH_HINT,
+            SearchableMarkdownViewer,
+        )
 
         with Vertical(id="dialog"):
-            yield MarkdownViewer(self._markdown_text, show_table_of_contents=True)
-            yield Static("[dim]ESC or q to close[/dim]", id="doc-footer", markup=True)
+            yield SearchableMarkdownViewer(
+                self._markdown_text, show_table_of_contents=True
+            )
+            yield Static(
+                f"[dim]{SEARCH_HINT} · ESC or q to close[/dim]",
+                id="doc-footer",
+                markup=True,
+            )
 
     def action_dismiss_modal(self) -> None:
         self.dismiss(None)

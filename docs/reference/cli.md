@@ -48,7 +48,7 @@ usage: tdb [-h] [-v] [-r [HOST:]PORT] [--cwd CWD] [--no-stop-on-entry]
 | `--replay-interval S` | With `--replay`/`--replay-tui`: fixed S-second delay before each action instead of the recorded gaps |
 | `--replay-timeout S` | With `--replay`/`--replay-tui`: per-action stop-wait timeout (default 30) |
 | `--examine-log DEST` | With --run: write each Ctrl-\ / SIGUSR2 stack snapshot to DEST (- = stdout; repeatable) |
-| `--doc` | Display this documentation in a terminal Markdown viewer and exit |
+| `--doc` | Display this documentation in a terminal Markdown viewer and exit; `/` or `Ctrl+F` searches, `n`/`N` step through matches |
 | `--doc-text` | Print this documentation to stdout as wrapped plain text and exit |
 | `--info` | Print the About text, file locations, and the path and version of each interpreter and debugger `tdb` would use, then exit |
 | `--config-dir DIR` | Use `DIR` instead of the default per-user config directory for `config.json`, `breakpoints.json` and the log; also settable with the `TDB_CONFIG_DIR` environment variable (the flag wins). Created if missing; combines with every other option |
