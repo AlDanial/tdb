@@ -4,7 +4,8 @@ A wrapper perl fails every PadWalker probe and dies on `Makefile.PL`
 with the error a perl lacking ExtUtils::MakeMaker prints (minimal
 distro perls ship without it). The adapter must still launch, stop at
 a breakpoint, answer stack/scopes/variables, and run to completion;
-only the PadWalker console notice records the degradation."""
+only the PadWalker console notice and the toast-category notice record
+the degradation."""
 
 from __future__ import annotations
 
@@ -44,12 +45,14 @@ MAKEMAKER_ERROR = (
 
 # PadWalker probes (`require PadWalker; PadWalker::peek_my(0) ...`) fail
 # so neither a native nor a cached copy short-circuits the build; the
-# build's first step dies the way it does without ExtUtils::MakeMaker;
+# ExtUtils::MakeMaker probe (and, were it reached, the build's first
+# step) dies the way it does without that module;
 # everything else (the debuggee itself) goes to the real perl.
 WRAPPER = f"""#!/bin/sh
 for a in "$@"; do
   case "$a" in
     *PadWalker::peek_my*) echo "Can't locate PadWalker.pm in @INC" >&2; exit 2 ;;
+    -MExtUtils::MakeMaker) echo "{MAKEMAKER_ERROR}" >&2; exit 2 ;;
     Makefile.PL) echo "{MAKEMAKER_ERROR}" >&2
                  echo "BEGIN failed--compilation aborted at Makefile.PL line 1." >&2
                  exit 2 ;;
@@ -123,6 +126,17 @@ async def test_launch_and_inspect_without_padwalker(tmp_path, unbuildable_perl):
     ]
     assert notices, [e for e in c.events if e["event"] == "output"]
     assert "ExtUtils::MakeMaker" in notices[0]
+    from tdb.dap.messages import TOAST_CATEGORY
+
+    toasts = [
+        e["body"]["output"]
+        for e in c.events
+        if e["event"] == "output" and e["body"]["category"] == TOAST_CATEGORY
+    ]
+    assert toasts == [
+        "Neither PadWalker nor ExtUtils::MakeMaker are installed. "
+        "Perl debugging will be degraded.\n"
+    ]
     assert not (tmp_path / "cache").exists() or not any(
         (tmp_path / "cache").rglob("PadWalker.pm")
     ), "no build artefact must be cached when Makefile.PL fails"

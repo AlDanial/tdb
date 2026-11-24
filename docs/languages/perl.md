@@ -17,9 +17,11 @@ directory to the debuggee's `PERL5LIB`.  The build takes about a second and
 needs perl's headers (`libperl-dev` on Debian/Ubuntu, `perl-devel` on
 Fedora/RHEL), a C compiler, and the core `ExtUtils::MakeMaker` module (some
 minimal distro perls omit it; `perl-ExtUtils-MakeMaker` on Fedora/RHEL);
-Strawberry Perl on Windows ships all three.  When the build is not possible,
-`tdb` prints a one-line notice on the console and falls back to a read-only
-pad walk, so outer-frame lexicals degrade but debugging otherwise proceeds.
+Strawberry Perl on Windows ships all three.  If neither PadWalker nor
+`ExtUtils::MakeMaker` is installed, `tdb` skips the build attempt and raises
+a toast: "Neither PadWalker nor ExtUtils::MakeMaker are installed. Perl
+debugging will be degraded."  When the build is not possible, `tdb` prints a
+one-line notice on the console and falls back to a read-only pad walk, so outer-frame lexicals degrade but debugging otherwise proceeds.
 `tdb --info` reports the source directory, the cache directory, and the
 `ExtUtils::MakeMaker` version of the `perl` it would use, with a warning when
 that module is missing and PadWalker therefore cannot be built.

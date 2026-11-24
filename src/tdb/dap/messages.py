@@ -7,6 +7,13 @@ from typing import Any
 
 from tdb.terminal_text import clean_message
 
+# A tdb-private `output` event category (DAP allows custom ones): the
+# text is a short notice the TUI raises as a toast instead of writing it
+# to the Console View. Used by tdb's own adapters (perl-tdb); DAP's
+# standard "important" is left alone because debugpy sends routine
+# step-in warnings with it.
+TOAST_CATEGORY = "tdbToast"
+
 
 @dataclass
 class Request:

@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Awaitable, Callable
 
 from tdb import examine
+from tdb.dap.messages import TOAST_CATEGORY
 from tdb.session.controller import DebugController
 from tdb.session.event_bus import SwappableEventHandler
 
@@ -89,6 +90,9 @@ class ConsoleRunHandler:
         self.exited.set()
 
     def on_output(self, text: str, category: str) -> None:
+        if category == TOAST_CATEGORY:
+            # TUI-only notice; its detail line arrives as "console" too.
+            return
         stream = sys.stderr if category == "stderr" else sys.stdout
         stream.write(text)
         stream.flush()

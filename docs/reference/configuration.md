@@ -111,6 +111,10 @@ When `tdb` creates `config.json` for the first time it seeds `adapters` with
 `gdb` and `lldb-dap` entries pointing at the executables found on `PATH`
 (`null` when one isn't installed) so the keys are there to edit. A `null`
 entry behaves like a missing one: `tdb` falls back to `PATH`.
+`tdb --config update-adapters` refreshes the map later: every executable found
+on `PATH` is written in (replacing a different existing entry), entries with
+nothing on `PATH` are kept while they still exist, and any whose executable has
+been removed is reported with a warning and replaced (or set to `null`).
 
 **Perl is a special case:** `perl-tdb` is tdb's own bundled adapter (always
 found; it's Python code, not an external executable), so

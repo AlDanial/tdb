@@ -412,16 +412,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--config",
-        choices=["write-default", "install-padwalker"],
+        choices=["write-default", "install-padwalker", "update-adapters"],
         default=None,
-        metavar="{write-default,install-padwalker}",
+        metavar="{write-default,install-padwalker,update-adapters}",
         help="Maintenance action, then exit (no program needed). "
         "write-default: rename the existing config.json to "
         "config.json-YYYY-mm-DD-HH:MM:SS (HH.MM.SS on Windows) and write "
         "a new one holding every default value. install-padwalker: build "
         "and cache the bundled PadWalker Perl module now, for the perl "
         "tdb would debug with (adapters.perl in config.json, else perl "
-        "on PATH), instead of on the first Perl launch",
+        "on PATH), instead of on the first Perl launch. update-adapters: "
+        "fill the adapters entries in config.json with the debuggers and "
+        "interpreters found on PATH (a PATH hit replaces an existing "
+        "entry), reporting any configured entry that no longer exists",
     )
     # Bookkeeping for --if: per-spec conditions parallel to -k/-t, and
     # which of the two lists the most recent -k/-t went to.
@@ -1276,6 +1279,8 @@ def _run_config(args: argparse.Namespace, now=None) -> int:
     code (0 ok, 1 failure). `now` injects the clock for tests."""
     if args.config == "write-default":
         return _config_write_default(now)
+    if args.config == "update-adapters":
+        return _config_update_adapters()
     return _config_install_padwalker()
 
 
@@ -1290,6 +1295,33 @@ def _config_write_default(now=None) -> int:
     if backup is not None:
         print(f"Renamed existing config to {backup}")
     print(f"Wrote default config to {written}")
+    return 0
+
+
+def _config_update_adapters() -> int:
+    from tdb import persist
+
+    try:
+        results, written = persist.update_adapters()
+    except (OSError, ValueError) as e:
+        print(f"tdb: cannot update adapters: {e}", file=sys.stderr)
+        return 1
+    width = max(len(r.adapter_id) for r in results)
+    for r in results:
+        name = r.adapter_id.ljust(width)
+        if r.status == "added":
+            print(f"  {name}  {r.new}  (found on PATH)")
+        elif r.status == "replaced":
+            print(f"  {name}  {r.new}  (found on PATH; was {r.old})")
+        elif r.status == "kept":
+            note = "" if r.path_hit else "  (not on PATH; kept)"
+            print(f"  {name}  {r.old}{note}")
+        elif r.status == "missing":
+            now = f"now {r.new} (found on PATH)" if r.new else "set to null"
+            print(f"  {name}  WARNING: {r.old} is no longer present; {now}")
+        else:
+            print(f"  {name}  (not found)")
+    print(f"Updated adapters in {written}")
     return 0
 
 
