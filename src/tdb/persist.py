@@ -336,3 +336,102 @@ def write_default_config(now: datetime | None = None) -> tuple[Path | None, Path
     path.write_text(json.dumps(config.to_dict(), indent=2) + "\n")
     log.info("Wrote default config to %s (previous: %s)", path, backup)
     return backup, path
+
+
+# The `adapters` ids that name an executable `tdb` looks up on PATH
+# (see docs/reference/configuration.md). `pses` is a module directory,
+# not an executable, so it is only checked, never searched for.
+PATH_SEARCHED_ADAPTER_IDS: tuple[str, ...] = (
+    "gdb",
+    "lldb-dap",
+    "dlv",
+    "perl",
+    "rdbg",
+    "bash",
+    "tcsh",
+    "pwsh",
+    "ocamlearlybird",
+)
+_DIRECTORY_ADAPTER_IDS = frozenset({"pses"})
+
+
+@dataclass(frozen=True)
+class AdapterUpdate:
+    """One ``adapters`` entry's outcome under ``update_adapters``.
+
+    status: "added" (unset, now found on PATH), "replaced" (set, but PATH
+    has a different executable, which wins), "kept" (already the PATH
+    hit, or still present with nothing on PATH), "missing" (set, but no
+    longer present; replaced by ``new`` -- a PATH hit, or None), or
+    "absent" (unset and not on PATH; nothing written unless the key
+    already held null).
+    """
+
+    adapter_id: str
+    status: str
+    old: str | None
+    new: str | None
+    path_hit: str | None = None
+
+
+def _adapter_present(adapter_id: str, path: str) -> bool:
+    if adapter_id in _DIRECTORY_ADAPTER_IDS:
+        return Path(path).is_dir()
+    # shutil.which accepts an absolute path (checks it is an executable
+    # file) or a bare name (searches PATH, honouring PATHEXT on Windows).
+    return shutil.which(path) is not None
+
+
+def update_adapters(which=shutil.which) -> tuple[list[AdapterUpdate], Path]:
+    """`tdb --config update-adapters`: fill config.json's ``adapters`` map
+    from PATH and flag entries whose executable has disappeared.
+
+    - a PATH hit always wins: unset/null -> "added", a different
+      existing entry -> "replaced";
+    - set, still present, and nothing on PATH -> left alone ("kept");
+    - set but gone -> replaced by the PATH hit, or null ("missing").
+    Ids the user added that tdb doesn't search for are checked too.
+
+    Every other key in config.json is preserved verbatim. Raises OSError
+    on I/O failure and ValueError when config.json isn't a JSON object
+    (rewriting it would discard the user's settings)."""
+    path = config_file()
+    if path.exists():
+        raw = json.loads(path.read_text())
+        if not isinstance(raw, dict):
+            raise ValueError(f"{path} does not hold a JSON object")
+    else:
+        raw = TdbConfig().to_dict()
+    adapters = raw.get("adapters")
+    if not isinstance(adapters, dict):
+        adapters = {}
+    ids = list(PATH_SEARCHED_ADAPTER_IDS) + [
+        k for k in adapters if k not in PATH_SEARCHED_ADAPTER_IDS
+    ]
+    results: list[AdapterUpdate] = []
+    for adapter_id in ids:
+        old = adapters.get(adapter_id)
+        old = old if isinstance(old, str) and old else None
+        hit = None if adapter_id in _DIRECTORY_ADAPTER_IDS else which(adapter_id)
+        present = old is not None and _adapter_present(adapter_id, old)
+        if old is not None and not present:
+            adapters[adapter_id] = hit
+            status = "missing"
+        elif hit is None:
+            status = "kept" if present else "absent"
+        elif old is None:
+            adapters[adapter_id] = hit
+            status = "added"
+        elif hit != old:
+            adapters[adapter_id] = hit
+            status = "replaced"
+        else:
+            status = "kept"
+        results.append(
+            AdapterUpdate(adapter_id, status, old, adapters.get(adapter_id), hit)
+        )
+    raw["adapters"] = adapters
+    config_dir().mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(raw, indent=2) + "\n")
+    log.info("Updated adapters in %s", path)
+    return results, path

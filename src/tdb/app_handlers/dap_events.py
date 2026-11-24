@@ -14,6 +14,7 @@ import logging
 import os
 from typing import TYPE_CHECKING
 
+from tdb.dap.messages import TOAST_CATEGORY
 from tdb.languages.python_attach import PidAttachError
 from tdb.session.messages import DapOutput, DapStopped
 from tdb.widgets.console_view import ConsoleView
@@ -361,6 +362,9 @@ class DapEventCoordinator:
             log.exception("Error handling external terminal started")
 
     def on_output(self, message: DapOutput) -> None:
+        if message.category == TOAST_CATEGORY:
+            self.app.notify(message.text.strip(), severity="warning", timeout=10)
+            return
         try:
             if message.category == "stderr":
                 self.app._stderr_buffer.append(message.text)

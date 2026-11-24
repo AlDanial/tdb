@@ -208,8 +208,8 @@ def test_perl_section_has_padwalker_rows_and_note(stub_tools):
 
     perl_dir = str(importlib.resources.files("tdb.adapters.perl"))
     assert f"    Devel::TdbRemote dir     : {perl_dir}" in lines
-    assert lines[-2].startswith("    (tdb builds PadWalker")
-    assert lines[-1].startswith("     prepends the cache directory")
+    assert lines[-1] == f"    Devel::TdbRemote dir     : {perl_dir}"
+    assert not any("tdb builds PadWalker" in line for line in lines)
 
 
 def test_log_file_honors_tdb_log_dir(tmp_path, monkeypatch):

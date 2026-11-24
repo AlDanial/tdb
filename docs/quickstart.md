@@ -22,6 +22,10 @@ tdb --config write-default
 # on the first Perl launch
 tdb --config install-padwalker
 
+# record the debuggers/interpreters found on PATH in config.json's
+# adapters map, warning about any configured one that has disappeared
+tdb --config update-adapters
+
 # debug a Python program (stops at first line by default)
 tdb my_program.py
 

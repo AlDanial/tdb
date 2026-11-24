@@ -273,8 +273,6 @@ def info_text() -> str:
                 # For PERL5LIB when a program uses Devel::TdbRemote
                 # (breakpoint() / listen()) outside of a tdb launch.
                 row("Devel::TdbRemote dir", perl_module_dir),
-                "    (tdb builds PadWalker for each perl it launches, caches it, and",
-                "     prepends the cache directory to the debuggee's PERL5LIB)",
             ],
         ),
         (

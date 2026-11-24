@@ -36,7 +36,14 @@ class _Proc:
 CFG = "5.40.1\nx86_64-linux-gnu-thread-multi\nmake\nso"
 
 
-def _fake_perl(monkeypatch, *, native: bool, cached_ok: bool, build_ok: bool = True):
+def _fake_perl(
+    monkeypatch,
+    *,
+    native: bool,
+    cached_ok: bool,
+    build_ok: bool = True,
+    makemaker: bool = True,
+):
     """Simulate perl: the probe succeeds only when PERL5LIB points at a
     directory holding PadWalker.pm (or natively); Makefile.PL/make write
     a fake blib tree."""
@@ -58,6 +65,10 @@ def _fake_perl(monkeypatch, *, native: bool, cached_ok: bool, build_ok: bool = T
         script = argv[-1]
         if script == pw._CONFIG:
             return _Proc(0, CFG)
+        if script == pw._MAKEMAKER_PROBE:
+            if makemaker:
+                return _Proc(0, "7.70")
+            return _Proc(2, "", "Can't locate ExtUtils/MakeMaker.pm in @INC")
         if script == pw._PROBE:
             if native:
                 return _Proc(0, "/usr/lib/perl5/PadWalker.pm")
@@ -209,11 +220,46 @@ def test_makemaker_version_none_when_perl_does_not_run(monkeypatch):
     assert pw.makemaker_version("/nope/perl") is None
 
 
+def test_no_padwalker_no_makemaker_skips_build_and_toasts(monkeypatch, cache):
+    """Neither PadWalker nor ExtUtils::MakeMaker: don't attempt a build,
+    come back unavailable with the pointed hint plus the toast text."""
+    calls = _fake_perl(monkeypatch, native=False, cached_ok=True, makemaker=False)
+    r = pw.ensure_padwalker("perl", {})
+    assert r.source == "unavailable"
+    assert r.lib_dir is None
+    assert r.toast == (
+        "Neither PadWalker nor ExtUtils::MakeMaker are installed. "
+        "Perl debugging will be degraded."
+    )
+    assert "ExtUtils::MakeMaker" in r.message
+    assert not any(a[-1] == "Makefile.PL" or a[0] == "make" for a in calls)
+    assert not cache.exists() or not any(cache.iterdir())
+
+
+def test_native_padwalker_never_probes_makemaker(monkeypatch, cache):
+    calls = _fake_perl(monkeypatch, native=True, cached_ok=True, makemaker=False)
+    r = pw.ensure_padwalker("perl", {})
+    assert r.source == "native" and r.toast is None
+    assert not any(a[-1] == pw._MAKEMAKER_PROBE for a in calls)
+
+
+def test_cached_build_used_without_makemaker(monkeypatch, cache):
+    """A tdb-built copy already in the cache needs no MakeMaker."""
+    _fake_perl(monkeypatch, native=False, cached_ok=True)
+    built = pw.ensure_padwalker("perl", {})
+    assert built.source == "built"
+    pw._memo.clear()
+    calls = _fake_perl(monkeypatch, native=False, cached_ok=True, makemaker=False)
+    r = pw.ensure_padwalker("perl", {})
+    assert r == pw.PadWalkerResult(built.lib_dir, "cached")
+    assert not any(a[-1] == pw._MAKEMAKER_PROBE for a in calls)
+
+
 def test_build_without_makemaker_degrades_with_a_pointed_hint(monkeypatch, cache):
-    """`perl Makefile.PL` dying on a missing ExtUtils::MakeMaker is the
-    common failure on minimal distro perls: the resolver must come back
-    unavailable (so the launch proceeds without PadWalker) and name the
-    module to install."""
+    """`perl Makefile.PL` dying on a missing ExtUtils::MakeMaker (even
+    though the up-front probe passed, e.g. a broken install): the
+    resolver must come back unavailable (so the launch proceeds without
+    PadWalker) and name the module to install."""
     calls = []
 
     def run(argv, env=None, cwd=None, **kw):
@@ -232,6 +278,8 @@ def test_build_without_makemaker_degrades_with_a_pointed_hint(monkeypatch, cache
         script = argv[-1]
         if script == pw._CONFIG:
             return _Proc(0, CFG)
+        if script == pw._MAKEMAKER_PROBE:
+            return _Proc(0, "7.70")
         if script == pw._PROBE:
             return _Proc(2, "", "Can't locate PadWalker.pm")
         raise AssertionError(f"unexpected perl call {argv}")

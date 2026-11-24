@@ -349,3 +349,25 @@ async def test_launch_reports_unavailable_padwalker_and_continues(
     assert "PERL5LIB" not in env
     assert outputs == [("tdb: PadWalker unavailable: x\n", "console")]
     assert env["PERLDB_OPTS"].startswith("RemotePort=")
+
+
+async def test_launch_raises_toast_when_no_padwalker_or_makemaker(
+    tmp_path, monkeypatch
+):
+    """Neither PadWalker nor ExtUtils::MakeMaker: the detail line goes to
+    the console and the short notice goes out as tdb's toast category."""
+    from tdb.adapters.perl.padwalker import NO_MAKEMAKER_TOAST, PadWalkerResult
+    from tdb.dap.messages import TOAST_CATEGORY
+
+    _stub_padwalker(
+        monkeypatch,
+        PadWalkerResult(
+            None, "unavailable", "tdb: PadWalker unavailable: y", NO_MAKEMAKER_TOAST
+        ),
+    )
+    env, outputs = await _capture_launch(tmp_path, monkeypatch, {})
+    assert "PERL5LIB" not in env
+    assert outputs == [
+        ("tdb: PadWalker unavailable: y\n", "console"),
+        (NO_MAKEMAKER_TOAST + "\n", TOAST_CATEGORY),
+    ]

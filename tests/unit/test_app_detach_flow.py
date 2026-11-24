@@ -261,3 +261,30 @@ async def test_ctrl_q_in_launch_mode_still_quits(calls):
     assert calls["strip"] == 0
     assert calls["stop"] == 1
     assert app.run_detached is False
+
+
+async def test_toast_category_output_raises_notification_not_console(
+    calls, monkeypatch
+):
+    """tdb's toast output category (e.g. the Perl no-PadWalker/no-MakeMaker
+    notice) becomes a warning toast and stays out of the Console View."""
+    from tdb.dap.messages import TOAST_CATEGORY
+    from tdb.session.messages import DapOutput
+    from tdb.widgets.console_view import ConsoleView
+
+    app = _app()
+    notes: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        app, "notify", lambda msg, **kw: notes.append((msg, kw.get("severity")))
+    )
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        console = app.query_one("#console-view", ConsoleView)
+        written: list = []
+        monkeypatch.setattr(console, "write_output", lambda *a: written.append(a))
+        app.post_message(
+            DapOutput("Perl debugging will be degraded.\n", TOAST_CATEGORY)
+        )
+        await _settle(pilot)
+    assert ("Perl debugging will be degraded.", "warning") in notes
+    assert written == []

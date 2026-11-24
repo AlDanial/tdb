@@ -19,9 +19,12 @@ Resolution order at launch (`ensure_padwalker`):
      with our .pm could pair a 2.5 .pm with an older .so and fail the
      XS version check, so we never override one that works.
   2. A cached build for this perl exists and loads -> use it.
-  3. Build from the vendored sources (needs perl's CORE headers and a C
-     compiler; ExtUtils::MakeMaker is core) -> cache, use it.
-  4. Otherwise report why, and the adapter degrades to its core-B pad
+  3. ExtUtils::MakeMaker is missing (minimal distro perls ship without
+     it, and `perl Makefile.PL` needs it) -> don't attempt a build;
+     report it, with a short `toast` for the TUI.
+  4. Build from the vendored sources (needs perl's CORE headers and a C
+     compiler) -> cache, use it.
+  5. Otherwise report why, and the adapter degrades to its core-B pad
      walk exactly as it did before PadWalker was bundled.
 
 The cache root honours TDB_PADWALKER_CACHE (tests point it at a temp
@@ -69,11 +72,13 @@ class PadWalkerResult:
     needed (native install) or nothing is available (failure).
     source: "native" | "cached" | "built" | "unavailable".
     message: one user-facing line worth showing once, or None.
+    toast: a short notice to raise prominently (a TUI toast), or None.
     """
 
     lib_dir: str | None
     source: str
     message: str | None = None
+    toast: str | None = None
 
 
 def padwalker_dir() -> str:
@@ -241,6 +246,11 @@ def _build(perl: str, env: dict, make: str, dlext: str, dest: Path) -> str | Non
     return None
 
 
+NO_MAKEMAKER_TOAST = (
+    "Neither PadWalker nor ExtUtils::MakeMaker are installed. "
+    "Perl debugging will be degraded."
+)
+
 _INSTALL_HINT = (
     "Lexicals in outer frames will be limited. Either install PadWalker "
     "(`cpanm PadWalker`, or a distro package such as libpadwalker-perl / "
@@ -299,6 +309,14 @@ def _resolve(perl: str, env: dict) -> PadWalkerResult:
     for cached in _cached_dirs(name):
         if _loads(perl, with_perl5lib(env, str(cached))):
             return PadWalkerResult(str(cached), "cached")
+    if makemaker_version(perl, env) is None:
+        return PadWalkerResult(
+            None,
+            "unavailable",
+            f"tdb: PadWalker unavailable for perl {version} ({archname}): "
+            + _MAKEMAKER_HINT,
+            NO_MAKEMAKER_TOAST,
+        )
     reasons: list[str] = []
     primary = cache_root()
     for root in _cache_candidates():

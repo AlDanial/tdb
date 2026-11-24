@@ -8,7 +8,7 @@ usage: tdb [-h] [-v] [-r [HOST:]PORT] [--cwd CWD] [--no-stop-on-entry]
            [--terminal {xterm,konsole,gnome-terminal,ghostty,kitty,iterm2,warp,wezterm,terminator}]
            [--local-root PATH] [--remote-root PATH]
            [--server] [--headless] [-k FILE:LINE|LINE] [--server-port SERVER_PORT] [--insecure-no-auth] [-d] [--doc-text] [--info]
-           [--config {write-default,install-padwalker}] [--config-dir DIR]
+           [--config {write-default,install-padwalker,update-adapters}] [--config-dir DIR]
            [--vi]
            [program] [args ...]
 ```
@@ -55,6 +55,7 @@ usage: tdb [-h] [-v] [-r [HOST:]PORT] [--cwd CWD] [--no-stop-on-entry]
 | `--vi FILE` | Edit `FILE` in a full-screen vim-style editor instead of debugging: no program runs and no debug adapter starts. Exactly one file; a directory, a binary file or a file that is not valid UTF-8 is refused. A file that does not exist yet is created on the first `:w`. All other options except `--config-dir` are ignored. See [Using tdb as an editor](../using/vim-edit-mode.md#using-tdb-as-an-editor) |
 | `--config write-default` | Rename the existing `config.json` to `config.json-YYYY-mm-DD-HH:MM:SS` (`HH.MM.SS` on Windows, which forbids colons in filenames) and write a new one holding every default value, then exit |
 | `--config install-padwalker` | Build and cache the bundled PadWalker Perl module now, for the perl `tdb` would debug with (`adapters.perl` in `config.json`, else `perl` on `PATH`), instead of waiting for the first Perl launch; exits 1 if it cannot be built |
+| `--config update-adapters` | Search `PATH` (like `which gdb`) for each debugger and interpreter `tdb` can use (`gdb`, `lldb-dap`, `dlv`, `perl`, `rdbg`, `bash`, `tcsh`, `pwsh`, `ocamlearlybird`) and record the hits in the `adapters` map of `config.json`. A `PATH` hit always wins, replacing a different existing entry; an entry with nothing on `PATH` is kept while it still exists. An entry whose executable (or, for `pses`, directory) is gone is reported with a warning and replaced by the `PATH` hit, or `null`. Other settings are left untouched |
 
 ## Source files
 

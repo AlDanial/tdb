@@ -21,6 +21,7 @@ from typing import Awaitable, Callable
 
 from tdb.adapters.perl.protocol import StreamParser
 from tdb.adapters.perl import padwalker as _padwalker
+from tdb.dap.messages import TOAST_CATEGORY
 
 log = logging.getLogger(__name__)
 
@@ -171,6 +172,10 @@ class PerlSession:
             child_env = with_perl5lib(child_env, pw.lib_dir)
         if pw.message:
             self._on_output(pw.message + "\n", "console")
+        if pw.toast:
+            # tdb's own output category: the TUI raises it as a toast
+            # (the detail line above already went to the Console View).
+            self._on_output(pw.toast + "\n", TOAST_CATEGORY)
         child_env["PERLDB_OPTS"] = f"RemotePort=127.0.0.1:{port}"
         # Devel::TdbCompile (this adapter's own compile-phase shim --
         # see that module's header) arms perl5db to trap during
