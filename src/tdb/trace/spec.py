@@ -118,14 +118,15 @@ def _is_glob(key: str) -> bool:
     return any(c in key for c in "*?[")
 
 
-def _parse_entry(key: str, n: int, item: Any,
-                 problems: list[str]) -> FunctionEntry | None:
+def _parse_entry(
+    key: str, n: int, item: Any, problems: list[str]
+) -> FunctionEntry | None:
     """Parse one list item; return None (after reporting) if it has problems."""
     opts: dict = {}
     if isinstance(item, str) and item.strip():
         raw = item.strip()
     elif isinstance(item, dict) and len(item) == 1:
-        (raw, opts), = item.items()
+        ((raw, opts),) = item.items()
         if not isinstance(raw, str) or not raw.strip():
             problems.append(f"{key}: entry {n} must be a name or a one-key mapping")
             return None
@@ -184,8 +185,9 @@ def _parse_entry(key: str, n: int, item: Any,
                 max_hits = val
     if bad:
         return None
-    return FunctionEntry(raw, normalize_name(raw), capture, record_return,
-                         condition, max_hits)
+    return FunctionEntry(
+        raw, normalize_name(raw), capture, record_return, condition, max_hits
+    )
 
 
 def load_spec(path: str | os.PathLike) -> TraceSpec:
@@ -243,13 +245,17 @@ def load_spec(path: str | os.PathLike) -> TraceSpec:
         if kind == "path":
             pattern = os.path.join(str(spec_path.parent), key)
             if _is_glob(key):
-                hits = sorted(h for h in glob.glob(pattern, recursive=True)
-                              if os.path.isfile(h))
+                hits = sorted(
+                    h for h in glob.glob(pattern, recursive=True) if os.path.isfile(h)
+                )
             else:
                 hits = [pattern] if os.path.isfile(pattern) else []
             if not hits:
-                problems.append(f"{key}: matches no files" if _is_glob(key)
-                                else f"{key}: no such file")
+                problems.append(
+                    f"{key}: matches no files"
+                    if _is_glob(key)
+                    else f"{key}: no such file"
+                )
                 resolved = False
             files = tuple(dict.fromkeys(norm_path(h) for h in hits))
         else:
@@ -272,11 +278,13 @@ def load_spec(path: str | os.PathLike) -> TraceSpec:
                 continue
             funcs.append(fe)
             if names is not None and not any(
-                    fnmatch.fnmatchcase(q, fe.pattern) for q in names):
+                fnmatch.fnmatchcase(q, fe.pattern) for q in names
+            ):
                 where = key if len(files) == 1 else f"any of {len(files)} files"
                 msg = f"{key}: {fe.raw!r} matches no function in {where}"
                 hints = difflib.get_close_matches(
-                    fe.pattern, sorted(set(names)), n=3, cutoff=0.6)
+                    fe.pattern, sorted(set(names)), n=3, cutoff=0.6
+                )
                 if hints:
                     msg += f" (did you mean: {', '.join(hints)}?)"
                 problems.append(msg)
@@ -299,10 +307,10 @@ def unmatched_entries(spec: TraceSpec, called: set[tuple[str, str]]) -> list[str
             files = set(e.files)
             quals = [q for f, q in called if f in files]
         else:
-            sufs = tuple("/" + os.path.normcase(s).replace("\\", "/")
-                         for s in e.suffixes)
-            quals = [q for f, q in called
-                     if f.replace("\\", "/").endswith(sufs)]
+            sufs = tuple(
+                "/" + os.path.normcase(s).replace("\\", "/") for s in e.suffixes
+            )
+            quals = [q for f, q in called if f.replace("\\", "/").endswith(sufs)]
         for fe in e.functions:
             if not any(fnmatch.fnmatchcase(q, fe.pattern) for q in quals):
                 out.append(f"{e.key}: {fe.raw}")
