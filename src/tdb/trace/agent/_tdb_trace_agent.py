@@ -4,9 +4,9 @@
 tracer enables ``sys.monitoring`` ``PY_START`` globally; code that is not
 a spec'd function returns ``DISABLE`` from its first ``PY_START`` and never
 calls back again.  Spec'd functions get local ``PY_RETURN``/``PY_YIELD``/
-``PY_RESUME`` events.  Records go to an in-memory buffer that a daemon
-thread writes to ``PARTS/<pid>.jsonl`` every ``flush_interval`` seconds;
-``final_flush`` writes the rest at ``atexit`` or ``os._exit``.
+``PY_RESUME`` events.  Records go to an in-memory buffer that a hidden
+flusher thread writes to ``PARTS/<pid>.jsonl`` every ``flush_interval``
+seconds; ``final_flush`` writes the rest at ``atexit`` or ``os._exit``.
 
 Never break the program:
 - stdlib only, and never ``import tdb``;
@@ -17,7 +17,10 @@ Never break the program:
 - the part file is written with ``os.write`` on a raw descriptor, never a
   buffered file object, whose lock a ``fork`` could inherit held;
 - no strong references to frames (one would delay generator finalization);
-- the agent's own files and its flusher thread are never traced.
+- the agent's own files and its flusher thread are never traced, and the
+  flusher is a bare ``_thread`` thread, invisible to ``threading``;
+- memory stays bounded: a backlog of ``_HIGH_WATER`` records makes the
+  recording thread write it out itself.
 
 The part-file record formats are in the plan's "Shared formats" section.
 Per-part state (buffer, live calls, call ids, written definitions) is
@@ -25,6 +28,7 @@ kept apart from per-process matching caches, so a forked child can start
 a new part while keeping what it inherited about code objects.
 """
 
+import _thread
 import atexit
 import fnmatch
 import itertools
@@ -51,22 +55,43 @@ _CO_ASYNC_GENERATOR = 0x200
 _GLOBAL_EVENTS = _EV.PY_START | _EV.PY_UNWIND | _EV.PY_THROW
 _LOCAL_EVENTS = _EV.PY_RETURN | _EV.PY_YIELD | _EV.PY_RESUME
 
+# Writing.  A chunk bounds one os.write and how long the flusher holds
+# _flush_lock at a time.  _HIGH_WATER bounds the backlog (about 15 MB of
+# records) and so what a hard crash can lose: a recording thread whose
+# record reaches it writes the backlog out itself, so a program that makes
+# events faster than the flusher writes them is slowed, not left to grow.
+_CHUNK = 10_000
+_HIGH_WATER = 100_000
+
 _getframe = sys._getframe
 _get_ident = threading.get_ident
 _get_native_id = threading.get_native_id
 _perf_ns = time.perf_counter_ns
 # Same output as json.dumps(obj, separators=(",", ":")), without building
-# an encoder per call.
+# an encoder per call.  Records are buffered as their JSON text.
 _dumps = json.JSONEncoder(separators=(",", ":")).encode
+# The hot fixed-shape records, formatted directly: the same text _dumps
+# gives for their int and null fields, at a sixth of the cost.  A record
+# holding any string (a name, a captured value) must go through _dumps.
+_CALL = '{"k":"call","t":%d,"c":%d,"fn":%d,"tid":%d,"task":null}'
+_RET = '{"k":"ret","t":%d,"c":%d,"tid":%d,"task":null}'
 
 # --- set by start() ----------------------------------------------------
 _tool = None  # claimed sys.monitoring tool id
 _fd = None  # part file descriptor (O_APPEND)
 _part_path = None
+_part_id = None  # (st_dev, st_ino) of the part file: is _fd still ours?
+_parts_dir = None
 _stopped = True  # callbacks return at once while True
 _final_done = False
-_flusher_ident = None  # threading ident of the flusher; never traced
-_flush_lock = threading.Lock()
+_broken = False  # a part-file write failed; tracing stopped for good
+_flusher_ident = None  # thread ident of the flusher; never traced
+# Held by whoever writes the part file.  Reentrant, so a signal handler
+# that calls os._exit while its thread is writing does not deadlock.
+_flush_lock = threading.RLock()
+# Held while the flusher may sleep; its timed acquire is the sleep, and a
+# release wakes it at once (final_flush; Task 5 stops it before fork).
+_wake = _thread.allocate_lock()
 _interval = 0.25
 _targets = ()
 _agent_dirs = frozenset()
@@ -78,7 +103,7 @@ _armed = {}  # id(code) -> (code, _Fn): code with local events on
 _fn_ids = itertools.count(1)
 
 # --- per-part state (a new part file starts these afresh) --------------
-_buf = []  # records not yet written
+_buf = []  # JSON text of the records not yet written, oldest first
 _live = {}  # id(frame) -> (call id, code, _Fn) for recorded calls
 _call_ids = itertools.count(1)
 _fn_written = set()  # _Fn ids whose "fn" record is in this part
@@ -91,9 +116,9 @@ _n_events = 0  # call/ret/raise/susp/res records
 
 
 class _Fn:
-    """A spec'd function: its ``fn`` record fields and its spec entry."""
+    """A spec'd function: its ``fn`` record and its spec entry."""
 
-    __slots__ = ("id", "file", "qual", "line", "kind", "entry")
+    __slots__ = ("id", "file", "qual", "line", "kind", "entry", "record")
 
     def __init__(self, file, qual, line, kind, entry):
         self.id = next(_fn_ids)
@@ -102,6 +127,16 @@ class _Fn:
         self.line = line
         self.kind = kind
         self.entry = entry
+        self.record = _dumps(
+            {
+                "k": "fn",
+                "id": self.id,
+                "file": file,
+                "qual": qual,
+                "line": line,
+                "kind": kind,
+            }
+        )
 
 
 class _Target:
@@ -196,7 +231,7 @@ def _thread_tid():
     name = th.name if th is not None else f"thread-{tid}"
     if _thread_names.get(tid) != name:
         _thread_names[tid] = name
-        _buf.append({"k": "th", "tid": tid, "name": name})
+        _buf.append(_dumps({"k": "th", "tid": tid, "name": name}))
     return tid
 
 
@@ -215,7 +250,7 @@ def _check_proc_name():
     name = _current_proc_name()
     if name is not None and name != _proc_name:
         _proc_name = name
-        _buf.append({"k": "proc", "t": _perf_ns(), "name": name})
+        _buf.append(_dumps({"k": "proc", "t": _perf_ns(), "name": name}))
 
 
 # --- monitoring callbacks -----------------------------------------------
@@ -229,6 +264,9 @@ def _check_proc_name():
 # the traced function's entry, return or unwind, as an untraced program
 # would see them at some nearby instruction.  State is updated so that an
 # interruption at any point leaves at worst an unfinished call.
+#
+# Every callback that appends a record checks the backlog against
+# _HIGH_WATER afterwards.
 
 
 def _on_start(code, offset):
@@ -250,22 +288,13 @@ def _on_start(code, offset):
         tid = _thread_tid()
         if fn.id not in _fn_written:
             _fn_written.add(fn.id)
-            _buf.append(
-                {
-                    "k": "fn",
-                    "id": fn.id,
-                    "file": fn.file,
-                    "qual": fn.qual,
-                    "line": fn.line,
-                    "kind": fn.kind,
-                }
-            )
+            _buf.append(fn.record)
         c = next(_call_ids)
-        _buf.append(
-            {"k": "call", "t": t, "c": c, "fn": fn.id, "tid": tid, "task": None}
-        )
+        _buf.append(_CALL % (t, c, fn.id, tid))
         _n_events += 1
         _live[id(_getframe(1))] = (c, code, fn)
+        if len(_buf) >= _HIGH_WATER:
+            _drain()
     except Exception:
         pass
     return None
@@ -280,10 +309,10 @@ def _on_return(code, offset, retval):
         live = _live.pop(id(_getframe(1)), None)
         if live is None or live[1] is not code:
             return None
-        _buf.append(
-            {"k": "ret", "t": t, "c": live[0], "tid": _thread_tid(), "task": None}
-        )
+        _buf.append(_RET % (t, live[0], _thread_tid()))
         _n_events += 1
+        if len(_buf) >= _HIGH_WATER:
+            _drain()
     except Exception:
         pass
     return None
@@ -332,6 +361,11 @@ _CALLBACKS = (
 
 
 # --- writing --------------------------------------------------------------
+#
+# Every writer holds _flush_lock, and records leave _buf only after they
+# are written (other threads only append), so no record is ever held
+# outside the buffer: an interrupted write loses nothing, and final_flush,
+# which waits for the lock, always finds every record still to be written.
 
 
 def _open_part(parts_dir):
@@ -349,37 +383,118 @@ def _open_part(parts_dir):
     raise FileExistsError(f"no free part file name for pid {pid} in {parts_dir}")
 
 
-def _write_buffer():
-    """Write and drop the buffered records.  The caller holds _flush_lock."""
-    n = len(_buf)
-    if not n:
-        return
-    batch = _buf[:n]  # other threads only append, so the first n are ours
-    del _buf[:n]
-    data = memoryview(("\n".join(map(_dumps, batch)) + "\n").encode("utf-8"))
+def _write_bytes(data):
+    st = os.fstat(_fd)
+    if (st.st_dev, st.st_ino) != _part_id:
+        # The program closed our descriptor (as daemonizing code does) and
+        # the number may now be one of its own files: never write there.
+        raise OSError(f"descriptor {_fd} no longer refers to {_part_path}")
+    data = memoryview(data)
     while data:
         data = data[os.write(_fd, data) :]
 
 
-def _flush():
-    """One periodic flush.  The caller holds _flush_lock."""
-    _check_proc_name()
-    _write_buffer()
+def _write_chunk(limit=_CHUNK):
+    """Write up to ``limit`` (at most _CHUNK) of the oldest records and drop
+    them from the buffer; return how many.  The caller holds _flush_lock."""
+    batch = _buf[: min(limit, _CHUNK)]
+    if batch:
+        try:
+            _write_bytes(("\n".join(batch) + "\n").encode("ascii"))
+        except OSError as exc:
+            _give_up(f"cannot write the part file: {exc}")
+            return 0
+        del _buf[: len(batch)]
+    return len(batch)
 
 
-def _flusher_loop():
-    global _flusher_ident
-    _flusher_ident = _get_ident()
-    # time.sleep, not Event.wait: each wake-up then runs only code that
-    # start() already ran, so no new PY_START callbacks come from here.
+def _give_up(error):
+    """Stop tracing for good after a write failure, instead of retrying it
+    on every event while the buffer grows; leave an agent-error marker."""
+    global _stopped, _broken
+    _stopped = _broken = True
+    del _buf[:]
+    try:
+        pid = os.getpid()
+        record = {
+            "marker": "agent-error",
+            "pid": pid,
+            "argv": list(sys.argv),
+            "error": error,
+        }
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
+        for n in range(1, 100):
+            name = f"agent-error-{pid}" + (f"-{n}" if n > 1 else "") + ".json"
+            try:
+                fd = os.open(os.path.join(_parts_dir, name), flags, 0o666)
+            except FileExistsError:
+                continue
+            try:
+                os.write(fd, _dumps(record).encode("ascii"))
+            finally:
+                os.close(fd)
+            return
+    except Exception:
+        pass
+
+
+def _write_all():
+    """Write the whole backlog.  The caller holds _flush_lock."""
+    while _write_chunk():
+        pass
+
+
+def _drain():
+    """Backpressure: the recording thread writes the backlog itself."""
+    with _flush_lock:
+        if not _stopped:
+            _write_all()
+
+
+def _flusher_loop(started):
+    started.release()
     while not _stopped:
-        time.sleep(_interval)
+        _wake.acquire(timeout=_interval)  # the sleep; final_flush cuts it short
         try:
             with _flush_lock:
-                if not _stopped:  # final_flush wrote the last records
-                    _flush()
+                if _stopped:  # final_flush writes the last records
+                    break
+                _check_proc_name()
+                left = len(_buf)
+            # One chunk per hold, so final_flush never waits long.
+            while left > 0:
+                with _flush_lock:
+                    if _stopped:
+                        break
+                    n = _write_chunk(left)
+                if not n:
+                    break
+                left -= n
         except BaseException:
             pass
+
+
+def _start_flusher():
+    """Start the flusher and wait until it runs (so its own first code is
+    seen during start-up, never at a time that depends on scheduling)."""
+    global _flusher_ident
+    if not _wake.locked():
+        _wake.acquire()
+    started = _thread.allocate_lock()
+    started.acquire()
+    # A bare _thread thread: threading.enumerate() and active_count() in
+    # the program stay as they would be without the tracer.
+    _flusher_ident = _thread.start_new_thread(_flusher_loop, (started,))
+    started.acquire()
+
+
+def _after_fork_in_child():
+    """A forked child inherits any lock the parent's flusher held, but not
+    the flusher; give it fresh ones so final_flush cannot wait forever.
+    (Task 5 extends this into the child's new part file and flusher.)"""
+    global _flush_lock, _wake
+    _flush_lock = threading.RLock()
+    _wake = _thread.allocate_lock()
 
 
 _real_os_exit = os._exit
@@ -410,7 +525,7 @@ def start(config):
     """Start tracing this process.  Raises if it cannot (no free tool id,
     bad config, parts directory not writable); sitecustomize.py turns
     that into an agent-error marker."""
-    global _tool, _fd, _part_path, _stopped, _flusher_ident, _interval
+    global _tool, _fd, _part_path, _part_id, _parts_dir, _stopped, _interval
     global _targets, _agent_dirs, _proc_name
     if _tool is not None or _fd is not None:
         raise RuntimeError("the tracer is already started in this process")
@@ -432,35 +547,39 @@ def start(config):
     try:
         _targets, _interval, _agent_dirs = targets, interval, frozenset(agent_dirs)
         _fd, _part_path = _open_part(parts_dir)
+        st = os.fstat(_fd)
+        _part_id, _parts_dir = (st.st_dev, st.st_ino), parts_dir
         _proc_name = _current_proc_name() or "MainProcess"
         wall = time.time_ns()
         pc = _perf_ns()
         _buf.append(
-            {
-                "k": "hdr",
-                "pid": os.getpid(),
-                "ppid": os.getppid(),
-                "proc": _proc_name,
-                "argv": list(sys.argv),
-                "py": "%d.%d.%d" % tuple(sys.version_info[:3]),
-                "wall": wall,
-                "pc": pc,
-                "mode": mode,
-            }
+            _dumps(
+                {
+                    "k": "hdr",
+                    "pid": os.getpid(),
+                    "ppid": os.getppid(),
+                    "proc": _proc_name,
+                    "argv": list(sys.argv),
+                    "py": "%d.%d.%d" % tuple(sys.version_info[:3]),
+                    "wall": wall,
+                    "pc": pc,
+                    "mode": mode,
+                }
+            )
         )
         for event, callback in _CALLBACKS:
             _mon.register_callback(tool, event, callback)
         _stopped = False
         _mon.set_events(tool, _GLOBAL_EVENTS)
-        # Write the header now, through the same code the flusher runs.
+        # Write the header now, through the same code the flusher runs, so
+        # the flusher's wake-ups run no code start-up has not run already.
         with _flush_lock:
-            _flush()
-        flusher = threading.Thread(
-            target=_flusher_loop, name="tdb-trace-flush", daemon=True
-        )
-        flusher.start()
-        _flusher_ident = flusher.ident
+            _check_proc_name()
+            _write_all()
+        _start_flusher()
         atexit.register(final_flush, "atexit")
+        if hasattr(os, "register_at_fork"):
+            os.register_at_fork(after_in_child=_after_fork_in_child)
         os._exit = _exit
     except BaseException:
         _teardown()
@@ -502,9 +621,10 @@ def _teardown():
 
 
 def final_flush(how):
-    """Write an ``exit`` record and the rest of the buffer, then stop.
+    """Write the rest of the buffer and an ``exit`` record, then stop.
 
-    ``how`` is "atexit" or "_exit".  Idempotent, and never raises.
+    ``how`` is "atexit" or "_exit".  Idempotent, and never raises.  A part
+    whose writing failed gets no ``exit`` record: it ended early.
     """
     global _final_done, _stopped
     try:
@@ -512,16 +632,21 @@ def final_flush(how):
             return
         _final_done = True
         _stopped = True
-        # Bounded wait: a signal handler calling os._exit can land while
-        # this thread itself holds the lock.
-        locked = _flush_lock.acquire(timeout=1.0)
         try:
+            _wake.release()  # the flusher wakes, sees _stopped, and ends
+        except RuntimeError:  # not held: it is awake already
+            pass
+        # Blocking: another writer holds the lock for one chunk at most,
+        # and its records stay in _buf until written.  Reentrant: this
+        # thread may be inside a write itself (os._exit from a signal
+        # handler); then that chunk may be written twice, never lost.
+        with _flush_lock:
             _check_proc_name()  # pool workers are named after start-up
-            _buf.append({"k": "exit", "t": _perf_ns(), "how": how})
-            _write_buffer()
-        finally:
-            if locked:
-                _flush_lock.release()
+            _write_all()
+            if not _broken:
+                # Written directly, not buffered: nothing can follow it.
+                exit_record = {"k": "exit", "t": _perf_ns(), "how": how}
+                _write_bytes((_dumps(exit_record) + "\n").encode("ascii"))
     except BaseException:
         pass
     try:

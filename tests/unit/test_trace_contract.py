@@ -104,3 +104,16 @@ def test_pick_tool_id_skips_taken_ids():
             mon.free_tool_id(4)
     finally:
         mon.free_tool_id(3)
+
+
+@pytest.mark.skipif(sys.version_info < (3, 12), reason="sys.monitoring")
+def test_hot_record_templates_match_json_dumps():
+    agent = _load_agent_file("tdb_trace_agent_under_test", "_tdb_trace_agent.py")
+    t, c, fn, tid = 21687466422263, 123456, 3, 249591
+    compact = {"separators": (",", ":")}
+    assert agent._CALL % (t, c, fn, tid) == json.dumps(
+        {"k": "call", "t": t, "c": c, "fn": fn, "tid": tid, "task": None}, **compact
+    )
+    assert agent._RET % (t, c, tid) == json.dumps(
+        {"k": "ret", "t": t, "c": c, "tid": tid, "task": None}, **compact
+    )
