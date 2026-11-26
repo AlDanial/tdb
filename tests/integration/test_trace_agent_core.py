@@ -9,6 +9,7 @@ import signal
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 import pytest
 
@@ -153,26 +154,62 @@ def test_sigint_in_traced_hot_loop_reaches_program(tmp_path):
         assert parts.calls("f") and parts.all("exit")  # tracing went on
 
 
+def _part_file(parts_dir):
+    (part,) = Path(parts_dir).glob("*.jsonl")
+    return part
+
+
+def _call_ids(part):
+    """The call ids in a part, streamed: some of these parts are large."""
+    with open(part, "rb") as fh:
+        for line in fh:
+            if line.startswith(b'{"k":"call"') and line.endswith(b"\n"):
+                yield json.loads(line)["c"]
+
+
+def _last_record(part):
+    with open(part, "rb") as fh:
+        fh.seek(max(0, part.stat().st_size - 4096))
+        return json.loads(fh.read().splitlines()[-1])
+
+
+def _communicate(proc, timeout):
+    """communicate(); on a timeout, kill the program and fail (a hang)."""
+    try:
+        return proc.communicate(timeout=timeout)[0]
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.communicate()
+        pytest.fail(f"the traced program hung for {timeout} s")
+
+
 def test_clean_exit_while_the_flusher_writes_loses_nothing(tmp_path):
-    # The program exits while the flusher is inside a slow write (its first
-    # os.write sleeps 2.5 s).  Every record must still reach the part file,
-    # and "exit" must come last; a final flush that gave up waiting for the
-    # writer lost the writer's whole batch.
+    # Armed after the loop, so the flusher's next os.write (which sleeps
+    # 3.5 s before writing) is still going when the program exits 0.6 s
+    # later, and still going when final_flush stops waiting for the flusher
+    # (2 s): final_flush must then neither lose that chunk nor write it
+    # twice, and "exit" must come last.
     src = (
         "import os, time, _thread, _tdb_trace_agent as A\n"
-        "real_write, slow = os.write, [True]\n"
+        "real_write, slow, at = os.write, [False], {}\n"
         "def write(fd, data):\n"
         "    if slow[0] and _thread.get_ident() == A._flusher_ident:\n"
-        "        slow[0] = False\n        time.sleep(2.5)\n"
+        "        slow[0] = False\n        at['slow'] = time.perf_counter()\n        time.sleep(3.5)\n"
         "    return real_write(fd, data)\n"
         "os.write = write\n"
         "def f():\n    return 1\n"
-        "for _ in range(200_000):\n    f()\n"
-        "time.sleep(0.6)\n"  # the flusher wakes and starts its slow write
+        "for _ in range(20_000):\n    f()\n"
+        "slow[0] = True\n"
+        "for _ in range(1_000):\n    f()\n"  # something left for the flusher
+        "time.sleep(0.6)\n"
+        "print(time.perf_counter() - at['slow'])\n"
     )
     parts = run_traced(tmp_path, src, [target(tmp_path / "prog.py", "f")])
+    assert 0 < float(parts.stdout) < 1.0  # exit + 2 s still inside the slow write
+    ids = list(_call_ids(_part_file(parts.dir)))
+    assert len(ids) == len(set(ids)) == 21_000
     (recs,) = parts.records.values()
-    assert len(parts.calls("f")) == 200_000 and len(parts.all("ret")) == 200_000
+    assert len(parts.all("ret")) == 21_000
     assert recs[-1] == {"k": "exit", "t": recs[-1]["t"], "how": "atexit"}
     assert parts.returncode == 0 and parts.stderr == ""
 
@@ -184,8 +221,8 @@ def test_backlog_stays_bounded_in_hot_loop(tmp_path):
         "    for _ in range(1000):\n        f()\n    peak = max(peak, len(A._buf))\n"
         "print(peak, A._HIGH_WATER)\n"
     )
-    parts = run_traced(tmp_path, src, [target(tmp_path / "prog.py", "f")])
-    peak, high_water = map(int, parts.stdout.split())
+    proc, _ = start_traced(tmp_path, src, [target(tmp_path / "prog.py", "f")])
+    peak, high_water = map(int, _communicate(proc, 60).split())
     assert peak <= 1.5 * high_water  # without backpressure it passes 3x in 0.25 s
 
 
@@ -212,8 +249,10 @@ def test_sigkill_in_hot_loop_loses_only_recent_events(tmp_path):
     # are written in order (completeness: the clean-exit test), so the last
     # call record on disk says how far the part got; read only the file's tail.
     old = max(n for when, n in seen if when <= killed_at - 1.5)
-    (part,) = parts_dir.glob("*.jsonl")
-    tail = part.read_bytes()[-4_000_000:].split(b"\n")[1:-1]  # whole lines only
+    part = _part_file(parts_dir)
+    with open(part, "rb") as fh:
+        fh.seek(max(0, part.stat().st_size - 4_000_000))
+        tail = fh.read().split(b"\n")[1:-1]  # whole lines only
     last_call = max(r["c"] for r in map(json.loads, tail) if r["k"] == "call")
     assert last_call >= old
 
@@ -228,24 +267,132 @@ def test_flusher_thread_is_invisible_to_threading(tmp_path):
     assert traced.records  # and the program was traced
 
 
-@pytest.mark.skipif(os.name == "nt", reason="fork")
-def test_fork_child_exit_does_not_wait_on_an_inherited_flush_lock(tmp_path):
-    # A thread holds the agent's flush lock (as the flusher does while it
-    # writes) when the program forks; the child's os._exit must not hang.
+def _notes(part):
+    with open(part, "rb") as fh:
+        return [
+            json.loads(line)["msg"] for line in fh if line.startswith(b'{"k":"note"')
+        ]
+
+
+# A finalizer that waits for a lock the main thread holds, run by the
+# flusher: garbage collection is off until the main thread sleeps, so the
+# flusher, the only thread then running, collects the garbage and gets stuck.
+STUCK_FLUSHER = (
+    "import _thread, gc, os, threading, time\n"
+    "L = threading.RLock()\nmain, stuck = _thread.get_ident(), []\n"
+    "class D:\n    def __init__(self):\n        self.me = self\n"
+    "    def __del__(self):\n        if _thread.get_ident() != main:\n            stuck.append(1)\n"
+    "        with L:\n            pass\n"
+    "def f():\n    return 1\n"
+    "thresholds = gc.get_threshold()\n"
+    "with L:\n    gc.disable()\n    for _ in range(100):\n        D()\n"
+    "    for _ in range(5_000):\n        f()\n"  # records left for the flusher
+    "    gc.set_threshold(1)\n    gc.enable()\n    time.sleep(0.6)\n"
+    "    gc.set_threshold(*thresholds)\n"
+)
+
+
+def test_finalizer_in_the_flusher_cannot_deadlock_the_program(tmp_path):
+    # While the flusher is stuck, the main thread makes events fast enough
+    # to need backpressure: it must wait only briefly, then go on (with a
+    # note), never for the stuck flusher.
+    src = STUCK_FLUSHER + (
+        "    for _ in range(120_000):\n        f()\n"  # past _HIGH_WATER
+        "print(bool(stuck), flush=True)\n"
+    )
+    proc, parts_dir = start_traced(tmp_path, src, [target(tmp_path / "prog.py", "f")])
+    assert _communicate(proc, 30).strip() == "True" and proc.returncode == 0
+    part = _part_file(parts_dir)
+    ids = list(_call_ids(part))
+    assert len(ids) == len(set(ids)) == 125_000 and _last_record(part)["k"] == "exit"
+    assert any("fell behind" in msg for msg in _notes(part))
+
+
+def test_exit_while_the_flusher_is_stuck_in_a_finalizer(tmp_path):
+    # The main thread calls os._exit while still holding the lock the stuck
+    # flusher waits for: final_flush must stop waiting for the flusher after
+    # a bounded time and write the rest itself, once.
+    src = STUCK_FLUSHER + "    print(bool(stuck), flush=True)\n    os._exit(0)\n"
+    proc, parts_dir = start_traced(tmp_path, src, [target(tmp_path / "prog.py", "f")])
+    assert _communicate(proc, 30).strip() == "True" and proc.returncode == 0
+    part = _part_file(parts_dir)
+    ids = list(_call_ids(part))
+    assert len(ids) == len(set(ids)) == 5_000
+    assert _last_record(part)["how"] == "_exit"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="SIGINT")
+def test_sigint_while_the_trace_is_written_records_no_call_twice(tmp_path):
+    # Three times: a SIGINT arrives right after the tracer's next write to
+    # the part file, while the program makes events fast.  A writer that
+    # signal handlers can interrupt between writing a chunk and dropping it
+    # from the buffer writes that chunk again later.
     src = (
-        "import os, threading, time, _tdb_trace_agent as A\n"
-        "held, done = threading.Event(), threading.Event()\n"
-        "def hold():\n    with A._flush_lock:\n        held.set(); done.wait()\n"
-        "t = threading.Thread(target=hold); t.start(); held.wait()\n"
-        "pid = os.fork()\nif pid == 0:\n    os._exit(7)\n"
-        "done.set(); t.join()\ndeadline = time.monotonic() + 10\n"
-        "while not os.waitpid(pid, os.WNOHANG)[0] and time.monotonic() < deadline:\n"
-        "    time.sleep(0.01)\n"
-        "if time.monotonic() >= deadline:\n    os.kill(pid, 9); os.waitpid(pid, 0); print('hung')\n"
-        "else:\n    print('exited')\n"
+        "import os, signal, _tdb_trace_agent as A\n"
+        "real_write, armed = os.write, [False]\n"
+        "def write(fd, data):\n"
+        "    n = real_write(fd, data)\n"
+        "    if armed[0] and fd == A._fd:\n"
+        "        armed[0] = False\n        os.kill(os.getpid(), signal.SIGINT)\n"
+        "    return n\n"
+        "os.write = write\n"
+        "def f():\n    return 1\n"
+        "interrupts = 0\n"
+        "for attempt in range(3):\n"
+        "    armed[0] = True\n"
+        "    try:\n        while True:\n            f()\n"
+        "    except KeyboardInterrupt:\n        interrupts += 1\n"
+        "for _ in range(1_000):\n    f()\n"
+        "print(interrupts)\n"
+    )
+    proc, parts_dir = start_traced(tmp_path, src, [target(tmp_path / "prog.py", "f")])
+    assert _communicate(proc, 60).strip() == "3" and proc.returncode == 0
+    part = _part_file(parts_dir)
+    ids = list(_call_ids(part))
+    assert len(ids) == len(set(ids)) and _last_record(part)["k"] == "exit"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="SIGINT")
+@pytest.mark.parametrize("when", ["before", "after"])
+def test_sigint_during_the_final_flush_loses_and_repeats_nothing(tmp_path, when):
+    # During the run only the flusher writes; at exit final_flush writes the
+    # rest from the main thread, where signal handlers run.  A SIGINT that
+    # lands just before or just after its first os.write must neither cut
+    # the trace short nor write anything twice.
+    send = "os.kill(os.getpid(), signal.SIGINT)\n"
+    src = (
+        "import os, signal, threading\n"
+        "real_write, armed = os.write, [True]\n"
+        "def write(fd, data):\n"
+        "    fire = armed[0] and threading.get_ident() == threading.main_thread().ident\n"
+        "    if fire:\n        armed[0] = False\n        open('fired', 'w').close()\n"
+        + (f"        {send}" if when == "before" else "")
+        + "    n = real_write(fd, data)\n"
+        + (f"    if fire:\n        {send}" if when == "after" else "")
+        + "    return n\n"
+        "def f():\n    return 1\n"
+        "os.write = write\n"
+        "for _ in range(30_000):\n    f()\n"  # left for final_flush
+    )
+    proc, parts_dir = start_traced(tmp_path, src, [target(tmp_path / "prog.py", "f")])
+    _communicate(proc, 30)
+    assert (tmp_path / "fired").exists() and proc.returncode == 0
+    part = _part_file(parts_dir)
+    ids = list(_call_ids(part))
+    assert len(ids) == len(set(ids)) == 30_000 and _last_record(part)["k"] == "exit"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="fork")
+def test_fork_child_exit_does_not_wait_for_the_parents_flusher(tmp_path):
+    # A forked child has none of the parent's threads; its os._exit must not
+    # wait for a flusher that is not there.
+    src = (
+        "import os, time\nt0 = time.monotonic()\npid = os.fork()\n"
+        "if pid == 0:\n    os._exit(7)\n"
+        "os.waitpid(pid, 0)\nprint(time.monotonic() - t0)\n"
     )
     parts = run_traced(tmp_path, src)
-    assert parts.stdout.strip() == "exited"
+    assert float(parts.stdout) < 1.0
 
 
 @pytest.mark.skipif(os.name == "nt", reason="fd numbering")
