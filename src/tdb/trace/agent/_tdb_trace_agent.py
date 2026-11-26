@@ -17,8 +17,11 @@ Never break the program:
 - stdlib only, and never ``import tdb``;
 - every monitoring callback catches ``Exception`` (an exception escaping
   a callback is raised in the user's code); only the program's own
-  BaseException-only exceptions, from its signal handlers, pass through
-  (see "monitoring callbacks" below);
+  exceptions, from its signal handlers, pass through (see "monitoring
+  callbacks" below);
+- the program's code that the agent runs (``capture`` and ``if``
+  expressions, ``__repr__``, ``__str__``) never raises into the program
+  either, and runs under a re-entrancy guard (see "options");
 - the part file is written with ``os.write`` on a raw descriptor, never a
   buffered file object, whose lock a ``fork`` could inherit held;
 - no strong references to frames (one would delay generator finalization);
@@ -37,15 +40,22 @@ a new part while keeping what it inherited about code objects.
 
 import _thread
 import atexit
+import builtins
 import errno
 import fnmatch
 import itertools
 import json
 import os
+import reprlib
 import sys
 import threading
 import time
 import weakref
+
+# Loaded already (by fnmatch, through re), so free to import.
+from functools import partial as _partial
+from types import FunctionType as _FunctionType
+from types import MethodType as _MethodType
 
 _mon = sys.monitoring
 _EV = _mon.events
@@ -95,6 +105,11 @@ _SUSP = '{"k":"susp","t":%d,"c":%d,"tid":%d,"task":%s}'
 _RES = '{"k":"res","t":%d,"c":%d,"tid":%d,"task":%s}'
 # A crash record keeps at most this many lines of the traceback.
 _TB_LINES = 50
+# The file name of the code compiled from capture and if expressions.
+_EXPR_FILE = "<tdb-trace>"
+# Code whose frames in a traceback are the agent's, not the program's.
+_OWN_FILES = frozenset((_getframe().f_code.co_filename, _EXPR_FILE))
+_SKIP = object()  # _enter(): the call is not recorded
 
 # --- set by start() ----------------------------------------------------
 _tool = None  # claimed sys.monitoring tool id
@@ -107,8 +122,11 @@ _final_done = False
 _broken = False  # a part-file write failed; nothing more is written
 _interval = 0.25
 _repr_limit = 200  # characters kept of a value or exception text
+_repr = None  # the _Repr that formats values
+_max_events = 5_000_000  # the event cap (call/ret/raise/susp/res records)
 _targets = ()
 _agent_dirs = frozenset()
+_signal_nums = None  # signal numbers, once _from_signal_handler needs them
 
 # --- the flusher ---------------------------------------------------------
 _flusher_ident = None  # thread ident of the flusher; never traced
@@ -127,7 +145,7 @@ _stall_mark = -1  # _flushed when a backpressure wait last saw no progress
 _stall_noted = False
 
 # --- per-process matching caches (still valid in a forked child) -------
-_file_funcs = {}  # co_filename -> (norm file, ((pattern, wild, entry), ...)) or None
+_file_funcs = {}  # co_filename -> (norm file, (_Target.functions items)) or None
 _decisions = {}  # (co_filename, co_qualname, co_firstlineno) -> _Fn or None
 _armed = {}  # id(code) -> (code, _Fn): code with local events on
 _fn_ids = itertools.count(1)
@@ -143,6 +161,12 @@ _thread_names = {}  # native thread id -> name last written
 _task_ids = weakref.WeakKeyDictionary()
 _task_counter = itertools.count(1)
 _proc_name = "MainProcess"
+_n_dropped = 0  # calls not recorded because of the event cap
+_cap_noted = False
+
+# Idents of the threads running the program's code for a callback (the
+# re-entrancy guard; see "options").
+_inside = set()
 
 # --- the hooks start() wrapped (crash records) --------------------------
 _prev_excepthook = None
@@ -154,17 +178,20 @@ _n_events = 0  # call/ret/raise/susp/res records
 
 
 class _Fn:
-    """A spec'd function: its ``fn`` record and its spec entry."""
+    """A spec'd function: its ``fn`` record and its spec entry's options:
+    ``opts`` (an _Opts, or None when the entry has no capture, if or
+    max_hits) and ``ret`` (record the return value)."""
 
-    __slots__ = ("id", "file", "qual", "line", "kind", "entry", "record")
+    __slots__ = ("id", "file", "qual", "line", "kind", "opts", "ret", "record")
 
-    def __init__(self, file, qual, line, kind, entry):
+    def __init__(self, file, qual, line, kind, opts, ret):
         self.id = next(_fn_ids)
         self.file = file
         self.qual = qual
         self.line = line
         self.kind = kind
-        self.entry = entry
+        self.opts = opts
+        self.ret = ret
         self.record = _dumps(
             {
                 "k": "fn",
@@ -177,6 +204,34 @@ class _Fn:
         )
 
 
+def _compile(text):
+    """An expression's code, or the error text if it does not compile.  tdb
+    compiles every expression before launch, but with its own Python; the
+    program's may have another grammar."""
+    try:
+        return compile(text, _EXPR_FILE, "eval", dont_inherit=True)
+    except Exception as exc:  # SyntaxError, ValueError (a null byte), ...
+        return _error_text(exc)
+
+
+class _Opts:
+    """A spec entry's capture, if and max_hits, compiled once at start.
+    ``hits`` counts the calls recorded for the entry, of every function it
+    matches."""
+
+    __slots__ = ("capture", "cond", "max_hits", "hits")
+
+    def __init__(self, entry):
+        self.capture = tuple((text, _compile(text)) for text in entry["capture"])
+        self.cond = None if entry["if"] is None else _compile(entry["if"])
+        self.max_hits = entry["max_hits"]
+        self.hits = 0
+        if self.cond.__class__ is str:
+            # An if that does not compile is one that always raises: no
+            # call is recorded, and nothing needs to run to know that.
+            self.cond, self.max_hits = None, 0
+
+
 class _Target:
     __slots__ = ("files", "suffixes", "functions")
 
@@ -185,8 +240,16 @@ class _Target:
         self.suffixes = tuple(
             "/" + os.path.normcase(s).replace("\\", "/") for s in target["suffixes"]
         )
+        # (pattern, has wildcards, _Opts or None, record the return value)
         self.functions = tuple(
-            (f["pattern"], any(c in f["pattern"] for c in "*?["), f)
+            (
+                f["pattern"],
+                any(c in f["pattern"] for c in "*?["),
+                _Opts(f)
+                if f["capture"] or f["if"] is not None or f["max_hits"] is not None
+                else None,
+                bool(f["return"]),
+            )
             for f in target["functions"]
         )
 
@@ -222,7 +285,11 @@ def _funcs_for_file(filename):
 
 
 def _match(code):
-    """The _Fn for a code object the spec names, or None."""
+    """The _Fn for a code object the spec names, or None.
+
+    One entry decides, so a function that several entries match is
+    recorded once, with that entry's options: a pattern without wildcards
+    beats one with them; otherwise the first in spec order wins."""
     found = _file_funcs.get(code.co_filename, False)
     if found is False:
         found = _file_funcs[code.co_filename] = _funcs_for_file(code.co_filename)
@@ -230,13 +297,19 @@ def _match(code):
         return None
     nfile, funcs = found
     qual = code.co_qualname.replace(".<locals>", "")
-    for pattern, wild, entry in funcs:
+    best = None
+    for item in funcs:
+        if not item[1]:
+            if qual == item[0]:  # fnmatch without wildcards: equality
+                best = item
+                break
         # Wildcards never pick up lambdas, comprehensions and the like.
-        if wild and "<" in qual:
-            continue
-        if fnmatch.fnmatchcase(qual, pattern):
-            return _Fn(nfile, qual, code.co_firstlineno, _kind(code.co_flags), entry)
-    return None
+        elif best is None and "<" not in qual and fnmatch.fnmatchcase(qual, item[0]):
+            best = item
+    if best is None:
+        return None
+    kind = _kind(code.co_flags)
+    return _Fn(nfile, qual, code.co_firstlineno, kind, best[2], best[3])
 
 
 def _arm(code):
@@ -296,7 +369,9 @@ def _task_id(tid):
             _buf.append(record)
             entry[1] = name
         return entry[0]
-    except Exception:  # asyncio half imported, an odd task class, ...
+    except Exception as exc:  # asyncio half imported, an odd task class, ...
+        if _from_signal_handler(exc):
+            raise
         return None
 
 
@@ -306,7 +381,9 @@ def _exc_text(exc):
     name = type(exc).__name__
     try:
         msg = str(exc)
-    except Exception:
+    except BaseException as err:
+        if _signalled(err):
+            raise
         msg = ""
     return (f"{name}: {msg}" if msg else name)[:_repr_limit]
 
@@ -329,21 +406,216 @@ def _check_proc_name():
         _buf.append(_dumps({"k": "proc", "t": _perf_ns(), "name": name}))
 
 
+# --- signal handlers' exceptions -------------------------------------------
+#
+# Python runs signal handlers inside monitoring callbacks too (at any
+# eval-breaker check), so an exception a handler raises (an alarm-style
+# timeout's TimeoutError, say) can surface in a callback's ``except``.  It
+# is the program's and must reach it; an exception that does not come
+# from a handler is the agent's, or a user expression's, and must not.
+
+
+def _handler_code(handler):
+    """The code a signal handler runs, through functools.partial and bound
+    methods; None for SIG_DFL, SIG_IGN and builtins."""
+    for _ in range(10):
+        if isinstance(handler, _partial):
+            handler = handler.func
+        elif isinstance(handler, _MethodType):
+            handler = handler.__func__
+        else:
+            break
+    return handler.__code__ if isinstance(handler, _FunctionType) else None
+
+
+def _from_signal_handler(exc):
+    """Whether ``exc`` came from one of the program's Python signal
+    handlers: its traceback runs through the code of a handler installed
+    now.  Only an exception path pays for this: a walk of the traceback,
+    and a look at the handlers only when it holds code not the agent's
+    (a user expression's own error never does)."""
+    global _signal_nums
+    try:
+        codes = set()
+        tb = exc.__traceback__
+        while tb is not None:
+            code = tb.tb_frame.f_code
+            if code.co_filename not in _OWN_FILES:
+                codes.add(code)
+            tb = tb.tb_next
+        if not codes:
+            return False
+        # _signal, the C module, is loaded at start-up, and handlers are
+        # installed through it; signal.getsignal() would turn each answer
+        # into an enum, raising and catching an exception per function.
+        sig = sys.modules.get("_signal")
+        if sig is None:
+            return False
+        if _signal_nums is None:
+            _signal_nums = tuple(sig.valid_signals())
+        for num in _signal_nums:
+            if _handler_code(sig.getsignal(num)) in codes:
+                return True
+    except Exception:
+        pass
+    return False
+
+
+def _signalled(exc):
+    """Whether an exception the program's code raised while the agent ran
+    it (an expression, a ``__repr__``, a ``__str__``) must reach the
+    program: a Ctrl-C (the default SIGINT handler is C code, with no code
+    object to find), or anything a Python signal handler raised.  Any
+    other exception, BaseException-only ones included (``sys.exit()``,
+    ``CancelledError`` in a capture), is recorded as an error instead."""
+    return isinstance(exc, KeyboardInterrupt) or _from_signal_handler(exc)
+
+
+# --- options --------------------------------------------------------------
+#
+# A spec entry's capture and if expressions are compiled once (_Opts) and
+# evaluated on entry with the frame's globals and locals; return values
+# are recorded on PY_RETURN.  Values are reprlib-limited reprs, cut to
+# repr_limit.  Their errors become "<error: Type: msg>" and are never
+# raised, except a signal handler's (_signalled).
+#
+# The re-entrancy guard: _inside holds the idents of the threads running
+# the program's code for a callback, and a callback that finds its thread
+# there returns at once.  Python delivers no events while a callback runs
+# (a capture's helper() is never seen), but sys.call_tracing() turns them
+# back on.  Never DISABLE there: that would turn a traced function's
+# PY_START off for good.  While no thread is inside, the check is one
+# truthiness test.
+
+
+class _Repr(reprlib.Repr):
+    """reprlib's limits, but a failing ``__repr__`` raises (to be recorded
+    as an error) instead of being shown as a made-up
+    ``<Bad instance at 0x...>``."""
+
+    def repr_instance(self, x, level):
+        s = builtins.repr(x)
+        if len(s) > self.maxother:  # cut in the middle, as reprlib does
+            i = max(0, (self.maxother - 3) // 2)
+            j = max(0, self.maxother - 3 - i)
+            s = s[:i] + self.fillvalue + s[len(s) - j :]
+        return s
+
+
+def _make_repr(limit):
+    r = _Repr()
+    r.maxstring = r.maxother = r.maxlong = limit
+    return r
+
+
+def _error_text(exc):
+    """``"<error: ValueError: bad>"``, cut to repr_limit (keeping the ">")."""
+    return f"<error: {_exc_text(exc)}"[: _repr_limit - 1] + ">"
+
+
+def _value(obj):
+    """The recorded form of a value: its limited repr, or an error."""
+    try:
+        return _repr.repr(obj)[:_repr_limit]
+    except BaseException as exc:
+        if _signalled(exc):
+            raise
+        return _error_text(exc)
+
+
+def _guarded(fn, arg):
+    """``fn(arg)``, which runs the program's code, with this thread in
+    _inside.  The add is inside the try: a signal handler's exception
+    raised right after it must not leave the thread there for good."""
+    ident = _get_ident()
+    try:
+        _inside.add(ident)
+        return fn(arg)
+    finally:
+        _inside.discard(ident)
+
+
+def _cap_drop():
+    """A new call past the event cap: count it, and note the first."""
+    global _n_dropped, _cap_noted
+    _n_dropped += 1
+    if not _cap_noted:
+        _cap_noted = True
+        msg = f"event cap of {_max_events:,} reached; later calls not recorded"
+        _buf.append(_dumps({"k": "note", "t": _perf_ns(), "msg": msg}))
+
+
+def _enter(opts, frame):
+    """Apply an entry's options to a call starting in ``frame``: _SKIP if
+    the call is not recorded, else its captured values (or None).
+
+    In order: max_hits (past it no program code runs), the if, the event
+    cap (so only calls the if lets through count as dropped), max_hits
+    again, now taking the hit (the check and the count run with no call
+    between, so threads cannot both take the last one), the captures."""
+    max_hits = opts.max_hits
+    if max_hits is not None and opts.hits >= max_hits:
+        return _SKIP
+    ident = _get_ident()
+    try:
+        _inside.add(ident)
+        if opts.cond is not None or opts.capture:
+            env = frame.f_globals
+            names = frame.f_locals  # 3.12: a snapshot; 3.13+: a proxy
+        if opts.cond is not None:
+            try:
+                if not eval(opts.cond, env, names):
+                    return _SKIP
+            except BaseException as exc:
+                if _signalled(exc):
+                    raise
+                return _SKIP
+        if _n_events >= _max_events:
+            _cap_drop()
+            return _SKIP
+        if max_hits is not None:
+            if opts.hits >= max_hits:
+                return _SKIP
+            opts.hits += 1
+        if not opts.capture:
+            return None
+        values = {}
+        for text, code in opts.capture:
+            if code.__class__ is str:  # it did not compile: the error
+                values[text] = code
+                continue
+            try:
+                values[text] = _value(eval(code, env, names))
+            except BaseException as exc:
+                if _signalled(exc):
+                    raise
+                values[text] = _error_text(exc)
+        return values
+    finally:
+        _inside.discard(ident)
+
+
 # --- monitoring callbacks -----------------------------------------------
 #
 # Each callback catches Exception, so a failure of the agent never reaches
-# the program.  BaseException-only exceptions (KeyboardInterrupt,
-# SystemExit, ...) pass through on purpose: they are the program's own,
-# raised by a signal handler (or PyThreadState_SetAsyncExc) that Python ran
-# while the callback was executing.  Swallowing them would lose a Ctrl-C
-# or a SIGTERM -> sys.exit() handler; letting them through raises them at
-# the traced function's entry, return or unwind, as an untraced program
-# would see them at some nearby instruction.  State is updated so that an
+# the program.  The program's own exceptions pass through on purpose:
+# those raised by a signal handler (or PyThreadState_SetAsyncExc) that
+# Python ran while the callback was executing.  BaseException-only ones
+# (KeyboardInterrupt, SystemExit, ...) are never caught; an Exception
+# from a Python signal handler is re-raised (_from_signal_handler).
+# Swallowing them would lose a Ctrl-C, a SIGTERM -> sys.exit() handler or
+# an alarm's timeout; letting them through raises them at the traced
+# function's entry, return or unwind, as an untraced program would see
+# them at some nearby instruction.  State is updated so that an
 # interruption at any point leaves at worst an unfinished call.
 #
 # Callbacks never write and never take a lock.  A callback whose record
 # reaches _HIGH_WATER calls _backpressure(), outside any traced call's
 # time span: before taking the time of a call, after appending a return.
+#
+# The event cap: once _n_events reaches _max_events, no new call is
+# recorded (_cap_drop); the ends and suspensions of recorded calls still
+# are, since every other callback only acts on calls in _live.
 
 
 def _on_start(code, offset):
@@ -351,6 +623,8 @@ def _on_start(code, offset):
     try:
         if _stopped:
             return None
+        if _inside and _get_ident() in _inside:
+            return None  # nested (see "options"); never DISABLE here
         _n_starts += 1
         hit = _armed.get(id(code))
         if hit is not None and hit[0] is code:
@@ -361,6 +635,16 @@ def _on_start(code, offset):
                 return DISABLE
         if _get_ident() == _flusher_ident:
             return None
+        frame = _getframe(1)
+        opts = fn.opts
+        values = None
+        if opts is not None:
+            values = _enter(opts, frame)
+            if values is _SKIP:
+                return None
+        elif _n_events >= _max_events:
+            _cap_drop()
+            return None
         if len(_buf) >= _HIGH_WATER:
             _backpressure()
         tid = _thread_tid()
@@ -370,11 +654,17 @@ def _on_start(code, offset):
             _buf.append(fn.record)
         c = next(_call_ids)
         t = _perf_ns()
-        _buf.append(_CALL % (t, c, fn.id, tid, "null" if task is None else task))
+        if values is None:
+            _buf.append(_CALL % (t, c, fn.id, tid, "null" if task is None else task))
+        else:
+            record = {"k": "call", "t": t, "c": c, "fn": fn.id, "tid": tid}
+            record["task"], record["v"] = task, values
+            _buf.append(_dumps(record))
         _n_events += 1
-        _live[id(_getframe(1))] = (c, code, fn)
-    except Exception:
-        pass
+        _live[id(frame)] = (c, code, fn)
+    except Exception as exc:
+        if _from_signal_handler(exc):
+            raise
     return None
 
 
@@ -383,18 +673,26 @@ def _on_return(code, offset, retval):
     try:
         if _stopped:
             return None
+        if _inside and _get_ident() in _inside:
+            return None
         t = _perf_ns()
         live = _live.pop(id(_getframe(1)), None)
         if live is None or live[1] is not code:
             return None
         tid = _thread_tid()
         task = _task_id(tid)
-        _buf.append(_RET % (t, live[0], tid, "null" if task is None else task))
+        if live[2].ret:
+            record = {"k": "ret", "t": t, "c": live[0], "tid": tid, "task": task}
+            record["v"] = _guarded(_value, retval)
+            _buf.append(_dumps(record))
+        else:
+            _buf.append(_RET % (t, live[0], tid, "null" if task is None else task))
         _n_events += 1
         if len(_buf) >= _HIGH_WATER:
             _backpressure()
-    except Exception:
-        pass
+    except Exception as exc:
+        if _from_signal_handler(exc):
+            raise
     return None
 
 
@@ -404,6 +702,8 @@ def _on_yield(code, offset, retval):
     global _n_events
     try:
         if _stopped:
+            return None
+        if _inside and _get_ident() in _inside:
             return None
         t = _perf_ns()
         live = _live.get(id(_getframe(1)))
@@ -415,8 +715,9 @@ def _on_yield(code, offset, retval):
         _n_events += 1
         if len(_buf) >= _HIGH_WATER:
             _backpressure()
-    except Exception:
-        pass
+    except Exception as exc:
+        if _from_signal_handler(exc):
+            raise
     return None
 
 
@@ -439,10 +740,12 @@ def _resumed(code, frame_id):
 
 def _on_resume(code, offset):
     try:
-        if not _stopped:
-            _resumed(code, id(_getframe(1)))
-    except Exception:
-        pass
+        if _stopped or (_inside and _get_ident() in _inside):
+            return None
+        _resumed(code, id(_getframe(1)))
+    except Exception as exc:
+        if _from_signal_handler(exc):
+            raise
     return None
 
 
@@ -454,9 +757,12 @@ def _on_throw(code, offset, exc):
         hit = _armed.get(id(code))
         if hit is None or hit[0] is not code:
             return None
+        if _inside and _get_ident() in _inside:
+            return None
         _resumed(code, id(_getframe(1)))
-    except Exception:
-        pass
+    except Exception as err:
+        if _from_signal_handler(err):
+            raise
     return None
 
 
@@ -469,13 +775,15 @@ def _on_unwind(code, offset, exc):
         hit = _armed.get(id(code))
         if hit is None or hit[0] is not code:
             return None
+        if _inside and _get_ident() in _inside:
+            return None
         t = _perf_ns()
         # The frame is gone after this; drop its call first, so it cannot
         # leak even if what follows fails.
         live = _live.pop(id(_getframe(1)), None)
         if live is None or live[1] is not code:
             return None
-        text = _exc_text(exc)
+        text = _guarded(_exc_text, exc)  # str() is the program's code
         tid = _thread_tid()
         task = _task_id(tid)
         _buf.append(
@@ -493,8 +801,9 @@ def _on_unwind(code, offset, exc):
         _n_events += 1
         if len(_buf) >= _HIGH_WATER:
             _backpressure()
-    except Exception:
-        pass
+    except Exception as err:
+        if _from_signal_handler(err):
+            raise
     return None
 
 
@@ -847,6 +1156,9 @@ def _after_fork_in_child():
     _flusher_exited = _thread.allocate_lock()  # unlocked: none to wait for
     _inflight = None
     _in_syscall = False
+    # Threads inside a callback in the parent do not exist here, and a new
+    # thread may get one's ident.
+    _inside.clear()
 
 
 def _take_over():
@@ -900,16 +1212,17 @@ def start(config):
     bad config, parts directory not writable); sitecustomize.py turns
     that into an agent-error marker."""
     global _tool, _fd, _part_path, _part_id, _parts_dir, _stopped, _interval
-    global _targets, _agent_dirs, _proc_name, _repr_limit
+    global _targets, _agent_dirs, _proc_name, _repr_limit, _repr, _max_events
     if _tool is not None or _fd is not None:
         raise RuntimeError("the tracer is already started in this process")
     if config.get("version") != 1:
         raise ValueError(f"unsupported trace config version {config.get('version')!r}")
     mode = config["mode"]
     parts_dir = config["parts"]
+    _repr_limit = int(config["repr_limit"])  # first: it cuts compile errors
+    max_events = int(config["max_events"])
     targets = tuple(_Target(t) for t in config["targets"])
     interval = float(config["flush_interval"])
-    repr_limit = int(config["repr_limit"])
     agent_dirs = {_norm_path(os.path.dirname(os.path.abspath(__file__)))}
     if config.get("agent_dir"):
         agent_dirs.add(_norm_path(config["agent_dir"]))
@@ -921,7 +1234,7 @@ def start(config):
     _tool = tool
     try:
         _targets, _interval, _agent_dirs = targets, interval, frozenset(agent_dirs)
-        _repr_limit = repr_limit
+        _repr, _max_events = _make_repr(_repr_limit), max_events
         _fd, _part_path = _open_part(parts_dir)
         st = os.fstat(_fd)
         _part_id, _parts_dir = (st.st_dev, st.st_ino), parts_dir
@@ -1028,9 +1341,13 @@ def final_flush(how):
             _write_out(head)
             for i in range(0, len(rest), _CHUNK):
                 _write_out(("\n".join(rest[i : i + _CHUNK]) + "\n").encode("ascii"))
+            tail = ""
+            if _n_dropped:
+                msg = f"{_n_dropped:,} calls not recorded (event cap)"
+                tail = _dumps({"k": "note", "t": _perf_ns(), "msg": msg}) + "\n"
             # Last, and written directly: nothing can follow it.
             exit_record = {"k": "exit", "t": _perf_ns(), "how": how}
-            _write_out((_dumps(exit_record) + "\n").encode("ascii"))
+            _write_out((tail + _dumps(exit_record) + "\n").encode("ascii"))
     except OSError as exc:
         if exc.errno is not None:
             _give_up(f"cannot write the part file: {exc}")
