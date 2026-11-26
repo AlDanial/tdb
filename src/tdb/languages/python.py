@@ -249,6 +249,7 @@ def build_python_profile(
             interactive_variable=assignment_matcher(
                 r"^\s*(?P<name>[A-Za-z_]\w*)\s*(?::[^=]+)?=(?!=)"
             ),
+            tracer="python",
         ),
     )
 

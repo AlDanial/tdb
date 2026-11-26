@@ -466,6 +466,11 @@ class ProfileCapabilities:
     # ocamlearlybird), so the scope is never shown.
     interactive_variable: Callable[[str], InteractiveVariable | None] | None = None
 
+    # Function tracer for `tdb --trace` / `--trace-discover`: "python" ->
+    # the sys.monitoring agent in tdb.trace.agent. None -> the trace modes
+    # reject this language (`--trace is not yet supported for X`).
+    tracer: str | None = None
+
 
 @dataclass(frozen=True)
 class LanguageProfile:
