@@ -89,6 +89,12 @@ _PRESSURE_WAIT = 0.05
 _STOP_WAIT = 2.0
 # ... plus this long for an os.write the flusher already issued to land.
 _LANDING_WAIT = 3.0
+# The same two in a forked child, short enough (with the writing) for tdb,
+# which waits 2.0 s (CHILD_FLUSH_WAIT) for children once the program has
+# exited.  The takeover is exact after any wait; the landing wait matters
+# only on storage where a write hangs.
+_CHILD_STOP_WAIT = 0.25
+_CHILD_LANDING_WAIT = 1.5
 # A fork waits this long for the flusher to write what is buffered and
 # stop, then goes ahead without stopping it ...
 _FORK_STOP_WAIT = 0.5
@@ -109,6 +115,7 @@ _time_ns = time.time_ns
 _os_open = os.open
 _os_write = os.write
 _os_close = os.close
+_unlink = os.unlink
 _fstat = os.fstat
 _os_stat = os.stat
 _getpid = os.getpid
@@ -154,23 +161,26 @@ _agent_dirs = frozenset()
 _signal_nums = None  # signal numbers, once _from_signal_handler needs them
 
 # --- the flusher ---------------------------------------------------------
-_flusher_ident = None  # thread ident of the flusher; never traced
+# Whether there is a flusher: not None while one runs (its thread ident) or
+# is being started (its start token); see _start_flusher.  The flusher's
+# thread is never traced.
+_flusher_ident = None
 _flusher_tid = None  # its native thread id (set by the flusher)
+_stop_wait, _landing_wait = _STOP_WAIT, _LANDING_WAIT  # final_flush's waits
 # Held while the flusher may sleep: its timed acquire is the sleep, and a
 # release wakes it at once (backpressure, final_flush, a fork).
 _wake = _allocate_lock()
 # Held while a flusher runs; it releases this when it ends.
 _flusher_exited = _allocate_lock()
-# A fork's request that the flusher stop (see "fork"): the forking thread
-# appends to it; the flusher writes what is buffered, then pops it and
-# ends.  A forking thread that stops waiting takes the request back with
-# its own pop.  list.pop is atomic, so exactly one of the two gets it, and
-# each then knows whether the flusher is ending.
+# Forks' requests that the flusher stop (see "fork"): a forking thread
+# appends one; the flusher writes what is buffered, then takes one and
+# ends; a forking thread that stops waiting takes one back.  Both take with
+# "if _halt: del _halt[0]", which has no call in it, so no other thread and
+# no signal handler runs in between: one request is taken once.
 _halt = []
-# "owner" -> ident of the thread whose fork stopped the flusher, the one to
-# start it again.  dict.setdefault is atomic: one forking thread at a time
-# stops it.
-_fork_claim = {}
+# _flushed when a fork last stopped waiting for the flusher: while it has
+# not moved since, a fork does not wait for it again.
+_fork_stall = -1
 _fence = False  # set by final_flush: the flusher must not write again
 # The chunk the flusher is writing, for final_flush to take over from:
 # (its first record object, part size before the write, bytes, records).
@@ -1190,11 +1200,14 @@ def _backpressure():
         _sleep(0.001)
 
 
-def _flusher_loop(started, exited):
-    global _flusher_tid
-    _flusher_tid = _get_native_id()
-    started.release()
+def _flusher_loop(started, exited, token):
+    global _flusher_ident, _flusher_tid
+    me, tid = _get_ident(), _get_native_id()
+    if _flusher_ident is not token:
+        return  # its starter gave up on it (see _start_flusher)
+    _flusher_ident, _flusher_tid = me, tid  # no call since the test
     try:
+        started.release()
         while not _fence:
             _wake.acquire(timeout=_interval)  # the sleep; a release wakes it
             if _fence:
@@ -1208,40 +1221,64 @@ def _flusher_loop(started, exited):
                     _give_up(f"cannot write the part file: {exc}")
             except BaseException:
                 pass  # the records stay in _buf for the next flush
-            if halt:
-                try:
-                    _halt.pop()
-                except IndexError:
-                    continue  # taken back: the fork went ahead without waiting
+            if halt and _halt:
+                # Take the request and say there is no flusher, with no call
+                # in between; it writes nothing more.  (An empty _halt: the
+                # fork took its request back and went ahead.)
+                del _halt[0]
+                _flusher_ident = None
                 break
     finally:
+        if _flusher_ident is me:  # ended otherwise: final_flush, a write error
+            _flusher_ident = None
         exited.release()
 
 
 def _start_flusher():
-    """Start the flusher and wait, a short bound, until it runs (so its own
-    first code is seen during start-up, never at a time that depends on
-    scheduling).  Bounded: started after a fork, the thread that forked may
-    hold a lock that code the new thread runs (a finalizer) waits for."""
+    """Start a flusher, unless one runs or is starting, and wait, a short
+    bound, until it runs (so its own first code is seen during start-up,
+    never at a time that depends on scheduling).  Bounded: started after a
+    fork, the thread that forked may hold a lock that code the new thread
+    runs (a finalizer) waits for.
+
+    Never two flushers: the starter takes the empty slot (_flusher_ident)
+    for a token, and the thread replaces the token with its ident.  Both
+    test and set with no call in between, and so does a starter that is
+    interrupted (a signal handler's exception) and gives the slot back
+    while it still holds its token: a thread it did start then ends at once.
+    """
     global _flusher_ident, _flusher_exited
-    if not _wake.locked():
-        _wake.acquire()
-    exited = _allocate_lock()
-    exited.acquire()
-    started = _allocate_lock()
-    started.acquire()
-    # A bare _thread thread: threading.enumerate() and active_count() in
-    # the program stay as they would be without the tracer.
-    ident = _start_new_thread(_flusher_loop, (started, exited))
-    _flusher_exited, _flusher_ident = exited, ident
-    started.acquire(timeout=_START_WAIT)
+    token = []  # a new object, made without a call
+    if _flusher_ident is not None:
+        return
+    _flusher_ident = token
+    exited = None
+    try:
+        del _halt[:]  # left by an interrupted fork: for no flusher now
+        if not _wake.locked():
+            _wake.acquire()
+        exited = _allocate_lock()
+        exited.acquire()
+        started = _allocate_lock()
+        started.acquire()
+        _flusher_exited = exited
+        # A bare _thread thread: threading.enumerate() and active_count() in
+        # the program stay as they would be without the tracer.
+        _start_new_thread(_flusher_loop, (started, exited, token))
+        started.acquire(timeout=_START_WAIT)
+    except BaseException:
+        if _flusher_ident is token:  # no thread took the slot; none will
+            _flusher_ident = None
+            if _flusher_exited is exited:
+                exited.release()  # none to wait for
+        raise
 
 
 def _take_over():
     """After the flusher stopped, or was fenced and not waited for longer:
     return (the bytes of its in-flight chunk not yet on disk, the records
     still to write after them)."""
-    end = _perf_ns() + int(_LANDING_WAIT * 1e9)
+    end = _perf_ns() + int(_landing_wait * 1e9)
     while True:
         inflight = _inflight
         snapshot = _buf[:]  # atomic; a fenced flusher can still drop a chunk
@@ -1283,30 +1320,42 @@ def _exit(status):
 #   child would inherit held, and Python 3.12+ does not warn about forking
 #   a multi-threaded process.  A flusher that does not end in time (stuck
 #   in a finalizer that waits for a lock the forking thread holds, say) is
-#   left to carry on, and the fork goes ahead;
-# - in the parent, the thread whose fork stopped the flusher starts it
-#   again;
-# - in the child, everything kept per process starts afresh: new locks, a
-#   part file of its own with its own header, call and task ids from 1, the
-#   fn/th/task records written again, the event cap and max_hits counted
-#   from zero, and a new flusher.  The parent's unwritten records and live
-#   calls are the parent's to write: they are dropped, and the parent's
-#   part descriptor is closed (a raw one, so nothing is flushed through it)
-#   before the child writes anything.
-# Like any at-fork hook's, an exception these raise (a signal handler's)
-# cannot reach the program: Python prints and drops it.  So they catch
-# Exception, as the callbacks do, and state stays consistent if one is
-# interrupted.
-
-# Python 3.12+ counts a Linux process's threads in /proc/self/stat to decide
-# whether os.fork() warns, and an ended thread is still counted there for
-# some microseconds after its last Python code ran.
-_TASKS = "/proc/self/task/" if sys.platform.startswith("linux") else None
+#   left to carry on, and the fork goes ahead (and, until the flusher
+#   moves again, later forks do not wait for it);
+# - in the parent, a flusher is started if none runs;
+# - in the child, a hook in C (_CHILD_GATE) first stops recording and all
+#   writing; then everything kept per process starts afresh: new locks, a
+#   part file of its own, published once its header is written, call and
+#   task ids from 1, the fn/th/task records written again, the event cap
+#   and max_hits counted from zero, shorter exit waits, and a new flusher.
+#   The parent's unwritten records and live calls are the parent's to
+#   write: they are dropped, and the parent's part descriptor is closed (a
+#   raw one, so nothing is flushed through it).
+#
+# A signal handler's exception can be raised at almost any point of these
+# hooks, and cannot reach the program (Python prints and drops it, as for
+# any at-fork hook).  So every step leaves the state consistent if it is
+# interrupted, and the hooks re-raise only such exceptions:
+# - _flusher_ident says whether there is a flusher; it changes only in
+#   test-and-set steps with no call inside (see _start_flusher, and the
+#   flusher taking a request), so it is never wrong;
+# - a request is taken back in a finally, by a step with no call inside;
+# - the parent's hook starts a flusher whenever there is none (once more
+#   if interrupted), so a later fork repairs what an interrupted one left;
+# - until the child's hook has finished, the gate keeps the child from
+#   recording and from writing anything to the parent's part; and the
+#   child's part is published only with its header in it.
 
 
 def _wait_gone(tid):
-    """Wait, at most _GONE_WAIT, until thread ``tid`` has left the process
-    (Linux only)."""
+    """Wait, at most _GONE_WAIT, until thread ``tid`` has left the process.
+
+    Python 3.12+ counts a Linux process's threads in /proc/self/stat to
+    decide whether os.fork() warns, and an ended thread is still counted
+    for some microseconds after its last Python code ran.  Linux only: on
+    macOS Python counts Mach threads, which there is no cheap way to wait
+    for here, so a fork there may still show the warning (a documented
+    limitation)."""
     if _TASKS is None or tid is None:
         return
     path = _TASKS + str(tid)
@@ -1321,54 +1370,55 @@ def _wait_gone(tid):
         _sleep(0.00005)
 
 
+_TASKS = "/proc/self/task/" if sys.platform.startswith("linux") else None
+
+
 def _before_fork():
-    """os.fork() is about to run: the flusher writes what is buffered and
-    ends (see "fork")."""
-    global _flusher_ident, _flusher_exited
-    me = _get_ident()
-    if _fork_claim.setdefault("owner", me) != me:
-        return  # another thread's fork has stopped it, or is stopping it
-    stopped = False
+    """os.fork() is about to run: ask the flusher to write what is buffered
+    and end, and wait a short bound (see "fork")."""
+    global _fork_stall
+    if _fence or _flusher_ident is None or _flushed == _fork_stall:
+        return  # none to stop, or one that did not stop last time, unmoved since
+    exited, tid = _flusher_exited, _flusher_tid
     try:
-        if _fence or _flusher_ident is None:
-            return  # no flusher: tracing has ended
-        exited = _flusher_exited
-        try:
-            _halt.append(True)
-            _wake_flusher()
-            stopped = exited.acquire(timeout=_FORK_STOP_WAIT)
-        finally:
-            if not stopped:
-                try:
-                    _halt.pop()  # taken back: it carries on through the fork
-                except IndexError:
-                    stopped = True  # it took the request: it writes no more
-        if stopped:
-            # No flusher now: nothing for final_flush to wait for, or for a
-            # fork to stop, should starting it again fail.
-            _flusher_ident, _flusher_exited = None, _allocate_lock()
-            _wait_gone(_flusher_tid)
+        _halt.append(True)
+        _wake_flusher()
+        if exited.acquire(timeout=_FORK_STOP_WAIT):
+            exited.release()  # for anyone else waiting (another fork, final_flush)
     except Exception as exc:
         if _from_signal_handler(exc):
             raise
     finally:
-        if not stopped:
-            _fork_claim.pop("owner", None)
+        if _halt:  # not taken: take it back, so it carries on through the fork
+            del _halt[0]
+    if _flusher_ident is None:
+        _fork_stall = -1
+        _wait_gone(tid)
+    else:
+        _fork_stall = _flushed
+
+
+def _restart_flusher():
+    """_start_flusher, from an at-fork hook: once more if interrupted.  A
+    signal handler's exception is then raised again (Python drops it); an
+    error of the tracer's own (no new thread) is left for the next fork or
+    final_flush, which writes everything."""
+    try:
+        _start_flusher()
+    except BaseException as exc:
+        try:
+            _start_flusher()
+        except BaseException:
+            pass
+        if _signalled(exc):
+            raise
 
 
 def _after_fork_in_parent():
-    """os.fork() returned in the parent: start the flusher again, if this
-    thread's fork stopped it."""
-    if _fork_claim.get("owner") != _get_ident():
-        return
-    try:
-        if not _fence:
-            _start_flusher()
-    except Exception as exc:  # no new thread: final_flush writes the rest
-        if _from_signal_handler(exc):
-            raise
-    finally:
-        _fork_claim.pop("owner", None)
+    """os.fork() returned in the parent: start a flusher if none runs (this
+    fork stopped it, or an interrupted one left none)."""
+    if not _fence and _flusher_ident is None:
+        _restart_flusher()
 
 
 def _close_if_ours(fd):
@@ -1397,8 +1447,8 @@ def _forked_to_exec():
 
 
 def _new_part():
-    """Per-part state afresh, a new part file and its header (in a forked
-    child, the only thread there)."""
+    """In a forked child (its only thread): per-part state afresh, then a
+    part file of its own, published only once its header is in it."""
     global _call_ids, _task_ids, _task_counter, _n_events, _n_dropped, _cap_noted
     global _final_done, _broken, _fence, _proc_name, _fd, _part_path, _part_id
     del _buf[:]
@@ -1413,34 +1463,46 @@ def _new_part():
         for item in t.functions:
             if item[2] is not None:
                 item[2].hits = 0
-    _final_done = _broken = _fence = False
     _proc_name = _current_proc_name() or "MainProcess"
+    data = (_header() + "\n").encode("ascii")
     fd, path = _open_part(_parts_dir)
-    st = _fstat(fd)
+    try:
+        view, done = memoryview(data), 0
+        while done < len(data):
+            done += _os_write(fd, view[done:])
+        st = _fstat(fd)
+    except BaseException:
+        try:  # no part file without its header
+            _os_close(fd)
+            _unlink(path)
+        except OSError:
+            pass
+        raise
     _fd, _part_path, _part_id = fd, path, (st.st_dev, st.st_ino)
-    _write_out((_header() + "\n").encode("ascii"))
+    _final_done = _broken = _fence = False
 
 
 def _after_fork_in_child():
     """os.fork() returned in the child: give it a part of its own (see
-    "fork")."""
-    global _wake, _flusher_exited, _halt, _fork_claim, _flusher_ident
+    "fork").  _CHILD_GATE has run: nothing records or writes until this
+    has finished."""
+    global _wake, _flusher_exited, _halt, _fork_stall, _flusher_ident
     global _flusher_tid, _inflight, _in_syscall, _flushed, _stall_mark
-    global _stall_noted, _fd, _stopped
+    global _stall_noted, _fd, _stopped, _stop_wait, _landing_wait
+    inherited, _fd = _fd, None
     # New locks and flusher controls, never the parent's: a parent thread
     # that is not here may have held one at the fork.  No flusher yet, so
     # final_flush has none to wait for.
     _wake, _flusher_exited = _allocate_lock(), _allocate_lock()
-    _halt, _fork_claim = [], {}
+    _halt, _fork_stall = [], -1
     _flusher_ident = _flusher_tid = _inflight = None
     _in_syscall, _flushed, _stall_mark, _stall_noted = False, 0, -1, False
+    _stop_wait, _landing_wait = _CHILD_STOP_WAIT, _CHILD_LANDING_WAIT
     # Threads inside a callback in the parent do not exist here, and a new
     # thread may get one's ident.
     _inside.clear()
-    inherited, _fd = _fd, None  # nothing can write to the parent's part now
-    if inherited is None or _tool is None or _final_done:
+    if inherited is None or _tool is None:
         return  # not tracing
-    _stopped = True  # until the child's own part is ready
     try:
         _close_if_ours(inherited)
         if _forked_to_exec():
@@ -1452,11 +1514,17 @@ def _after_fork_in_child():
         _give_up(f"cannot start the part file of a forked child: {exc}")
         return
     _stopped = False
-    try:
-        _start_flusher()
-    except Exception as exc:  # no new thread: final_flush writes it all
-        if _from_signal_handler(exc):
-            raise
+    _restart_flusher()
+
+
+# In C, so no Python code runs inside it and no signal handler can stop it
+# half-way: the tracer's first hook in the child (registered before
+# _after_fork_in_child), it keeps the child from recording, from writing
+# (final_flush returns at once; no flusher runs) and from starting a
+# flusher, until _after_fork_in_child has set the child up.
+_CHILD_GATE = _partial(
+    globals().update, {"_stopped": True, "_final_done": True, "_fence": True}
+)
 
 
 # --- public ---------------------------------------------------------------
@@ -1522,8 +1590,9 @@ def start(config):
             os.register_at_fork(
                 before=_before_fork,
                 after_in_parent=_after_fork_in_parent,
-                after_in_child=_after_fork_in_child,
+                after_in_child=_CHILD_GATE,  # runs first in the child
             )
+            os.register_at_fork(after_in_child=_after_fork_in_child)
         os._exit = _exit
     except BaseException:
         _teardown()
@@ -1568,7 +1637,8 @@ def final_flush(how):
     """Write the rest of the buffer and an ``exit`` record, then stop.
 
     ``how`` is "atexit" or "_exit".  Idempotent, and never raises.  Waits
-    at most _STOP_WAIT (+ _LANDING_WAIT) seconds for the flusher.  An
+    at most _stop_wait (+ _landing_wait) seconds for the flusher: 2 (+ 3),
+    and in a forked child 0.25 (+ 1.5).  An
     exception from a signal handler does not cut the writing short (see
     _write_out).  A part whose writing failed gets nothing more, and so no
     ``exit`` record.
@@ -1584,7 +1654,7 @@ def final_flush(how):
         return
     try:
         _wake_flusher()
-        _flusher_exited.acquire(timeout=_STOP_WAIT)
+        _flusher_exited.acquire(timeout=_stop_wait)
     except BaseException:
         pass  # interrupted: taking over before it stops is safe too
     try:

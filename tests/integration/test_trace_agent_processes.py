@@ -13,6 +13,7 @@ import sys
 
 import pytest
 
+from tdb.trace.contract import CHILD_FLUSH_WAIT
 from tests.integration.trace_helpers import STUCK_FLUSHER, run_traced, target
 
 pytestmark = pytest.mark.skipif(sys.version_info < (3, 12), reason="sys.monitoring")
@@ -161,46 +162,42 @@ def test_fork_child_part_starts_afresh(tmp_path):
 
 @pytest.mark.skipif(os.name == "nt", reason="fork")
 def test_fork_child_never_writes_what_it_inherited(tmp_path):
-    # Another thread records calls while the main thread forks, so each
-    # child starts with a copy of the parent's unwritten records and live
-    # calls.  Only the parent may write those, and no child may write to
-    # the parent's part.
+    # The parent's flusher is in a slow write when the fork stops waiting
+    # for it, so the child starts with all the parent's records unwritten
+    # in its copy of the buffer.  Only the parent may write them, and the
+    # child may not write to the parent's part.
     src = (
-        "import os, threading, time\n"
+        "import os, time, _tdb_trace_agent as A\n"
         "def busy():\n    pass\n"
         "def mine():\n    pass\n"
-        "go = True\n"
-        "def loop():\n    while go:\n        busy(); time.sleep(0)\n"
-        "t = threading.Thread(target=loop); t.start()\n"
-        "for _ in range(10):\n"
-        "    pid = os.fork()\n"
-        "    if pid == 0:\n        mine(); os._exit(0)\n"
-        "    os.waitpid(pid, 0)\n"
-        "go = False; t.join()\n"
+        "real_write, parent, slow = A._os_write, os.getpid(), [True]\n"
+        "def write(fd, data):\n"
+        "    if slow[0] and os.getpid() == parent:\n"
+        "        slow[0] = False\n        time.sleep(1.0)\n"  # longer than a fork waits
+        "    return real_write(fd, data)\n"
+        "A._os_write = write\n"
+        "for _ in range(1_000):\n    busy()\n"
+        "t0 = time.monotonic()\npid = os.fork()\n"
+        "if pid == 0:\n    mine(); os._exit(0)\n"
+        "print(time.monotonic() - t0 < 1.0)\n"  # the fork went ahead mid-write
+        "os.waitpid(pid, 0)\n"
     )
     parts = run_traced(
         tmp_path, src, [target(tmp_path / "prog.py", "busy", "mine")], own_group=True
     )
-    assert parts.returncode == 0, parts.stderr
+    assert parts.stdout == "True\n" and parts.returncode == 0, parts.stderr
     hdrs = {stem: recs[0] for stem, recs in parts.records.items()}
     main = next(s for s, h in hdrs.items() if h["ppid"] == os.getpid())
-    children = set(hdrs) - {main}
-    assert len(children) == 10
-    for stem in children:
-        recs = parts.records[stem]
-        assert hdrs[stem]["ppid"] == hdrs[main]["pid"]
-        assert [parts.qual_of(stem, r["fn"]) for r in recs if r["k"] == "call"] == [
-            "mine"
-        ]
-        assert {r["c"] for r in recs if "c" in r} == {1}
-        assert recs[-1] == {"k": "exit", "t": recs[-1]["t"], "how": "_exit"}
+    (child,) = set(hdrs) - {main}
+    recs = parts.records[child]
+    assert [parts.qual_of(child, r["fn"]) for r in recs if r["k"] == "call"] == ["mine"]
+    assert {r["c"] for r in recs if "c" in r} == {1}
+    assert recs[-1] == {"k": "exit", "t": recs[-1]["t"], "how": "_exit"}
     recs = parts.records[main]
     calls = [r for r in recs if r["k"] == "call"]
     assert {parts.qual_of(main, r["fn"]) for r in calls} == {"busy"}
     ids = [r["c"] for r in calls]
-    rets = [r["c"] for r in recs if r["k"] == "ret"]
-    assert len(ids) == len(set(ids)) and len(rets) == len(set(rets))
-    assert set(rets) <= set(ids)
+    assert len(ids) == len(set(ids)) == 1_000
     assert [r["how"] for r in recs if r["k"] == "exit"] == ["atexit"]
 
 
@@ -264,6 +261,12 @@ def _no_pids(text):
 
 
 @pytest.mark.skipif(os.name == "nt", reason="fork")
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="macOS: Python counts Mach threads, and the tracer can only wait for "
+    "its flusher's thread to leave on Linux (/proc), so the warning may show "
+    "(a documented limitation)",
+)
 def test_fork_from_main_shows_no_threads_warning(tmp_path):
     # Python 3.12+ warns (a DeprecationWarning, shown for __main__) when
     # os.fork() runs while the process has other threads.  The flusher must
@@ -288,29 +291,191 @@ def test_fork_from_main_shows_no_threads_warning(tmp_path):
 @pytest.mark.skipif(os.name == "nt", reason="fork")
 def test_fork_while_the_flusher_is_stuck(tmp_path):
     # The flusher waits, in a finalizer, for a lock the forking thread
-    # holds.  The fork goes ahead after a short wait, without stopping it;
-    # it carries on afterwards (only it can write the calls made before the
-    # SIGKILL), and the child starts its own flusher and part.
+    # holds.  The first fork goes ahead after a short wait, without stopping
+    # it; later ones do not wait while it has not moved.  It carries on
+    # afterwards (only it can write the calls made before the SIGKILL), and
+    # each child starts its own flusher and part.
     src = STUCK_FLUSHER + (
-        "    pid = os.fork()\n"
-        "    if pid == 0:\n        f(); os._exit(0)\n"
-        "    os.waitpid(pid, 0)\n"
-        "    print(bool(stuck), flush=True)\n"
+        "    waits = []\n"
+        "    for _ in range(3):\n"
+        "        t0 = time.monotonic()\n"
+        "        pid = os.fork()\n"
+        "        if pid == 0:\n            f(); os._exit(0)\n"
+        "        waits.append(time.monotonic() - t0)\n"
+        "        os.waitpid(pid, 0)\n"
+        "    print(bool(stuck), waits[0] > 0.45, sum(waits[1:]) < 0.2, flush=True)\n"
         "for _ in range(1_000):\n    f()\n"
         "time.sleep(0.6)\nos.kill(os.getpid(), 9)\n"
     )
     parts = run_traced(
         tmp_path, src, [target(tmp_path / "prog.py", "f")], own_group=True
     )
-    assert parts.stdout == "True\n" and parts.returncode == -9
+    assert parts.stdout == "True True True\n" and parts.returncode == -9
     hdrs = {stem: recs[0] for stem, recs in parts.records.items()}
     main = next(s for s, h in hdrs.items() if h["ppid"] == os.getpid())
-    (child,) = set(hdrs) - {main}
+    children = set(hdrs) - {main}
     ids = [r["c"] for r in parts.records[main] if r["k"] == "call"]
-    assert len(ids) == len(set(ids)) == 6_000
-    child_recs = parts.records[child]
-    assert [r["k"] for r in child_recs] == ["hdr", "th", "fn", "call", "ret", "exit"]
-    assert child_recs[-1]["how"] == "_exit"
+    assert len(ids) == len(set(ids)) == 6_000 and len(children) == 3
+    for child in children:
+        recs = parts.records[child]
+        assert [r["k"] for r in recs] == ["hdr", "th", "fn", "call", "ret", "exit"]
+        assert recs[-1]["how"] == "_exit"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="fork")
+def test_fork_child_with_a_stuck_flusher_exits_within_tdbs_wait(tmp_path):
+    # tdb waits CHILD_FLUSH_WAIT for children once the program has exited.
+    # A forked child whose flusher is stuck (in a finalizer, waiting for a
+    # lock the child holds as it exits) must be done by then, its events
+    # written.
+    src = (
+        (
+            "import os, time\n"
+            "pid = os.fork()\n"
+            "if pid:\n"
+            "    os.waitpid(pid, 0)\n    print('done', time.monotonic(), flush=True)\n"
+            "    raise SystemExit\n"
+        )
+        + STUCK_FLUSHER
+        + (
+            "    print('stuck', bool(stuck), flush=True)\n"
+            "    print('exit', time.monotonic(), flush=True)\n"
+            "    os._exit(0)\n"
+        )
+    )
+    parts = run_traced(
+        tmp_path, src, [target(tmp_path / "prog.py", "f")], own_group=True
+    )
+    out = dict(line.split() for line in parts.stdout.splitlines())
+    assert out["stuck"] == "True" and parts.returncode == 0, parts.stderr
+    assert float(out["done"]) - float(out["exit"]) < CHILD_FLUSH_WAIT
+    hdrs = {stem: recs[0] for stem, recs in parts.records.items()}
+    (child,) = [s for s, h in hdrs.items() if h["ppid"] != os.getpid()]
+    recs = parts.records[child]
+    ids = [r["c"] for r in recs if r["k"] == "call"]
+    assert len(ids) == len(set(ids)) == 5_000 and recs[-1]["how"] == "_exit"
+
+
+# A KeyboardInterrupt raised once, in the parent, at one point of the
+# at-fork hooks, as a signal handler's exception can be (Python prints and
+# drops it): afterwards there is still exactly one flusher, and every call
+# is written once.  The writes are slow, so two flushers would overlap.
+INTERRUPTED_FORK = (
+    "import os, signal, time, _tdb_trace_agent as A\n"
+    "def f():\n    pass\n"
+    "real_write, parent, armed = A._os_write, os.getpid(), [1]\n"
+    "def write(fd, data):\n    time.sleep(0.01)\n    return real_write(fd, data)\n"
+    "A._os_write = write\n"
+    "{window}"
+    "def fork():\n"
+    "    pid = os.fork()\n"
+    "    if pid == 0:\n        os._exit(0)\n"
+    "    os.waitpid(pid, 0)\n"
+    "for _ in range(20_000):\n    f()\n"
+    "fork()\n"  # interrupted
+    "fork()\n"
+    "for _ in range(20_000):\n    f()\n"
+    "time.sleep(0.8)\n"  # only a running flusher can write these before the SIGKILL
+    "tasks = '/proc/self/task'\n"
+    "print(len(os.listdir(tasks)) if os.path.isdir(tasks) else 2, armed, flush=True)\n"
+    "os.kill(os.getpid(), signal.SIGKILL)\n"
+)
+RAISE_IN_PARENT = "    if armed and os.getpid() == parent:\n        armed.pop(); raise KeyboardInterrupt\n"
+PARENT_WINDOWS = {
+    # right after the fork asked the flusher to stop
+    "request": "class Requests(list):\n    def append(self, item):\n"
+    "        list.append(self, item)\n"
+    "        if armed and os.getpid() == parent:\n"
+    "            armed.pop(); raise KeyboardInterrupt\n"
+    "A._halt = Requests()\n",
+    # while the fork waits for the flusher to end
+    "waiting": "wake = A._wake_flusher\ndef wake_then_raise():\n    wake()\n"
+    + RAISE_IN_PARENT
+    + "A._wake_flusher = wake_then_raise\n",
+    # once the flusher has ended, before the fork
+    "ended": "def gone(tid):\n" + RAISE_IN_PARENT + "A._wait_gone = gone\n",
+    # after the new flusher's thread is started, before the start returns
+    "started": "start = A._start_new_thread\ndef start_then_raise(fn, args):\n"
+    "    ident = start(fn, args)\n" + RAISE_IN_PARENT + "    return ident\n"
+    "A._start_new_thread = start_then_raise\n",
+    # before both tries to start one: none after this fork, until the next
+    "not started": "start = A._start_new_thread\narmed.append(1)\n"
+    "def raise_then_start(fn, args):\n"
+    + RAISE_IN_PARENT
+    + "    return start(fn, args)\n"
+    "A._start_new_thread = raise_then_start\n",
+}
+
+
+@pytest.mark.skipif(os.name == "nt", reason="fork, SIGKILL")
+@pytest.mark.parametrize("window", list(PARENT_WINDOWS))
+def test_interrupted_fork_hook_leaves_one_flusher(tmp_path, window):
+    src = INTERRUPTED_FORK.replace("{window}", PARENT_WINDOWS[window])
+    parts = run_traced(
+        tmp_path, src, [target(tmp_path / "prog.py", "f")], own_group=True
+    )
+    assert parts.stdout.split() == ["2", "[]"], parts.stderr  # main + 1 flusher
+    assert "KeyboardInterrupt" in parts.stderr and parts.returncode == -9
+    assert all(recs[0]["k"] == "hdr" for recs in parts.records.values())
+    hdrs = {stem: recs[0] for stem, recs in parts.records.items()}
+    main = next(s for s, h in hdrs.items() if h["ppid"] == os.getpid())
+    ids = [r["c"] for r in parts.records[main] if r["k"] == "call"]
+    assert len(ids) == len(set(ids)) == 40_000
+
+
+# The same, in the child: it never writes to the parent's part, and a part
+# it has starts with its header.
+INTERRUPTED_CHILD = (
+    "import os, _tdb_trace_agent as A\n"
+    "def f():\n    pass\n"
+    "parent, armed = os.getpid(), [1]\n"
+    "{window}"
+    "f()\npid = os.fork()\n"
+    "if pid == 0:\n"
+    "    f(); f(); print('armed', len(armed), flush=True); os._exit(0)\n"
+    "os.waitpid(pid, 0)\nf()\nprint('child', pid)\n"
+)
+RAISE_IN_CHILD = "    if armed and os.getpid() != parent:\n        armed.pop(); raise KeyboardInterrupt\n"
+CHILD_WINDOWS = {
+    # making its header: it gets no part
+    "header": "header = A._header\ndef raising_header():\n"
+    + RAISE_IN_CHILD
+    + "    return header()\nA._header = raising_header\n",
+    # right after its header is written: no part either
+    "written": "write = A._os_write\ndef write_then_raise(fd, data):\n"
+    "    n = write(fd, data)\n" + RAISE_IN_CHILD + "    return n\n"
+    "A._os_write = write_then_raise\n",
+    # before both tries to start its flusher: final_flush writes it all
+    "flusher": "start = A._start_new_thread\narmed.append(1)\n"
+    "def raise_then_start(fn, args):\n"
+    + RAISE_IN_CHILD
+    + "    return start(fn, args)\n"
+    "A._start_new_thread = raise_then_start\n",
+}
+
+
+@pytest.mark.skipif(os.name == "nt", reason="fork")
+@pytest.mark.parametrize("window", list(CHILD_WINDOWS))
+def test_interrupted_fork_hook_in_the_child(tmp_path, window):
+    src = INTERRUPTED_CHILD.replace("{window}", CHILD_WINDOWS[window])
+    parts = run_traced(
+        tmp_path, src, [target(tmp_path / "prog.py", "f")], own_group=True
+    )
+    out = dict(line.split() for line in parts.stdout.splitlines())
+    assert out["armed"] == "0" and "KeyboardInterrupt" in parts.stderr, parts.stderr
+    assert parts.returncode == 0
+    assert all(recs[0]["k"] == "hdr" for recs in parts.records.values())
+    hdrs = {stem: recs[0] for stem, recs in parts.records.items()}
+    main = next(s for s, h in hdrs.items() if h["ppid"] == os.getpid())
+    assert [r["k"] for r in parts.records[main] if "c" in r] == ["call", "ret"] * 2
+    assert [r["how"] for r in parts.records[main] if r["k"] == "exit"] == ["atexit"]
+    child = [s for s, h in hdrs.items() if h["pid"] == int(out["child"])]
+    if window == "flusher":  # traced, without a flusher
+        (child,) = child
+        kinds = [r["k"] for r in parts.records[child] if "c" in r or r["k"] == "exit"]
+        assert kinds == ["call", "ret", "call", "ret", "exit"]
+    else:  # untraced: no part at all, so none without its header
+        assert child == [] and len(parts.records) == 1
 
 
 @pytest.mark.skipif(os.name == "nt", reason="preexec_fn")
