@@ -4,9 +4,12 @@
 tracer enables ``sys.monitoring`` ``PY_START`` globally; code that is not
 a spec'd function returns ``DISABLE`` from its first ``PY_START`` and never
 calls back again.  Spec'd functions get local ``PY_RETURN``/``PY_YIELD``/
-``PY_RESUME`` events.  Records go to an in-memory buffer that a hidden
-flusher thread writes to ``PARTS/<pid>.jsonl`` every ``flush_interval``
-seconds; ``final_flush`` writes the rest at ``atexit`` or ``os._exit``.
+``PY_RESUME`` events; ``PY_THROW``/``PY_UNWIND`` are global (they cannot be
+disabled per code object) and return at once for untraced code.  Records
+go to an in-memory buffer that a hidden flusher thread writes to
+``PARTS/<pid>.jsonl`` every ``flush_interval`` seconds; ``final_flush``
+writes the rest at ``atexit`` or ``os._exit``.  Wrappers around
+``sys.excepthook`` and ``threading.excepthook`` record uncaught exceptions.
 
 Never break the program:
 - stdlib only, and never ``import tdb``;
@@ -40,6 +43,7 @@ import os
 import sys
 import threading
 import time
+import weakref
 
 _mon = sys.monitoring
 _EV = _mon.events
@@ -82,8 +86,13 @@ _dumps = json.JSONEncoder(separators=(",", ":")).encode
 # The hot fixed-shape records, formatted directly: the same text _dumps
 # gives for their int and null fields, at a sixth of the cost.  A record
 # holding any string (a name, a captured value) must go through _dumps.
-_CALL = '{"k":"call","t":%d,"c":%d,"fn":%d,"tid":%d,"task":null}'
-_RET = '{"k":"ret","t":%d,"c":%d,"tid":%d,"task":null}'
+# "task" takes the task id or the string "null" (see _task_id).
+_CALL = '{"k":"call","t":%d,"c":%d,"fn":%d,"tid":%d,"task":%s}'
+_RET = '{"k":"ret","t":%d,"c":%d,"tid":%d,"task":%s}'
+_SUSP = '{"k":"susp","t":%d,"c":%d,"tid":%d,"task":%s}'
+_RES = '{"k":"res","t":%d,"c":%d,"tid":%d,"task":%s}'
+# A crash record keeps at most this many lines of the traceback.
+_TB_LINES = 50
 
 # --- set by start() ----------------------------------------------------
 _tool = None  # claimed sys.monitoring tool id
@@ -95,6 +104,7 @@ _stopped = True  # callbacks return at once while True
 _final_done = False
 _broken = False  # a part-file write failed; nothing more is written
 _interval = 0.25
+_repr_limit = 200  # characters kept of a value or exception text
 _targets = ()
 _agent_dirs = frozenset()
 
@@ -126,7 +136,15 @@ _live = {}  # id(frame) -> (call id, code, _Fn) for recorded calls
 _call_ids = itertools.count(1)
 _fn_written = set()  # _Fn ids whose "fn" record is in this part
 _thread_names = {}  # native thread id -> name last written
+# asyncio task -> [task id, name last written].  Weak keys: the tracer
+# never keeps a task (or, through it, its coroutine's frames) alive.
+_task_ids = weakref.WeakKeyDictionary()
+_task_counter = itertools.count(1)
 _proc_name = "MainProcess"
+
+# --- the hooks start() wrapped (crash records) --------------------------
+_prev_excepthook = None
+_prev_thread_excepthook = None
 
 # --- counters (stats()) ------------------------------------------------
 _n_starts = 0  # PY_START callbacks
@@ -253,6 +271,44 @@ def _thread_tid():
     return tid
 
 
+def _task_id(tid):
+    """Id of the running asyncio task, or None; writes a ``task`` record for
+    a new task or a new name.  Never imports asyncio: a program that has not
+    imported it runs no task."""
+    aio = sys.modules.get("asyncio")
+    if aio is None:
+        return None
+    try:
+        loop = aio._get_running_loop()
+        if loop is None:
+            return None
+        task = aio.current_task(loop)
+        if task is None:
+            return None
+        entry = _task_ids.get(task)
+        if entry is None:
+            entry = _task_ids[task] = [next(_task_counter), None]
+        name = task.get_name()
+        if entry[1] != name:
+            record = _dumps({"k": "task", "id": entry[0], "name": name, "tid": tid})
+            _buf.append(record)
+            entry[1] = name
+        return entry[0]
+    except Exception:  # asyncio half imported, an odd task class, ...
+        return None
+
+
+def _exc_text(exc):
+    """``"ValueError: bad"`` (just the type name for an empty message), cut
+    to repr_limit.  ``str()`` is the program's code: it may fail."""
+    name = type(exc).__name__
+    try:
+        msg = str(exc)
+    except Exception:
+        msg = ""
+    return (f"{name}: {msg}" if msg else name)[:_repr_limit]
+
+
 def _current_proc_name():
     mp = sys.modules.get("multiprocessing")  # never imported by the agent
     if mp is None:
@@ -305,13 +361,14 @@ def _on_start(code, offset):
             return None
         if len(_buf) >= _HIGH_WATER:
             _backpressure()
-        t = _perf_ns()
         tid = _thread_tid()
+        task = _task_id(tid)
         if fn.id not in _fn_written:
             _fn_written.add(fn.id)
             _buf.append(fn.record)
         c = next(_call_ids)
-        _buf.append(_CALL % (t, c, fn.id, tid))
+        t = _perf_ns()
+        _buf.append(_CALL % (t, c, fn.id, tid, "null" if task is None else task))
         _n_events += 1
         _live[id(_getframe(1))] = (c, code, fn)
     except Exception:
@@ -328,7 +385,9 @@ def _on_return(code, offset, retval):
         live = _live.pop(id(_getframe(1)), None)
         if live is None or live[1] is not code:
             return None
-        _buf.append(_RET % (t, live[0], _thread_tid()))
+        tid = _thread_tid()
+        task = _task_id(tid)
+        _buf.append(_RET % (t, live[0], tid, "null" if task is None else task))
         _n_events += 1
         if len(_buf) >= _HIGH_WATER:
             _backpressure()
@@ -338,22 +397,54 @@ def _on_return(code, offset, retval):
 
 
 def _on_yield(code, offset, retval):
-    # Task 3 records "susp" here.
+    # Ends a run: a yield, or an await that suspends (in an await chain
+    # each frame yields, innermost first).
+    global _n_events
+    try:
+        if _stopped:
+            return None
+        t = _perf_ns()
+        live = _live.get(id(_getframe(1)))
+        if live is None or live[1] is not code:
+            return None
+        tid = _thread_tid()
+        task = _task_id(tid)
+        _buf.append(_SUSP % (t, live[0], tid, "null" if task is None else task))
+        _n_events += 1
+        if len(_buf) >= _HIGH_WATER:
+            _backpressure()
+    except Exception:
+        pass
     return None
 
 
+def _resumed(code, frame_id):
+    """Record ``res`` if the frame ``frame_id``, running ``code``, is a live
+    traced call (PY_RESUME, and PY_THROW: ``throw()``, a task's
+    cancellation, ``close()``)."""
+    global _n_events
+    live = _live.get(frame_id)
+    if live is None or live[1] is not code:
+        return
+    if len(_buf) >= _HIGH_WATER:
+        _backpressure()
+    tid = _thread_tid()
+    task = _task_id(tid)
+    t = _perf_ns()
+    _buf.append(_RES % (t, live[0], tid, "null" if task is None else task))
+    _n_events += 1
+
+
 def _on_resume(code, offset):
-    # Task 3 records "res" here.
+    try:
+        if not _stopped:
+            _resumed(code, id(_getframe(1)))
+    except Exception:
+        pass
     return None
 
 
 def _on_throw(code, offset, exc):
-    # Global event: must stay cheap for untraced code; never DISABLE.
-    # Task 3 records "res" here for a live traced frame.
-    return None
-
-
-def _on_unwind(code, offset, exc):
     # Global event: must stay cheap for untraced code; never DISABLE.
     try:
         if _stopped:
@@ -361,9 +452,45 @@ def _on_unwind(code, offset, exc):
         hit = _armed.get(id(code))
         if hit is None or hit[0] is not code:
             return None
-        # The frame is gone after this; drop its call so it cannot leak.
-        # Task 3 records "raise" here.
-        _live.pop(id(_getframe(1)), None)
+        _resumed(code, id(_getframe(1)))
+    except Exception:
+        pass
+    return None
+
+
+def _on_unwind(code, offset, exc):
+    # Global event: must stay cheap for untraced code; never DISABLE.
+    global _n_events
+    try:
+        if _stopped:
+            return None
+        hit = _armed.get(id(code))
+        if hit is None or hit[0] is not code:
+            return None
+        t = _perf_ns()
+        # The frame is gone after this; drop its call first, so it cannot
+        # leak even if what follows fails.
+        live = _live.pop(id(_getframe(1)), None)
+        if live is None or live[1] is not code:
+            return None
+        text = _exc_text(exc)
+        tid = _thread_tid()
+        task = _task_id(tid)
+        _buf.append(
+            _dumps(
+                {
+                    "k": "raise",
+                    "t": t,
+                    "c": live[0],
+                    "tid": tid,
+                    "task": task,
+                    "exc": text,
+                }
+            )
+        )
+        _n_events += 1
+        if len(_buf) >= _HIGH_WATER:
+            _backpressure()
     except Exception:
         pass
     return None
@@ -377,6 +504,111 @@ _CALLBACKS = (
     (_EV.PY_THROW, _on_throw),
     (_EV.PY_UNWIND, _on_unwind),
 )
+
+
+# --- crashes ----------------------------------------------------------------
+#
+# start() wraps sys.excepthook and threading.excepthook.  Each wrapper
+# records the crash, then calls the hook that was there before, so the
+# program's output and exit status stay as they were.  Recording catches
+# Exception only (as the callbacks do): a BaseException from a signal
+# handler propagates, and Python then reports it and the original
+# exception itself.  A program that installs its own hook later replaces
+# the wrapper, and its crashes go unrecorded.
+
+
+def _where(tb):
+    """``"/abs/file.py:41"`` of the innermost traceback frame, or None."""
+    if tb is None:
+        return None
+    while tb.tb_next is not None:
+        tb = tb.tb_next
+    filename = tb.tb_frame.f_code.co_filename
+    if not filename.startswith("<"):  # <string>, <stdin>: not a path
+        filename = _norm_path(filename)
+    return f"{filename}:{tb.tb_lineno}"
+
+
+def _tb_text(exc_type, exc, tb):
+    """The traceback as printed, at most _TB_LINES lines: its first line,
+    then (if cut) a marker and the last lines, where the frames nearest the
+    error and the exception itself are."""
+    import traceback  # lazily: most programs never crash
+
+    lines = "".join(traceback.format_exception(exc_type, exc, tb)).splitlines()
+    if len(lines) > _TB_LINES:
+        keep = _TB_LINES - 2
+        cut = len(lines) - 1 - keep
+        lines = [lines[0], f"  [... {cut} lines omitted ...]", *lines[-keep:]]
+    return "\n".join(lines)
+
+
+def _record_crash(exc_type, exc, tb):
+    # SystemExit is a way out, not a crash (threads exit with it silently).
+    if _stopped or exc_type is None or issubclass(exc_type, SystemExit):
+        return
+    t = _perf_ns()
+    record = {
+        "k": "crash",
+        "t": t,
+        "tid": _thread_tid(),
+        "exc": _exc_text(exc),
+        "where": _where(tb),
+        "tb": _tb_text(exc_type, exc, tb),
+    }
+    _buf.append(_dumps(record))
+
+
+def _excepthook(exc_type, exc, tb):
+    """``sys.excepthook`` while tracing: an uncaught exception."""
+    try:
+        fresh = "traceback" not in sys.modules
+        _record_crash(exc_type, exc, tb)
+        if fresh and "traceback" in sys.modules and exc_type is KeyboardInterrupt:
+            _keep_death_by_sigint()
+    except Exception:
+        pass
+    return _prev_excepthook(exc_type, exc, tb)
+
+
+def _keep_death_by_sigint():
+    """Keep Python's death by SIGINT after an uncaught KeyboardInterrupt
+    (shells stop a script's loop on it) when recording the crash imported
+    traceback.
+
+    Python 3.12 forgets that it is to die by SIGINT whenever code runs from
+    a string (exec, eval), and a first import of traceback does that (its
+    dependencies build namedtuples); it exits 1 instead.  Running a string
+    that ends in exactly KeyboardInterrupt sets the flag again.  Only when
+    the interpreter itself reports the exception, with no Python caller: a
+    program that calls sys.excepthook itself is not dying.  The flag was set
+    then, so this is harmless on versions that do not forget it."""
+    try:
+        _getframe(2)  # 0: this function, 1: _excepthook, 2: its caller
+        return
+    except ValueError:
+        pass
+    try:
+        exec("raise KeyboardInterrupt", {})
+    except KeyboardInterrupt:
+        pass
+
+
+def _thread_excepthook(args):
+    """``threading.excepthook`` while tracing; runs in the thread that died."""
+    try:
+        _record_crash(args.exc_type, args.exc_value, args.exc_traceback)
+    except Exception:
+        pass
+    return _prev_thread_excepthook(args)
+
+
+def _install_crash_hooks():
+    global _prev_excepthook, _prev_thread_excepthook
+    _prev_excepthook = sys.excepthook
+    _prev_thread_excepthook = threading.excepthook
+    sys.excepthook = _excepthook
+    threading.excepthook = _thread_excepthook
 
 
 # --- writing --------------------------------------------------------------
@@ -652,7 +884,7 @@ def start(config):
     bad config, parts directory not writable); sitecustomize.py turns
     that into an agent-error marker."""
     global _tool, _fd, _part_path, _part_id, _parts_dir, _stopped, _interval
-    global _targets, _agent_dirs, _proc_name
+    global _targets, _agent_dirs, _proc_name, _repr_limit
     if _tool is not None or _fd is not None:
         raise RuntimeError("the tracer is already started in this process")
     if config.get("version") != 1:
@@ -661,6 +893,7 @@ def start(config):
     parts_dir = config["parts"]
     targets = tuple(_Target(t) for t in config["targets"])
     interval = float(config["flush_interval"])
+    repr_limit = int(config["repr_limit"])
     agent_dirs = {_norm_path(os.path.dirname(os.path.abspath(__file__)))}
     if config.get("agent_dir"):
         agent_dirs.add(_norm_path(config["agent_dir"]))
@@ -672,6 +905,7 @@ def start(config):
     _tool = tool
     try:
         _targets, _interval, _agent_dirs = targets, interval, frozenset(agent_dirs)
+        _repr_limit = repr_limit
         _fd, _part_path = _open_part(parts_dir)
         st = os.fstat(_fd)
         _part_id, _parts_dir = (st.st_dev, st.st_ino), parts_dir
@@ -705,6 +939,7 @@ def start(config):
         atexit.register(final_flush, "atexit")
         if hasattr(os, "register_at_fork"):
             os.register_at_fork(after_in_child=_after_fork_in_child)
+        _install_crash_hooks()
         os._exit = _exit
     except BaseException:
         _teardown()

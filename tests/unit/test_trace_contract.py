@@ -111,9 +111,17 @@ def test_hot_record_templates_match_json_dumps():
     agent = _load_agent_file("tdb_trace_agent_under_test", "_tdb_trace_agent.py")
     t, c, fn, tid = 21687466422263, 123456, 3, 249591
     compact = {"separators": (",", ":")}
-    assert agent._CALL % (t, c, fn, tid) == json.dumps(
-        {"k": "call", "t": t, "c": c, "fn": fn, "tid": tid, "task": None}, **compact
-    )
-    assert agent._RET % (t, c, tid) == json.dumps(
-        {"k": "ret", "t": t, "c": c, "tid": tid, "task": None}, **compact
-    )
+    # The agent passes the task id, or the string "null" for no task.
+    for task, arg in ((None, "null"), (42, 42)):
+        assert agent._CALL % (t, c, fn, tid, arg) == json.dumps(
+            {"k": "call", "t": t, "c": c, "fn": fn, "tid": tid, "task": task},
+            **compact,
+        )
+        for kind, template in (
+            ("ret", agent._RET),
+            ("susp", agent._SUSP),
+            ("res", agent._RES),
+        ):
+            assert template % (t, c, tid, arg) == json.dumps(
+                {"k": kind, "t": t, "c": c, "tid": tid, "task": task}, **compact
+            )
