@@ -9,13 +9,18 @@
 2. creates ``BASE.parts/`` holding ``run.json`` (the capture header fields
    known at launch) and ``config.json`` (the agent config);
 3. starts the program with the agent's environment on tdb's own terminal
-   and in tdb's process group, so Ctrl-C reaches it as it would without
-   tdb.  tdb outlives SIGINT and passes SIGTERM and SIGHUP on;
+   and in tdb's process group, so Ctrl-C and Ctrl-\\ reach it as they would
+   without tdb.  tdb outlives SIGINT and SIGQUIT (SIGBREAK on Windows) and
+   passes SIGTERM and SIGHUP on; a signal tdb inherited as ignored stays
+   ignored, for tdb and the program;
 4. once the program has exited, waits up to ``CHILD_FLUSH_WAIT`` seconds
    for its traced children to finish writing;
 5. assembles ``BASE.jsonl`` and ``BASE.perfetto.json``, each written to a
    temp file and renamed into place, removes the parts directory only
    after both are written, and prints the summary.
+
+The CLI then ends with :func:`exit_as`: the program's exit code, or death
+by the program's own signal, so a shell sees what it would without tdb.
 
 This module runs inside tdb, not the traced program; it must work on
 Python 3.11.
@@ -37,6 +42,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import NoReturn
 
 from tdb import __version__
 from tdb.languages.python_attach import pid_exists
@@ -55,8 +61,36 @@ PROBE_TIMEOUT = 10  # seconds the interpreter version probe may take
 _POLL = 0.05  # seconds between looks at children still writing
 _TAIL = 4096  # bytes read from a part's end to find its exit record
 _UNSAFE = re.compile(r"[^\w.-]")  # replaced in default output names
-# Signals tdb passes on to the program (SIGINT reaches it from the terminal).
-_FORWARDED = (signal.SIGTERM,) if os.name == "nt" else (signal.SIGTERM, signal.SIGHUP)
+_SIGHUP = getattr(signal, "SIGHUP", None)  # POSIX only
+# Signals tdb survives while the program runs: the terminal sends them to
+# the program too (Ctrl-C; Ctrl-\ or Ctrl-Break), so tdb does not.
+_SURVIVED = (
+    (signal.SIGINT, signal.SIGBREAK)
+    if os.name == "nt"
+    else (signal.SIGINT, signal.SIGQUIT)
+)
+# Signals tdb passes on to the program.
+_FORWARDED = (signal.SIGTERM,) if os.name == "nt" else (signal.SIGTERM, _SIGHUP)
+# A program killed by one of these dumps core; tdb then exits 128 + N
+# rather than dumping a core of its own as a false trail.
+_CORE_SIGNALS = frozenset(
+    getattr(signal, name)
+    for name in (
+        "SIGQUIT",
+        "SIGSEGV",
+        "SIGABRT",
+        "SIGBUS",
+        "SIGFPE",
+        "SIGILL",
+        "SIGTRAP",
+        "SIGSYS",
+        "SIGXCPU",
+        "SIGXFSZ",
+    )
+    if hasattr(signal, name)
+)
+# run()'s status after Ctrl-C outside the program's lifetime.
+_INTERRUPTED = 128 + signal.SIGINT if os.name == "nt" else -signal.SIGINT
 
 NO_PROCESS_WARNING = (
     "tdb: warning: no process was traced (is it Python 3.12+, "
@@ -116,19 +150,30 @@ def _uses_interpreter(req: TraceRequest) -> bool:
 
 
 def resolve_command(req: TraceRequest) -> list[str]:
-    """The program's argv, its first element an absolute path."""
+    """The program's argv.
+
+    The program's path is kept as typed, so it sees the ``sys.argv[0]``
+    (and ``__file__``) it would without tdb.  Only with ``--cwd``, which
+    would change what a relative path names, is it made absolute, and
+    never resolved: a symlinked script stays the symlink.
+    """
     if req.module is not None:
         return [_interpreter(req), "-m", req.module, *req.args]
     if req.program is None:
         raise LaunchError("no program or module to run")
     if is_py_program(req.program):
-        return [_interpreter(req), os.path.abspath(req.program), *req.args]
+        program = req.program if req.cwd is None else os.path.abspath(req.program)
+        return [_interpreter(req), program, *req.args]
     found = shutil.which(req.program)
     if found is None and os.path.exists(req.program):
         found = req.program
     if found is None:
         raise LaunchError(f"command not found: {req.program}")
-    return [os.path.abspath(found), *req.args]
+    # A bare name (no directory part) would be looked up on PATH again, so
+    # one found only as a file in the cwd is run by its absolute path.
+    if req.cwd is not None or not os.path.dirname(found):
+        found = os.path.abspath(found)
+    return [found, *req.args]
 
 
 def probe_version(interpreter: str) -> tuple[int, int]:
@@ -162,33 +207,103 @@ def probe_version(interpreter: str) -> tuple[int, int]:
 def run(req: TraceRequest) -> int:
     """Run the traced program to its end and write the outputs.
 
-    Returns tdb's exit code: the program's (128 + N for its death by signal
-    N), or 1 if an output could not be written.  Raises LaunchError when
-    the program cannot be started.
+    Returns tdb's status for :func:`exit_as`: the program's exit code;
+    on POSIX ``-N`` when it died by signal N (``128 + N`` for one that
+    dumps core, and always on Windows); 1 if an output could not be
+    written; ``-SIGINT`` (Windows: 130) after a Ctrl-C outside the
+    program's lifetime.  Raises LaunchError when the program cannot be
+    started.
     """
     if req.mode == "discover":
         raise NotImplementedError("--trace-discover")
-    cmd = resolve_command(req)
-    if _uses_interpreter(req):
-        version = probe_version(cmd[0])
-        if version < MIN_PYTHON:
-            raise LaunchError(
-                f"--trace needs Python 3.12 or newer; {cmd[0]} is "
-                f"{version[0]}.{version[1]}"
-            )
     parts_dir = Path(f"{req.out_base}.parts")
-    run_info = {
-        "name": req.name,
-        "tdb": __version__,
-        "command": cmd,
-        "cwd": os.path.abspath(req.cwd or os.getcwd()),
-        "spec": None if req.spec is None else str(req.spec.path),
-        "host": socket.gethostname(),
-    }
-    _create_parts_dir(parts_dir, req, run_info)
-    proc = _supervise(cmd, req, parts_dir)
+    created = False
+    try:
+        cmd = resolve_command(req)
+        if _uses_interpreter(req):
+            version = probe_version(cmd[0])
+            if version < MIN_PYTHON:
+                raise LaunchError(
+                    f"--trace needs Python 3.12 or newer; {cmd[0]} is "
+                    f"{version[0]}.{version[1]}"
+                )
+        run_info = {
+            "name": req.name,
+            "tdb": __version__,
+            "command": cmd,
+            "cwd": os.path.abspath(req.cwd or os.getcwd()),
+            "spec": None if req.spec is None else str(req.spec.path),
+            "host": socket.gethostname(),
+        }
+        _create_parts_dir(parts_dir, req, run_info)
+        created = True
+        proc = _supervise(cmd, req, parts_dir)
+    except KeyboardInterrupt:  # before tdb's handler was in place: nothing ran
+        if created:
+            _remove_unused(parts_dir)
+        return _INTERRUPTED
     code, main_signal = _exit_status(proc.returncode)
-    return _write_outputs(req, parts_dir, run_info, code, proc.pid, main_signal)
+    try:
+        written = _write_outputs(req, parts_dir, run_info, code, proc.pid, main_signal)
+    except KeyboardInterrupt:
+        return _INTERRUPTED
+    return _end_status(proc.returncode) if written else 1
+
+
+def say(text: str) -> None:
+    """Print one tdb message on stderr.
+
+    A stderr that is gone (the reader of a ``| tee`` killed by the same
+    Ctrl-C, a hung-up terminal) must stop neither tdb's supervision nor
+    change its exit status, which CPython sets to 120 when flushing stderr
+    fails at exit.  So after a failed write tdb's stderr descriptor is
+    pointed at the null device, where the stuck bytes and every later
+    message go.  The program's own stderr is a separate descriptor.
+    """
+    try:
+        print(text, file=sys.stderr, flush=True)
+    except (OSError, ValueError):
+        with contextlib.suppress(OSError, ValueError):
+            null = os.open(os.devnull, os.O_WRONLY)
+            try:
+                os.dup2(null, sys.stderr.fileno())
+            finally:
+                os.close(null)
+        with contextlib.suppress(OSError, ValueError):
+            sys.stderr.flush()
+
+
+def _end_status(returncode: int) -> int:
+    """tdb's status for the program's returncode: its exit code, or (POSIX)
+    ``-N`` to die by the same signal N, so that a shell sees what it would
+    without tdb (a loop stops at Ctrl-C).  A signal that dumps core gives
+    exit code 128 + N instead."""
+    if returncode >= 0 or os.name == "nt" or -returncode in _CORE_SIGNALS:
+        return _exit_status(returncode)[0]
+    return returncode
+
+
+def exit_as(status: int) -> NoReturn:
+    """End tdb with a :func:`run` status: exit with it, or for ``-N`` die
+    by signal N, as CPython does after an uncaught KeyboardInterrupt."""
+    if status < 0:
+        sig = -status
+        for stream in (sys.stdout, sys.stderr):
+            with contextlib.suppress(OSError, ValueError):
+                stream.flush()
+        with contextlib.suppress(OSError, ValueError):  # SIGKILL: no handler
+            signal.signal(sig, signal.SIG_DFL)
+        with contextlib.suppress(OSError):
+            os.kill(os.getpid(), sig)
+        status = 128 + sig  # still here: the signal is blocked
+    sys.exit(status)
+
+
+def _remove_unused(parts_dir: Path) -> None:
+    """Remove a parts directory no traced process wrote to."""
+    with contextlib.suppress(OSError):
+        if set(os.listdir(parts_dir)) <= {"run.json", "config.json"}:
+            shutil.rmtree(parts_dir)
 
 
 def _create_parts_dir(parts_dir: Path, req: TraceRequest, run_info: dict) -> None:
@@ -212,43 +327,59 @@ def _create_parts_dir(parts_dir: Path, req: TraceRequest, run_info: dict) -> Non
             targets=[] if req.spec is None else req.spec.agent_targets(),
             max_events=req.max_events,
         )
-    except OSError as exc:
+    except BaseException as exc:  # a Ctrl-C too: leave nothing behind
         shutil.rmtree(parts_dir, ignore_errors=True)
-        raise LaunchError(f"cannot write to {parts_dir}: {exc}") from None
+        if isinstance(exc, OSError):
+            raise LaunchError(f"cannot write to {parts_dir}: {exc}") from None
+        raise
 
 
 def _supervise(cmd: list[str], req: TraceRequest, parts_dir: Path) -> subprocess.Popen:
     """Run the program to its end, then give its children time to flush.
 
     The program shares tdb's terminal (no pipes) and process group.  While
-    it runs, SIGINT only makes tdb say it is waiting (the program gets the
-    terminal's SIGINT itself), and SIGTERM/SIGHUP are passed on.  The
-    handlers are installed before the program starts, so no signal is
-    lost, and the previous ones are restored at the end.
+    it runs, SIGINT and SIGQUIT (SIGBREAK) only make tdb say it is waiting:
+    the terminal sends them to the program as well.  SIGTERM and SIGHUP
+    are passed on, except a SIGHUP that its shell sent the program too
+    (below).  A signal tdb inherited as ignored (``nohup``, a background
+    job) is left ignored, so the program inherits that too.  The handlers
+    are installed before the program starts, and a signal that comes
+    before it does is sent to it right after; the previous handlers are
+    restored at the end.
+
+    A terminal hangup SIGHUPs only the session leader.  When that is a
+    shell (bash, ssh, tmux), it passes SIGHUP on to its jobs, the program
+    among them, so a SIGHUP that comes once tdb's terminal is gone is not
+    forwarded.  When tdb is the session leader itself (``xterm -e tdb``),
+    the kernel signalled tdb alone, and tdb forwards it.
     """
     proc: subprocess.Popen | None = None
-    pending: list[int] = []  # forwarded signals that came before the start
+    pending: list[int] = []  # signals that came before the program started
     told = False
+    shell_relays_hangup = _has_tty() and os.getsid(0) != os.getpid()
 
-    def on_sigint(signum, frame):
+    def survive(signum, frame):
         nonlocal told
+        if proc is None:
+            pending.append(signum)  # the terminal could not reach it yet
         if not told:
             told = True
-            print(f"tdb: waiting for {req.name} to exit", file=sys.stderr, flush=True)
+            say(f"tdb: waiting for {req.name} to exit")
 
     def forward(signum, frame):
+        if signum == _SIGHUP and shell_relays_hangup and not _has_tty():
+            return  # a terminal hangup: the shell signalled the program too
         if proc is None:
             pending.append(signum)
-        elif os.name == "nt":
-            proc.terminate()
         else:
-            proc.send_signal(signum)  # a no-op once the program is reaped
+            _send(proc, signum)
 
     previous: dict[int, object] = {}
     try:
-        previous[signal.SIGINT] = signal.signal(signal.SIGINT, on_sigint)
-        for sig in _FORWARDED:
-            previous[sig] = signal.signal(sig, forward)
+        for sigs, handler in ((_SURVIVED, survive), (_FORWARDED, forward)):
+            for sig in sigs:
+                if signal.getsignal(sig) is not signal.SIG_IGN:
+                    previous[sig] = signal.signal(sig, handler)
         env = build_env(
             os.environ, config_path=parts_dir / "config.json", parts_dir=parts_dir
         )
@@ -261,7 +392,7 @@ def _supervise(cmd: list[str], req: TraceRequest, parts_dir: Path) -> subprocess
             shutil.rmtree(parts_dir, ignore_errors=True)
             raise LaunchError(f"cannot run {cmd[0]}: {exc}") from None
         for sig in pending:
-            forward(sig, None)
+            _send(proc, sig)
         proc.wait()
         _wait_for_children(parts_dir)
     finally:
@@ -270,6 +401,26 @@ def _supervise(cmd: list[str], req: TraceRequest, parts_dir: Path) -> subprocess
             # the closest it can be restored to.
             signal.signal(sig, signal.SIG_DFL if handler is None else handler)
     return proc
+
+
+def _send(proc: subprocess.Popen, sig: int) -> None:
+    if os.name == "nt":
+        proc.terminate()
+    else:
+        proc.send_signal(sig)  # a no-op once the program is reaped
+
+
+def _has_tty() -> bool:
+    """True while tdb has a controlling terminal (POSIX): after a hangup,
+    opening /dev/tty fails."""
+    if os.name == "nt":
+        return False
+    try:
+        fd = os.open("/dev/tty", os.O_RDWR | os.O_NOCTTY)
+    except OSError:
+        return False
+    os.close(fd)
+    return True
 
 
 def _part_pid(name: str) -> int:
@@ -354,39 +505,45 @@ def _write_outputs(
     code: int,
     main_pid: int,
     main_signal: str | None,
-) -> int:
-    try:
-        capture, summary = assemble(
-            parts_dir,
-            header={**run_info, "exit_code": code},
-            main_pid=main_pid,
-            main_signal=main_signal,
-        )
-    except OSError as exc:
-        print(f"tdb: error: cannot read {parts_dir}: {exc}", file=sys.stderr)
-        return 1
+) -> bool:
+    """Write both outputs, remove the parts, print the summary.  False if
+    an output could not be written (the parts are then kept)."""
     jsonl = Path(f"{req.out_base}.jsonl")
     perfetto = Path(f"{req.out_base}.perfetto.json")
-    for path, write in (
-        (jsonl, lambda p: write_capture(capture, p)),
-        (perfetto, lambda p: write_trace([capture], p)),
-    ):
+    try:
         try:
-            _write_atomic(path, write)
-        except OSError as exc:
-            print(
-                f"tdb: error: could not write {path}: {exc}; events kept in {parts_dir}",
-                file=sys.stderr,
+            capture, summary = assemble(
+                parts_dir,
+                header={**run_info, "exit_code": code},
+                main_pid=main_pid,
+                main_signal=main_signal,
             )
-            return 1
+        except OSError as exc:
+            say(f"tdb: error: cannot read {parts_dir}: {exc}")
+            return False
+        for path, write in (
+            (jsonl, lambda p: write_capture(capture, p)),
+            (perfetto, lambda p: write_trace([capture], p)),
+        ):
+            try:
+                _write_atomic(path, write)
+            except OSError as exc:
+                say(
+                    f"tdb: error: could not write {path}: {exc}; "
+                    f"events kept in {parts_dir}"
+                )
+                return False
+    except KeyboardInterrupt:
+        say(f"tdb: interrupted; events kept in {parts_dir}")
+        raise
     never = [] if req.spec is None else unmatched_entries(req.spec, summary.called)
     lines = _summary_lines(req.name, summary, never, jsonl, perfetto)
     try:
         shutil.rmtree(parts_dir)
     except OSError as exc:
         lines.append(f"tdb: warning: could not remove {parts_dir}: {exc}")
-    print("\n".join(lines), file=sys.stderr)
-    return code
+    say("\n".join(lines))
+    return True
 
 
 def _counted(n: int, one: str, many: str, spec: str = "") -> str:

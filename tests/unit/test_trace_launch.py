@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import os
+import signal
+import subprocess
 import sys
 import time
 from datetime import datetime
@@ -11,12 +13,15 @@ from pathlib import Path
 
 import pytest
 
+from tdb.trace import launch
 from tdb.trace.capture import CaptureSummary
 from tdb.trace.launch import (
     LaunchError,
     TraceRequest,
+    _end_status,
     _exit_status,
     _summary_lines,
+    _supervise,
     _unflushed,
     _wait_for_children,
     _write_atomic,
@@ -25,7 +30,11 @@ from tdb.trace.launch import (
     probe_version,
     resolve_command,
     run,
+    say,
 )
+
+SRC_DIR = Path(__file__).resolve().parents[2] / "src"
+posix = pytest.mark.skipif(os.name == "nt", reason="POSIX signals")
 
 DEAD_PID = 1 << 30  # beyond any pid_max, so never a live process
 
@@ -91,13 +100,35 @@ def test_resolve_command_forms(tmp_path, monkeypatch):
         resolve_command(req(program="nope"))
 
 
-def test_resolve_command_existing_path_is_made_absolute(tmp_path, monkeypatch):
+def test_command_path_as_typed_unless_cwd(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    (tmp_path / "run.sh").write_text("")  # not executable: still a path that exists
-    assert resolve_command(request(tmp_path, program="run.sh")) == [
-        str(tmp_path / "run.sh"),
+    (tmp_path / "bin").mkdir()
+    (tmp_path / "bin" / "run.sh").write_text("")  # not executable, but it exists
+    typed = os.path.join("bin", "run.sh")
+    assert resolve_command(request(tmp_path, program=typed)) == [typed, "a"]
+    assert resolve_command(request(tmp_path, program=typed, cwd="elsewhere")) == [
+        str(tmp_path / "bin" / "run.sh"),
         "a",
     ]
+    # A bare name only found in the cwd must be run as a path.
+    (tmp_path / "here.sh").write_text("")
+    assert resolve_command(request(tmp_path, program="here.sh")) == [
+        str(tmp_path / "here.sh"),
+        "a",
+    ]
+
+
+@pytest.mark.skipif(os.name == "nt", reason="symlinks")
+def test_py_program_as_typed_unless_cwd(tmp_path, monkeypatch):
+    """Ruling 25: as typed, so sys.argv[0] is unchanged; with --cwd made
+    absolute but never resolved (a symlink stays the symlink)."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "real.py").write_text("")
+    (tmp_path / "link.py").symlink_to("real.py")
+    assert resolve_command(request(tmp_path, program="link.py"))[1] == "link.py"
+    assert resolve_command(request(tmp_path, program="link.py", cwd="sub"))[1] == str(
+        tmp_path / "link.py"
+    )
 
 
 def test_interpreter_path_is_absolute_against_the_cwd(tmp_path, monkeypatch):
@@ -133,6 +164,64 @@ def test_exit_status(returncode, expected):
     if os.name == "nt" and returncode < 0:
         pytest.skip("no signal deaths on Windows")
     assert _exit_status(returncode) == expected
+
+
+@posix
+@pytest.mark.parametrize(
+    "returncode,expected",
+    [
+        (0, 0),
+        (7, 7),
+        (-signal.SIGINT, -signal.SIGINT),
+        (-signal.SIGKILL, -signal.SIGKILL),
+        (-signal.SIGTERM, -signal.SIGTERM),
+        (-signal.SIGQUIT, 128 + signal.SIGQUIT),  # dumps core: no core of tdb's
+        (-signal.SIGSEGV, 128 + signal.SIGSEGV),
+        (-signal.SIGABRT, 128 + signal.SIGABRT),
+    ],
+)
+def test_end_status(returncode, expected):
+    """Ruling 24: tdb ends by the program's signal unless it dumps core."""
+    assert _end_status(returncode) == expected
+
+
+@pytest.mark.parametrize(
+    "status,returncode",
+    [(3, 3), (-signal.SIGINT, -signal.SIGINT), (-signal.SIGTERM, -signal.SIGTERM)],
+)
+def test_exit_as(status, returncode):
+    if os.name == "nt" and status < 0:
+        pytest.skip("no signal deaths on Windows")
+    code = (
+        "import signal; from tdb.trace.launch import exit_as; "
+        # an inherited handler must not stop the death by signal
+        "signal.signal(signal.SIGTERM, lambda *a: None); "
+        f"exit_as({status})"
+    )
+    done = subprocess.run(
+        [sys.executable, "-P", "-c", code],
+        env={**os.environ, "PYTHONPATH": str(SRC_DIR)},
+        capture_output=True,
+        timeout=60,
+    )
+    assert done.returncode == returncode, done.stderr
+
+
+def test_say_survives_a_closed_stderr(monkeypatch):
+    """A failed write must neither raise nor leave unflushable bytes
+    behind (CPython exits 120 when flushing stderr fails at exit)."""
+    r, w = os.pipe()
+    os.close(r)
+    stream = open(w, "w", encoding="utf-8")
+    try:
+        monkeypatch.setattr(sys, "stderr", stream)
+        say("tdb: one")  # EPIPE: the descriptor becomes /dev/null
+        say("tdb: two")
+        stream.write("more\n")
+        stream.flush()
+    finally:
+        monkeypatch.undo()
+        stream.close()
 
 
 def test_summary_lines_order_and_plurals():
@@ -255,3 +344,145 @@ def test_existing_parts_dir_refused(tmp_path):
 def test_discover_mode_not_yet_implemented(tmp_path):
     with pytest.raises(NotImplementedError):
         run(request(tmp_path, mode="discover", module="m"))
+
+
+# --- supervision, with a stand-in for the program (no process is started) ---
+
+WATCHED = [s for s in ("SIGINT", "SIGTERM", "SIGHUP", "SIGQUIT") if hasattr(signal, s)]
+
+
+@pytest.fixture
+def handlers():
+    """Snapshot pytest's handlers; restore them whatever the test did."""
+    sigs = [getattr(signal, s) for s in WATCHED]
+    saved = {s: signal.getsignal(s) for s in sigs}
+    yield lambda: {s: signal.getsignal(s) for s in sigs}
+    for s, h in saved.items():
+        signal.signal(s, h)
+
+
+def fake_popen(monkeypatch, *, at_start=(), at_wait=()):
+    """Make launch's Popen a stand-in that raises signals in this process
+    while "starting" and while "running", and records what tdb sends it.
+    A signal is raised only while handled or ignored, never with its
+    default action (which would kill pytest)."""
+    sent: list = []
+    seen: dict = {}
+
+    def raise_all(sigs):
+        for sig in sigs:
+            handler = signal.getsignal(sig)
+            assert callable(handler) or handler is signal.SIG_IGN, (sig, handler)
+            signal.raise_signal(sig)  # its Python handler runs before this returns
+
+    class Proc:
+        pid = DEAD_PID
+        returncode = 0
+
+        def __init__(self, cmd, **kw):
+            raise_all(at_start)
+
+        def send_signal(self, sig):
+            sent.append(sig)
+
+        def terminate(self):
+            sent.append("terminate")
+
+        def wait(self):
+            seen.update({s: signal.getsignal(s) for s in at_wait})
+            raise_all(at_wait)
+            return 0
+
+    monkeypatch.setattr(launch.subprocess, "Popen", Proc)
+    return sent, seen
+
+
+@posix
+def test_signals_before_the_start_reach_the_program(
+    tmp_path, monkeypatch, capsys, handlers
+):
+    before = handlers()
+    sent, _ = fake_popen(
+        monkeypatch, at_start=[signal.SIGINT, signal.SIGTERM, signal.SIGQUIT]
+    )
+    _supervise(["prog"], request(tmp_path), tmp_path)
+    assert sent == [signal.SIGINT, signal.SIGTERM, signal.SIGQUIT]
+    assert capsys.readouterr().err == "tdb: waiting for n to exit\n"
+    assert handlers() == before
+
+
+@posix
+def test_while_running_only_term_and_hup_are_forwarded(
+    tmp_path, monkeypatch, capsys, handlers
+):
+    """SIGINT and SIGQUIT (Ruling 23) reach the program from the terminal;
+    tdb survives them and says so once."""
+    before = handlers()
+    sent, _ = fake_popen(
+        monkeypatch,
+        at_wait=[signal.SIGINT, signal.SIGQUIT, signal.SIGTERM, signal.SIGHUP],
+    )
+    _supervise(["prog"], request(tmp_path), tmp_path)
+    assert sent == [signal.SIGTERM, signal.SIGHUP]
+    assert capsys.readouterr().err == "tdb: waiting for n to exit\n"
+    assert handlers() == before
+
+
+@posix
+@pytest.mark.parametrize("name", WATCHED)
+def test_ignored_signal_stays_ignored(tmp_path, monkeypatch, capsys, handlers, name):
+    """Ruling 22: inherited as ignored, it stays ignored and is never sent."""
+    sig = getattr(signal, name)
+    signal.signal(sig, signal.SIG_IGN)
+    sent, seen = fake_popen(monkeypatch, at_start=[sig], at_wait=[sig])
+    _supervise(["prog"], request(tmp_path), tmp_path)
+    assert seen[sig] is signal.SIG_IGN and sent == []
+    assert capsys.readouterr().err == ""
+    assert signal.getsignal(sig) is signal.SIG_IGN
+
+
+def test_ctrl_c_before_the_start_removes_the_parts_dir(tmp_path, monkeypatch):
+    def interrupted(cmd, req, parts_dir):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(launch, "_supervise", interrupted)
+    req = request(tmp_path, program=sys.executable, args=["-c", "pass"])
+    assert run(req) == launch._INTERRUPTED
+    assert os.listdir(tmp_path) == []  # a later run is not blocked
+
+
+def test_ctrl_c_while_writing_keeps_the_events(tmp_path, monkeypatch, capsys):
+    hdr = {"k": "hdr", "pid": DEAD_PID, "ppid": 1, "proc": "MainProcess"}
+    hdr.update(argv=["x"], py="3.12.8", wall=1, pc=0, mode="trace")
+
+    class Ended:
+        pid = DEAD_PID
+        returncode = 0
+
+    def supervised(cmd, req, parts_dir):
+        _part(parts_dir / f"{DEAD_PID}.jsonl", hdr, EXIT)
+        return Ended()
+
+    def interrupted(captures, path):
+        Path(path).write_text("half")
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(launch, "_supervise", supervised)
+    monkeypatch.setattr(launch, "write_trace", interrupted)
+    req = request(tmp_path, program=sys.executable, args=["-c", "pass"])
+    assert run(req) == launch._INTERRUPTED
+    parts = tmp_path / "o.parts"
+    assert capsys.readouterr().err == f"tdb: interrupted; events kept in {parts}\n"
+    assert sorted(os.listdir(tmp_path)) == ["o.jsonl", "o.parts"]
+    assert f"{DEAD_PID}.jsonl" in os.listdir(parts)
+
+
+def test_ctrl_c_before_creation_leaves_an_earlier_parts_dir(tmp_path, monkeypatch):
+    (tmp_path / "o.parts").mkdir()  # an earlier run's: not ours to remove
+
+    def interrupted(req):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(launch, "resolve_command", interrupted)
+    assert run(request(tmp_path, program="x")) == launch._INTERRUPTED
+    assert os.listdir(tmp_path) == ["o.parts"]

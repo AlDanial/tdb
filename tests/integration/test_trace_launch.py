@@ -9,20 +9,23 @@ tdb nor anything the program started outlives a test.
 from __future__ import annotations
 
 import contextlib
+import functools
 import json
 import os
+import queue
 import re
 import shutil
 import signal
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
 import pytest
 
 from tdb.trace.capture import load_capture
-from tdb.trace.spec import load_spec, norm_path
+from tdb.trace.spec import norm_path
 from tests.trace_checks import assert_nested
 
 pytestmark = pytest.mark.skipif(sys.version_info < (3, 12), reason="sys.monitoring")
@@ -50,9 +53,10 @@ def _kill_group(proc: subprocess.Popen) -> None:
 
 
 @contextlib.contextmanager
-def tdb_proc(tmp_path: Path, *argv: str, **popen_kw):
-    """Start tdb in its own session, stdout and stderr piped, cwd tmp_path;
-    SIGKILL the session's process group on the way out."""
+def tdb_proc(tmp_path: Path, *argv: str, prefix: tuple[str, ...] = (), **popen_kw):
+    """Start tdb (behind ``prefix``, if any) in its own session, stdout and
+    stderr piped, cwd tmp_path; SIGKILL the session's process group on the
+    way out."""
     kw = dict(
         cwd=tmp_path,
         env=_env(tmp_path),
@@ -63,7 +67,7 @@ def tdb_proc(tmp_path: Path, *argv: str, **popen_kw):
         start_new_session=True,
     )
     kw.update(popen_kw)
-    proc = subprocess.Popen([sys.executable, "-P", "-m", "tdb", *argv], **kw)
+    proc = subprocess.Popen([*prefix, sys.executable, "-P", "-m", "tdb", *argv], **kw)
     try:
         yield proc
     finally:
@@ -78,6 +82,31 @@ def tdb(tmp_path: Path, *argv: str, timeout: float = 60, **popen_kw):
     with tdb_proc(tmp_path, *argv, **popen_kw) as proc:
         out, err = proc.communicate(timeout=timeout)
     return subprocess.CompletedProcess(proc.args, proc.returncode, out, err)
+
+
+def readline(proc: subprocess.Popen, timeout: float = 30) -> str:
+    """The program's next stdout line, stripped; fails instead of hanging
+    when none comes (the reader thread ends when tdb_proc kills the group)."""
+    lines: queue.Queue = queue.Queue()
+    threading.Thread(
+        target=lambda: lines.put(proc.stdout.readline()), daemon=True
+    ).start()
+    try:
+        return lines.get(timeout=timeout).strip()
+    except queue.Empty:
+        raise AssertionError(f"no line from the program in {timeout} s") from None
+
+
+def _no_core_dumps() -> None:  # preexec_fn: a SIGQUIT'd program dumps no core
+    import resource
+
+    resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+
+
+def listing(path: Path) -> list[str]:
+    """Directory entries, without tdb's log dir (present only when the
+    developer's config enables logging)."""
+    return sorted(n for n in os.listdir(path) if n != "log")
 
 
 def write_prog(tmp_path: Path, source: str) -> Path:
@@ -146,12 +175,11 @@ def test_trace_writes_capture_and_perfetto(tmp_path):
         "tdb: wrote out.perfetto.json  (open in https://ui.perfetto.dev)",
     ]
     h = cap.header
-    assert h["command"] == [sys.executable, str((tmp_path / "prog.py").resolve())]
+    assert h["command"] == [sys.executable, "prog.py"]  # as typed (Ruling 25)
     assert (h["cwd"], h["spec"], h["exit_code"]) == (str(tmp_path.resolve()), spec, 0)
     assert h["host"] and h["tdb"]
     # Written in place via temp files: nothing else is left behind.
-    assert sorted(os.listdir(tmp_path)) == [
-        "log",
+    assert listing(tmp_path) == [
         "out.jsonl",
         "out.perfetto.json",
         "prog.py",
@@ -291,6 +319,7 @@ def test_cwd_flag_sets_the_programs_cwd(tmp_path):
     assert r.returncode == 0 and r.stdout.strip() == str((tmp_path / "sub").resolve())
     cap = load_capture(tmp_path / "out.jsonl")
     assert cap.header["cwd"] == str((tmp_path / "sub").resolve())
+    assert [e["function"] for e in calls(cap)] == ["f"]
 
 
 def _python311() -> str:
@@ -494,9 +523,10 @@ def test_sigint_with_calls_in_flight(tmp_path):  # Review Focus 1
     write_prog(tmp_path, SIGINT_PROG)
     spec = spec_for(tmp_path, "handle", "spin", "main")
     with tdb_proc(tmp_path, "--trace", spec, "--trace-out", "out", "prog.py") as p:
-        assert p.stdout.readline().strip() == "ready"
+        assert readline(p) == "ready"
         os.killpg(p.pid, signal.SIGINT)  # Ctrl-C: tdb and the program alike
-        assert p.wait(30) == 130
+        # Ruling 24: tdb dies by the program's signal, as the program would.
+        assert p.wait(30) == -signal.SIGINT
         err = p.stderr.read()
     assert err.count("tdb: waiting for prog to exit") == 1
     trace = json.loads((tmp_path / "out.perfetto.json").read_text())
@@ -520,6 +550,42 @@ def test_sigint_with_calls_in_flight(tmp_path):  # Review Focus 1
     assert cap.header["exit_code"] == 130
 
 
+WAITER = (
+    "import time\n"
+    "def wait():\n"
+    "    print('ready', flush=True)\n"
+    "    time.sleep(60)\n"
+    "wait()\n"
+)
+
+
+@posix
+def test_sigquit_still_yields_outputs(tmp_path):
+    """Ruling 23: Ctrl-\\ kills the program (it gets SIGQUIT from the
+    terminal), not tdb, which writes the outputs.  SIGQUIT dumps core, so
+    tdb exits 128 + 3 rather than dying by it (Ruling 24)."""
+    write_prog(tmp_path, WAITER)
+    spec = spec_for(tmp_path, "wait")
+    with tdb_proc(
+        tmp_path,
+        "--trace",
+        spec,
+        "--trace-out",
+        "out",
+        "prog.py",
+        preexec_fn=_no_core_dumps,
+    ) as p:
+        assert readline(p) == "ready"
+        os.killpg(p.pid, signal.SIGQUIT)
+        assert p.wait(30) == 128 + signal.SIGQUIT
+        err = p.stderr.read()
+    assert err.count("tdb: waiting for prog to exit") == 1 and "tdb: wrote" in err
+    cap = load_capture(tmp_path / "out.jsonl")
+    assert [pr["ended"] for pr in cap.processes] == ["signal:SIGQUIT"]
+    assert cap.header["exit_code"] == 128 + signal.SIGQUIT
+    assert not (tmp_path / "out.parts").exists()
+
+
 @posix
 def test_sigterm_to_tdb_is_forwarded(tmp_path):
     write_prog(
@@ -537,9 +603,9 @@ def test_sigterm_to_tdb_is_forwarded(tmp_path):
     )
     spec = spec_for(tmp_path, "wait")
     with tdb_proc(tmp_path, "--trace", spec, "--trace-out", "out", "prog.py") as p:
-        assert p.stdout.readline().strip() == "ready"
+        assert readline(p) == "ready"
         os.kill(p.pid, signal.SIGTERM)  # tdb only; it forwards to the program
-        assert p.stdout.readline().strip() == "got TERM"
+        assert readline(p) == "got TERM"
         assert p.wait(30) == 0
     cap = load_capture(tmp_path / "out.jsonl")
     assert [e["function"] for e in calls(cap)] == ["wait"]
@@ -561,9 +627,9 @@ def test_sigkill_of_program_still_yields_outputs(tmp_path):
     )
     spec = spec_for(tmp_path, "nap")
     with tdb_proc(tmp_path, "--trace", spec, "--trace-out", "out", "prog.py") as p:
-        pid = int(p.stdout.readline())
+        pid = int(readline(p))
         os.kill(pid, signal.SIGKILL)
-        assert p.wait(30) == 137
+        assert p.wait(30) == -signal.SIGKILL  # Ruling 24
         err = p.stderr.read()
     cap = load_capture(tmp_path / "out.jsonl")
     assert [pr["ended"] for pr in cap.processes] == ["signal:SIGKILL"]
@@ -572,46 +638,263 @@ def test_sigkill_of_program_still_yields_outputs(tmp_path):
     assert (tmp_path / "out.perfetto.json").is_file()
 
 
-def test_failed_write_keeps_the_events(tmp_path, monkeypatch, capsys):
-    """In-process: a write that fails leaves no partial output, keeps the
-    parts directory for --trace-merge, and restores the signal handlers."""
-    from tdb.trace import launch
+DISPOSITIONS = (
+    "import signal\n"
+    "def f():\n"
+    "    for name in ('SIGINT', 'SIGTERM', 'SIGHUP', 'SIGQUIT'):\n"
+    "        print(name, repr(signal.getsignal(getattr(signal, name))))\n"
+    "f()\n"
+)
 
+
+@posix
+@pytest.mark.parametrize("sig", ["SIGINT", "SIGTERM", "SIGHUP", "SIGQUIT"])
+def test_ignored_signals_stay_ignored(tmp_path, sig):
+    """Ruling 22: a signal tdb inherits as ignored (nohup, a background
+    job) stays ignored, so the program sees what it would without tdb."""
+    write_prog(tmp_path, DISPOSITIONS)
+    ignore = functools.partial(signal.signal, getattr(signal, sig), signal.SIG_IGN)
+    untraced = subprocess.run(
+        [sys.executable, "prog.py"],
+        cwd=tmp_path,
+        preexec_fn=ignore,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    r = tdb(
+        tmp_path,
+        "--trace",
+        spec_for(tmp_path, "f"),
+        "--trace-out",
+        "out",
+        "prog.py",
+        preexec_fn=ignore,
+    )
+    assert r.returncode == 0, r.stderr
+    assert f"{sig} {signal.SIG_IGN!r}" in untraced.stdout
+    assert r.stdout == untraced.stdout
+    assert [e["function"] for e in calls(load_capture(tmp_path / "out.jsonl"))] == ["f"]
+
+
+@posix
+def test_closed_stderr_keeps_the_exit_code(tmp_path):
+    """tdb's stderr gone (a `| tee` killed by the same Ctrl-C, a hung-up
+    terminal): the outputs are written and the exit code passes through."""
+    write_prog(
+        tmp_path,
+        "import sys\ndef f():\n    sys.stdin.readline()\n    sys.exit(7)\nf()\n",
+    )
+    spec = spec_for(tmp_path, "f")
+    with tdb_proc(
+        tmp_path,
+        "--trace",
+        spec,
+        "--trace-out",
+        "out",
+        "prog.py",
+        stdin=subprocess.PIPE,
+    ) as p:
+        p.stderr.close()
+        p.stdin.write("go\n")
+        p.stdin.close()
+        assert p.wait(60) == 7
+    assert (tmp_path / "out.jsonl").is_file() and (
+        tmp_path / "out.perfetto.json"
+    ).is_file()
+    assert not (tmp_path / "out.parts").exists()
+
+
+@posix
+def test_closed_stderr_during_ctrl_c(tmp_path):
+    """The waiting line fails to print inside tdb's SIGINT handler: tdb
+    still waits for the program and writes the outputs."""
+    write_prog(tmp_path, WAITER)
+    spec = spec_for(tmp_path, "wait")
+    with tdb_proc(tmp_path, "--trace", spec, "--trace-out", "out", "prog.py") as p:
+        p.stderr.close()
+        assert readline(p) == "ready"
+        os.killpg(p.pid, signal.SIGINT)
+        assert p.wait(30) == -signal.SIGINT
+    cap = load_capture(tmp_path / "out.jsonl")
+    assert [pr["ended"] for pr in cap.processes] == ["signal:SIGINT"]
+    assert not (tmp_path / "out.parts").exists()
+
+
+HUP_COUNTER = (
+    "import signal, time\n"
+    "hups = []\n"
+    "signal.signal(signal.SIGHUP, lambda signum, frame: hups.append(signum))\n"
+    "def wait():\n"
+    "    print('ready', flush=True)\n"
+    "    deadline = time.monotonic() + 30\n"
+    "    while not hups and time.monotonic() < deadline:\n"
+    "        time.sleep(0.01)\n"
+    "    time.sleep(0.5)  # room for a second, forwarded SIGHUP\n"
+    "    print(len(hups), flush=True)\n"
+    "wait()\n"
+)
+
+
+# A session leader standing in for an interactive shell: it takes the pty
+# as its controlling terminal, runs the command as its foreground job, and,
+# as bash -i does, passes SIGHUP on to the job when the terminal hangs up.
+MINI_SHELL = """\
+import os, signal, subprocess, sys
+os.close(os.open(sys.argv[1], os.O_RDWR))
+job = subprocess.Popen(sys.argv[2:], process_group=0)
+print(job.pid, flush=True)
+os.tcsetpgrp(os.open("/dev/tty", os.O_RDWR), job.pid)
+signal.signal(signal.SIGHUP, lambda signum, frame: os.killpg(job.pid, signal.SIGHUP))
+sys.exit(job.wait())
+"""
+
+
+def _pty_name() -> tuple[int, str]:
+    import pty
+
+    master, slave = pty.openpty()
+    name = os.ttyname(slave)
+    os.close(slave)
+    return master, name
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="pty hangup checked on Linux")
+def test_terminal_hangup_relayed_by_the_shell_is_not_doubled(tmp_path):
+    """The shell passes the hangup's SIGHUP to tdb and the program alike;
+    tdb, whose terminal is gone, does not send the program a second one."""
+    write_prog(tmp_path, HUP_COUNTER)
+    spec = spec_for(tmp_path, "wait")
+    master, tty_name = _pty_name()
+    job = None
+    try:
+        with tdb_proc(
+            tmp_path,
+            "--trace",
+            spec,
+            "--trace-out",
+            "out",
+            "prog.py",
+            prefix=(sys.executable, "-c", MINI_SHELL, tty_name),
+        ) as p:
+            job = int(readline(p))  # tdb, leading its own process group
+            assert readline(p) == "ready"
+            os.close(master)  # hang up the terminal
+            master = -1
+            assert readline(p) == "1"
+            assert p.wait(30) == 0
+    finally:
+        if master >= 0:
+            os.close(master)
+        if job is not None:
+            with contextlib.suppress(OSError):
+                os.killpg(job, signal.SIGKILL)
+    assert (tmp_path / "out.jsonl").is_file()
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="pty hangup checked on Linux")
+def test_terminal_hangup_with_tdb_as_session_leader_is_forwarded(tmp_path):
+    """As the session leader (``xterm -e tdb``) tdb alone gets the
+    hangup's SIGHUP, so it must pass it on."""
+    write_prog(tmp_path, HUP_COUNTER)
+    spec = spec_for(tmp_path, "wait")
+    master, tty_name = _pty_name()
+
+    def take_tty():  # after setsid: the pty becomes tdb's controlling terminal
+        os.close(os.open(tty_name, os.O_RDWR))
+
+    try:
+        with tdb_proc(
+            tmp_path,
+            "--trace",
+            spec,
+            "--trace-out",
+            "out",
+            "prog.py",
+            preexec_fn=take_tty,
+        ) as p:
+            assert readline(p) == "ready"
+            os.close(master)  # hang up the terminal
+            master = -1
+            assert readline(p) == "1"
+            assert p.wait(30) == 0
+    finally:
+        if master >= 0:
+            os.close(master)
+    assert (tmp_path / "out.jsonl").is_file()
+
+
+@posix
+def test_sighup_to_tdb_is_forwarded(tmp_path):
+    write_prog(tmp_path, HUP_COUNTER)
+    spec = spec_for(tmp_path, "wait")
+    with tdb_proc(tmp_path, "--trace", spec, "--trace-out", "out", "prog.py") as p:
+        assert readline(p) == "ready"
+        os.kill(p.pid, signal.SIGHUP)  # tdb only
+        assert readline(p) == "1"
+        assert p.wait(30) == 0
+
+
+SHOW_ARGV = "import sys\ndef f():\n    print(sys.argv[0])\n    print(__file__)\nf()\n"
+
+
+@posix
+def test_program_path_as_typed(tmp_path):
+    """Ruling 25: the program sees the sys.argv[0] and __file__ it would
+    without tdb, for a symlinked script and for a relative path; with
+    --cwd the path is made absolute, never resolved."""
+    (tmp_path / "real").mkdir()
+    (tmp_path / "real" / "main.py").write_text(SHOW_ARGV)
+    (tmp_path / "orders.py").symlink_to(Path("real") / "main.py")
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub" / "prog.py").write_text(SHOW_ARGV)
+    (tmp_path / "spec.yaml").write_text("orders.py:\n  - f\nsub/prog.py:\n  - f\n")
+    for typed in ("orders.py", os.path.join("sub", "prog.py")):
+        untraced = subprocess.run(
+            [sys.executable, typed],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        r = tdb(tmp_path, "--trace", "spec.yaml", "--trace-out", "out", typed)
+        assert r.returncode == 0, r.stderr
+        assert r.stdout == untraced.stdout and untraced.stdout.startswith(typed)
+        cap = load_capture(tmp_path / "out.jsonl")
+        assert [e["function"] for e in calls(cap)] == ["f"]
+    (tmp_path / "elsewhere").mkdir()
+    r = tdb(
+        tmp_path,
+        "--trace",
+        "spec.yaml",
+        "--cwd",
+        "elsewhere",
+        "--trace-out",
+        "out",
+        "orders.py",
+    )
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.splitlines()[0] == str(tmp_path.resolve() / "orders.py")
+
+
+def test_failed_write_keeps_the_events(tmp_path):
+    """Ruling 21: a write that fails leaves no partial output and keeps
+    the parts directory for --trace-merge."""
     write_prog(tmp_path, "def f():\n    pass\nf()\n")
-    spec = load_spec(spec_for(tmp_path, "f"))
-
-    def broken(captures, path):
-        Path(path).write_text("half")
-        raise OSError("disk full")
-
-    monkeypatch.setattr(launch, "write_trace", broken)
-    sigs = [signal.SIGINT, signal.SIGTERM] + (
-        [signal.SIGHUP] if os.name != "nt" else []
+    (tmp_path / "out.perfetto.json").mkdir()  # os.replace onto it fails
+    r = tdb(
+        tmp_path, "--trace", spec_for(tmp_path, "f"), "--trace-out", "out", "prog.py"
     )
-    before = [signal.getsignal(s) for s in sigs]
-    req = launch.TraceRequest(
-        mode="trace",
-        program=str(tmp_path / "prog.py"),
-        module=None,
-        args=[],
-        python=None,
-        cwd=str(tmp_path),
-        name="prog",
-        out_base=tmp_path / "out",
-        spec=spec,
-    )
-    assert launch.run(req) == 1
-    err = capsys.readouterr().err
-    assert (
-        f"tdb: error: could not write {tmp_path / 'out.perfetto.json'}: disk full; "
-        f"events kept in {tmp_path / 'out.parts'}"
-    ) in err
-    assert "tdb: wrote" not in err
-    assert [signal.getsignal(s) for s in sigs] == before
-    assert sorted(os.listdir(tmp_path)) == [
+    assert r.returncode == 1
+    (line,) = r.stderr.splitlines()
+    assert line.startswith("tdb: error: could not write out.perfetto.json: ")
+    assert line.endswith("; events kept in out.parts")
+    assert listing(tmp_path) == [
         "out.jsonl",
         "out.parts",
+        "out.perfetto.json",
         "prog.py",
         "spec.yaml",
     ]
+    assert os.listdir(tmp_path / "out.perfetto.json") == []
     assert any(n.endswith(".jsonl") for n in os.listdir(tmp_path / "out.parts"))

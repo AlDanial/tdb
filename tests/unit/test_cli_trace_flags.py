@@ -47,10 +47,12 @@ def test_trace_parses_program_and_args(spec, tmp_path):
     )
 
 
-def test_program_stored_absolute(spec, tmp_path, monkeypatch):
+def test_program_kept_as_typed(spec, tmp_path, monkeypatch):
+    # Ruling 25: checked to exist, but run as typed (launch makes it
+    # absolute only for --cwd), so sys.argv[0] is what it is without tdb.
     monkeypatch.chdir(tmp_path)
     a = parse_args(["--trace", spec, "prog.py"])
-    assert a.program == str((tmp_path / "prog.py").resolve())
+    assert a.program == "prog.py"
 
 
 def test_m_takes_positionals_as_module_args(spec):
@@ -89,12 +91,25 @@ def test_command_form_keeps_program_as_given(spec):
         (["--keybindings", "vim"], "--keybindings"),
         (["--adapter", "gdb"], "--adapter"),
         (["--info"], "--info"),
+        (["--replay-quiet"], "--replay-quiet"),
+        (["--replay-interval", "1"], "--replay-interval"),
+        (["--replay-timeout", "5"], "--replay-timeout"),
+        (["--timing"], "--timing"),
+        (["--server-port", "9000"], "--server-port"),
+        (["--no-pause-on-attach"], "--no-pause-on-attach"),
     ],
 )
 def test_trace_rejects_conflicting_flags(spec, tmp_path, capsys, extra, flag):
     assert f"--trace cannot be combined with {flag}" in err(
         capsys, ["--trace", spec, *extra, str(tmp_path / "prog.py")]
     )
+
+
+def test_default_server_port_is_no_conflict(spec, tmp_path):
+    a = parse_args(
+        ["--trace", spec, "--server-port", "8150", str(tmp_path / "prog.py")]
+    )
+    assert a.trace_spec is not None
 
 
 def test_conflict_names_the_mode_in_use(tmp_path, capsys):

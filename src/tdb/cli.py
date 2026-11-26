@@ -7,7 +7,7 @@ import os
 import shutil
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NoReturn
 
 if TYPE_CHECKING:
     from tdb.app import TdbApp
@@ -1068,6 +1068,16 @@ def _check_trace_args(
         ("--doc-text", args.doc_text),
         ("--info", args.info),
         ("--config", args.config),
+        # Modifiers of other modes, whose own checks are skipped below.
+        ("--replay-quiet", args.replay_quiet),
+        ("--replay-interval", args.replay_interval is not None),
+        (
+            "--replay-timeout",
+            args.replay_timeout != parser.get_default("replay_timeout"),
+        ),
+        ("--timing", args.timing),
+        ("--server-port", args.server_port != parser.get_default("server_port")),
+        ("--no-pause-on-attach", args.no_pause_on_attach),
     ):
         if value:
             parser.error(f"{mode} cannot be combined with {flag}")
@@ -1109,11 +1119,10 @@ def _check_trace_args(
             )
         except (OSError, UnicodeDecodeError) as exc:
             parser.error(f"invalid trace spec {args.trace}: {exc}")
-    if py_program:
-        program_path = Path(args.program).resolve()
-        if not program_path.is_file():
-            parser.error(f"File not found: {args.program}")
-        args.program = str(program_path)
+    # Kept as typed (launch makes it absolute only for --cwd), so the
+    # program's sys.argv[0] and __file__ are what they are without tdb.
+    if py_program and not Path(args.program).resolve().is_file():
+        parser.error(f"File not found: {args.program}")
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -1375,7 +1384,7 @@ def main(argv: list[str] | None = None) -> None:
         # normal quit.
         sys.exit(vi.return_code or 0)
     if args.trace:
-        sys.exit(_run_trace(args))
+        _run_trace(args)
     if args.trace_merge or args.trace_discover:
         flag = "--trace-merge" if args.trace_merge else "--trace-discover"
         print(f"tdb: error: {flag} is not implemented yet", file=sys.stderr)
@@ -1654,10 +1663,10 @@ def _run_run(args: argparse.Namespace) -> None:
     sys.exit(code)
 
 
-def _run_trace(args: argparse.Namespace) -> int:
-    """Run the program under the function tracer (`--trace`); returns the
-    exit code: the program's, 1 if an output could not be written, or 2
-    if the program could not be started."""
+def _run_trace(args: argparse.Namespace) -> NoReturn:
+    """Run the program under the function tracer (`--trace`), then end as
+    the program did: its exit code or death by its signal (1 if an output
+    could not be written, 2 if the program could not be started)."""
     from datetime import datetime
 
     from tdb.trace import launch
@@ -1684,10 +1693,11 @@ def _run_trace(args: argparse.Namespace) -> int:
         max_events=args.trace_max_events or DEFAULT_MAX_EVENTS,
     )
     try:
-        return launch.run(req)
+        status = launch.run(req)
     except launch.LaunchError as exc:
-        print(f"tdb: error: {exc}", file=sys.stderr)
-        return 2
+        launch.say(f"tdb: error: {exc}")
+        status = 2
+    launch.exit_as(status)
 
 
 def _run_eval(args: argparse.Namespace) -> None:
