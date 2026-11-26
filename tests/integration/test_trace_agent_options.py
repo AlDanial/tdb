@@ -259,9 +259,9 @@ for _ in range(3):
     try:
         while time.monotonic() < end:
             f(1)
+        signal.setitimer(signal.ITIMER_REAL, 0)  # in the try: it may be late
     except TimeoutError:
         caught += 1
-    signal.setitimer(signal.ITIMER_REAL, 0)
 print(caught)
 """
 
@@ -292,3 +292,42 @@ def test_signal_handler_exception_reaches_program(tmp_path, handler, options):
     )
     assert parts.stdout.strip() == "3", parts.stderr
     assert parts.calls("f") and parts.all("exit")  # tracing went on
+
+
+@pytest.mark.parametrize("options", [{"capture": ["x"]}, {"if": "x is not None"}])
+def test_options_keep_no_values_alive(tmp_path, options):
+    # On Python 3.12 frame.f_locals is a snapshot dict the frame keeps:
+    # once read for an expression, it would hold the call's values until
+    # the call ends.  locals() must still work afterwards.
+    src = (
+        "import gc, weakref\nclass O:\n    pass\n"
+        "def f(x):\n    r = weakref.ref(x)\n    del x\n    gc.collect()\n"
+        "    print(r() is None, sorted(locals()))\nf(O())\n"
+    )
+    parts = run_traced(
+        tmp_path, src, [target(tmp_path / "prog.py", {"pattern": "f", **options})]
+    )
+    assert parts.stdout == "True ['r']\n", parts.stderr
+    assert len(parts.calls("f")) == 1
+
+
+@pytest.mark.skipif(os.name == "nt", reason="SIGUSR1")
+def test_signal_at_a_return_ends_the_call_with_its_exception(tmp_path):
+    # The handler's exception is raised at f's return, inside the return
+    # value's __repr__; f's frame then unwinds with it, so the call ends
+    # with a raise record, never unfinished.
+    src = (
+        "import signal\ndef on_usr1(*args):\n    raise TimeoutError('alarm')\n"
+        "signal.signal(signal.SIGUSR1, on_usr1)\n"
+        "class Loud:\n    def __repr__(self):\n"
+        "        signal.raise_signal(signal.SIGUSR1)\n        return 'loud'\n"
+        "def f():\n    return Loud()\n"
+        "try:\n    f()\nexcept TimeoutError:\n    print('caught')\n"
+    )
+    parts = run_traced(
+        tmp_path, src, [target(tmp_path / "prog.py", {"pattern": "f", "return": True})]
+    )
+    assert parts.stdout == "caught\n", parts.stderr
+    (c,) = parts.calls("f")
+    ends = [(r["k"], r.get("exc")) for r in parts.events_for(c["_stem"], c["c"])[1:]]
+    assert ends == [("raise", "TimeoutError: alarm")]

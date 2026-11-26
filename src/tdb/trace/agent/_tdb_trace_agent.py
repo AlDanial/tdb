@@ -557,6 +557,7 @@ def _enter(opts, frame):
     if max_hits is not None and opts.hits >= max_hits:
         return _SKIP
     ident = _get_ident()
+    names = None
     try:
         _inside.add(ident)
         if opts.cond is not None or opts.capture:
@@ -592,7 +593,16 @@ def _enter(opts, frame):
                 values[text] = _error_text(exc)
         return values
     finally:
-        _inside.discard(ident)
+        try:
+            if names.__class__ is dict:
+                # Python 3.12: f_locals is a snapshot dict that the frame
+                # keeps, holding every local's value at entry until the call
+                # ends (a generator's whole life); that would delay the
+                # program's finalizers.  Empty it: f_locals and locals()
+                # fill it again when read.  (3.13+: a proxy, holding nothing.)
+                names.clear()
+        finally:
+            _inside.discard(ident)
 
 
 # --- monitoring callbacks -----------------------------------------------
@@ -676,23 +686,36 @@ def _on_return(code, offset, retval):
         if _inside and _get_ident() in _inside:
             return None
         t = _perf_ns()
-        live = _live.pop(id(_getframe(1)), None)
-        if live is None or live[1] is not code:
+        frame_id = id(_getframe(1))
+        live = _live.get(frame_id)
+        if live is None:
             return None
+        if live[1] is not code:  # stale: the id of a frame that is gone
+            del _live[frame_id]
+            return None
+        # The call stays live until its record is made: a signal handler's
+        # exception raised before then propagates from here, the frame
+        # unwinds with it (Python fires PY_UNWIND after a PY_RETURN
+        # callback raises), and _on_unwind ends the call with it.
         tid = _thread_tid()
         task = _task_id(tid)
         if live[2].ret:
             record = {"k": "ret", "t": t, "c": live[0], "tid": tid, "task": task}
             record["v"] = _guarded(_value, retval)
-            _buf.append(_dumps(record))
+            record = _dumps(record)
         else:
-            _buf.append(_RET % (t, live[0], tid, "null" if task is None else task))
+            record = _RET % (t, live[0], tid, "null" if task is None else task)
+        # No signal handler can run from here to the end of the append (no
+        # call before it): the call ends exactly once.
         _n_events += 1
+        del _live[frame_id]
+        _buf.append(record)
         if len(_buf) >= _HIGH_WATER:
             _backpressure()
     except Exception as exc:
         if _from_signal_handler(exc):
             raise
+        _live.pop(id(_getframe(1)), None)  # it returns: never leave it live
     return None
 
 
