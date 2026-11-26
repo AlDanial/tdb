@@ -14,7 +14,13 @@ from pathlib import Path
 import pytest
 
 from tdb.trace.spec import norm_path
-from tests.integration.trace_helpers import read_parts, run_traced, start_traced, target
+from tests.integration.trace_helpers import (
+    STUCK_FLUSHER,
+    read_parts,
+    run_traced,
+    start_traced,
+    target,
+)
 
 pytestmark = pytest.mark.skipif(sys.version_info < (3, 12), reason="sys.monitoring")
 
@@ -196,7 +202,7 @@ def test_clean_exit_while_the_flusher_writes_loses_nothing(tmp_path):
         "    if slow[0] and _thread.get_ident() == A._flusher_ident:\n"
         "        slow[0] = False\n        at['slow'] = time.perf_counter()\n        time.sleep(3.5)\n"
         "    return real_write(fd, data)\n"
-        "os.write = write\n"
+        "A._os_write = write\n"  # the tracer's own os.write
         "def f():\n    return 1\n"
         "for _ in range(20_000):\n    f()\n"
         "slow[0] = True\n"
@@ -274,24 +280,6 @@ def _notes(part):
         ]
 
 
-# A finalizer that waits for a lock the main thread holds, run by the
-# flusher: garbage collection is off until the main thread sleeps, so the
-# flusher, the only thread then running, collects the garbage and gets stuck.
-STUCK_FLUSHER = (
-    "import _thread, gc, os, threading, time\n"
-    "L = threading.RLock()\nmain, stuck = _thread.get_ident(), []\n"
-    "class D:\n    def __init__(self):\n        self.me = self\n"
-    "    def __del__(self):\n        if _thread.get_ident() != main:\n            stuck.append(1)\n"
-    "        with L:\n            pass\n"
-    "def f():\n    return 1\n"
-    "thresholds = gc.get_threshold()\n"
-    "with L:\n    gc.disable()\n    for _ in range(100):\n        D()\n"
-    "    for _ in range(5_000):\n        f()\n"  # records left for the flusher
-    "    gc.set_threshold(1)\n    gc.enable()\n    time.sleep(0.6)\n"
-    "    gc.set_threshold(*thresholds)\n"
-)
-
-
 def test_finalizer_in_the_flusher_cannot_deadlock_the_program(tmp_path):
     # While the flusher is stuck, the main thread makes events fast enough
     # to need backpressure: it must wait only briefly, then go on (with a
@@ -335,7 +323,7 @@ def test_sigint_while_the_trace_is_written_records_no_call_twice(tmp_path):
         "    if armed[0] and fd == A._fd:\n"
         "        armed[0] = False\n        os.kill(os.getpid(), signal.SIGINT)\n"
         "    return n\n"
-        "os.write = write\n"
+        "A._os_write = write\n"  # the tracer's own os.write
         "def f():\n    return 1\n"
         "interrupts = 0\n"
         "for attempt in range(3):\n"
@@ -361,7 +349,7 @@ def test_sigint_during_the_final_flush_loses_and_repeats_nothing(tmp_path, when)
     # the trace short nor write anything twice.
     send = "os.kill(os.getpid(), signal.SIGINT)\n"
     src = (
-        "import os, signal, threading\n"
+        "import os, signal, threading, _tdb_trace_agent as A\n"
         "real_write, armed = os.write, [True]\n"
         "def write(fd, data):\n"
         "    fire = armed[0] and threading.get_ident() == threading.main_thread().ident\n"
@@ -371,7 +359,7 @@ def test_sigint_during_the_final_flush_loses_and_repeats_nothing(tmp_path, when)
         + (f"    if fire:\n        {send}" if when == "after" else "")
         + "    return n\n"
         "def f():\n    return 1\n"
-        "os.write = write\n"
+        "A._os_write = write\n"  # the tracer's own os.write
         "for _ in range(30_000):\n    f()\n"  # left for final_flush
     )
     proc, parts_dir = start_traced(tmp_path, src, [target(tmp_path / "prog.py", "f")])

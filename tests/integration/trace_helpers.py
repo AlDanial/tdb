@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
 import tempfile
@@ -42,6 +43,24 @@ def target(path, *functions: str | dict) -> dict:
         "suffixes": [],
         "functions": [_function_entry(f) for f in functions],
     }
+
+
+# A finalizer that waits for a lock the main thread holds, run by the
+# flusher: garbage collection is off until the main thread sleeps, so the
+# flusher, the only thread then running, collects the garbage and gets stuck.
+STUCK_FLUSHER = (
+    "import _thread, gc, os, threading, time\n"
+    "L = threading.RLock()\nmain, stuck = _thread.get_ident(), []\n"
+    "class D:\n    def __init__(self):\n        self.me = self\n"
+    "    def __del__(self):\n        if _thread.get_ident() != main:\n            stuck.append(1)\n"
+    "        with L:\n            pass\n"
+    "def f():\n    return 1\n"
+    "thresholds = gc.get_threshold()\n"
+    "with L:\n    gc.disable()\n    for _ in range(100):\n        D()\n"
+    "    for _ in range(5_000):\n        f()\n"  # records left for the flusher
+    "    gc.set_threshold(1)\n    gc.enable()\n    time.sleep(0.6)\n"
+    "    gc.set_threshold(*thresholds)\n"
+)
 
 
 @dataclass
@@ -133,10 +152,14 @@ def run_traced(
     timeout=60,
     extra_env=None,
     files: dict[str, str] | None = None,
+    own_group: bool = False,
 ) -> Parts:
     """Write ``source`` to ``tmp_path/prog.py``, run it traced, read its parts.
 
-    ``targets=None`` traces every function in prog.py.
+    ``targets=None`` traces every function in prog.py.  ``own_group`` (for
+    programs that start children; POSIX) runs the program in a new session
+    and SIGKILLs whatever is left of its process group afterwards, even when
+    it times out, so no child outlives the test.
     """
     cmd, env, parts_dir = _prepare(
         tmp_path,
@@ -149,12 +172,40 @@ def run_traced(
         extra_env=extra_env,
         files=files,
     )
-    done = subprocess.run(
-        cmd, cwd=tmp_path, env=env, capture_output=True, text=True, timeout=timeout
+    if not own_group or os.name == "nt":
+        done = subprocess.run(
+            cmd, cwd=tmp_path, env=env, capture_output=True, text=True, timeout=timeout
+        )
+        return read_parts(
+            parts_dir,
+            returncode=done.returncode,
+            stdout=done.stdout,
+            stderr=done.stderr,
+        )
+    proc = subprocess.Popen(
+        cmd,
+        cwd=tmp_path,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
     )
-    return read_parts(
-        parts_dir, returncode=done.returncode, stdout=done.stdout, stderr=done.stderr
-    )
+    try:
+        out, err = proc.communicate(timeout=timeout)
+    except BaseException:
+        _kill_group(proc.pid)
+        proc.communicate()
+        raise
+    _kill_group(proc.pid)  # children that outlived the program, if any
+    return read_parts(parts_dir, returncode=proc.returncode, stdout=out, stderr=err)
+
+
+def _kill_group(pgid: int) -> None:
+    try:
+        os.killpg(pgid, signal.SIGKILL)
+    except OSError:  # no process left in the group
+        pass
 
 
 def start_traced(

@@ -11,7 +11,8 @@ go to an in-memory buffer that a hidden flusher thread writes to
 writes the rest at ``atexit`` or ``os._exit``.  Wrappers around
 ``sys.excepthook`` and ``threading.excepthook``, which ``sitecustomize.py``
 installs with ``install_crash_hooks()`` after ``start()``, record uncaught
-exceptions.
+exceptions.  A forked child starts a part file of its own (see "fork");
+other children load the hook themselves.
 
 Never break the program:
 - stdlib only, and never ``import tdb``;
@@ -26,7 +27,8 @@ Never break the program:
   buffered file object, whose lock a ``fork`` could inherit held;
 - no strong references to frames (one would delay generator finalization);
 - the agent's own files and its flusher thread are never traced, and the
-  flusher is a bare ``_thread`` thread, invisible to ``threading``;
+  flusher is a bare ``_thread`` thread, invisible to ``threading`` and
+  stopped while the process forks;
 - no thread ever waits, beyond a short bound, for another: the flusher can
   run the program's code (garbage-collection finalizers run in whichever
   thread allocates), and that code may wait for a lock the waiter holds.
@@ -87,11 +89,33 @@ _PRESSURE_WAIT = 0.05
 _STOP_WAIT = 2.0
 # ... plus this long for an os.write the flusher already issued to land.
 _LANDING_WAIT = 3.0
+# A fork waits this long for the flusher to write what is buffered and
+# stop, then goes ahead without stopping it ...
+_FORK_STOP_WAIT = 0.5
+# ... and, once it stopped, this long for its thread to leave the process.
+_GONE_WAIT = 0.1
+# Starting a flusher waits this long for its thread to run.
+_START_WAIT = 0.1
 
 _getframe = sys._getframe
 _get_ident = threading.get_ident
 _get_native_id = threading.get_native_id
 _perf_ns = time.perf_counter_ns
+# Bound now, before the program runs: what it does to these modules later
+# (gevent's monkey-patching, mock.patch, pyfakefs) must not reach the
+# flusher, the final flush or the fork hooks.
+_sleep = time.sleep
+_time_ns = time.time_ns
+_os_open = os.open
+_os_write = os.write
+_os_close = os.close
+_fstat = os.fstat
+_os_stat = os.stat
+_getpid = os.getpid
+_getppid = os.getppid
+_path_join = os.path.join
+_allocate_lock = _thread.allocate_lock
+_start_new_thread = _thread.start_new_thread
 # Same output as json.dumps(obj, separators=(",", ":")), without building
 # an encoder per call.  Records are buffered as their JSON text.
 _dumps = json.JSONEncoder(separators=(",", ":")).encode
@@ -117,6 +141,7 @@ _fd = None  # part file descriptor (O_APPEND)
 _part_path = None
 _part_id = None  # (st_dev, st_ino) of the part file: is _fd still ours?
 _parts_dir = None
+_mode = None  # "trace" or "discover", for the part header
 _stopped = True  # callbacks return at once while True
 _final_done = False
 _broken = False  # a part-file write failed; nothing more is written
@@ -130,11 +155,22 @@ _signal_nums = None  # signal numbers, once _from_signal_handler needs them
 
 # --- the flusher ---------------------------------------------------------
 _flusher_ident = None  # thread ident of the flusher; never traced
+_flusher_tid = None  # its native thread id (set by the flusher)
 # Held while the flusher may sleep: its timed acquire is the sleep, and a
-# release wakes it at once (backpressure, final_flush; Task 5: fork).
-_wake = _thread.allocate_lock()
+# release wakes it at once (backpressure, final_flush, a fork).
+_wake = _allocate_lock()
 # Held while a flusher runs; it releases this when it ends.
-_flusher_exited = _thread.allocate_lock()
+_flusher_exited = _allocate_lock()
+# A fork's request that the flusher stop (see "fork"): the forking thread
+# appends to it; the flusher writes what is buffered, then pops it and
+# ends.  A forking thread that stops waiting takes the request back with
+# its own pop.  list.pop is atomic, so exactly one of the two gets it, and
+# each then knows whether the flusher is ending.
+_halt = []
+# "owner" -> ident of the thread whose fork stopped the flusher, the one to
+# start it again.  dict.setdefault is atomic: one forking thread at a time
+# stops it.
+_fork_claim = {}
 _fence = False  # set by final_flush: the flusher must not write again
 # The chunk the flusher is writing, for final_flush to take over from:
 # (its first record object, part size before the write, bytes, records).
@@ -974,22 +1010,41 @@ def install_crash_hooks():
 
 def _open_part(parts_dir):
     """Create ``<pid>.jsonl`` (or ``<pid>-N.jsonl``) exclusively; return (fd, path)."""
-    pid = os.getpid()
+    pid = _getpid()
     flags = (
         os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_APPEND | getattr(os, "O_BINARY", 0)
     )
     for n in range(1, 1000):
-        path = os.path.join(parts_dir, f"{pid}.jsonl" if n == 1 else f"{pid}-{n}.jsonl")
+        path = _path_join(parts_dir, f"{pid}.jsonl" if n == 1 else f"{pid}-{n}.jsonl")
         try:
-            return os.open(path, flags, 0o666), path
+            return _os_open(path, flags, 0o666), path
         except FileExistsError:
             continue
     raise FileExistsError(f"no free part file name for pid {pid} in {parts_dir}")
 
 
+def _header():
+    """The ``hdr`` record of a new part."""
+    wall = _time_ns()
+    pc = _perf_ns()
+    return _dumps(
+        {
+            "k": "hdr",
+            "pid": _getpid(),
+            "ppid": _getppid(),
+            "proc": _proc_name,
+            "argv": list(sys.argv),
+            "py": "%d.%d.%d" % tuple(sys.version_info[:3]),
+            "wall": wall,
+            "pc": pc,
+            "mode": _mode,
+        }
+    )
+
+
 def _part_size():
     """The part file's size; an OSError if _fd is no longer the part file."""
-    st = os.fstat(_fd)
+    st = _fstat(_fd)
     if (st.st_dev, st.st_ino) != _part_id:
         # The program closed our descriptor (as daemonizing code does) and
         # the number may now be one of its own files: never write there.
@@ -1013,13 +1068,13 @@ def _write_backlog(n):
         if _fence:
             return False
         _in_syscall = True
-        written = os.write(_fd, view)
+        written = _os_write(_fd, view)
         _in_syscall = False
         while written < len(data):  # a short write: rare
             if _fence:
                 return False
             _in_syscall = True
-            written += os.write(_fd, view[written:])
+            written += _os_write(_fd, view[written:])
             _in_syscall = False
         del _buf[: len(batch)]
         _inflight = None
@@ -1043,7 +1098,7 @@ def _write_out(data):
                 done = _part_size() - start
                 if done >= len(data):
                     return
-                os.write(_fd, memoryview(data)[done:])
+                _os_write(_fd, memoryview(data)[done:])
         except OSError as exc:
             if exc.errno is not None:  # a real I/O error
                 raise
@@ -1072,7 +1127,7 @@ def _give_up(error):
     _stopped = _broken = _fence = True
     del _buf[:]
     try:
-        pid = os.getpid()
+        pid = _getpid()
         record = {
             "marker": "agent-error",
             "pid": pid,
@@ -1083,13 +1138,13 @@ def _give_up(error):
         for n in range(1, 100):
             name = f"agent-error-{pid}" + (f"-{n}" if n > 1 else "") + ".json"
             try:
-                fd = os.open(os.path.join(_parts_dir, name), flags, 0o666)
+                fd = _os_open(_path_join(_parts_dir, name), flags, 0o666)
             except FileExistsError:
                 continue
             try:
-                os.write(fd, _dumps(record).encode("ascii"))
+                _os_write(fd, _dumps(record).encode("ascii"))
             finally:
-                os.close(fd)
+                _os_close(fd)
             return
     except Exception:
         pass
@@ -1132,16 +1187,19 @@ def _backpressure():
                     )
                     _buf.append(_dumps({"k": "note", "t": _perf_ns(), "msg": msg}))
             return
-        time.sleep(0.001)
+        _sleep(0.001)
 
 
 def _flusher_loop(started, exited):
+    global _flusher_tid
+    _flusher_tid = _get_native_id()
     started.release()
     try:
         while not _fence:
             _wake.acquire(timeout=_interval)  # the sleep; a release wakes it
             if _fence:
                 break
+            halt = bool(_halt)  # a fork asked: write what is buffered, then end
             try:
                 _check_proc_name()
                 _write_backlog(len(_buf))
@@ -1150,38 +1208,33 @@ def _flusher_loop(started, exited):
                     _give_up(f"cannot write the part file: {exc}")
             except BaseException:
                 pass  # the records stay in _buf for the next flush
+            if halt:
+                try:
+                    _halt.pop()
+                except IndexError:
+                    continue  # taken back: the fork went ahead without waiting
+                break
     finally:
         exited.release()
 
 
 def _start_flusher():
-    """Start the flusher and wait until it runs (so its own first code is
-    seen during start-up, never at a time that depends on scheduling)."""
+    """Start the flusher and wait, a short bound, until it runs (so its own
+    first code is seen during start-up, never at a time that depends on
+    scheduling).  Bounded: started after a fork, the thread that forked may
+    hold a lock that code the new thread runs (a finalizer) waits for."""
     global _flusher_ident, _flusher_exited
     if not _wake.locked():
         _wake.acquire()
-    _flusher_exited = exited = _thread.allocate_lock()
+    exited = _allocate_lock()
     exited.acquire()
-    started = _thread.allocate_lock()
+    started = _allocate_lock()
     started.acquire()
     # A bare _thread thread: threading.enumerate() and active_count() in
     # the program stay as they would be without the tracer.
-    _flusher_ident = _thread.start_new_thread(_flusher_loop, (started, exited))
-    started.acquire()
-
-
-def _after_fork_in_child():
-    """A forked child has no flusher, only the parent's flusher state; reset
-    it so final_flush does not wait for a flusher that is not there.
-    (Task 5 extends this into the child's new part file and flusher.)"""
-    global _wake, _flusher_exited, _inflight, _in_syscall
-    _wake = _thread.allocate_lock()
-    _flusher_exited = _thread.allocate_lock()  # unlocked: none to wait for
-    _inflight = None
-    _in_syscall = False
-    # Threads inside a callback in the parent do not exist here, and a new
-    # thread may get one's ident.
-    _inside.clear()
+    ident = _start_new_thread(_flusher_loop, (started, exited))
+    _flusher_exited, _flusher_ident = exited, ident
+    started.acquire(timeout=_START_WAIT)
 
 
 def _take_over():
@@ -1198,7 +1251,7 @@ def _take_over():
         if _in_syscall and _part_size() < before + len(data) and _perf_ns() < end:
             # It called os.write and has not come back (or is stuck in code
             # it ran right after): give that write a bounded time to land.
-            time.sleep(0.01)
+            _sleep(0.01)
             continue
         if not snapshot or snapshot[0] is not first:  # written and dropped
             return b"", snapshot
@@ -1210,9 +1263,200 @@ _real_os_exit = os._exit
 
 
 def _exit(status):
-    """``os._exit`` while tracing: write the trace's last records first."""
-    final_flush("_exit")
-    _real_os_exit(status)
+    """``os._exit`` while tracing: write the trace's last records first.
+    The real os._exit runs whatever happens meanwhile, such as an exception
+    from a signal handler raised as final_flush returns."""
+    try:
+        final_flush("_exit")
+    finally:
+        _real_os_exit(status)
+
+
+# --- fork -----------------------------------------------------------------
+#
+# A forked child has one thread (the one that forked), a copy of the
+# parent's memory and the parent's descriptors.  Python runs these hooks
+# for os.fork() and os.forkpty(), and for a subprocess with a preexec_fn:
+# - before the fork, the flusher writes what is buffered and ends, and the
+#   forking thread waits (a short bound) until its thread is gone.  So the
+#   process forks with no thread of the tracer's: none can hold a lock the
+#   child would inherit held, and Python 3.12+ does not warn about forking
+#   a multi-threaded process.  A flusher that does not end in time (stuck
+#   in a finalizer that waits for a lock the forking thread holds, say) is
+#   left to carry on, and the fork goes ahead;
+# - in the parent, the thread whose fork stopped the flusher starts it
+#   again;
+# - in the child, everything kept per process starts afresh: new locks, a
+#   part file of its own with its own header, call and task ids from 1, the
+#   fn/th/task records written again, the event cap and max_hits counted
+#   from zero, and a new flusher.  The parent's unwritten records and live
+#   calls are the parent's to write: they are dropped, and the parent's
+#   part descriptor is closed (a raw one, so nothing is flushed through it)
+#   before the child writes anything.
+# Like any at-fork hook's, an exception these raise (a signal handler's)
+# cannot reach the program: Python prints and drops it.  So they catch
+# Exception, as the callbacks do, and state stays consistent if one is
+# interrupted.
+
+# Python 3.12+ counts a Linux process's threads in /proc/self/stat to decide
+# whether os.fork() warns, and an ended thread is still counted there for
+# some microseconds after its last Python code ran.
+_TASKS = "/proc/self/task/" if sys.platform.startswith("linux") else None
+
+
+def _wait_gone(tid):
+    """Wait, at most _GONE_WAIT, until thread ``tid`` has left the process
+    (Linux only)."""
+    if _TASKS is None or tid is None:
+        return
+    path = _TASKS + str(tid)
+    end = _perf_ns() + int(_GONE_WAIT * 1e9)
+    while True:
+        try:
+            _os_stat(path)
+        except OSError:
+            return  # gone
+        if _perf_ns() >= end:
+            return
+        _sleep(0.00005)
+
+
+def _before_fork():
+    """os.fork() is about to run: the flusher writes what is buffered and
+    ends (see "fork")."""
+    global _flusher_ident, _flusher_exited
+    me = _get_ident()
+    if _fork_claim.setdefault("owner", me) != me:
+        return  # another thread's fork has stopped it, or is stopping it
+    stopped = False
+    try:
+        if _fence or _flusher_ident is None:
+            return  # no flusher: tracing has ended
+        exited = _flusher_exited
+        try:
+            _halt.append(True)
+            _wake_flusher()
+            stopped = exited.acquire(timeout=_FORK_STOP_WAIT)
+        finally:
+            if not stopped:
+                try:
+                    _halt.pop()  # taken back: it carries on through the fork
+                except IndexError:
+                    stopped = True  # it took the request: it writes no more
+        if stopped:
+            # No flusher now: nothing for final_flush to wait for, or for a
+            # fork to stop, should starting it again fail.
+            _flusher_ident, _flusher_exited = None, _allocate_lock()
+            _wait_gone(_flusher_tid)
+    except Exception as exc:
+        if _from_signal_handler(exc):
+            raise
+    finally:
+        if not stopped:
+            _fork_claim.pop("owner", None)
+
+
+def _after_fork_in_parent():
+    """os.fork() returned in the parent: start the flusher again, if this
+    thread's fork stopped it."""
+    if _fork_claim.get("owner") != _get_ident():
+        return
+    try:
+        if not _fence:
+            _start_flusher()
+    except Exception as exc:  # no new thread: final_flush writes the rest
+        if _from_signal_handler(exc):
+            raise
+    finally:
+        _fork_claim.pop("owner", None)
+
+
+def _close_if_ours(fd):
+    """Close the parent's part descriptor, unless the program has closed it
+    and the number is now one of its own files."""
+    try:
+        st = _fstat(fd)
+        if (st.st_dev, st.st_ino) == _part_id:
+            _os_close(fd)
+    except OSError:
+        pass
+
+
+def _forked_to_exec():
+    """Whether the fork _after_fork_in_child runs for is subprocess's, to run
+    a preexec_fn: that child then executes the new program, which, if it is
+    a traced Python program, starts its own part."""
+    popen = getattr(sys.modules.get("subprocess"), "Popen", None)
+    code = getattr(getattr(popen, "_execute_child", None), "__code__", None)
+    if code is None:
+        return False
+    try:
+        return _getframe(2).f_code is code  # the code that forked
+    except ValueError:  # no Python code running: a fork from C
+        return False
+
+
+def _new_part():
+    """Per-part state afresh, a new part file and its header (in a forked
+    child, the only thread there)."""
+    global _call_ids, _task_ids, _task_counter, _n_events, _n_dropped, _cap_noted
+    global _final_done, _broken, _fence, _proc_name, _fd, _part_path, _part_id
+    del _buf[:]
+    _live.clear()
+    _fn_written.clear()
+    _thread_names.clear()
+    _task_ids = weakref.WeakKeyDictionary()
+    _call_ids, _task_counter = itertools.count(1), itertools.count(1)
+    _n_events = _n_dropped = 0
+    _cap_noted = False
+    for t in _targets:
+        for item in t.functions:
+            if item[2] is not None:
+                item[2].hits = 0
+    _final_done = _broken = _fence = False
+    _proc_name = _current_proc_name() or "MainProcess"
+    fd, path = _open_part(_parts_dir)
+    st = _fstat(fd)
+    _fd, _part_path, _part_id = fd, path, (st.st_dev, st.st_ino)
+    _write_out((_header() + "\n").encode("ascii"))
+
+
+def _after_fork_in_child():
+    """os.fork() returned in the child: give it a part of its own (see
+    "fork")."""
+    global _wake, _flusher_exited, _halt, _fork_claim, _flusher_ident
+    global _flusher_tid, _inflight, _in_syscall, _flushed, _stall_mark
+    global _stall_noted, _fd, _stopped
+    # New locks and flusher controls, never the parent's: a parent thread
+    # that is not here may have held one at the fork.  No flusher yet, so
+    # final_flush has none to wait for.
+    _wake, _flusher_exited = _allocate_lock(), _allocate_lock()
+    _halt, _fork_claim = [], {}
+    _flusher_ident = _flusher_tid = _inflight = None
+    _in_syscall, _flushed, _stall_mark, _stall_noted = False, 0, -1, False
+    # Threads inside a callback in the parent do not exist here, and a new
+    # thread may get one's ident.
+    _inside.clear()
+    inherited, _fd = _fd, None  # nothing can write to the parent's part now
+    if inherited is None or _tool is None or _final_done:
+        return  # not tracing
+    _stopped = True  # until the child's own part is ready
+    try:
+        _close_if_ours(inherited)
+        if _forked_to_exec():
+            return
+        _new_part()
+    except Exception as exc:
+        if _from_signal_handler(exc):
+            raise
+        _give_up(f"cannot start the part file of a forked child: {exc}")
+        return
+    _stopped = False
+    try:
+        _start_flusher()
+    except Exception as exc:  # no new thread: final_flush writes it all
+        if _from_signal_handler(exc):
+            raise
 
 
 # --- public ---------------------------------------------------------------
@@ -1236,6 +1480,7 @@ def start(config):
     that into an agent-error marker."""
     global _tool, _fd, _part_path, _part_id, _parts_dir, _stopped, _interval
     global _targets, _agent_dirs, _proc_name, _repr_limit, _repr, _max_events
+    global _mode
     if _tool is not None or _fd is not None:
         raise RuntimeError("the tracer is already started in this process")
     if config.get("version") != 1:
@@ -1257,28 +1502,12 @@ def start(config):
     _tool = tool
     try:
         _targets, _interval, _agent_dirs = targets, interval, frozenset(agent_dirs)
-        _repr, _max_events = _make_repr(_repr_limit), max_events
+        _repr, _max_events, _mode = _make_repr(_repr_limit), max_events, mode
         _fd, _part_path = _open_part(parts_dir)
-        st = os.fstat(_fd)
+        st = _fstat(_fd)
         _part_id, _parts_dir = (st.st_dev, st.st_ino), parts_dir
         _proc_name = _current_proc_name() or "MainProcess"
-        wall = time.time_ns()
-        pc = _perf_ns()
-        _buf.append(
-            _dumps(
-                {
-                    "k": "hdr",
-                    "pid": os.getpid(),
-                    "ppid": os.getppid(),
-                    "proc": _proc_name,
-                    "argv": list(sys.argv),
-                    "py": "%d.%d.%d" % tuple(sys.version_info[:3]),
-                    "wall": wall,
-                    "pc": pc,
-                    "mode": mode,
-                }
-            )
-        )
+        _buf.append(_header())
         for event, callback in _CALLBACKS:
             _mon.register_callback(tool, event, callback)
         _stopped = False
@@ -1290,7 +1519,11 @@ def start(config):
         _start_flusher()
         atexit.register(final_flush, "atexit")
         if hasattr(os, "register_at_fork"):
-            os.register_at_fork(after_in_child=_after_fork_in_child)
+            os.register_at_fork(
+                before=_before_fork,
+                after_in_parent=_after_fork_in_parent,
+                after_in_child=_after_fork_in_child,
+            )
         os._exit = _exit
     except BaseException:
         _teardown()
