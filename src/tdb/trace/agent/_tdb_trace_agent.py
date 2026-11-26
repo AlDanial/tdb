@@ -9,7 +9,9 @@ disabled per code object) and return at once for untraced code.  Records
 go to an in-memory buffer that a hidden flusher thread writes to
 ``PARTS/<pid>.jsonl`` every ``flush_interval`` seconds; ``final_flush``
 writes the rest at ``atexit`` or ``os._exit``.  Wrappers around
-``sys.excepthook`` and ``threading.excepthook`` record uncaught exceptions.
+``sys.excepthook`` and ``threading.excepthook``, which ``sitecustomize.py``
+installs with ``install_crash_hooks()`` after ``start()``, record uncaught
+exceptions.
 
 Never break the program:
 - stdlib only, and never ``import tdb``;
@@ -508,13 +510,18 @@ _CALLBACKS = (
 
 # --- crashes ----------------------------------------------------------------
 #
-# start() wraps sys.excepthook and threading.excepthook.  Each wrapper
-# records the crash, then calls the hook that was there before, so the
-# program's output and exit status stay as they were.  Recording catches
-# Exception only (as the callbacks do): a BaseException from a signal
-# handler propagates, and Python then reports it and the original
-# exception itself.  A program that installs its own hook later replaces
-# the wrapper, and its crashes go unrecorded.
+# install_crash_hooks() wraps sys.excepthook and threading.excepthook.
+# sitecustomize.py calls it after importing the next sitecustomize, so a
+# distro hook installed there that never calls the one before it
+# (Debian/Ubuntu's apport) becomes ours to call, not a replacement.  Each
+# wrapper records the crash, then calls the hook that was there before, so
+# the program's output and exit status stay as they were.  Recording
+# catches Exception only (as the callbacks do): a BaseException from a
+# signal handler propagates, and Python then reports it and the original
+# exception itself.  A program that installs its own hook later without
+# calling the one before replaces the wrapper; its crashes go unrecorded.
+
+_hooks_installed = False
 
 
 def _where(tb):
@@ -529,13 +536,37 @@ def _where(tb):
     return f"{filename}:{tb.tb_lineno}"
 
 
+def _bare_traceback(exc, tb):
+    """A traceback's lines, without source lines, built without importing
+    anything or running code from a string: for KeyboardInterrupt.
+
+    After an uncaught KeyboardInterrupt Python dies by SIGINT (shells stop
+    a script's loop on that).  Python 3.12 drops that and exits 1 once any
+    code runs from a string (exec, eval), and a first import of traceback
+    does that: its dependencies build namedtuples."""
+    lines = []
+    if tb is not None:
+        lines.append("Traceback (most recent call last):")
+    while tb is not None:
+        code = tb.tb_frame.f_code
+        lines.append(
+            f'  File "{code.co_filename}", line {tb.tb_lineno}, in {code.co_name}'
+        )
+        tb = tb.tb_next
+    lines.append(_exc_text(exc))
+    return lines
+
+
 def _tb_text(exc_type, exc, tb):
     """The traceback as printed, at most _TB_LINES lines: its first line,
     then (if cut) a marker and the last lines, where the frames nearest the
     error and the exception itself are."""
-    import traceback  # lazily: most programs never crash
+    if issubclass(exc_type, KeyboardInterrupt):
+        lines = _bare_traceback(exc, tb)
+    else:
+        import traceback  # lazily: most programs never crash
 
-    lines = "".join(traceback.format_exception(exc_type, exc, tb)).splitlines()
+        lines = "".join(traceback.format_exception(exc_type, exc, tb)).splitlines()
     if len(lines) > _TB_LINES:
         keep = _TB_LINES - 2
         cut = len(lines) - 1 - keep
@@ -562,36 +593,10 @@ def _record_crash(exc_type, exc, tb):
 def _excepthook(exc_type, exc, tb):
     """``sys.excepthook`` while tracing: an uncaught exception."""
     try:
-        fresh = "traceback" not in sys.modules
         _record_crash(exc_type, exc, tb)
-        if fresh and "traceback" in sys.modules and exc_type is KeyboardInterrupt:
-            _keep_death_by_sigint()
     except Exception:
         pass
     return _prev_excepthook(exc_type, exc, tb)
-
-
-def _keep_death_by_sigint():
-    """Keep Python's death by SIGINT after an uncaught KeyboardInterrupt
-    (shells stop a script's loop on it) when recording the crash imported
-    traceback.
-
-    Python 3.12 forgets that it is to die by SIGINT whenever code runs from
-    a string (exec, eval), and a first import of traceback does that (its
-    dependencies build namedtuples); it exits 1 instead.  Running a string
-    that ends in exactly KeyboardInterrupt sets the flag again.  Only when
-    the interpreter itself reports the exception, with no Python caller: a
-    program that calls sys.excepthook itself is not dying.  The flag was set
-    then, so this is harmless on versions that do not forget it."""
-    try:
-        _getframe(2)  # 0: this function, 1: _excepthook, 2: its caller
-        return
-    except ValueError:
-        pass
-    try:
-        exec("raise KeyboardInterrupt", {})
-    except KeyboardInterrupt:
-        pass
 
 
 def _thread_excepthook(args):
@@ -603,8 +608,15 @@ def _thread_excepthook(args):
     return _prev_thread_excepthook(args)
 
 
-def _install_crash_hooks():
-    global _prev_excepthook, _prev_thread_excepthook
+def install_crash_hooks():
+    """Wrap the current ``sys.excepthook`` and ``threading.excepthook``.
+
+    Called by sitecustomize.py once the next sitecustomize has run.  Once
+    per process, and only while tracing."""
+    global _prev_excepthook, _prev_thread_excepthook, _hooks_installed
+    if _hooks_installed or _tool is None:
+        return
+    _hooks_installed = True
     _prev_excepthook = sys.excepthook
     _prev_thread_excepthook = threading.excepthook
     sys.excepthook = _excepthook
@@ -766,6 +778,10 @@ def _backpressure():
     it moves: until then the backlog grows, and a note says so.
     """
     global _stall_mark, _stall_noted
+    if _get_ident() == _flusher_ident:
+        # The flusher itself, running a finalizer that recorded an end: it
+        # would wait for itself.
+        return
     mark = _flushed
     if mark == _stall_mark:
         return
@@ -939,7 +955,6 @@ def start(config):
         atexit.register(final_flush, "atexit")
         if hasattr(os, "register_at_fork"):
             os.register_at_fork(after_in_child=_after_fork_in_child)
-        _install_crash_hooks()
         os._exit = _exit
     except BaseException:
         _teardown()

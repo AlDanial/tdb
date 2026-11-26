@@ -6,7 +6,8 @@ every Python process of the program imports this file at start-up.  When
 or, on an interpreter that cannot be traced, leaves a marker file in the
 ``TDB_TRACE_PARTS`` directory.  It then takes this directory off
 ``sys.path`` and imports the next ``sitecustomize`` on it, so a distro or
-venv ``sitecustomize`` still runs.
+venv ``sitecustomize`` still runs, and only then installs the tracer's
+crash hooks around any hook that one installed.
 
 Rules: stdlib only, never imports tdb, never raises, and must parse on
 Python 3.7+ (no walrus, no ``match``, no f-string ``=``, no
@@ -138,6 +139,15 @@ def _main():
     try:
         _drop_agent_dir(agent_real)
         _chain(agent_real)
+    except BaseException:
+        pass
+    try:
+        # Only now: a hook the next sitecustomize installed (Debian's and
+        # Ubuntu's apport hook never calls the one before it) is then the
+        # one the tracer's hooks call, instead of replacing them.
+        agent = sys.modules.get(_AGENT)
+        if agent is not None:
+            agent.install_crash_hooks()
     except BaseException:
         pass
 

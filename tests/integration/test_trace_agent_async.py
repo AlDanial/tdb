@@ -49,6 +49,7 @@ def test_task_names_and_unique_ids(tmp_path):
 def test_generator_runs(tmp_path):
     src = "def gen(n):\n    for i in range(n):\n        yield i\nlist(zip(gen(3), gen(3)))\n"
     parts = run_traced(tmp_path, src)
+    assert len(parts.calls("gen")) == 2
     for c in parts.calls("gen"):
         ks = [r["k"] for r in parts.events_for(c["_stem"], c["c"])]
         assert (
@@ -84,6 +85,8 @@ def test_cancelled_coroutine(tmp_path):  # Review Focus 5
         "asyncio.run(main())\n"
     )
     parts = run_traced(tmp_path, src, [target(tmp_path / "prog.py", "inner", "outer")])
+    # One of each per way of cancelling (task.cancel(), wait_for's timeout).
+    assert len(parts.calls("inner")) == len(parts.calls("outer")) == 2
     for qual in ("inner", "outer"):
         for c in parts.calls(qual):
             evs = parts.events_for(c["_stem"], c["c"])
@@ -114,20 +117,78 @@ def test_thread_crash_recorded(tmp_path):
     assert "Exception in thread w" in parts.stderr
 
 
+def _plain_run(tmp_path):
+    """Run tmp_path/prog.py again, untraced."""
+    return subprocess.run(
+        [sys.executable, "prog.py"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def _assert_keyboard_interrupt_crash(parts):
+    (cr,) = parts.all("crash")
+    assert cr["exc"] == "KeyboardInterrupt" and cr["where"].endswith("prog.py:2")
+    lines = cr["tb"].split("\n")
+    assert lines[0] == "Traceback (most recent call last):"
+    assert lines[-1] == "KeyboardInterrupt"
+    assert any(ln.endswith('prog.py", line 2, in f') for ln in lines)
+
+
+KEYBOARD_INTERRUPT = "def f():\n    raise KeyboardInterrupt\nf()\n"
+
+
 @pytest.mark.skipif(os.name == "nt", reason="death by signal")
 def test_uncaught_keyboard_interrupt_still_dies_by_sigint(tmp_path):
     # Python dies by SIGINT after an uncaught KeyboardInterrupt (shells
     # stop a loop on that).  On 3.12 any exec of a string, as importing
-    # traceback for the crash record does, made it exit 1 instead.
-    parts = run_traced(tmp_path, "def f():\n    raise KeyboardInterrupt\nf()\n")
+    # traceback for the crash record did, made it exit 1 instead.
+    parts = run_traced(tmp_path, KEYBOARD_INTERRUPT)
     assert parts.returncode == -signal.SIGINT
-    assert [c["exc"] for c in parts.all("crash")] == ["KeyboardInterrupt"]
-    # ... but only when the interpreter reports it, not the program.
+    _assert_keyboard_interrupt_crash(parts)
+    # A program reporting one itself is not dying.
     src = (
         "import sys\ntry:\n    raise KeyboardInterrupt\n"
         "except KeyboardInterrupt:\n    sys.excepthook(*sys.exc_info())\n"
     )
     assert run_traced(tmp_path, src).returncode == 0
+
+
+@pytest.mark.skipif(os.name == "nt", reason="death by signal")
+def test_keyboard_interrupt_through_a_chaining_program_hook(tmp_path):
+    # The program's own hook calls ours (its previous hook), so our frame
+    # is not the interpreter's direct callee: still death by SIGINT.
+    src = (
+        "def f():\n    raise KeyboardInterrupt\nimport sys\nprev = sys.excepthook\n"
+        "def h(t, v, tb):\n    sys.stderr.write('hook\\n')\n    prev(t, v, tb)\n"
+        "sys.excepthook = h\nf()\n"
+    )
+    parts = run_traced(tmp_path, src)
+    plain = _plain_run(tmp_path)
+    assert parts.returncode == plain.returncode == -signal.SIGINT
+    assert parts.stderr == plain.stderr and parts.stderr.startswith("hook\n")
+    _assert_keyboard_interrupt_crash(parts)
+
+
+def test_crash_recorded_under_a_non_chaining_distro_hook(tmp_path):
+    # Debian/Ubuntu's sitecustomize (apport) sets sys.excepthook without
+    # calling the one before it.  It runs after the tracer starts, so the
+    # tracer's hooks must be installed after it, around it.
+    fake = (
+        "import sys\ndef _hook(t, v, tb):\n"
+        "    sys.stderr.write('distro hook: %s\\n' % t.__name__)\n"
+        "sys.excepthook = _hook\n"
+    )
+    parts = run_traced(
+        tmp_path,
+        "def f():\n    raise ValueError('x')\nf()\n",
+        files={"sitecustomize.py": fake},
+        extra_env={"PYTHONPATH": str(tmp_path)},
+    )
+    assert [c["exc"] for c in parts.all("crash")] == ["ValueError: x"]
+    assert parts.stderr == "distro hook: ValueError\n" and parts.returncode == 1
 
 
 def test_crash_output_and_status_unchanged(tmp_path):
@@ -141,13 +202,7 @@ def test_crash_output_and_status_unchanged(tmp_path):
         "def main():\n    raise ValueError('main')\nmain()\n"
     )
     parts = run_traced(tmp_path, src)
-    plain = subprocess.run(
-        [sys.executable, "prog.py"],
-        cwd=tmp_path,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    plain = _plain_run(tmp_path)
     assert (parts.returncode, parts.stderr) == (plain.returncode, plain.stderr)
     assert [c["exc"] for c in parts.all("crash")] == [
         "RuntimeError: t",
