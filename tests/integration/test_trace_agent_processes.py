@@ -358,8 +358,9 @@ def test_fork_child_with_a_stuck_flusher_exits_within_tdbs_wait(tmp_path):
 
 # A KeyboardInterrupt raised once, in the parent, at one point of the
 # at-fork hooks, as a signal handler's exception can be (Python prints and
-# drops it): afterwards there is still exactly one flusher, and every call
-# is written once.  The writes are slow, so two flushers would overlap.
+# drops it).  One fork only, so no later fork can repair anything: after it
+# there is exactly one flusher, and every call is written once.  The writes
+# are slow, so two flushers would overlap.
 INTERRUPTED_FORK = (
     "import os, signal, time, _tdb_trace_agent as A\n"
     "def f():\n    pass\n"
@@ -373,7 +374,6 @@ INTERRUPTED_FORK = (
     "    os.waitpid(pid, 0)\n"
     "for _ in range(20_000):\n    f()\n"
     "fork()\n"  # interrupted
-    "fork()\n"
     "for _ in range(20_000):\n    f()\n"
     "time.sleep(0.8)\n"  # only a running flusher can write these before the SIGKILL
     "tasks = '/proc/self/task'\n"
@@ -398,12 +398,17 @@ PARENT_WINDOWS = {
     "started": "start = A._start_new_thread\ndef start_then_raise(fn, args):\n"
     "    ident = start(fn, args)\n" + RAISE_IN_PARENT + "    return ident\n"
     "A._start_new_thread = start_then_raise\n",
-    # before both tries to start one: none after this fork, until the next
+    # before both tries of the first after-fork hook: the second one starts it
     "not started": "start = A._start_new_thread\narmed.append(1)\n"
     "def raise_then_start(fn, args):\n"
     + RAISE_IN_PARENT
     + "    return start(fn, args)\n"
     "A._start_new_thread = raise_then_start\n",
+    # in the first after-fork hook before its try, as at its very start (see
+    # the next test for a real signal there): the second one starts it
+    "entry": "restart = A._restart_flusher\ndef raise_then_restart():\n"
+    + RAISE_IN_PARENT
+    + "    return restart()\nA._restart_flusher = raise_then_restart\n",
 }
 
 
@@ -421,6 +426,93 @@ def test_interrupted_fork_hook_leaves_one_flusher(tmp_path, window):
     main = next(s for s, h in hdrs.items() if h["ppid"] == os.getpid())
     ids = [r["c"] for r in parts.records[main] if r["k"] == "call"]
     assert len(ids) == len(set(ids)) == 40_000
+
+
+# The tracer started by the program itself (sitecustomize does not: the
+# config variable is empty), after the program has registered at-fork hooks
+# of its own, which then run before the tracer's.
+STARTED_LATE = (
+    "import json, os, sys\n"
+    "sys.path.insert(0, os.environ['PYTHONPATH'].split(os.pathsep)[0])\n"
+    "import _tdb_trace_agent as A\n"
+    "with open(os.path.join(os.environ['TDB_TRACE_PARTS'], 'config.json')) as fh:\n"
+    "    A.start(json.load(fh))\n"
+)
+
+
+def _run_started_late(tmp_path, hooks, rest):
+    src = "import functools, os, signal, sys, time\n" + hooks + STARTED_LATE + rest
+    return run_traced(
+        tmp_path,
+        src,
+        [target(tmp_path / "prog.py", "f")],
+        extra_env={"TDB_TRACE_CONFIG": ""},
+        own_group=True,
+    )
+
+
+@pytest.mark.skipif(os.name == "nt", reason="fork, SIGALRM, SIGKILL")
+def test_signal_pending_as_the_fork_returns_leaves_a_flusher(tmp_path):
+    # A signal that arrives during the fork() call is handled at the first
+    # Python code after it: the start of the tracer's first after-fork hook
+    # in the parent, before any try.  C-level hooks that run before it make
+    # one pending there (a timer, then a wait in C, with no signal check),
+    # and its handler raises.  One fork only, then the SIGKILL.
+    hooks = (
+        "parent, armed = os.getpid(), [1]\n"
+        "def handler(signum, frame):\n"
+        "    if armed and os.getpid() == parent:\n"
+        "        armed.pop(); raise KeyboardInterrupt\n"
+        "signal.signal(signal.SIGALRM, handler)\n"
+        "os.register_at_fork(after_in_parent=functools.partial(\n"
+        "    signal.setitimer, signal.ITIMER_REAL, 0.001))\n"
+        "os.register_at_fork(after_in_parent=functools.partial(sum, range(10_000_000)))\n"
+    )
+    rest = (
+        "def f():\n    pass\n"
+        "for _ in range(20_000):\n    f()\n"
+        "pid = os.fork()\n"
+        "if pid == 0:\n    os._exit(0)\n"
+        "os.waitpid(pid, 0)\n"
+        "for _ in range(20_000):\n    f()\n"
+        "time.sleep(0.8)\n"  # only a running flusher can write these
+        "tasks = '/proc/self/task'\n"
+        "print(len(os.listdir(tasks)) if os.path.isdir(tasks) else 2, armed, flush=True)\n"
+        "os.kill(os.getpid(), signal.SIGKILL)\n"
+    )
+    parts = _run_started_late(tmp_path, hooks, rest)
+    assert parts.stdout.split() == ["2", "[]"], parts.stderr  # main + 1 flusher
+    assert "KeyboardInterrupt" in parts.stderr and parts.returncode == -9
+    hdrs = {stem: recs[0] for stem, recs in parts.records.items()}
+    main = next(s for s, h in hdrs.items() if h["ppid"] == os.getpid())
+    ids = [r["c"] for r in parts.records[main] if r["k"] == "call"]
+    assert len(ids) == len(set(ids)) == 40_000
+
+
+@pytest.mark.skipif(os.name == "nt", reason="fork")
+def test_child_exiting_before_its_part_is_set_up_writes_nothing(tmp_path):
+    # In the child, other at-fork hooks (threading's, for one) run before the
+    # tracer's, while it still holds the parent's part and buffer.  A child
+    # that exits there (here: a hook of the program's calls os._exit, as a
+    # signal handler could) must write nothing into the parent's part.
+    hooks = (
+        "def exit_in_child():\n    os._exit(0)\n"
+        "os.register_at_fork(after_in_child=exit_in_child)\n"
+    )
+    rest = (
+        "def f():\n    pass\n"
+        "for _ in range(1_000):\n    f()\n"
+        "pid = os.fork()\n"
+        "print(os.waitpid(pid, 0)[1], flush=True)\n"
+        "f()\n"
+    )
+    parts = _run_started_late(tmp_path, hooks, rest)
+    assert parts.stdout == "0\n" and parts.returncode == 0, parts.stderr
+    (recs,) = parts.records.values()  # the child has no part
+    assert recs[0]["k"] == "hdr" and recs[0]["ppid"] == os.getpid()
+    ids = [r["c"] for r in recs if r["k"] == "call"]
+    assert len(ids) == len(set(ids)) == 1_001
+    assert [r["how"] for r in recs if r["k"] == "exit"] == ["atexit"]
 
 
 # The same, in the child: it never writes to the parent's part, and a part

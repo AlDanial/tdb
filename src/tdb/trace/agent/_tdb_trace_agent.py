@@ -147,6 +147,7 @@ _tool = None  # claimed sys.monitoring tool id
 _fd = None  # part file descriptor (O_APPEND)
 _part_path = None
 _part_id = None  # (st_dev, st_ino) of the part file: is _fd still ours?
+_part_pid = None  # the process the part is for: a forked child never writes it
 _parts_dir = None
 _mode = None  # "trace" or "discover", for the part header
 _stopped = True  # callbacks return at once while True
@@ -1322,12 +1323,13 @@ def _exit(status):
 #   in a finalizer that waits for a lock the forking thread holds, say) is
 #   left to carry on, and the fork goes ahead (and, until the flusher
 #   moves again, later forks do not wait for it);
-# - in the parent, a flusher is started if none runs;
+# - in the parent, a flusher is started if none runs (_ensure_flusher);
 # - in the child, a hook in C (_CHILD_GATE) first stops recording and all
 #   writing; then everything kept per process starts afresh: new locks, a
 #   part file of its own, published once its header is written, call and
 #   task ids from 1, the fn/th/task records written again, the event cap
-#   and max_hits counted from zero, shorter exit waits, and a new flusher.
+#   and max_hits counted from zero, shorter exit waits, and a new flusher
+#   (_ensure_flusher again after it).
 #   The parent's unwritten records and live calls are the parent's to
 #   write: they are dropped, and the parent's part descriptor is closed (a
 #   raw one, so nothing is flushed through it).
@@ -1340,11 +1342,16 @@ def _exit(status):
 #   test-and-set steps with no call inside (see _start_flusher, and the
 #   flusher taking a request), so it is never wrong;
 # - a request is taken back in a finally, by a step with no call inside;
-# - the parent's hook starts a flusher whenever there is none (once more
-#   if interrupted), so a later fork repairs what an interrupted one left;
+# - _ensure_flusher starts a flusher whenever there is none (once more if
+#   interrupted inside), and is registered twice, one after the other: a
+#   signal that arrived during the fork() call is handled at the first
+#   Python code after it, the first one's very start, before any try; the
+#   second then starts the flusher;
 # - until the child's hook has finished, the gate keeps the child from
 #   recording and from writing anything to the parent's part; and the
-#   child's part is published only with its header in it.
+#   child's part is published only with its header in it.  (final_flush
+#   also writes only in the process its part is for, whatever hook a signal
+#   handler calls os._exit from.)
 
 
 def _wait_gone(tid):
@@ -1414,9 +1421,10 @@ def _restart_flusher():
             raise
 
 
-def _after_fork_in_parent():
-    """os.fork() returned in the parent: start a flusher if none runs (this
-    fork stopped it, or an interrupted one left none)."""
+def _ensure_flusher():
+    """After a fork, in the parent (twice) and in the child (after its
+    set-up): start a flusher if tracing goes on and none runs, because the
+    fork stopped it or an interrupted hook left none (see "fork")."""
     if not _fence and _flusher_ident is None:
         _restart_flusher()
 
@@ -1451,6 +1459,7 @@ def _new_part():
     part file of its own, published only once its header is in it."""
     global _call_ids, _task_ids, _task_counter, _n_events, _n_dropped, _cap_noted
     global _final_done, _broken, _fence, _proc_name, _fd, _part_path, _part_id
+    global _part_pid
     del _buf[:]
     _live.clear()
     _fn_written.clear()
@@ -1470,7 +1479,7 @@ def _new_part():
         view, done = memoryview(data), 0
         while done < len(data):
             done += _os_write(fd, view[done:])
-        st = _fstat(fd)
+        st, pid = _fstat(fd), _getpid()
     except BaseException:
         try:  # no part file without its header
             _os_close(fd)
@@ -1478,7 +1487,8 @@ def _new_part():
         except OSError:
             pass
         raise
-    _fd, _part_path, _part_id = fd, path, (st.st_dev, st.st_ino)
+    # Published with no call in between, so all together or not at all.
+    _fd, _part_path, _part_id, _part_pid = fd, path, (st.st_dev, st.st_ino), pid
     _final_done = _broken = _fence = False
 
 
@@ -1548,7 +1558,7 @@ def start(config):
     that into an agent-error marker."""
     global _tool, _fd, _part_path, _part_id, _parts_dir, _stopped, _interval
     global _targets, _agent_dirs, _proc_name, _repr_limit, _repr, _max_events
-    global _mode
+    global _mode, _part_pid
     if _tool is not None or _fd is not None:
         raise RuntimeError("the tracer is already started in this process")
     if config.get("version") != 1:
@@ -1573,7 +1583,7 @@ def start(config):
         _repr, _max_events, _mode = _make_repr(_repr_limit), max_events, mode
         _fd, _part_path = _open_part(parts_dir)
         st = _fstat(_fd)
-        _part_id, _parts_dir = (st.st_dev, st.st_ino), parts_dir
+        _part_id, _parts_dir, _part_pid = (st.st_dev, st.st_ino), parts_dir, _getpid()
         _proc_name = _current_proc_name() or "MainProcess"
         _buf.append(_header())
         for event, callback in _CALLBACKS:
@@ -1587,12 +1597,17 @@ def start(config):
         _start_flusher()
         atexit.register(final_flush, "atexit")
         if hasattr(os, "register_at_fork"):
+            # In registration order after a fork: _ensure_flusher twice in
+            # the parent; the gate, the set-up, _ensure_flusher in the child.
             os.register_at_fork(
                 before=_before_fork,
-                after_in_parent=_after_fork_in_parent,
-                after_in_child=_CHILD_GATE,  # runs first in the child
+                after_in_parent=_ensure_flusher,
+                after_in_child=_CHILD_GATE,
             )
-            os.register_at_fork(after_in_child=_after_fork_in_child)
+            os.register_at_fork(
+                after_in_parent=_ensure_flusher, after_in_child=_after_fork_in_child
+            )
+            os.register_at_fork(after_in_child=_ensure_flusher)
         os._exit = _exit
     except BaseException:
         _teardown()
@@ -1645,7 +1660,10 @@ def final_flush(how):
     """
     global _final_done, _stopped, _fence
     try:
-        if _final_done or _fd is None:
+        if _final_done or _fd is None or _getpid() != _part_pid:
+            # (A forked child whose own part is not set up yet, as when a
+            # signal handler calls os._exit in an earlier at-fork hook: the
+            # part and the buffer are the parent's.)
             return
         _final_done = True
         _stopped = True  # no new records
