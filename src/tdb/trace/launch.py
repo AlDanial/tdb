@@ -38,6 +38,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from tdb import __version__
 from tdb.languages.python_attach import pid_exists
 from tdb.trace.capture import PART_FILE, CaptureSummary, assemble, write_capture
 from tdb.trace.contract import (
@@ -178,7 +179,7 @@ def run(req: TraceRequest) -> int:
     parts_dir = Path(f"{req.out_base}.parts")
     run_info = {
         "name": req.name,
-        "tdb": _tdb_version(),
+        "tdb": __version__,
         "command": cmd,
         "cwd": os.path.abspath(req.cwd or os.getcwd()),
         "spec": None if req.spec is None else str(req.spec.path),
@@ -188,12 +189,6 @@ def run(req: TraceRequest) -> int:
     proc = _supervise(cmd, req, parts_dir)
     code, main_signal = _exit_status(proc.returncode)
     return _write_outputs(req, parts_dir, run_info, code, proc.pid, main_signal)
-
-
-def _tdb_version() -> str:
-    from tdb import __version__
-
-    return __version__
 
 
 def _create_parts_dir(parts_dir: Path, req: TraceRequest, run_info: dict) -> None:
