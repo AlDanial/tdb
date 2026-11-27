@@ -43,7 +43,10 @@ orders.billing:                    # a module name; found wherever it is importe
   `<error: Type: message>`, or `<error: Type>` when the message is empty.
 - Every problem in a spec is reported in one pass before the program starts: files that do not
   exist, names that match no function (with a "did you mean" hint), expressions that do not
-  compile, and unknown options.
+  compile, unknown options, and keys given twice in one mapping.
+- tdb checks names with its own Python. A source file that it cannot parse, for example one
+  using syntax from the program's newer Python, is not checked: tdb warns
+  `cannot check names (tdb's Python X.Y cannot parse it: ...)` and runs the program.
 - After the run, tdb lists entries that were never called (`tdb: never called: ...`).
 
 ## Launch forms
@@ -59,7 +62,8 @@ tdb --trace spec.yaml ./run-service.sh               # any command
 - With a `.py` file or `-m`, `--python` and `--pv` choose the interpreter. A bare
   `--python NAME` is looked up on `PATH`; a value with a directory part is made absolute against
   tdb's current directory. With `--cwd`, `--pv` (`.venv/bin/python`) is still resolved under
-  tdb's current directory, not under `--cwd`.
+  tdb's current directory, not under `--cwd`. `--pv` is the POSIX venv layout; on Windows use
+  `--python .venv\Scripts\python.exe`.
 - A command is run as is. A script with a Python shebang uses its own interpreter.
 - The program runs under the path you typed, so `sys.argv[0]` and `__file__` are unchanged. With
   `--cwd` the path is made absolute, but symlinks are not resolved.
@@ -78,10 +82,16 @@ of the same service.
   ignored, for example under `nohup`, stays ignored and is not passed on. When the terminal
   hangs up, the kernel already signals the program, so tdb does not pass the SIGHUP on
   (unless tdb is the session leader).
+- Once the program has ended, tdb also survives SIGTERM, SIGHUP and a second Ctrl-\ while it
+  writes the outputs; it finishes them first. Ctrl-C then stops the writes, and the events are
+  kept in `BASE.parts/`.
 - tdb exits the way the program did. If the program died from signal N, tdb dies from signal N,
   so shells and `subprocess` see the same result as untraced. The exceptions are signals that
   dump core, and Windows: there tdb exits with 128+N.
-- The capture header's `exit_code` records 128+N for a death by signal.
+- If an output cannot be written, tdb exits 1 and keeps the events in `BASE.parts/`.
+- The capture header's `exit_code` records 128+N for a death by signal. If the main process was
+  killed before it could write its last events (SIGKILL, say), tdb warns
+  `NAME (pid N) was killed by SIGNAME; its last events may be missing`.
 
 ## Walkthrough: two services and a merge
 
@@ -198,11 +208,17 @@ inventory_service.py:
   counts as your code.
 - Counting stops at 10,000 calls per function; such a line reads `≥10,000 calls  (hot)`. Hot
   functions make big traces, so think before keeping them.
-- Only functions that the spec loader can find in their source files are written. Others
-  (code compiled from templates, a zipapp's members, `type X = ...` values) are counted as
-  omitted, with a note.
-- tdb's own Python parses the sources, so under tdb on 3.11 a file that needs 3.12 syntax
-  (the `type` statement, PEP 695 generics) defines nothing, and `--trace` rejects it too.
+- Counts from several processes are added up; a function shows as hot only if some process
+  stopped counting it.
+- Only functions that the spec loader can find in their source files are written. Others are
+  counted as omitted, with a note giving the reason: not found in their source files
+  (`type X = ...` values), or source file missing or not Python (a zipapp's members, code
+  compiled from templates).
+- tdb's own Python parses the sources. Functions in a `.py` file that it cannot parse, for
+  example one using syntax that only the program's newer Python knows, are all kept, and
+  `--trace` warns that it cannot check their names.
+- If no function of your code was called, tdb writes no spec and warns
+  `no function in your code was called`.
 - A `-m` module installed in site-packages counts as library code, so discovery lists nothing
   for it. Run the module's file instead.
 - Keys are relative to `OUT.yaml`'s directory; `--trace-name`, `--python`, `--pv` and `--cwd`
@@ -210,19 +226,22 @@ inventory_service.py:
 
 ## Output files and the capture schema
 
-`--trace` writes, next to the current directory (or at `--trace-out`):
+`--trace` writes, in the current directory (or at `--trace-out`):
 
 | File | Contents |
 |---|---|
 | `BASE.jsonl` | the capture: one JSON object per line |
 | `BASE.perfetto.json` | the Perfetto trace for this one service |
 
-Both are written atomically. The default `BASE` is `NAME-YYYYmmdd-HHMMSS`. While the program
-runs, per-process event files go in `BASE.parts/`, which is deleted after both outputs are
-written. If tdb itself is killed, or a write fails, `BASE.parts/` is kept, and
+Both are written atomically. The default `BASE` is `NAME-YYYYmmdd-HHMMSS`; if that name is
+taken, for example by a second service with the same name started in the same second, tdb uses
+`BASE-2`, `BASE-3`, and so on. An explicit `--trace-out` whose `BASE.parts/` exists is refused.
+While the program runs, per-process event files go in `BASE.parts/`, which is deleted after both
+outputs are written. If tdb itself is killed, or a write fails, `BASE.parts/` is kept, and
 `tdb --trace-merge BASE.parts --trace-out BASE` turns it into a trace. `--trace-merge`
 writes only `BASE.perfetto.json` (default `merged-YYYYmmdd-HHMMSS`), and takes `.jsonl` files and
-`.parts` directories.
+`.parts` directories; for a `.parts` directory it repeats the warnings `--trace` would have
+printed.
 
 The capture is JSON Lines, sorted by `ts` (epoch nanoseconds). Line 1 is the header:
 
@@ -243,8 +262,9 @@ Then one `process` record per process:
 - `clean`;
 - `abrupt`: no exit record, so the process was killed or crashed hard;
 - `signal:SIGNAME`, for the main process;
-- `exec`: the process ran `exec` into another traced Python program, which gets a second
-  process record with the same pid.
+- `exec`: the process called `os.exec*`. Its events up to the exec are kept, and calls still
+  open then end there. If the new program is a traced Python program, it gets a second process
+  record with the same pid.
 
 Then the events. Every event has `type`, `ts`, `pid`, `process`, `tid`, `thread`, `task_id` and
 `task` (null outside a task), plus:
