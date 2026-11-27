@@ -458,6 +458,28 @@ def test_start_traced_leaves_nothing_running(tmp_path):
         raise AssertionError("a failing test")
     assert proc.returncode == -signal.SIGKILL and proc.stdout.closed
     end = time.monotonic() + 10
-    while Path(f"/proc/{child}").exists() and time.monotonic() < end:
-        time.sleep(0.05)  # init reaps the orphan
-    assert not Path(f"/proc/{child}").exists()
+    while _running(child) and time.monotonic() < end:
+        time.sleep(0.05)
+    assert not _running(child)
+
+
+def _running(pid: int) -> bool:
+    """True while `pid` runs. A killed orphan whose new parent never reaps
+    it stays a zombie: in a container without an init, pytest or uv is
+    pid 1 and reaps only its own children. A zombie runs nothing."""
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    try:
+        with open(f"/proc/{pid}/stat") as f:
+            return f.read().rsplit(")", 1)[1].split()[0] != "Z"
+    except FileNotFoundError:
+        if os.path.isdir("/proc"):
+            return False  # exited between the two checks
+    state = subprocess.run(
+        ["ps", "-o", "stat=", "-p", str(pid)], capture_output=True, text=True
+    ).stdout.strip()
+    return bool(state) and not state.startswith("Z")
