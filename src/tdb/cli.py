@@ -1082,6 +1082,8 @@ def _check_trace_args(
         if value:
             parser.error(f"{mode} cannot be combined with {flag}")
     if not runs:
+        if args.trace_merge and args.program is not None:
+            parser.error("--trace-merge takes no program")
         return
 
     from tdb.trace.launch import is_py_program
@@ -1385,9 +1387,10 @@ def main(argv: list[str] | None = None) -> None:
         sys.exit(vi.return_code or 0)
     if args.trace:
         _run_trace(args)
-    if args.trace_merge or args.trace_discover:
-        flag = "--trace-merge" if args.trace_merge else "--trace-discover"
-        print(f"tdb: error: {flag} is not implemented yet", file=sys.stderr)
+    if args.trace_merge:
+        _run_trace_merge(args)
+    if args.trace_discover:
+        print("tdb: error: --trace-discover is not implemented yet", file=sys.stderr)
         sys.exit(2)
     if args.doc:
         _run_doc()
@@ -1661,6 +1664,14 @@ def _run_run(args: argparse.Namespace) -> None:
         )
     )
     sys.exit(code)
+
+
+def _run_trace_merge(args: argparse.Namespace) -> NoReturn:
+    """`--trace-merge INPUT...`: weave captures into one Perfetto trace."""
+    from tdb.trace.launch import exit_as
+    from tdb.trace.merge import merge_main
+
+    exit_as(merge_main(args.trace_merge, args.trace_out))
 
 
 def _run_trace(args: argparse.Namespace) -> NoReturn:
