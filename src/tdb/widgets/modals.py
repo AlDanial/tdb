@@ -475,23 +475,29 @@ class _DocumentationModal(ModalScreen):
         self._markdown_text = markdown_text
 
     def compose(self) -> ComposeResult:
-        from tdb.widgets.searchable_markdown import (
-            SEARCH_HINT,
-            SearchableMarkdownViewer,
-        )
+        from tdb.widgets.searchable_markdown import SearchableMarkdownViewer
 
         with Vertical(id="dialog"):
             yield SearchableMarkdownViewer(
                 self._markdown_text, show_table_of_contents=True
             )
-            yield Static(
-                f"[dim]{SEARCH_HINT} · ESC or q to close[/dim]",
-                id="doc-footer",
-                markup=True,
-            )
+            yield Static(_doc_footer(results=False), id="doc-footer", markup=True)
+
+    def on_searchable_markdown_viewer_results_mode_changed(self, event) -> None:
+        self.query_one("#doc-footer", Static).update(_doc_footer(event.active))
 
     def action_dismiss_modal(self) -> None:
         self.dismiss(None)
+
+
+def _doc_footer(results: bool) -> str:
+    """The Documentation modal's hint line: the result keys once Enter has
+    put the matches in front of the user, else how to search and close."""
+    from tdb.widgets.searchable_markdown import RESULTS_HINT, SEARCH_HINT
+
+    if results:
+        return f"[dim]{RESULTS_HINT}[/dim]"
+    return f"[dim]{SEARCH_HINT} · ESC or q to close[/dim]"
 
 
 class _AboutModal(ModalScreen):

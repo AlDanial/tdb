@@ -424,3 +424,111 @@ async def test_match_at_end_of_tall_paragraph_is_scrolled_into_view():
         last_row = para.region.bottom - 1
         visible = viewer.scrollable_content_region
         assert visible.y <= last_row < visible.bottom
+
+
+# --- result keys after Enter: n/→, p/←/N, q -----------------------------------
+
+
+async def _search_and_enter(pilot, query: str = "gdb") -> None:
+    await _press(pilot, "slash", *query, "enter")
+
+
+async def test_results_keys_step_after_enter():
+    app = _Host()
+    async with app.run_test(size=(100, 40)) as pilot:
+        await pilot.pause()
+        await _search_and_enter(pilot)
+        viewer = _viewer(app)
+        assert viewer.match_count == 4
+        assert viewer.current_index == 0
+        steps = [("right", 1), ("left", 0), ("p", 3), ("N", 2), ("n", 3)]
+        for key, expected in steps:
+            await _press(pilot, key)
+            assert viewer.current_index == expected, key
+
+
+async def test_q_after_enter_exits_search_not_viewer():
+    app = _Host()
+    async with app.run_test(size=(100, 40)) as pilot:
+        await pilot.pause()
+        await _search_and_enter(pilot)
+        await _press(pilot, "q")
+        assert not _viewer(app).search_active
+        assert _search_spans(app) == []
+        assert not app.quit_called
+        await _press(pilot, "q")
+        assert app.quit_called
+
+
+async def test_q_after_enter_with_no_matches_exits_search():
+    app = _Host()
+    async with app.run_test(size=(100, 40)) as pilot:
+        await pilot.pause()
+        await _search_and_enter(pilot, "zzzz")
+        assert _viewer(app).match_count == 0
+        await _press(pilot, "q")
+        assert not _viewer(app).search_active
+        assert not app.quit_called
+
+
+async def test_arrows_scroll_when_not_searching():
+    app = _Host()
+    async with app.run_test(size=(100, 40)) as pilot:
+        await pilot.pause()
+        viewer = _viewer(app)
+        viewer.document.focus()
+        await pilot.pause()
+        for key, action in (("right", "scroll_right"), ("left", "scroll_left")):
+            active = app.screen.active_bindings[key]
+            assert active.binding.action == action
+            assert active.node is viewer
+        await _search_and_enter(pilot)
+        assert app.screen.active_bindings["right"].binding.action == "next_match_arrow"
+        assert app.screen.active_bindings["left"].binding.action == "prev_match_arrow"
+
+
+async def test_doc_app_footer_shows_results_keys():
+    from tdb.cli import make_doc_app
+
+    app = make_doc_app(DOC)
+    async with app.run_test(size=(100, 40)) as pilot:
+        await pilot.pause()
+        assert app.screen.active_bindings["q"].binding.action == "quit"
+        await _search_and_enter(pilot)
+        active = app.screen.active_bindings
+        for key, group in (
+            ("n", "next"),
+            ("right", "next"),
+            ("p", "previous"),
+            ("left", "previous"),
+            ("N", "previous"),
+        ):
+            binding = active[key].binding
+            assert binding.show, key
+            assert binding.group is not None and binding.group.description == group
+        assert active["q"].binding.action == "exit_search"
+        assert active["q"].binding.description == "exit search"
+        await _press(pilot, "escape")
+        assert app.screen.active_bindings["q"].binding.action == "quit"
+
+
+async def test_documentation_modal_footer_switches_after_enter(tdb_app):
+    from tdb.widgets.modals import _DocumentationModal
+    from tdb.widgets.searchable_markdown import RESULTS_HINT
+
+    app = tdb_app
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        app.action_documentation()
+        await pilot.pause()
+        assert isinstance(app.screen, _DocumentationModal)
+
+        def footer() -> str:
+            return str(app.screen.query_one("#doc-footer", Static).visual)
+
+        await _search_and_enter(pilot)
+        assert RESULTS_HINT in footer()
+        await _press(pilot, "escape")
+        assert SEARCH_HINT in footer()
+        assert "ESC or q to close" in footer()
+        assert isinstance(app.screen, _DocumentationModal)
