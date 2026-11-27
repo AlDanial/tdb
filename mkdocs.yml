@@ -104,6 +104,7 @@ nav:
       - Async Task Inspector: python/async-tasks.md
       - Thread Inspector: python/threads.md
       - Process Inspector: python/processes.md
+      - Function Tracing: python/tracing.md
   - Automation:
       - JSON-RPC Server: automation/json-rpc.md
       - Recording and Replay: automation/record-replay.md

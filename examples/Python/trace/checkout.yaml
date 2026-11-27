@@ -1,0 +1,17 @@
+# Spec for the two example services.  Use the same file for both:
+#   tdb --trace checkout.yaml --trace-name inventory inventory_service.py ...
+#   tdb --trace checkout.yaml --trace-name orders orders_service.py ...
+# Keys are paths relative to this file; each entry names functions to record.
+
+inventory_service.py:
+  - handle_client              # the asyncio handler: one task lane per connection
+  - lookup:                    # the executor function: runs on a "db_N" thread
+      capture: [sku, qty]
+      return: true
+
+orders_service.py:
+  - handle_order               # the asyncio handler
+  - ask_inventory:             # the client call to the inventory service
+      capture: [port, sku, qty]
+      return: true
+  - beat                       # runs on the "heartbeat" thread

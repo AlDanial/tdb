@@ -74,6 +74,9 @@
          # docs/ and mkdocs.yml; per-directory globs keep docs/superpowers/ out.
          "mkdocs.yml", "docs/*.md", "docs/languages/*.md", "docs/using/*.md",
          "docs/python/*.md", "docs/automation/*.md", "docs/reference/*.md",
+         # The tracing agent: two stdlib-only files, no __init__.py, loaded by
+         # path through PYTHONPATH in the traced program, never imported as tdb.
+         "trace/agent/*.py",
          "adapters/perl/helpers.pl", "adapters/perl/padwalker_src/PadWalker.pm", "adapters/perl/padwalker_src/PadWalker.xs", "adapters/perl/padwalker_src/Makefile.PL", "adapters/perl/Devel/TdbRemote.pm", "adapters/perl/Devel/TdbCompile.pm", "adapters/ruby/tdb.rb", "adapters/ruby/ready/tdb_rdbg_ready.rb", "adapters/bash/tdb_harness.sh", "adapters/powershell/tdb_launch.ps1", "adapters/native/tdb.h", "rust_concurrency/probes/gdb_script.py", "rust_concurrency/probes/lldb_script.py",
          # Per-language examples, shown by `tdb --info` ("examples dir").
          # src/tdb/examples is a symlink to the repository's examples/;
@@ -82,6 +85,7 @@
          "examples/Go/*.go", "examples/Go/breakpoint_hook_demo/go.mod",
          "examples/Go/breakpoint_hook_demo/*.go", "examples/OCaml/*.ml",
          "examples/Perl/*.pl", "examples/PowerShell/*.ps1", "examples/Python/*.py",
+         "examples/Python/trace/*.py", "examples/Python/trace/*.yaml",
          "examples/Ruby/*.rb", "examples/Rust/*.rs",
          "examples/Rust/breakpoint_hook_demo/Cargo.toml",
          "examples/Rust/breakpoint_hook_demo/src/*.rs", "examples/bash/*.sh",

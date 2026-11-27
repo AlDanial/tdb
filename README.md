@@ -83,6 +83,22 @@ page for many more examples, and the
 [CLI Reference](https://textual-debugger.readthedocs.io/reference/cli/)
 for every option.
 
+## Function Tracing
+
+`tdb --trace` records calls to the functions you name in a Python program and
+every process it starts, with no breakpoints and no TUI, and writes a
+[Perfetto](https://ui.perfetto.dev) trace with one lane per thread and per
+`asyncio` task. `--trace-merge` weaves the traces of several services into one
+timeline, and `--trace-discover` writes a starter spec.
+
+```bash
+tdb --trace checkout.yaml --trace-name orders orders_service.py -- --port 8002
+tdb --trace-merge inv.jsonl ord.jsonl --trace-out all    # open all.perfetto.json in ui.perfetto.dev
+```
+
+See [Function Tracing](https://textual-debugger.readthedocs.io/python/tracing/)
+for the spec format, a two-service walkthrough, and the limitations.
+
 ## Acknowledgments
 
 `tdb` is built with Will McGugan's [textual](https://github.com/Textualize/textual)
