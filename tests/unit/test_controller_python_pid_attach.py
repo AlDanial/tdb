@@ -4,7 +4,9 @@ a Python target, and the front ends report what happened."""
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import dataclasses
+import time
 
 import pytest
 
@@ -245,6 +247,37 @@ async def test_stop_before_target_connects_gives_up_after_the_limit(monkeypatch)
     assert adapter.cancelled
     assert "configurationDone" not in log
     await asyncio.wait({task}, timeout=1)
+
+
+class _GivesUpOnQuit(DebugpyAdapter):
+    """Injection whose script was still being queued: told to quit, it
+    withdraws the script, so the target will never connect."""
+
+    quirks = PidAttachDebugpyAdapter.quirks
+
+    async def after_attach_request(self, initialized, quitting):
+        await quitting.wait()
+        raise PidAttachCancelled("cannot attach to pid 4242: quitting")
+
+
+async def test_stop_returns_once_injection_gives_up(monkeypatch):
+    # Ctrl-C while sys.remote_exec queued the script: tdb waited the whole
+    # PID_ATTACH_QUIT for a connection that could no longer come (CI's
+    # test_ctrl_c_during_headless_attach_leaves_program_running).
+    monkeypatch.setattr(_timeouts, "PID_ATTACH_QUIT", 3.0)
+    log: list[str] = []
+    ctrl = _controller(_GivesUpOnQuit(), log)
+    attach = asyncio.create_task(ctrl.remote_attach("127.0.0.1", 0))
+    await asyncio.sleep(0.01)
+    attach.cancel()  # what Ctrl-C does to the headless setup
+    with contextlib.suppress(asyncio.CancelledError):
+        await attach
+    start = time.monotonic()
+    await ctrl.stop()
+    assert time.monotonic() - start < 1.0
+    assert "configurationDone" not in log and "stop" in log
+    hook = ctrl._attach_hook
+    assert hook.done() and not hook._log_traceback  # its error was collected
 
 
 async def test_stop_mid_handshake_finishes_it_before_disconnecting(monkeypatch):
