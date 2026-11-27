@@ -17,7 +17,13 @@
    for its traced children to finish writing;
 5. assembles ``BASE.jsonl`` and ``BASE.perfetto.json``, each written to a
    temp file and renamed into place, removes the parts directory only
-   after both are written, and prints the summary.
+   after both are written, and prints the summary.  Meanwhile SIGQUIT,
+   SIGTERM and SIGHUP (SIGBREAK, SIGTERM on Windows) do not stop it: it
+   finishes the writes, then exits as the program did.
+
+A default BASE (no ``--trace-out``) that is taken, by the parts directory
+or the outputs of another run started in the same second, becomes
+``BASE-2``, ``BASE-3``, ...; an explicit one is refused instead.
 
 ``tdb --trace-discover OUT.yaml PROGRAM`` takes the same path in discover
 mode, with ``OUT.yaml.parts/`` as the parts directory, and in step 5
@@ -43,8 +49,8 @@ import socket
 import subprocess
 import sys
 import time
-from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from collections.abc import Callable, Iterator, Sequence
+from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 from typing import NoReturn
@@ -76,6 +82,14 @@ _SURVIVED = (
 )
 # Signals tdb passes on to the program.
 _FORWARDED = (signal.SIGTERM,) if os.name == "nt" else (signal.SIGTERM, _SIGHUP)
+# Signals tdb survives while it writes the outputs, the program gone (a
+# SIGINT stops the writes instead, keeping the events in the parts).
+_WRITE_HELD = (
+    (signal.SIGBREAK, signal.SIGTERM)
+    if os.name == "nt"
+    else (signal.SIGQUIT, signal.SIGTERM, _SIGHUP)
+)
+_NAME_TRIES = 1000  # BASE, BASE-2, ... BASE-1000 for a default BASE
 # A program killed by one of these dumps core; tdb then exits 128 + N
 # rather than dumping a core of its own as a false trail.
 _CORE_SIGNALS = frozenset(
@@ -124,6 +138,9 @@ class TraceRequest:
     spec: TraceSpec | None = None
     discover_out: Path | None = None
     max_events: int = DEFAULT_MAX_EVENTS
+    # out_base is the default name (no --trace-out): if taken, a free
+    # BASE-2, BASE-3, ... is used instead (Ruling 31).
+    out_is_default: bool = False
 
 
 def default_name(program: str | None, module: str | None) -> str:
@@ -249,8 +266,13 @@ def run(req: TraceRequest) -> int:
             "host": socket.gethostname(),
         }
         roots = _user_roots(req, cmd) if discover else []
-        _create_parts_dir(parts_dir, req, run_info, user_roots=roots)
+        if req.out_is_default and not discover:
+            req = _claim_default_base(req)
+            parts_dir = Path(f"{req.out_base}.parts")
+        else:
+            _make_parts_dir(parts_dir, req)
         created = True
+        _fill_parts_dir(parts_dir, req, run_info, user_roots=roots)
         started, start = datetime.now(), time.monotonic()
         proc = _supervise(cmd, req, parts_dir)
         duration = time.monotonic() - start
@@ -258,19 +280,20 @@ def run(req: TraceRequest) -> int:
         if created:
             _remove_unused(parts_dir)
         return _INTERRUPTED
-    code, main_signal = _exit_status(proc.returncode)
-    try:
-        if discover:
-            ended = (code, proc.pid, main_signal)
-            written = _write_discovery(
-                req, parts_dir, run_info, ended, started, duration
-            )
-        else:
-            written = _write_outputs(
-                req, parts_dir, run_info, code, proc.pid, main_signal
-            )
-    except KeyboardInterrupt:
-        return _INTERRUPTED
+    with _surviving_signals():
+        code, main_signal = _exit_status(proc.returncode)
+        try:
+            if discover:
+                ended = (code, proc.pid, main_signal)
+                written = _write_discovery(
+                    req, parts_dir, run_info, ended, started, duration
+                )
+            else:
+                written = _write_outputs(
+                    req, parts_dir, run_info, code, proc.pid, main_signal
+                )
+        except KeyboardInterrupt:
+            return _INTERRUPTED
     return _end_status(proc.returncode) if written else 1
 
 
@@ -354,6 +377,10 @@ def exit_as(status: int) -> NoReturn:
         with contextlib.suppress(OSError):
             os.kill(os.getpid(), sig)
         status = 128 + sig  # still here: the signal is blocked
+    if status > 0x7FFFFFFF:
+        # Windows: an NTSTATUS such as 0xC000013A (Ctrl-C), which older
+        # Pythons' sys.exit overflows (gh-125842); the same 32 bits, signed.
+        status -= 1 << 32
     sys.exit(status)
 
 
@@ -364,9 +391,7 @@ def _remove_unused(parts_dir: Path) -> None:
             shutil.rmtree(parts_dir)
 
 
-def _create_parts_dir(
-    parts_dir: Path, req: TraceRequest, run_info: dict, *, user_roots: list[str]
-) -> None:
+def _make_parts_dir(parts_dir: Path, req: TraceRequest) -> None:
     try:
         parts_dir.mkdir()
     except FileExistsError:
@@ -379,6 +404,32 @@ def _create_parts_dir(
         ) from None
     except OSError as exc:
         raise LaunchError(f"cannot create {parts_dir}: {exc}") from None
+
+
+def _claim_default_base(req: TraceRequest) -> TraceRequest:
+    """Ruling 31: the default BASE, else the first of BASE-2, BASE-3, ...
+    whose parts directory and outputs do not exist (another service with
+    the same name started in the same second, say).  Makes its parts
+    directory, taking it from a run that races for the same name."""
+    for n in range(1, _NAME_TRIES + 1):
+        base = req.out_base if n == 1 else Path(f"{req.out_base}-{n}")
+        if any(Path(f"{base}{ext}").exists() for ext in (".jsonl", ".perfetto.json")):
+            continue
+        try:
+            Path(f"{base}.parts").mkdir()
+        except FileExistsError:
+            continue
+        except OSError as exc:
+            raise LaunchError(f"cannot create {base}.parts: {exc}") from None
+        return replace(req, out_base=base)
+    raise LaunchError(
+        f"{req.out_base} and {req.out_base}-2 to -{_NAME_TRIES} are all taken"
+    )
+
+
+def _fill_parts_dir(
+    parts_dir: Path, req: TraceRequest, run_info: dict, *, user_roots: list[str]
+) -> None:
     try:
         (parts_dir / "run.json").write_text(
             json.dumps(run_info, indent=2) + "\n", encoding="utf-8"
@@ -465,6 +516,29 @@ def _supervise(cmd: list[str], req: TraceRequest, parts_dir: Path) -> subprocess
             # the closest it can be restored to.
             signal.signal(sig, signal.SIG_DFL if handler is None else handler)
     return proc
+
+
+@contextlib.contextmanager
+def _surviving_signals() -> Iterator[None]:
+    """While tdb assembles and writes the outputs, once the program has
+    ended: SIGQUIT (a second Ctrl-\\), SIGTERM and SIGHUP (Windows:
+    SIGBREAK, SIGTERM) would kill it half-way, leaving the parts and a
+    temp file and no word about them.  Instead it survives them, finishes
+    the writes, and exits as the program did (Ruling 24).  A signal tdb
+    inherited as ignored stays ignored (Ruling 22)."""
+    previous: dict[int, object] = {}
+    try:
+        for sig in _WRITE_HELD:
+            if signal.getsignal(sig) is not signal.SIG_IGN:
+                previous[sig] = signal.signal(sig, _held)
+        yield
+    finally:
+        for sig, handler in previous.items():
+            signal.signal(sig, signal.SIG_DFL if handler is None else handler)
+
+
+def _held(signum, frame) -> None:
+    """A write-phase signal: the writes go on (see _surviving_signals)."""
 
 
 def _send(proc: subprocess.Popen, sig: int) -> None:
@@ -665,7 +739,7 @@ def _write_discovery(
             )
     if not found.functions and summary.processes:
         lines.append(NOTHING_CALLED_WARNING)
-    lines += _warning_lines(summary)
+    lines += warning_lines(summary)
     try:
         shutil.rmtree(parts_dir)
     except OSError as exc:
@@ -699,15 +773,16 @@ def _summary_lines(
         f'tdb: trace "{name}": {counts}',
         f"tdb: wrote {jsonl}",
         f"tdb: wrote {perfetto}  (open in https://ui.perfetto.dev)",
-        *_warning_lines(s, never_called),
+        *warning_lines(s, never_called),
     ]
 
 
-def _warning_lines(
+def warning_lines(
     summary: CaptureSummary, never_called: Sequence[str] = ()
 ) -> list[str]:
     """What the outputs (a capture, or a discovered spec) may be missing,
-    one string per stderr line; shared by --trace and --trace-discover."""
+    one string per stderr line; shared by --trace, --trace-discover and
+    --trace-merge (for a parts directory)."""
     s = summary
     lines = []
     for m in s.skipped:

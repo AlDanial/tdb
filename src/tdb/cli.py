@@ -1723,6 +1723,7 @@ def _run_trace(args: argparse.Namespace) -> NoReturn:
         spec=args.trace_spec,
         discover_out=Path(args.trace_discover) if args.trace_discover else None,
         max_events=args.trace_max_events or DEFAULT_MAX_EVENTS,
+        out_is_default=not args.trace_out,
     )
     try:
         status = launch.run(req)

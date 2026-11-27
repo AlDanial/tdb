@@ -5,7 +5,8 @@ parts directory.  ``assemble`` reads that directory and produces a
 :class:`Capture` (header, one ``process`` record per part, and events sorted
 by epoch timestamp) plus a :class:`CaptureSummary`.  ``write_capture`` and
 ``load_capture`` store and read the self-contained ``BASE.jsonl`` form, and
-``load_input`` accepts either that file or a parts directory (for merging).
+``load_input`` and ``read_input`` accept either that file or a parts
+directory (for merging).
 
 Ids (call, task, fn, thread) are meaningful only within one part, so
 definitions are resolved per part.  When a pid has several parts (a forked
@@ -343,8 +344,9 @@ def load_capture(path: Path) -> Capture:
     return Capture(header, processes, events)
 
 
-def load_input(path: Path) -> Capture:
-    """Load a ``.jsonl`` capture or assemble a ``.parts`` directory."""
+def read_input(path: Path) -> tuple[Capture, CaptureSummary | None]:
+    """Load a ``.jsonl`` capture, or assemble a ``.parts`` directory; the
+    latter also gives its summary (what the trace may be missing)."""
     path = Path(path)
     if path.is_dir():
         try:
@@ -353,5 +355,10 @@ def load_input(path: Path) -> Capture:
             run = {}
         if not isinstance(run, dict):
             run = {}
-        return assemble(path, header={**run, "exit_code": None})[0]
-    return load_capture(path)
+        return assemble(path, header={**run, "exit_code": None})
+    return load_capture(path), None
+
+
+def load_input(path: Path) -> Capture:
+    """Load a ``.jsonl`` capture or assemble a ``.parts`` directory."""
+    return read_input(path)[0]

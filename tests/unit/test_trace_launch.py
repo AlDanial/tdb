@@ -490,3 +490,115 @@ def test_ctrl_c_before_creation_leaves_an_earlier_parts_dir(tmp_path, monkeypatc
     monkeypatch.setattr(launch, "resolve_command", interrupted)
     assert run(request(tmp_path, program="x")) == launch._INTERRUPTED
     assert os.listdir(tmp_path) == ["o.parts"]
+
+
+# --- final review L4, L5, M3 ---------------------------------------------------
+
+
+def test_exit_as_keeps_a_windows_status_in_range():
+    """L5 (Ruling 30): Windows reports a Ctrl-C'd program's exit as
+    0xC000013A, which sys.exit overflows on older Pythons (gh-125842):
+    passed on as the same 32 bits, signed."""
+    with pytest.raises(SystemExit) as ei:
+        launch.exit_as(0xC000013A)
+    assert ei.value.code == 0xC000013A - (1 << 32) == -1073741510
+    with pytest.raises(SystemExit) as ei:
+        launch.exit_as(0x7FFFFFFF)
+    assert ei.value.code == 0x7FFFFFFF
+
+
+WRITE_PHASE = """\
+import os, signal, sys
+from pathlib import Path
+from tdb.trace import discover, launch
+
+mode, tmp = sys.argv[1], Path(sys.argv[2])
+signal.signal(signal.SIGHUP, signal.SIG_IGN)  # inherited as ignored: stays so
+dead = 1 << 30
+hdr = '{"k":"hdr","pid":%d,"ppid":1,"proc":"MainProcess","argv":["x"],' % dead
+hdr += '"py":"3.12.8","wall":1,"pc":0,"mode":"%s"}' % mode
+count = '{"k":"count","file":%s,"qual":"f","line":1,"kind":"function","n":1,'
+count = count % repr(str((tmp / "prog.py").resolve())).replace("'", '"')
+count += '"capped":false}'
+
+
+class Ended:
+    pid, returncode = dead, 0
+
+
+def supervised(cmd, req, parts_dir):
+    text = hdr + "\\n" + count + "\\n" + '{"k":"exit","t":9,"how":"atexit"}\\n'
+    (parts_dir / ("%d.jsonl" % dead)).write_text(text)
+    return Ended()
+
+
+def signalled(real):
+    def write(*args, **kwargs):
+        # Ctrl-\\ again, a SIGTERM, a SIGHUP, while tdb writes: it carries on.
+        held = signal.getsignal(signal.SIGHUP) is signal.SIG_IGN
+        print("SIGHUP still ignored" if held else "SIGHUP replaced", flush=True)
+        for sig in (signal.SIGQUIT, signal.SIGTERM, signal.SIGHUP):
+            os.kill(os.getpid(), sig)
+        return real(*args, **kwargs)
+    return write
+
+
+launch._supervise = supervised
+if mode == "trace":
+    launch.write_capture = signalled(launch.write_capture)
+else:
+    discover.write_spec = signalled(discover.write_spec)
+req = launch.TraceRequest(
+    mode=mode, program=sys.executable, module=None, args=[], python=None,
+    cwd=None, name="n", out_base=tmp / "o", discover_out=tmp / "out.yaml",
+)
+launch.exit_as(launch.run(req))
+"""
+
+
+@posix
+@pytest.mark.parametrize("mode", ["trace", "discover"])
+def test_signals_while_writing_do_not_stop_the_writes(tmp_path, mode):
+    """L4: once the program has ended, SIGQUIT (a second Ctrl-\\), SIGTERM
+    and SIGHUP no longer kill tdb half-way through its writes (leaving
+    the parts and a temp file, and no word): it finishes them and exits
+    as the program did.  A signal it inherited as ignored stays so."""
+    (tmp_path / "prog.py").write_text("def f():\n    pass\n")
+
+    def no_core_dumps():
+        import resource
+
+        resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+
+    done = subprocess.run(
+        [sys.executable, "-P", "-c", WRITE_PHASE, mode, str(tmp_path)],
+        env={**os.environ, "PYTHONPATH": str(SRC_DIR)},
+        capture_output=True,
+        text=True,
+        timeout=60,
+        preexec_fn=no_core_dumps,
+    )
+    assert done.returncode == 0, done.stderr
+    assert done.stdout == "SIGHUP still ignored\n"
+    outputs = ["o.jsonl", "o.perfetto.json"] if mode == "trace" else ["out.yaml"]
+    assert sorted(os.listdir(tmp_path)) == sorted(outputs + ["prog.py"])
+    assert "tdb: wrote" in done.stderr
+
+
+def test_default_out_base_in_use_gets_a_number(tmp_path):
+    """M3 (Ruling 31): two services both named main, started in the same
+    second from one cwd: a default BASE whose parts or outputs exist
+    takes the first free -2, -3, ...; an explicit --trace-out keeps
+    refusing (test_existing_parts_dir_refused)."""
+    (tmp_path / "o.parts").mkdir()
+    (tmp_path / "o-2.perfetto.json").write_text("")
+    req = request(
+        tmp_path, program=sys.executable, args=["-c", "pass"], out_is_default=True
+    )
+    assert run(req) == 0
+    assert sorted(os.listdir(tmp_path)) == [
+        "o-2.perfetto.json",
+        "o-3.jsonl",
+        "o-3.perfetto.json",
+        "o.parts",
+    ]

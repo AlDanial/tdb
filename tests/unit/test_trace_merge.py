@@ -156,3 +156,43 @@ def test_cli_rejects_program_message(capsys):
 def test_cli_accepts_inputs():
     a = parse_args(["--trace-merge", "a.jsonl", "b.jsonl", "--trace-out", "m"])
     assert a.trace_merge == ["a.jsonl", "b.jsonl"] and a.program is None
+
+
+# --- final review F7, M11 ------------------------------------------------------
+
+
+def test_parts_dir_input_repeats_its_warnings(tmp_path, capsys):
+    """F7: a leftover parts directory is assembled as --trace would; what
+    the trace may be missing is said, naming the input."""
+    a = make_capture(tmp_path, "orders")
+    parts = make_parts(tmp_path / "left.parts", "payments", T0)
+    hdr = {"k": "hdr", "pid": 11, "ppid": 10, "proc": "MainProcess", "argv": ["c"]}
+    hdr.update(py="3.12.8", wall=T0, pc=0, mode="trace")
+    (parts / "11.jsonl").write_text(json.dumps(hdr) + "\n")  # no exit record
+    marker = {"marker": "skipped", "pid": 12, "argv": ["/opt/py311"]}
+    marker.update(python="3.11.9", reason="python 3.11 is older than 3.12")
+    (parts / "skipped-12.json").write_text(json.dumps(marker))
+    assert merge_main([str(a), str(parts)], str(tmp_path / "m")) == 0
+    err = capsys.readouterr().err.splitlines()
+    assert err[:2] == [
+        f"tdb: warning: {parts}: skipped /opt/py311 (pid 12): "
+        "python 3.11 is older than 3.12",
+        f"tdb: warning: {parts}: pid 11 ended abruptly; its last events may be missing",
+    ]
+    assert err[2].startswith("tdb: wrote ") and len(err) == 3
+
+
+def test_event_without_ts_is_reported_as_unreadable(tmp_path, capsys):
+    """M11: a hand-edited capture whose event lost its ts."""
+    a = make_capture(tmp_path, "orders")
+    lines = a.read_text().splitlines()
+    event = json.loads(lines[-1])
+    del event["ts"]
+    a.write_text("\n".join([*lines[:-1], json.dumps(event)]) + "\n")
+    b = make_capture(tmp_path, "payments")
+    assert merge_main([str(b), str(a)], str(tmp_path / "m")) == 2
+    err = capsys.readouterr().err
+    assert err.startswith(f"tdb: error: cannot read {a}: ") and "Traceback" not in err
+    assert len(err.splitlines()) == 1
+    assert not (tmp_path / "m.perfetto.json").exists()
+    assert not list(tmp_path.glob(".*.tmp"))

@@ -332,3 +332,17 @@ def test_vi_rejects_the_trace_modes(capsys, mode):
     assert f"{mode[0]} cannot be combined with --vi" in err(
         capsys, ["--vi", *mode, "notes.txt"]
     )
+
+
+@pytest.mark.parametrize("out,default", [([], True), (["--trace-out", "x"], False)])
+def test_default_output_base_is_marked(spec, tmp_path, monkeypatch, out, default):
+    """M3 (Ruling 31): only a default BASE may take a -2, -3 suffix."""
+    from tdb import cli
+    from tdb.trace import launch
+
+    seen = []
+    monkeypatch.setattr(launch, "run", lambda req: seen.append(req) or 0)
+    args = parse_args(["--trace", spec, *out, str(tmp_path / "prog.py")])
+    with pytest.raises(SystemExit):
+        cli._run_trace(args)
+    assert [r.out_is_default for r in seen] == [default]
