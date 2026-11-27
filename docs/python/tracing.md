@@ -95,8 +95,8 @@ library only, a driver, and one spec for both:
 - `send_orders.py` sends orders concurrently.
 - `checkout.yaml` names the handler, client and executor functions of both.
 
-`tdb --info` shows where the examples are installed. In the commands below, `EX` stands for
-that directory (or `examples/Python/trace` in a checkout).
+In the commands below, `EX` stands for `<examples dir>/Python/trace`, where `<examples dir>` is
+the "examples dir" row that `tdb --info` prints (in a checkout, `EX` is `examples/Python/trace`).
 
 Terminal 1, the inventory service. `--port 0` picks a free port and the service prints it:
 
