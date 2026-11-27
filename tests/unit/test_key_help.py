@@ -160,3 +160,42 @@ async def test_collect_with_nothing_focused(tdb_app):
         assert help.view == []
         assert help.everywhere
         assert help.title == "Keys"
+
+
+# --- final review: what "Everywhere" claims ----------------------------------
+
+
+async def test_everywhere_lists_ctrl_c_as_code(tdb_app):
+    # Textual's Screen binds ctrl+c to copy_text, which skips when nothing
+    # is selected, so Ctrl+C still reaches the app's "focus Code View".
+    app = tdb_app
+    async with app.run_test(size=(120, 40)) as pilot:
+        await _focus(app, pilot, "variables")
+        help = collect_key_help(app.screen)
+        assert ("^c", "Code") in help.everywhere
+
+
+async def test_code_view_everywhere_omits_keys_the_code_view_takes(tdb_app):
+    app = tdb_app
+    async with app.run_test(size=(120, 40)) as pilot:
+        await _focus(app, pilot, "code")
+        code_view = _code_view(app)
+        code_view.keybindings = KeybindingConfig.from_scheme("vim")
+        code_view.mode = Mode.NAVIGATION
+        assert code_view.keybindings.lookup(Mode.NAVIGATION, "ctrl+b") is not None
+        everywhere = [desc for _, desc in collect_key_help(app.screen).everywhere]
+        assert "Breakpoints" not in everywhere  # Ctrl+B pages up here
+        assert "Escape" not in everywhere and "Focus Code View" not in everywhere
+        code_view.mode = Mode.DEBUG
+        if code_view.keybindings.lookup(Mode.DEBUG, "ctrl+b") is None:
+            everywhere = [desc for _, desc in collect_key_help(app.screen).everywhere]
+            assert "Breakpoints" in everywhere
+
+
+async def test_escape_is_described_by_what_it_does(tdb_app):
+    app = tdb_app
+    async with app.run_test(size=(120, 40)) as pilot:
+        await _focus(app, pilot, "breakpoints")
+        help = collect_key_help(app.screen)
+        assert ("esc", "Focus Code View") in help.everywhere
+        assert all(desc != "Escape" for _, desc in help.everywhere)

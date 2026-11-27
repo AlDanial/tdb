@@ -532,3 +532,8 @@ async def test_documentation_modal_footer_switches_after_enter(tdb_app):
         assert SEARCH_HINT in footer()
         assert "ESC or q to close" in footer()
         assert isinstance(app.screen, _DocumentationModal)
+
+
+def test_search_hint_lists_no_result_keys():
+    # Shown only outside results mode, where n/N do nothing.
+    assert SEARCH_HINT == "/ or Ctrl+F search"

@@ -1013,6 +1013,11 @@ class CodeView(ScrollableContainer, can_focus=True):
             *self.keybindings.format_bindings(self.mode),
         ]
 
+    def consumes_key(self, key: str) -> bool:
+        """True if `_on_key` takes `key` in the current mode, before any
+        app binding for it: the `K` modal leaves those out of Everywhere."""
+        return key == "escape" or self.keybindings.lookup(self.mode, key) is not None
+
     # ---- Footer hint plumbing ----
     # The action_footer_hint_* methods are no-op targets for the c/n/s/p/t/b
     # BINDINGS. Real dispatch happens in `_on_key` via KeybindingConfig,

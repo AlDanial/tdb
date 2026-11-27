@@ -379,3 +379,25 @@ def test_probe_refuses_already_debugged_target(monkeypatch, alive):
 def test_detect_deleted_interpreter_is_python():
     # After a package upgrade /proc/PID/exe names a file that is gone.
     assert registry.detect_executable("/usr/bin/python3.12 (deleted)") == "python"
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="/proc")
+def test_pid_exists_true_when_only_the_main_thread_exited():
+    # The thread-group leader shows Z once its own thread exits, while the
+    # process's other threads run on: that process is alive.
+    code = (
+        "import ctypes, threading, time\n"
+        "threading.Thread(target=time.sleep, args=(60,)).start()\n"
+        "ctypes.CDLL(None).pthread_exit(None)\n"
+    )
+    child = subprocess.Popen([sys.executable, "-c", code])
+    try:
+        deadline = time.monotonic() + 10
+        while _state(child.pid) != "Z":
+            assert time.monotonic() < deadline, "main thread never exited"
+            time.sleep(0.01)
+        assert len(os.listdir(f"/proc/{child.pid}/task")) > 1
+        assert pid_exists(child.pid) is True
+    finally:
+        child.kill()
+        child.wait()

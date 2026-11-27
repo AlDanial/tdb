@@ -37,6 +37,43 @@ def _plain(title: object) -> str:
     return Text.from_markup(str(title)).plain
 
 
+# Actions that raise SkipAction unless they have something to do, so the
+# key goes on down the chain: Ctrl+C copies a selection, else reaches the
+# app's "focus Code View". Both meanings are listed.
+_FALLS_THROUGH = frozenset({"screen.copy_text", "copy_text"})
+
+
+def _handlers(screen: Screen) -> list[tuple[object, str, Binding]]:
+    """(node, key, binding) for every binding that can act on its key, in the
+    order Textual tries them: priority bindings first (app end first), then
+    the rest from the focused widget out. A binding only shadows the ones
+    after it for the same key when it never falls through."""
+    app = screen.app
+    chain = screen._modal_binding_chain
+    ordered = [
+        (node, key, binding)
+        for node, bindings in reversed(chain)
+        for key, binding in bindings
+        if binding.priority
+    ] + [
+        (node, key, binding)
+        for node, bindings in chain
+        for key, binding in bindings
+        if not binding.priority
+    ]
+    taken: set[str] = set()
+    out = []
+    for node, key, binding in ordered:
+        if key in taken:
+            continue
+        if app._check_action_state(binding.action, node) is False:
+            continue  # disabled: Textual skips it too
+        if binding.action not in _FALLS_THROUGH:
+            taken.add(key)
+        out.append((node, key, binding))
+    return out
+
+
 def collect_key_help(screen: Screen) -> KeyHelp:
     """The keys in effect on `screen` for whatever has focus."""
     chain = []
@@ -49,16 +86,24 @@ def collect_key_help(screen: Screen) -> KeyHelp:
     view: list[tuple[str, str]] = (
         list(provider.key_help_entries()) if provider is not None else []
     )
+    # A view that reads keys itself (the Code View's _on_key) takes them
+    # before any binding further out sees them.
+    consumes = getattr(provider, "consumes_key", None)
     everywhere: list[tuple[str, str]] = []
+    seen = set(view)
     app = screen.app
-    for active in screen.active_bindings.values():
-        binding = active.binding
-        if not binding.description or active.node is provider:
+    for node, key, binding in _handlers(screen):
+        if not binding.description or node is provider:
+            continue
+        if consumes is not None and consumes(key):
             continue
         entry = (app.get_key_display(binding), binding.description)
-        if active.node is screen or active.node is app:
+        if entry in seen:
+            continue
+        seen.add(entry)
+        if node is screen or node is app:
             everywhere.append(entry)
-        elif active.node in chain:
+        elif node in chain:
             view.append(entry)
 
     titled = next((n for n in chain if getattr(n, "border_title", None)), None)

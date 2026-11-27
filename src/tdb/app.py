@@ -141,7 +141,7 @@ class TdbApp(_AppMessageRoutes, App):
     BINDINGS = [
         Binding("ctrl+q", "quit_debugger", "Quit"),
         Binding("q", "confirm_quit", "Quit", show=False),
-        Binding("escape", "escape_handler", "Escape", show=False),
+        Binding("escape", "escape_handler", "Focus Code View", show=False),
         Binding("ctrl+c", "focus_code", "Code", show=False),
         Binding("ctrl+o", "focus_console", "Console", show=False),
         Binding("ctrl+e", "focus_eval", "Evaluate", show=False),

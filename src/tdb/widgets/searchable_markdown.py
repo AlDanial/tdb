@@ -46,8 +46,9 @@ def find_matches(text: str, query: str) -> list[tuple[int, int]]:
     return matches
 
 
-SEARCH_HINT = "/ or Ctrl+F search · n/N next/prev"
-"""Key hint shown in the documentation modal's footer."""
+SEARCH_HINT = "/ or Ctrl+F search"
+"""Key hint shown in the documentation modal's footer outside results
+mode, where the result keys (RESULTS_HINT) do nothing."""
 
 RESULTS_HINT = "n/→ next · p/←/N previous · q exit search"
 """The footer hint once Enter has put the results in front of the user."""
