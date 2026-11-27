@@ -5,9 +5,11 @@ program's own code and writes cumulative ``count`` records to its part
 files.  :func:`read_counts` sums them, and :func:`write_spec` writes a
 spec YAML, one entry per function name with its count as a comment, ready
 to edit and pass to ``tdb --trace``.  It keeps only what ``load_spec``
-accepts: functions their source file defines (Ruling 27), and keys and
-names YAML reads back as they are.  PyYAML cannot write comments, so the
-YAML is written by hand.
+accepts: functions their source file defines (Ruling 27), every function
+of a ``.py`` file tdb's own Python cannot parse (Ruling 28: load_spec does
+not check its names), and keys and names YAML reads back as they are.  A
+spec with no function in it would not load, so none is written then.
+PyYAML cannot write comments, so the YAML is written by hand.
 
 This module runs inside tdb, not the traced program; it must work on
 Python 3.11.
@@ -34,17 +36,24 @@ _PLAIN = re.compile(r"[A-Za-z0-9_./-]+")  # file keys written unquoted
 _MAX_UP = 3  # a relative file key climbs at most this many directories
 _MAX_SIMPLE_KEY = 1024  # characters: PyYAML reads no longer "key:" line
 _ASYNC_KINDS = ("coroutine", "async_generator")
+_UNCHECKED = "unchecked"  # _in_source: a .py file tdb cannot parse
 
 # Function -> (kind, calls, capped).  A function is (file, qualname, line).
 Counts = dict[tuple[str, str, int], tuple[str, int, bool]]
 
 
 class Discovered(NamedTuple):
-    """What a spec was written with: its number of functions, and of
-    those left out because their source file does not define them."""
+    """What a spec was written with: its number of functions (none: no
+    spec was written), and of those left out because their source file
+    does not define them, or because it is missing or not Python."""
 
     functions: int
-    omitted: int
+    not_found: int
+    no_source: int
+
+    @property
+    def omitted(self) -> int:
+        return self.not_found + self.no_source
 
 
 def read_counts(parts_dir: Path) -> Counts:
@@ -182,27 +191,36 @@ def _key_lines(key: str) -> list[str]:
     return [f"{text}:"]
 
 
-def _in_source(counts: Counts) -> tuple[dict, int]:
-    """The functions of ``counts`` that their source file defines, which is
-    what load_spec checks (a file that is missing or not Python defines
-    none), merged by name: ``{(file, qual): [first line, async, calls,
-    capped]}``.  Also how many (file, qual) others there were: functions
-    compiled from a template under its own path, a zipapp's, 3.12's
-    ``type X = ...`` values."""
-    defined: dict[str, set[str] | None] = {}
+def _in_source(counts: Counts) -> tuple[dict, int, int]:
+    """The functions of ``counts`` that load_spec accepts, merged by name:
+    ``{(file, qual): [first line, async, calls, capped]}``.  Those are the
+    ones their source file defines, and all of a ``.py`` file that tdb's
+    Python cannot parse (it may need the program's newer one).  Also how
+    many (file, qual) others there were: names the file does not define
+    (3.12's ``type X = ...`` values), and names whose file is missing or
+    not Python (a zipapp's, code compiled from a template under its own
+    path)."""
+    defined: dict[str, set[str] | str | None] = {}
     kept: dict[tuple[str, str], list] = {}
-    dropped: set[tuple[str, str]] = set()
+    not_found: set[tuple[str, str]] = set()
+    no_source: set[tuple[str, str]] = set()
     for (file, qual, line), (kind, n, capped) in counts.items():
         if n < 1:
             continue
         if file not in defined:
             try:
                 defined[file] = {q for q, _ in defined_functions(file)}
-            except (OSError, SyntaxError, ValueError, RecursionError):
+            except (SyntaxError, ValueError, RecursionError):
+                py = os.path.normcase(file).endswith(".py")
+                defined[file] = _UNCHECKED if py else None
+            except OSError:
                 defined[file] = None
         names = defined[file]
-        if names is None or qual not in names:
-            dropped.add((file, qual))
+        if names is None:
+            no_source.add((file, qual))
+            continue
+        if names is not _UNCHECKED and qual not in names:
+            not_found.add((file, qual))
             continue
         # One name, several defs (a property's getter and setter, a def in
         # each branch of an if): one entry for load_spec, so one here.
@@ -213,7 +231,7 @@ def _in_source(counts: Counts) -> tuple[dict, int]:
         else:
             fn[0], fn[1] = min(fn[0], line), fn[1] or is_async
             fn[2], fn[3] = fn[2] + n, fn[3] or capped
-    return kept, len(dropped)
+    return kept, len(not_found), len(no_source)
 
 
 def _count_text(n: int, capped: bool, cap: int) -> str:
@@ -236,7 +254,9 @@ def _render(
     by_file: dict[str, list[tuple[int, str, bool, int, bool]]] = {}
     for (file, qual), (line, is_async, n, capped) in functions.items():
         by_file.setdefault(_file_key(file, spec_dir), []).append(
-            (line, qual.replace(".", "::"), is_async, n, capped or n >= cap)
+            # "hot" only when a process stopped counting it: a sum over
+            # processes is exact (M10)
+            (line, qual.replace(".", "::"), is_async, n, capped)
         )
     header = (
         f"# tdb --trace-discover: {_printable(program_desc)}, "
@@ -268,9 +288,12 @@ def write_spec(
     duration_s: float,
     cap: int = DISCOVER_CAP,
 ) -> Discovered:
-    """Write the spec of ``counts`` to ``out_path``, whole or not at all.
+    """Write the spec of ``counts`` to ``out_path``, whole or not at all,
+    and not at all when no function is left (such a spec would not load).
     Raises OSError if it cannot be written."""
-    functions, omitted = _in_source(counts)
+    functions, not_found, no_source = _in_source(counts)
+    if not functions:
+        return Discovered(0, not_found, no_source)
     text = _render(
         functions,
         norm_path(Path(out_path).parent),
@@ -280,7 +303,7 @@ def write_spec(
         cap=cap,
     )
     write_atomic(Path(out_path), lambda tmp: tmp.write_text(text, encoding="utf-8"))
-    return Discovered(len(functions), omitted)
+    return Discovered(len(functions), not_found, no_source)
 
 
 def write_discovered_spec(

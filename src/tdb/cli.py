@@ -407,7 +407,8 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Edit FILE (the one positional argument) in a full-screen "
         "vim-style editor; no program is run and no debugger is started. "
-        "All other options except --config-dir are ignored. A FILE that "
+        "All other options except --config-dir are ignored (--trace, "
+        "--trace-merge and --trace-discover are rejected). A FILE that "
         "does not exist yet is created on the first :w",
     )
     parser.add_argument(
@@ -1131,6 +1132,10 @@ def _check_trace_args(
             )
         except (OSError, UnicodeDecodeError) as exc:
             parser.error(f"invalid trace spec {args.trace}: {exc}")
+        from tdb.trace.launch import say
+
+        for warning in args.trace_spec.warnings:
+            say(f"tdb: warning: {warning}")
     # Kept as typed (launch makes it absolute only for --cwd), so the
     # program's sys.argv[0] and __file__ are what they are without tdb.
     if py_program and not Path(args.program).resolve().is_file():
@@ -1154,6 +1159,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     if args.vi:
         # `tdb --vi FILE`: every other switch is ignored (not acted on,
         # not validated), so skip all the launch post-processing below.
+        # A trace mode is rejected rather than silently dropped.
+        for flag, value in (
+            ("--trace", args.trace),
+            ("--trace-merge", args.trace_merge),
+            ("--trace-discover", args.trace_discover),
+        ):
+            if value:
+                parser.error(f"{flag} cannot be combined with --vi")
         _check_vi_args(args, parser)
         return args
     _check_trace_args(args, parser)

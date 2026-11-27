@@ -109,7 +109,7 @@ def test_spec_text_from_count_parts(tmp_path):
         program_desc="services/orders/main.py",
         duration_s=192.4,
     )
-    assert n == Discovered(functions=4, omitted=0)
+    assert n == Discovered(functions=4, not_found=0, no_source=0)
     assert out.read_text(encoding="utf-8") == (
         "# tdb --trace-discover: services/orders/main.py, 2026-11-25 10:42, 3m12s\n"
         "# Remove what you do not need; hot functions make traces large.\n"
@@ -130,7 +130,9 @@ def test_spec_text_from_count_parts(tmp_path):
     assert spec.entries[0].files == (norm_path(api),)
 
 
-def test_capped_when_any_part_capped_it_or_the_sum_reaches_the_cap(tmp_path):
+def test_capped_only_when_a_part_capped_it(tmp_path):
+    """M10: counts are summed over the parts; a sum at or past the cap is
+    still exact unless some part stopped counting."""
     prog = source(
         tmp_path / "prog.py",
         "def f():\n    pass\ndef g():\n    pass\n"
@@ -153,10 +155,10 @@ def test_capped_when_any_part_capped_it_or_the_sum_reaches_the_cap(tmp_path):
         count(prog, "h", 5, 5),
     )
     out = tmp_path / "out.yaml"
-    assert write(parts, out, cap=10) == (4, 0)
+    assert write(parts, out, cap=10) == (4, 0, 0)
     assert body(out) == (
         "prog.py:\n"
-        "  - f  # ≥10 calls  (hot)\n"
+        "  - f  # 11 calls\n"
         "  - g  # ≥10 calls  (hot)\n"
         "  - h  # 9 calls\n"
         "  - k  # 1 call, async\n"
@@ -183,7 +185,7 @@ def test_file_keys_relative_to_the_spec_or_absolute(tmp_path):
     parts = tmp_path / "parts"
     part(parts / "1.jsonl", HDR, *(count(p, "f", 1, 1) for p in files.values()))
     out = d / "out.yaml"
-    assert write(parts, out) == (5, 0)
+    assert write(parts, out) == (5, 0, 0)
     absolute = norm_path(files["up4"]).replace(os.sep, "/")
     if not re.fullmatch(r"[A-Za-z0-9_./-]+", absolute):
         absolute = json.dumps(absolute)
@@ -222,7 +224,7 @@ def test_names_and_keys_yaml_would_misread_are_quoted(tmp_path):
         count(wide, "f", 1, 1),
     )
     out = tmp_path / "out.yaml"
-    assert write(parts, out) == (6, 0)
+    assert write(parts, out) == (6, 0, 0)
     # The width counts the quotes too.
     assert body(out) == (
         "./tool:\n"
@@ -282,15 +284,16 @@ def test_unreadable_lines_and_other_records_are_ignored(tmp_path):
     part(parts / "skipped-5.json", {"marker": "skipped"})
     part(parts / "notes.jsonl", count(prog, "g", 3, 7))  # not a part file name
     out = tmp_path / "out.yaml"
-    assert write(parts, out) == (1, 0)
+    assert write(parts, out) == (1, 0, 0)
     assert body(out) == "prog.py:\n  - f  # 2 calls\n"
 
 
-def test_nothing_counted_writes_only_the_header(tmp_path):
+def test_nothing_counted_writes_nothing(tmp_path):
+    """F4: a spec with no function in it would not load: none is written."""
     (tmp_path / "parts").mkdir()
     out = tmp_path / "out.yaml"
-    assert write(tmp_path / "parts", out) == (0, 0)
-    assert body(out) == ""
+    assert write(tmp_path / "parts", out) == (0, 0, 0)
+    assert not out.exists()
 
 
 def test_spec_written_whole_or_not_at_all(tmp_path):
@@ -459,9 +462,23 @@ def test_only_functions_their_source_defines_are_kept(tmp_path):
         count(tmp_path / "gone.py", "f", 1, 1),
     )
     out = tmp_path / "out.yaml"
-    assert write(parts, out) == Discovered(functions=1, omitted=5)
+    assert write(parts, out) == Discovered(functions=1, not_found=2, no_source=3)
     assert body(out) == "prog.py:\n  - Point::norm  # 3 calls\n"
     assert [e.key for e in load_spec(out).entries] == ["prog.py"]
+
+
+def test_functions_of_a_source_tdb_cannot_parse_are_kept(tmp_path):
+    """F4 (Ruling 28): a .py file the program's newer Python ran but tdb's
+    cannot parse keeps its functions; load_spec accepts them, warning."""
+    new = source(tmp_path / "new.py", "def f(:\n    pass\n")
+    parts = tmp_path / "parts"
+    part(parts / "1.jsonl", HDR, count(new, "g", 3, 2), count(new, "f", 1, 1))
+    out = tmp_path / "out.yaml"
+    assert write(parts, out) == (2, 0, 0)
+    assert body(out) == "new.py:\n  - f  # 1 call\n  - g  # 2 calls\n"
+    spec = load_spec(out)
+    assert [f.pattern for f in spec.entries[0].functions] == ["f", "g"]
+    assert len(spec.warnings) == 1
 
 
 def test_one_entry_per_name(tmp_path):
@@ -484,7 +501,7 @@ def test_one_entry_per_name(tmp_path):
         count(prog, "g", 14, 1, "coroutine"),
     )
     out = tmp_path / "out.yaml"
-    assert write(parts, out) == (2, 0)
+    assert write(parts, out) == (2, 0, 0)
     assert body(out) == (
         "prog.py:\n  - C::v  # ≥10,000 calls  (hot)\n  - g     # 3 calls, async\n"
     )
@@ -508,7 +525,7 @@ def test_long_and_non_ascii_keys_load(tmp_path):
     parts = tmp_path / "parts"
     part(parts / "1.jsonl", HDR, *(count(f, "f", 1, 1) for f in files))
     out = tmp_path / "out.yaml"
-    assert write(parts, out) == (2, 0)
+    assert write(parts, out) == (2, 0, 0)
     text = body(out)
     assert f'"{cyrillic.as_posix()}":\n  - f  # 1 call\n' in text
     assert f"? {deep.as_posix()}\n:\n  - f  # 1 call\n" in text
@@ -530,11 +547,11 @@ def test_run_warns_when_no_process_was_traced(tmp_path, monkeypatch, capsys):
     out = tmp_path / "out.yaml"
     assert run(request(tmp_path)) == 0
     assert capsys.readouterr().err.splitlines() == [
-        f"tdb: wrote {out} (0 functions)",
         f"tdb: warning: skipped /opt/py311 (pid {DEAD_PID}): "
         "python 3.11 is older than 3.12",
         launch.NO_PROCESS_WARNING,
     ]
+    assert not out.exists()  # F4: never a spec with no function in it
 
 
 def test_run_warns_about_tracer_errors_and_abrupt_ends(tmp_path, monkeypatch, capsys):
@@ -562,9 +579,12 @@ def test_run_warns_about_tracer_errors_and_abrupt_ends(tmp_path, monkeypatch, ca
 
 
 def test_run_notes_the_functions_left_out(tmp_path, monkeypatch, capsys):
+    """F4: each group with its own reason."""
+
     def with_ghosts(parts_dir, prog):
         recs = [count(prog, "f", 1, 3), count(prog, "ghost", 5, 1)]
         recs.append(count(prog, "phantom", 9, 1))
+        recs.append(count(tmp_path / "gone.py", "g", 1, 1))
         part(parts_dir / f"{DEAD_PID}.jsonl", HDR, *recs, EXIT)
 
     fake_run(monkeypatch, tmp_path, leave=with_ghosts)
@@ -573,7 +593,45 @@ def test_run_notes_the_functions_left_out(tmp_path, monkeypatch, capsys):
     assert capsys.readouterr().err.splitlines() == [
         f"tdb: wrote {out} (1 function)",
         "tdb: note: 2 functions omitted (not found in their source files)",
+        "tdb: note: 1 function omitted (source file missing or not Python)",
     ]
+
+
+NOTHING_CALLED = (
+    "tdb: warning: no function in your code was called "
+    "(is the program's code under site-packages, or run with -m?)"
+)
+
+
+@pytest.mark.parametrize("returncode", [0, 3])
+def test_run_with_no_function_called_writes_no_spec(
+    tmp_path, monkeypatch, capsys, returncode
+):
+    """F4 (ledger Task 10): processes were traced, none of their calls was
+    in the user's code: say so, write no spec, exit as the program did."""
+
+    def nothing(parts_dir, prog):
+        part(parts_dir / f"{DEAD_PID}.jsonl", HDR, EXIT)
+
+    fake_run(monkeypatch, tmp_path, returncode, leave=nothing)
+    assert run(request(tmp_path)) == returncode
+    assert capsys.readouterr().err.splitlines() == [NOTHING_CALLED]
+    assert sorted(os.listdir(tmp_path)) == ["prog.py"]  # no OUT.yaml, no parts
+
+
+def test_run_with_every_function_omitted_writes_no_spec(tmp_path, monkeypatch, capsys):
+    def only_ghosts(parts_dir, prog):
+        recs = [count(prog, "ghost", 5, 1), count(tmp_path / "gone.py", "g", 1, 1)]
+        part(parts_dir / f"{DEAD_PID}.jsonl", HDR, *recs, EXIT)
+
+    fake_run(monkeypatch, tmp_path, leave=only_ghosts)
+    assert run(request(tmp_path)) == 0
+    assert capsys.readouterr().err.splitlines() == [
+        "tdb: note: 1 function omitted (not found in their source files)",
+        "tdb: note: 1 function omitted (source file missing or not Python)",
+        NOTHING_CALLED,
+    ]
+    assert sorted(os.listdir(tmp_path)) == ["prog.py"]
 
 
 def test_unreadable_parts_are_reported_as_unreadable(tmp_path, monkeypatch, capsys):

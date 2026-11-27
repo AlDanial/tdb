@@ -101,6 +101,10 @@ NO_PROCESS_WARNING = (
     "tdb: warning: no process was traced (is it Python 3.12+, "
     "started without -I/-E, with PYTHONPATH intact?)"
 )
+NOTHING_CALLED_WARNING = (
+    "tdb: warning: no function in your code was called "
+    "(is the program's code under site-packages, or run with -m?)"
+)
 
 
 class LaunchError(Exception):
@@ -615,9 +619,10 @@ def _write_discovery(
     duration_s: float,
 ) -> bool:
     """Write the discovered spec, remove the parts, print the summary with
-    --trace's warnings (what the counts may be missing).  False if the
-    parts could not be read or the spec written (the parts are then kept).
-    ``ended`` is the main process's (exit code, pid, signal name)."""
+    --trace's warnings (what the counts may be missing).  No spec is
+    written when no function is left for it (a warning says so).  False if
+    the parts could not be read or the spec written (the parts are then
+    kept).  ``ended`` is the main process's (exit code, pid, signal name)."""
     from tdb.trace import discover  # it imports this module
 
     code, main_pid, main_signal = ended
@@ -645,11 +650,21 @@ def _write_discovery(
     except KeyboardInterrupt:
         say(f"tdb: interrupted; events kept in {parts_dir}")
         raise
-    functions = _counted(found.functions, "function", "functions", ",")
-    lines = [f"tdb: wrote {out} ({functions})"]
-    if found.omitted:
-        omitted = _counted(found.omitted, "function", "functions", ",")
-        lines.append(f"tdb: note: {omitted} omitted (not found in their source files)")
+    lines = []
+    if found.functions:
+        functions = _counted(found.functions, "function", "functions", ",")
+        lines.append(f"tdb: wrote {out} ({functions})")
+    for n, why in (
+        (found.not_found, "not found in their source files"),
+        (found.no_source, "source file missing or not Python"),
+    ):
+        if n:
+            lines.append(
+                f"tdb: note: {_counted(n, 'function', 'functions', ',')} "
+                f"omitted ({why})"
+            )
+    if not found.functions and summary.processes:
+        lines.append(NOTHING_CALLED_WARNING)
     lines += _warning_lines(summary)
     try:
         shutil.rmtree(parts_dir)

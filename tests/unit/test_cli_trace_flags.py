@@ -307,3 +307,28 @@ def test_help_lists_trace_flags():
         "-m MODULE",
     ):
         assert flag in text
+
+
+def test_spec_warnings_printed_before_launch(tmp_path, capsys):
+    """F4 (Ruling 28): a source tdb's Python cannot parse is checked no
+    further, and tdb says so; the run goes ahead."""
+    (tmp_path / "prog.py").write_text("def f(:\n    pass\n")
+    s = tmp_path / "s.yaml"
+    s.write_text("prog.py:\n  - f\n")
+    a = parse_args(["--trace", str(s), str(tmp_path / "prog.py")])
+    assert a.trace_spec.entries[0].functions[0].pattern == "f"
+    (line,) = capsys.readouterr().err.splitlines()
+    assert line.startswith(
+        f"tdb: warning: {tmp_path / 'prog.py'}: cannot check names (tdb's Python "
+    )
+
+
+@pytest.mark.parametrize(
+    "mode", [["--trace", "s.yaml"], ["--trace-merge"], ["--trace-discover", "o.yaml"]]
+)
+def test_vi_rejects_the_trace_modes(capsys, mode):
+    """M2: --vi ignores every other switch, but a trace mode would be
+    silently lost."""
+    assert f"{mode[0]} cannot be combined with --vi" in err(
+        capsys, ["--vi", *mode, "notes.txt"]
+    )

@@ -15,7 +15,7 @@ import pytest
 
 from tdb.trace.discover import write_discovered_spec
 from tdb.trace.launch import NO_PROCESS_WARNING
-from tdb.trace.spec import load_spec
+from tdb.trace.spec import load_spec, norm_path
 from tests.integration.test_trace_launch import _env, listing, tdb, write_prog
 from tests.integration.trace_helpers import run_traced
 
@@ -176,7 +176,7 @@ def test_fork_child_counts_only_its_own_calls(tmp_path):
     n = write_discovered_spec(
         parts.dir, out, program_desc="prog.py", started=datetime.now(), duration_s=1
     )
-    assert n == (2, 0)
+    assert n == (2, 0, 0)
     assert out.read_text(encoding="utf-8").split("\n")[3:] == [
         "prog.py:",
         "  - f  # 10 calls",
@@ -322,10 +322,8 @@ def test_no_traced_process_is_reported(tmp_path):
     script.chmod(0o755)
     r = tdb(tmp_path, "--trace-discover", "out.yaml", "./isolated")
     assert r.returncode == 0
-    assert r.stderr.splitlines() == [
-        "tdb: wrote out.yaml (0 functions)",
-        NO_PROCESS_WARNING,
-    ]
+    assert r.stderr.splitlines() == [NO_PROCESS_WARNING]
+    assert not (tmp_path / "out.yaml").exists()  # F4: no spec without functions
 
 
 def test_program_installed_in_site_packages_is_discovered(tmp_path):
@@ -352,14 +350,7 @@ def test_program_installed_in_site_packages_is_discovered(tmp_path):
     assert lines[3:] == [f"{key}:", "  - f  # 1 call"]
 
 
-PY314 = next(
-    (
-        p
-        for p in ("/home/al/.local/bin/python3.14", shutil.which("python3.14"))
-        if p and os.path.exists(p)
-    ),
-    None,
-)
+PY314 = shutil.which("python3.14")
 
 DATACLASS = """\
 import typing
@@ -437,3 +428,53 @@ def test_code_objects_of_one_function_count_together(tmp_path):
     assert {(r["qual"], r["line"]) for r in helper} == {("f", 1), ("g", 4)}
     last = {r["qual"]: (r["n"], r["capped"]) for r in helper}
     assert last == {"f": (7, False), "g": (10, True)}
+
+
+# --- final review F4 ----------------------------------------------------------
+
+NEWER_SYNTAX = """\
+def risky(x):
+    try:
+        return 1 / x
+    except ZeroDivisionError, TypeError:  # PEP 758: Python 3.14 only
+        return 0
+
+
+def main():
+    return risky(0)
+
+
+main()
+"""
+
+
+@pytest.mark.skipif(PY314 is None, reason="no python3.14")
+@pytest.mark.skipif(sys.version_info >= (3, 14), reason="tdb's Python parses it")
+def test_source_only_the_programs_python_can_parse(tmp_path):
+    """F4 (Ruling 28): tdb's Python cannot parse a 3.14 file the program's
+    Python runs.  Discovery keeps its functions, and --trace warns that it
+    cannot check their names, then traces them."""
+    prog = write_prog(tmp_path, NEWER_SYNTAX)
+    r = tdb(tmp_path, "--trace-discover", "out.yaml", "--python", PY314, "prog.py")
+    assert r.returncode == 0, r.stderr
+    assert r.stderr == "tdb: wrote out.yaml (2 functions)\n"
+    lines = (tmp_path / "out.yaml").read_text(encoding="utf-8").splitlines()
+    assert lines[3:] == ["prog.py:", "  - risky  # 1 call", "  - main   # 1 call"]
+    r = tdb(
+        tmp_path,
+        "--trace",
+        "out.yaml",
+        "--trace-out",
+        "t",
+        "--python",
+        PY314,
+        "prog.py",
+    )
+    assert r.returncode == 0, r.stderr
+    py = "%d.%d" % sys.version_info[:2]
+    assert r.stderr.startswith(
+        f"tdb: warning: {norm_path(prog)}: cannot check names "
+        f"(tdb's Python {py} cannot parse it: "
+    ), r.stderr
+    assert 'tdb: trace "prog": 1 process, 1 thread, 0 tasks, 2 calls' in r.stderr
+    assert "never called" not in r.stderr

@@ -2,7 +2,9 @@
 
 A spec maps file names (paths, globs, or dotted module names) to lists of
 functions to trace.  ``load_spec`` reports every problem it finds in one
-``SpecError`` so users can fix a spec in a single pass.
+``SpecError`` so users can fix a spec in a single pass.  A source file that
+tdb's own Python cannot parse (it may need the program's newer Python) is
+no problem: its names go unchecked, with a warning in ``TraceSpec.warnings``.
 """
 
 from __future__ import annotations
@@ -13,6 +15,7 @@ import fnmatch
 import glob
 import os
 import re
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -21,6 +24,7 @@ import yaml
 
 _MODULE_RE = re.compile(r"^[A-Za-z_]\w*(\.[A-Za-z_]\w*)*$")
 _OPTIONS = ("capture", "return", "if", "max_hits")
+_MERGE_TAG = "tag:yaml.org,2002:merge"
 
 
 class SpecError(Exception):
@@ -54,6 +58,9 @@ class FileEntry:
 class TraceSpec:
     path: Path
     entries: tuple[FileEntry, ...]
+    # One per source file whose names could not be checked (tdb prints
+    # each as "tdb: warning: ...").
+    warnings: tuple[str, ...] = ()
 
     def agent_targets(self) -> list[dict]:
         """Return the TARGET list for the agent config JSON."""
@@ -116,6 +123,45 @@ def defined_functions(path: str) -> list[tuple[str, int]]:
 
 def _is_glob(key: str) -> bool:
     return any(c in key for c in "*?[")
+
+
+class _SpecLoader(yaml.SafeLoader):
+    """A SafeLoader that records keys given twice in one mapping, which
+    YAML would otherwise resolve silently by keeping the last.  A merge
+    key's (``<<: *anchor``) entries may be overridden: no duplicates."""
+
+    def __init__(self, stream) -> None:
+        super().__init__(stream)
+        self.duplicates: list[tuple[object, list[int]]] = []
+
+    def construct_mapping(self, node, deep=False):
+        if isinstance(node, yaml.MappingNode):
+            lines: dict = {}
+            for key_node, _ in node.value:
+                if key_node.tag == _MERGE_TAG:
+                    continue
+                key = self.construct_object(key_node, deep=deep)
+                try:
+                    hash(key)
+                except TypeError:  # an unhashable key: SafeLoader reports it
+                    continue
+                lines.setdefault(key, []).append(key_node.start_mark.line + 1)
+            self.duplicates += [(k, ln) for k, ln in lines.items() if len(ln) > 1]
+        return super().construct_mapping(node, deep=deep)
+
+
+def _read_yaml(text: str) -> tuple[Any, list[str]]:
+    """The spec document, and a problem for each key given twice."""
+    loader = _SpecLoader(text)
+    try:
+        data = loader.get_single_data()
+    finally:
+        loader.dispose()
+    problems = []
+    for key, lines in loader.duplicates:
+        where = ", ".join(map(str, lines[:-1])) + f" and {lines[-1]}"
+        problems.append(f"{key}: appears more than once (lines {where})")
+    return data, problems
 
 
 def _parse_entry(
@@ -194,26 +240,31 @@ def load_spec(path: str | os.PathLike) -> TraceSpec:
     """Read and validate a spec file, raising ``SpecError`` on any problem."""
     spec_path = Path(os.path.abspath(os.fspath(path)))
     try:
-        data = yaml.safe_load(spec_path.read_text(encoding="utf-8"))
+        data, problems = _read_yaml(spec_path.read_text(encoding="utf-8"))
     except yaml.YAMLError as exc:
         raise SpecError([f"invalid YAML: {exc}"]) from None
     if data is None or data == {}:
         raise SpecError(["spec is empty"])
     if not isinstance(data, dict):
-        raise SpecError(["spec must map file names to lists of functions"])
+        raise SpecError(problems + ["spec must map file names to lists of functions"])
 
-    problems: list[str] = []
     entries: list[FileEntry] = []
+    warnings: list[str] = []
     # file -> list of (qualname, lineno), or None if it failed to parse
     defs_cache: dict[str, list[tuple[str, int]] | None] = {}
+    py = "%d.%d" % sys.version_info[:2]
 
     def names_in(f: str) -> list[str] | None:
         if f not in defs_cache:
             try:
                 defs_cache[f] = defined_functions(f)
-            except (SyntaxError, ValueError) as exc:
-                msg = getattr(exc, "msg", None) or str(exc)
-                problems.append(f"{f}: cannot parse: {msg}")
+            except (SyntaxError, ValueError, RecursionError) as exc:
+                # Perhaps valid for the program's newer Python (Ruling 28).
+                msg = getattr(exc, "msg", None) or str(exc) or type(exc).__name__
+                warnings.append(
+                    f"{f}: cannot check names "
+                    f"(tdb's Python {py} cannot parse it: {msg})"
+                )
                 defs_cache[f] = None
             except OSError as exc:
                 problems.append(f"{f}: cannot parse: {exc.strerror or exc}")
@@ -293,7 +344,7 @@ def load_spec(path: str | os.PathLike) -> TraceSpec:
 
     if problems:
         raise SpecError(problems)
-    return TraceSpec(spec_path, tuple(entries))
+    return TraceSpec(spec_path, tuple(entries), tuple(warnings))
 
 
 def unmatched_entries(spec: TraceSpec, called: set[tuple[str, str]]) -> list[str]:

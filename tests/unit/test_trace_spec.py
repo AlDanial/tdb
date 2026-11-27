@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sys
+
 import pytest
 
 from tdb.trace.spec import (
@@ -219,3 +221,65 @@ def test_module_key_matches_called_file_suffix(tmp_path):
     s = load_spec(write(tmp_path, "s.yaml", "orders.workers:\n  - Worker.run\n"))
     called = {("/x/orders/workers.py", "Worker.run")}
     assert unmatched_entries(s, called) == []
+
+
+# --- final review F3, F4 --------------------------------------------------------
+
+
+def test_duplicate_keys_are_reported_with_the_other_problems(tmp_path):
+    """F3: YAML keeps the last of two equal keys, which would drop the
+    first's functions without a word; every mapping is checked, and the
+    duplicates come in the same single pass as the other problems."""
+    write(tmp_path, "mod.py", MOD)
+    text = (
+        "mod.py:\n  - fetch\n"  # line 1
+        "mod.py:\n  - handle_request\n"  # line 3
+        "missing.py:\n  - f\n"  # line 5
+        "mod.py:\n"  # line 7
+        "  - Cart.add:\n      capture: [x]\n      capture: [y]\n"  # lines 9, 10
+    )
+    with pytest.raises(SpecError) as ei:
+        load_spec(write(tmp_path, "s.yaml", text))
+    assert sorted(ei.value.problems) == [
+        "capture: appears more than once (lines 9 and 10)",
+        "missing.py: no such file",
+        "mod.py: appears more than once (lines 1, 3 and 7)",
+    ]
+
+
+def test_merge_keys_are_no_duplicates(tmp_path):
+    write(tmp_path, "mod.py", MOD)
+    text = (
+        "mod.py:\n"
+        "  - fetch: &opts\n      capture: [x]\n"
+        "  - Cart.add:\n      <<: *opts\n      capture: [y]\n"
+    )
+    s = load_spec(write(tmp_path, "s.yaml", text))
+    assert [f.capture for f in s.entries[0].functions] == [("x",), ("y",)]
+
+
+def test_source_tdbs_python_cannot_parse_is_a_warning(tmp_path):
+    """F4 (Ruling 28): the file may be valid for the program's newer
+    Python, so its names are not checked; runtime matching and "never
+    called" still catch a typo there."""
+    new = write(tmp_path, "new.py", "def f(:\n    pass\n")
+    write(tmp_path, "mod.py", MOD)
+    s = load_spec(
+        write(
+            tmp_path, "s.yaml", "new.py:\n  - f\n  - not_checked\nmod.py:\n  - fetch\n"
+        )
+    )
+    assert [f.pattern for f in s.entries[0].functions] == ["f", "not_checked"]
+    (warning,) = s.warnings
+    py = "%d.%d" % sys.version_info[:2]
+    assert warning.startswith(
+        f"{norm_path(new)}: cannot check names (tdb's Python {py} cannot parse it: "
+    ) and warning.endswith(")")
+    assert load_spec(write(tmp_path, "t.yaml", "mod.py:\n  - fetch\n")).warnings == ()
+
+
+def test_glob_with_an_unparseable_file_checks_no_names(tmp_path):
+    write(tmp_path, "pkg/a.py", "def f():\n    pass\n")
+    write(tmp_path, "pkg/b.py", "def g(:\n")
+    s = load_spec(write(tmp_path, "s.yaml", "pkg/*.py:\n  - h\n"))
+    assert len(s.warnings) == 1 and s.entries[0].functions[0].pattern == "h"
