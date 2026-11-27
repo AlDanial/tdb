@@ -7,7 +7,7 @@ import os
 import shutil
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NoReturn
 
 if TYPE_CHECKING:
     from tdb.app import TdbApp
@@ -407,7 +407,8 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Edit FILE (the one positional argument) in a full-screen "
         "vim-style editor; no program is run and no debugger is started. "
-        "All other options except --config-dir are ignored. A FILE that "
+        "All other options except --config-dir are ignored (--trace, "
+        "--trace-merge and --trace-discover are rejected). A FILE that "
         "does not exist yet is created on the first :w",
     )
     parser.add_argument(
@@ -425,6 +426,65 @@ def build_parser() -> argparse.ArgumentParser:
         "fill the adapters entries in config.json with the debuggers and "
         "interpreters found on PATH (a PATH hit replaces an existing "
         "entry), reporting any configured entry that no longer exists",
+    )
+    parser.add_argument(
+        "--trace",
+        metavar="SPEC.yaml",
+        default=None,
+        help="Trace PROGRAM (or -m MODULE) using the spec: record calls to "
+        "the functions it names in every Python 3.12+ process the program "
+        "starts, without debugging it, then write BASE.jsonl and "
+        "BASE.perfetto.json (see --trace-out). Requires a program or -m.",
+    )
+    parser.add_argument(
+        "--trace-name",
+        metavar="NAME",
+        default=None,
+        help="With --trace/--trace-discover: service name used in output "
+        "names and lane labels. Default: the program's file stem (main for "
+        "main.py), or the -m module name.",
+    )
+    parser.add_argument(
+        "--trace-out",
+        metavar="BASE",
+        default=None,
+        help="Output base path. --trace writes BASE.jsonl and "
+        "BASE.perfetto.json (default BASE NAME-YYYYmmdd-HHMMSS in the cwd); "
+        "--trace-merge writes BASE.perfetto.json.",
+    )
+    parser.add_argument(
+        "--trace-merge",
+        nargs="+",
+        metavar="INPUT",
+        default=None,
+        help="Merge --trace captures (.jsonl files or .parts directories) "
+        "into BASE.perfetto.json (default BASE merged-YYYYmmdd-HHMMSS). "
+        "Takes no program.",
+    )
+    parser.add_argument(
+        "--trace-discover",
+        metavar="OUT.yaml",
+        default=None,
+        help="Run PROGRAM (or -m MODULE) and write a spec of the functions "
+        "it called to OUT.yaml.",
+    )
+    parser.add_argument(
+        "--trace-max-events",
+        type=int,
+        default=None,
+        metavar="N",
+        help="With --trace/--trace-discover: per-process cap on recorded "
+        "events (default 5,000,000); events past the cap are dropped and "
+        "the drop is reported.",
+    )
+    parser.add_argument(
+        "-m",
+        dest="trace_module",
+        metavar="MODULE",
+        default=None,
+        help="With --trace/--trace-discover only: run `python -m MODULE` "
+        "instead of a PROGRAM; every positional is an argument to the "
+        "module (e.g. -m orders.main -- --port 8001).",
     )
     # Bookkeeping for --if: per-spec conditions parallel to -k/-t, and
     # which of the two lists the most recent -k/-t went to.
@@ -935,6 +995,153 @@ def _check_vi_args(args: argparse.Namespace, parser: argparse.ArgumentParser) ->
     args.vi_file = files[0]
 
 
+def _check_trace_args(
+    args: argparse.Namespace, parser: argparse.ArgumentParser
+) -> None:
+    """`--trace` / `--trace-merge` / `--trace-discover`: reject every
+    debugger flag; for the two that run a program, settle what runs and
+    load the spec. Sets `args.trace_spec` and `args.trace_args`;
+    otherwise exits via parser.error.
+
+    The language is never auto-detected: registry.detect calls every
+    native executable C/C++ and shell wrappers Bash, which would reject
+    console scripts and wrappers that start Python. A .py program or -m
+    means Python, an explicit --lang must have a tracer, and any other
+    command runs as is."""
+    args.trace_spec = None
+    args.trace_args = list(args.args)
+    modes = [
+        flag
+        for flag, value in (
+            ("--trace", args.trace),
+            ("--trace-merge", args.trace_merge),
+            ("--trace-discover", args.trace_discover),
+        )
+        if value
+    ]
+    if len(modes) > 1:
+        parser.error(
+            "--trace, --trace-merge and --trace-discover are mutually exclusive"
+        )
+    runs = bool(args.trace or args.trace_discover)
+    if args.trace_module is not None and not runs:
+        parser.error("-m is supported only with --trace or --trace-discover")
+    for flag, value in (
+        ("--trace-name", args.trace_name),
+        ("--trace-max-events", args.trace_max_events),
+    ):
+        if value is not None and not runs:
+            parser.error(f"{flag} requires --trace")
+    if args.trace_out is not None and not (args.trace or args.trace_merge):
+        parser.error("--trace-out requires --trace or --trace-merge")
+    if not modes:
+        return
+    mode = modes[0]
+    # Trace modes never debug the program: every debugger mode and option
+    # is meaningless with them, as are the other short-circuit modes.
+    for flag, value in (
+        ("--run", args.run),
+        ("--examine-log", args.examine_log),
+        ("-e/--eval", args.eval),
+        ("-a/--attach", args.attach_pid is not None),
+        ("-r/--remote-attach", args.remote_attach),
+        ("-k/--breakpoint", args.breakpoint),
+        ("-t/--to-line", args.to_line),
+        ("--record", args.record),
+        ("--replay", args.replay),
+        ("--replay-tui", args.replay_tui),
+        ("--headless", args.headless),
+        ("--server", args.server),
+        ("--mcp", args.mcp),
+        ("--terminal", args.terminal),
+        ("--post-mortem", args.post_mortem),
+        ("--test", args.test),
+        ("--no-stop-on-entry", args.no_stop_on_entry),
+        ("--no-just-my-code", args.no_just_my_code),
+        ("--no-subprocess", args.no_subprocess),
+        ("--adapter", args.adapter),
+        ("--source", args.source),
+        ("--keybindings", args.keybindings),
+        ("--local-root", args.local_root),
+        ("--remote-root", args.remote_root),
+        ("--insecure-no-auth", args.insecure_no_auth),
+        ("--doc", args.doc),
+        ("--doc-text", args.doc_text),
+        ("--info", args.info),
+        ("--config", args.config),
+        # Modifiers of other modes, whose own checks are skipped below.
+        ("--replay-quiet", args.replay_quiet),
+        ("--replay-interval", args.replay_interval is not None),
+        (
+            "--replay-timeout",
+            args.replay_timeout != parser.get_default("replay_timeout"),
+        ),
+        ("--timing", args.timing),
+        ("--server-port", args.server_port != parser.get_default("server_port")),
+        ("--no-pause-on-attach", args.no_pause_on_attach),
+    ):
+        if value:
+            parser.error(f"{mode} cannot be combined with {flag}")
+    if not runs:
+        # What runs a program, and how, means nothing to a merge.
+        for flag, value in (
+            ("--python/--pv", args.python),
+            ("--cwd", args.cwd),
+            ("--lang", args.lang),
+        ):
+            if value is not None:
+                parser.error(f"{mode} cannot be combined with {flag}")
+        if args.trace_merge and args.program is not None:
+            parser.error("--trace-merge takes no program")
+        return
+
+    from tdb.trace.launch import is_py_program
+
+    module = args.trace_module
+    if module is None and args.program is None:
+        parser.error(f"{mode} needs a program or -m MODULE")
+    if module is not None and args.program is not None:
+        # No PROGRAM with -m: every positional is the module's.
+        args.trace_args = [args.program, *args.args]
+    py_program = module is None and is_py_program(args.program)
+    if args.python is not None and module is None and not py_program:
+        parser.error("--python/--pv apply only to a .py program or -m")
+    lang = args.lang or ("python" if module is not None or py_program else None)
+    if lang is not None:
+        from tdb.languages import registry
+        from tdb.languages.base import LanguageNotSupportedError
+
+        try:
+            profile = registry.resolve(lang)
+        except LanguageNotSupportedError as e:
+            parser.error(str(e))
+        if profile.capabilities.tracer is None:
+            parser.error(f"{mode} is not yet supported for {profile.display_name}")
+    if args.trace_max_events is not None and args.trace_max_events < 1:
+        parser.error("--trace-max-events must be a positive integer")
+    if args.trace_discover and Path(args.trace_discover).is_dir():
+        parser.error(f"--trace-discover: {args.trace_discover} is a directory")
+    if args.trace:
+        from tdb.trace.spec import SpecError, load_spec
+
+        try:
+            args.trace_spec = load_spec(args.trace)
+        except SpecError as exc:
+            parser.error(
+                f"invalid trace spec {args.trace}:\n  " + "\n  ".join(exc.problems)
+            )
+        except (OSError, UnicodeDecodeError) as exc:
+            parser.error(f"invalid trace spec {args.trace}: {exc}")
+        from tdb.trace.launch import say
+
+        for warning in args.trace_spec.warnings:
+            say(f"tdb: warning: {warning}")
+    # Kept as typed (launch makes it absolute only for --cwd), so the
+    # program's sys.argv[0] and __file__ are what they are without tdb.
+    if py_program and not Path(args.program).resolve().is_file():
+        parser.error(f"File not found: {args.program}")
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """Public entry: build parser, parse argv, run post-processing.
 
@@ -952,8 +1159,19 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     if args.vi:
         # `tdb --vi FILE`: every other switch is ignored (not acted on,
         # not validated), so skip all the launch post-processing below.
+        # A trace mode is rejected rather than silently dropped.
+        for flag, value in (
+            ("--trace", args.trace),
+            ("--trace-merge", args.trace_merge),
+            ("--trace-discover", args.trace_discover),
+        ):
+            if value:
+                parser.error(f"{flag} cannot be combined with --vi")
         _check_vi_args(args, parser)
         return args
+    _check_trace_args(args, parser)
+    if args.trace or args.trace_merge or args.trace_discover:
+        return args  # nothing below applies: the program is never debugged
     _apply_flag_implications(args)
     args.source_files = []
     if args.source is not None:
@@ -1190,6 +1408,10 @@ def main(argv: list[str] | None = None) -> None:
         # Textual sets return_code 1 when the app crashed; None/0 is a
         # normal quit.
         sys.exit(vi.return_code or 0)
+    if args.trace or args.trace_discover:
+        _run_trace(args)
+    if args.trace_merge:
+        _run_trace_merge(args)
     if args.doc:
         _run_doc()
     elif args.doc_text:
@@ -1462,6 +1684,53 @@ def _run_run(args: argparse.Namespace) -> None:
         )
     )
     sys.exit(code)
+
+
+def _run_trace_merge(args: argparse.Namespace) -> NoReturn:
+    """`--trace-merge INPUT...`: weave captures into one Perfetto trace."""
+    from tdb.trace.launch import exit_as
+    from tdb.trace.merge import merge_main
+
+    exit_as(merge_main(args.trace_merge, args.trace_out))
+
+
+def _run_trace(args: argparse.Namespace) -> NoReturn:
+    """Run the program under the function tracer (`--trace`, or
+    `--trace-discover`), then end as the program did: its exit code or
+    death by its signal (1 if an output could not be written, 2 if the
+    program could not be started)."""
+    from datetime import datetime
+
+    from tdb.trace import launch
+    from tdb.trace.contract import DEFAULT_MAX_EVENTS
+
+    module = args.trace_module
+    program = None if module is not None else args.program
+    name = args.trace_name or launch.default_name(program, module)
+    req = launch.TraceRequest(
+        mode="discover" if args.trace_discover else "trace",
+        program=program,
+        module=module,
+        args=args.trace_args,
+        python=args.python,
+        cwd=args.cwd,
+        name=name,
+        out_base=(
+            Path(args.trace_out)
+            if args.trace_out
+            else launch.default_out_base(name, datetime.now())
+        ),
+        spec=args.trace_spec,
+        discover_out=Path(args.trace_discover) if args.trace_discover else None,
+        max_events=args.trace_max_events or DEFAULT_MAX_EVENTS,
+        out_is_default=not args.trace_out,
+    )
+    try:
+        status = launch.run(req)
+    except launch.LaunchError as exc:
+        launch.say(f"tdb: error: {exc}")
+        status = 2
+    launch.exit_as(status)
 
 
 def _run_eval(args: argparse.Namespace) -> None:

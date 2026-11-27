@@ -1,0 +1,209 @@
+"""Tests for the tdb <-> trace-agent contract and the agent's pure helpers."""
+
+from __future__ import annotations
+
+import ast
+import importlib.util
+import json
+import os
+import sys
+
+import pytest
+
+from tdb.trace.contract import (
+    AGENT_DIR,
+    CONFIG_ENV,
+    DEFAULT_MAX_EVENTS,
+    DEFAULT_REPR_LIMIT,
+    DISCOVER_CAP,
+    FLUSH_INTERVAL,
+    PARTS_ENV,
+    build_env,
+    write_config,
+)
+
+
+def _load_agent_file(name: str, filename: str):
+    """Load a file from AGENT_DIR as a module, without touching sys.path."""
+    spec = importlib.util.spec_from_file_location(name, AGENT_DIR / filename)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_build_env_prepends_agent_dir_and_strips_stale(tmp_path):
+    base = {
+        "PYTHONPATH": os.pathsep.join([str(AGENT_DIR), "/x"]),
+        "TDB_TRACE_OLD": "1",
+        "HOME": "/h",
+    }
+    env = build_env(base, config_path=tmp_path / "c.json", parts_dir=tmp_path / "p")
+    assert env["PYTHONPATH"].split(os.pathsep) == [str(AGENT_DIR), "/x"]
+    assert "TDB_TRACE_OLD" not in env and env["HOME"] == "/h"
+    assert env[CONFIG_ENV] == str(tmp_path / "c.json") and env[PARTS_ENV] == str(
+        tmp_path / "p"
+    )
+
+
+def test_build_env_without_pythonpath_adds_no_empty_entry(tmp_path):
+    # An empty PYTHONPATH entry would put the cwd on the program's sys.path.
+    env = build_env({}, config_path=tmp_path / "c.json", parts_dir=tmp_path / "p")
+    assert env["PYTHONPATH"] == str(AGENT_DIR)
+
+
+def test_write_config_uses_shared_format(tmp_path):
+    targets = [{"files": ["/a.py"], "suffixes": [], "functions": []}]
+    write_config(
+        tmp_path / "c.json", mode="trace", parts_dir=tmp_path / "p", targets=targets
+    )
+    assert json.loads((tmp_path / "c.json").read_text()) == {
+        "version": 1,
+        "mode": "trace",
+        "parts": str(tmp_path / "p"),
+        "agent_dir": str(AGENT_DIR),
+        "targets": targets,
+        "max_events": DEFAULT_MAX_EVENTS,
+        "repr_limit": DEFAULT_REPR_LIMIT,
+        "flush_interval": FLUSH_INTERVAL,
+        "discover_cap": DISCOVER_CAP,
+        "user_roots": [],
+    }
+    write_config(
+        tmp_path / "d.json",
+        mode="discover",
+        parts_dir=tmp_path / "p",
+        targets=[],
+        user_roots=["/w/prog.py", "/w"],
+    )
+    config = json.loads((tmp_path / "d.json").read_text())
+    assert (config["mode"], config["user_roots"]) == ("discover", ["/w/prog.py", "/w"])
+
+
+def test_agent_dir_has_only_two_files():
+    assert sorted(p.name for p in AGENT_DIR.iterdir() if p.name != "__pycache__") == [
+        "_tdb_trace_agent.py",
+        "sitecustomize.py",
+    ]
+
+
+def test_skip_reason():
+    sc = _load_agent_file("tdb_sitecustomize_under_test", "sitecustomize.py")
+    assert sc.skip_reason((3, 11, 9), None) == "python 3.11 is older than 3.12"
+    assert sc.skip_reason((3, 13, 1), False) == "free-threaded build without the GIL"
+    assert sc.skip_reason((3, 12, 0), True) is None
+
+
+def test_sitecustomize_parses_on_python_3_7():
+    ast.parse((AGENT_DIR / "sitecustomize.py").read_text(), feature_version=(3, 7))
+
+
+@pytest.mark.skipif(sys.version_info < (3, 12), reason="sys.monitoring")
+def test_pick_tool_id_skips_taken_ids():
+    agent = _load_agent_file("tdb_trace_agent_under_test", "_tdb_trace_agent.py")
+    mon = sys.monitoring
+    if mon.get_tool(3) is not None or mon.get_tool(4) is not None:
+        pytest.skip("tool id 3 or 4 already in use in the test process")
+    assert agent.pick_tool_id() == 3
+    mon.use_tool_id(3, "test-3")
+    try:
+        assert agent.pick_tool_id() == 4
+        mon.use_tool_id(4, "test-4")
+        try:
+            assert agent.pick_tool_id() is None
+        finally:
+            mon.free_tool_id(4)
+    finally:
+        mon.free_tool_id(3)
+
+
+@pytest.mark.skipif(sys.version_info < (3, 12), reason="sys.monitoring")
+def test_hot_record_templates_match_json_dumps():
+    agent = _load_agent_file("tdb_trace_agent_under_test", "_tdb_trace_agent.py")
+    t, c, fn, tid = 21687466422263, 123456, 3, 249591
+    compact = {"separators": (",", ":")}
+    # The agent passes the task id, or the string "null" for no task.
+    for task, arg in ((None, "null"), (42, 42)):
+        assert agent._CALL % (t, c, fn, tid, arg) == json.dumps(
+            {"k": "call", "t": t, "c": c, "fn": fn, "tid": tid, "task": task},
+            **compact,
+        )
+        for kind, template in (
+            ("ret", agent._RET),
+            ("susp", agent._SUSP),
+            ("res", agent._RES),
+        ):
+            assert template % (t, c, tid, arg) == json.dumps(
+                {"k": kind, "t": t, "c": c, "tid": tid, "task": task}, **compact
+            )
+
+
+needs_monitoring = pytest.mark.skipif(
+    sys.version_info < (3, 12), reason="sys.monitoring"
+)
+
+
+@needs_monitoring
+def test_library_dirs_are_package_dirs_only(tmp_path, monkeypatch):
+    """On Windows site.getsitepackages() also names the bare prefix (in a
+    venv, the venv itself): a project there must not become library code.
+    Inputs are faked, so this runs on any OS."""
+    import sysconfig
+    import types
+
+    agent = _load_agent_file("tdb_trace_agent_under_test", "_tdb_trace_agent.py")
+    prefix = tmp_path / "venv"
+    stdlib = tmp_path / "base" / "Lib"
+    paths = {"stdlib": str(stdlib), "platstdlib": str(prefix / "Lib")}
+    paths.update(purelib=str(prefix / "Lib" / "site-packages"), platlib=None)
+    monkeypatch.setattr(sysconfig, "get_paths", lambda: paths)
+    site = types.SimpleNamespace(
+        getsitepackages=lambda: [str(prefix), str(prefix / "Lib" / "site-packages")],
+        getusersitepackages=lambda: str(tmp_path / "AppData" / "dist-packages"),
+    )
+    monkeypatch.setitem(sys.modules, "site", site)
+    norm = agent._norm_path
+    assert agent._library_dirs() == tuple(
+        sorted(
+            norm(p) + os.sep
+            for p in (
+                stdlib,
+                prefix / "Lib",
+                prefix / "Lib" / "site-packages",
+                tmp_path / "AppData" / "dist-packages",
+            )
+        )
+    )
+
+
+@needs_monitoring
+def test_user_roots_beat_library_dirs_only_when_deeper(tmp_path, monkeypatch):
+    """Ruling 26: the program is user code wherever it is installed, but
+    its directory does not make site-packages, or a .venv inside the
+    project, user code."""
+    agent = _load_agent_file("tdb_trace_agent_under_test", "_tdb_trace_agent.py")
+    site = agent._norm_path(tmp_path / "site-packages")
+    venv_site = agent._norm_path(tmp_path / "proj" / ".venv" / "site-packages")
+    monkeypatch.setattr(agent, "_lib_dirs", (site + os.sep, venv_site + os.sep))
+    monkeypatch.setattr(agent, "_agent_dirs", frozenset())
+
+    def user(*roots):
+        roots = [agent._norm_path(tmp_path / r) for r in roots]
+        monkeypatch.setattr(agent, "_root_paths", frozenset(roots))
+        monkeypatch.setattr(agent, "_root_dirs", tuple(r + os.sep for r in roots))
+        return lambda *path: agent._user_file(str(tmp_path.joinpath(*path))) is not None
+
+    # A program directly in site-packages, its directory given too.
+    is_user = user("site-packages/prog.py", "site-packages")
+    assert is_user("site-packages", "prog.py")
+    assert not is_user("site-packages", "neighbour.py")
+    # A program inside an installed package: the package is the program's.
+    is_user = user("site-packages/pkg/tool.py", "site-packages/pkg")
+    assert is_user("site-packages", "pkg", "helper.py")
+    assert not is_user("site-packages", "other", "mod.py")
+    # A project with its .venv inside: the venv stays library code.
+    is_user = user("proj/main.py", "proj")
+    assert is_user("proj", "main.py") and is_user("proj", "lib", "util.py")
+    assert not is_user("proj", ".venv", "site-packages", "requests", "api.py")
+    # No roots (-m): library code is library code.
+    is_user = user()
+    assert not is_user("site-packages", "prog.py") and is_user("proj", "main.py")

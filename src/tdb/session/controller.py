@@ -528,6 +528,15 @@ class DebugController:
         hook = self._attach_hook
         if hook is None:
             return
+        try:
+            await self._settle_handshake(hook)
+        finally:
+            # Quitting skips _finish_attach_hook, the hook's usual reader:
+            # its error (a quit during injection, as a rule) is moot now.
+            if hook.done() and not hook.cancelled():
+                hook.exception()
+
+    async def _settle_handshake(self, hook: asyncio.Future) -> None:
         response = self._launch_future
         connected = self._initialized_seen.is_set()
         if hook.done() and (not connected or response is None or response.done()):
@@ -539,8 +548,18 @@ class DebugController:
             return max(0.0, deadline - time.monotonic())
 
         if not hook.done():
-            with contextlib.suppress(TimeoutError):
-                await asyncio.wait_for(self._initialized_seen.wait(), remaining())
+            # The hook ends without a connection when injection gives up on
+            # quitting: it withdraws a queued script, so none will come.
+            # It succeeds only once the target has connected.
+            seen = asyncio.ensure_future(self._initialized_seen.wait())
+            try:
+                await asyncio.wait(
+                    {seen, hook},
+                    timeout=remaining(),
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+            finally:
+                seen.cancel()
         if self._initialized_seen.is_set():
             with contextlib.suppress(Exception):
                 await asyncio.wait_for(self._send_configuration_done(), remaining())
