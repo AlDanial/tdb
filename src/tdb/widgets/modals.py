@@ -31,6 +31,16 @@ from textual.widgets import (
 from tdb.keybindings import KeybindingConfig, Mode, scheme_label
 
 
+def format_key_line(key_display: str, description: str) -> str:
+    """One `key  description` line of a key reference, as markup."""
+    # Pad before escaping so the visible column width stays at 12;
+    # \[ renders as one character, so visual alignment is preserved.
+    key_padded = f"{key_display:<12}"
+    key_escaped = key_padded.replace("[", r"\[")
+    desc_escaped = description.replace("[", r"\[")
+    return f"  [bold cyan]{key_escaped}[/bold cyan] {desc_escaped}"
+
+
 class _KeybindingsModal(ModalScreen[None]):
     """Modal showing the keybinding reference for both modes.
 
@@ -103,14 +113,7 @@ class _KeybindingsModal(ModalScreen[None]):
                 )
 
     def _render_bindings(self) -> str:
-        def fmt(key_display: str, description: str) -> str:
-            # Pad before escaping so the visible column width stays at 12;
-            # \[ renders as one character, so visual alignment is preserved.
-            key_padded = f"{key_display:<12}"
-            key_escaped = key_padded.replace("[", r"\[")
-            desc_escaped = description.replace("[", r"\[")
-            return f"  [bold cyan]{key_escaped}[/bold cyan] {desc_escaped}"
-
+        fmt = format_key_line
         lines = []
         lines.append("[bold underline]Navigation Mode[/bold underline]")
         for key_display, description in self._config.format_bindings(Mode.NAVIGATION):

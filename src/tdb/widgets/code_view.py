@@ -1005,6 +1005,14 @@ class CodeView(ScrollableContainer, can_focus=True):
         if self._editor is not None:
             self._editor.focus()
 
+    def key_help_entries(self) -> list[tuple[str, str]]:
+        """Every key of the current mode, for the `K` modal: the footer
+        hints below are only a few of them."""
+        return [
+            ("Esc", "Next mode: Debug → Navigate → Edit"),
+            *self.keybindings.format_bindings(self.mode),
+        ]
+
     # ---- Footer hint plumbing ----
     # The action_footer_hint_* methods are no-op targets for the c/n/s/p/t/b
     # BINDINGS. Real dispatch happens in `_on_key` via KeybindingConfig,

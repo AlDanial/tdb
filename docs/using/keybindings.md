@@ -133,3 +133,4 @@ tdb --keybindings default my_program.py   # Notepad-style editing
 
 The keybinding choice is saved to `~/.config/tdb/config.json` and remembered for subsequent
 runs. View the full keybinding reference from the menu: **Configure > Keybindings**.
+Press `K` in any view (except the Code View's Edit mode) to see every key that view accepts.
