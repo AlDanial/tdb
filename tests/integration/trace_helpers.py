@@ -7,6 +7,7 @@ several programs.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
@@ -14,6 +15,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -230,6 +232,7 @@ def _kill_group(pgid: int) -> None:
         pass
 
 
+@contextlib.contextmanager
 def start_traced(
     tmp_path,
     source: str,
@@ -242,9 +245,15 @@ def start_traced(
     args=(),
     extra_env=None,
     files: dict[str, str] | None = None,
-) -> tuple[subprocess.Popen, Path]:
-    """Like run_traced, without waiting: returns the process (stdout piped)
-    and its parts directory, for ``read_parts`` afterwards."""
+) -> Iterator[tuple[subprocess.Popen, Path]]:
+    """Like run_traced, without waiting: yields the process (stdout piped)
+    and its parts directory, for ``read_parts``.
+
+    The program runs in a session of its own (POSIX).  On the way out,
+    however the test ends, its process group is SIGKILLed and the program
+    reaped, so nothing it started outlives the test: a traced hot loop
+    writes about 90 MB/s into the parts directory, on a RAM-backed /tmp.
+    """
     cmd, env, parts_dir = _prepare(
         tmp_path,
         source,
@@ -257,7 +266,22 @@ def start_traced(
         extra_env=extra_env,
         files=files,
     )
+    posix = os.name != "nt"
     proc = subprocess.Popen(
-        cmd, cwd=tmp_path, env=env, stdout=subprocess.PIPE, text=True
+        cmd,
+        cwd=tmp_path,
+        env=env,
+        stdout=subprocess.PIPE,
+        text=True,
+        start_new_session=posix,
     )
-    return proc, parts_dir
+    try:
+        yield proc, parts_dir
+    finally:
+        if posix:
+            _kill_group(proc.pid)
+        else:
+            with contextlib.suppress(OSError):
+                proc.kill()
+        proc.wait()
+        proc.stdout.close()

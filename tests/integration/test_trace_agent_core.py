@@ -125,12 +125,11 @@ def test_unreadable_config_writes_agent_error(tmp_path):
 @pytest.mark.skipif(os.name == "nt", reason="SIGKILL")
 def test_flush_bounds_loss_on_sigkill(tmp_path):
     src = NEST + "import time\nprint('ready', flush=True)\ntime.sleep(30)\n"
-    proc, parts_dir = start_traced(tmp_path, src)
-    assert proc.stdout.readline().strip() == "ready"
-    time.sleep(0.6)
-    proc.kill()
-    proc.wait()
-    proc.stdout.close()
+    with start_traced(tmp_path, src) as (proc, parts_dir):
+        assert proc.stdout.readline().strip() == "ready"
+        time.sleep(0.6)
+        proc.kill()
+        proc.wait()
     assert read_parts(parts_dir).calls("f")
 
 
@@ -145,16 +144,14 @@ def test_sigint_in_traced_hot_loop_reaches_program(tmp_path):
     for attempt in range(5):
         run_dir = tmp_path / str(attempt)
         run_dir.mkdir()
-        proc, parts_dir = start_traced(run_dir, src)
-        assert proc.stdout.readline().strip() == "ready"
-        time.sleep(0.05)
-        proc.send_signal(signal.SIGINT)
-        try:
-            out, _ = proc.communicate(timeout=10)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            proc.communicate()
-            pytest.fail(f"attempt {attempt}: SIGINT never reached the program")
+        with start_traced(run_dir, src) as (proc, parts_dir):
+            assert proc.stdout.readline().strip() == "ready"
+            time.sleep(0.05)
+            proc.send_signal(signal.SIGINT)
+            try:
+                out, _ = proc.communicate(timeout=10)
+            except subprocess.TimeoutExpired:
+                pytest.fail(f"attempt {attempt}: SIGINT never reached the program")
         assert out.strip() == "interrupted" and proc.returncode == 0
         parts = read_parts(parts_dir)
         assert parts.calls("f") and parts.all("exit")  # tracing went on
@@ -180,12 +177,10 @@ def _last_record(part):
 
 
 def _communicate(proc, timeout):
-    """communicate(); on a timeout, kill the program and fail (a hang)."""
+    """communicate(); on a timeout, fail (a hang; start_traced kills it)."""
     try:
         return proc.communicate(timeout=timeout)[0]
     except subprocess.TimeoutExpired:
-        proc.kill()
-        proc.communicate()
         pytest.fail(f"the traced program hung for {timeout} s")
 
 
@@ -227,8 +222,8 @@ def test_backlog_stays_bounded_in_hot_loop(tmp_path):
         "    for _ in range(1000):\n        f()\n    peak = max(peak, len(A._buf))\n"
         "print(peak, A._HIGH_WATER)\n"
     )
-    proc, _ = start_traced(tmp_path, src, [target(tmp_path / "prog.py", "f")])
-    peak, high_water = map(int, _communicate(proc, 60).split())
+    with start_traced(tmp_path, src, [target(tmp_path / "prog.py", "f")]) as (proc, _):
+        peak, high_water = map(int, _communicate(proc, 60).split())
     assert peak <= 1.5 * high_water  # without backpressure it passes 3x in 0.25 s
 
 
@@ -240,16 +235,18 @@ def test_sigkill_in_hot_loop_loses_only_recent_events(tmp_path):
         "    if time.perf_counter() >= next_report:\n"
         "        print(n, flush=True)\n        next_report = time.perf_counter() + 0.05\n"
     )
-    proc, parts_dir = start_traced(tmp_path, src, [target(tmp_path / "prog.py", "f")])
-    # (when the test read it, calls made by then), timed from the first
-    # report so a slow start-up under load cannot shorten the run.
-    seen = [(time.monotonic(), int(proc.stdout.readline()))]
-    while time.monotonic() - seen[0][0] < 2.0:
-        seen.append((time.monotonic(), int(proc.stdout.readline())))
-    killed_at = time.monotonic()
-    proc.kill()
-    proc.wait()
-    proc.stdout.close()
+    with start_traced(tmp_path, src, [target(tmp_path / "prog.py", "f")]) as (
+        proc,
+        parts_dir,
+    ):
+        # (when the test read it, calls made by then), timed from the first
+        # report so a slow start-up under load cannot shorten the run.
+        seen = [(time.monotonic(), int(proc.stdout.readline()))]
+        while time.monotonic() - seen[0][0] < 2.0:
+            seen.append((time.monotonic(), int(proc.stdout.readline())))
+        killed_at = time.monotonic()
+        proc.kill()
+        proc.wait()
     # Design bound: about 0.25 s (one flush interval) or _HIGH_WATER records.
     # Calls made at least 1.5 s before the kill must all be on disk.  Records
     # are written in order (completeness: the clean-exit test), so the last
@@ -288,8 +285,11 @@ def test_finalizer_in_the_flusher_cannot_deadlock_the_program(tmp_path):
         "    for _ in range(120_000):\n        f()\n"  # past _HIGH_WATER
         "print(bool(stuck), flush=True)\n"
     )
-    proc, parts_dir = start_traced(tmp_path, src, [target(tmp_path / "prog.py", "f")])
-    assert _communicate(proc, 30).strip() == "True" and proc.returncode == 0
+    with start_traced(tmp_path, src, [target(tmp_path / "prog.py", "f")]) as (
+        proc,
+        parts_dir,
+    ):
+        assert _communicate(proc, 30).strip() == "True" and proc.returncode == 0
     part = _part_file(parts_dir)
     ids = list(_call_ids(part))
     assert len(ids) == len(set(ids)) == 125_000 and _last_record(part)["k"] == "exit"
@@ -301,8 +301,11 @@ def test_exit_while_the_flusher_is_stuck_in_a_finalizer(tmp_path):
     # flusher waits for: final_flush must stop waiting for the flusher after
     # a bounded time and write the rest itself, once.
     src = STUCK_FLUSHER + "    print(bool(stuck), flush=True)\n    os._exit(0)\n"
-    proc, parts_dir = start_traced(tmp_path, src, [target(tmp_path / "prog.py", "f")])
-    assert _communicate(proc, 30).strip() == "True" and proc.returncode == 0
+    with start_traced(tmp_path, src, [target(tmp_path / "prog.py", "f")]) as (
+        proc,
+        parts_dir,
+    ):
+        assert _communicate(proc, 30).strip() == "True" and proc.returncode == 0
     part = _part_file(parts_dir)
     ids = list(_call_ids(part))
     assert len(ids) == len(set(ids)) == 5_000
@@ -333,8 +336,11 @@ def test_sigint_while_the_trace_is_written_records_no_call_twice(tmp_path):
         "for _ in range(1_000):\n    f()\n"
         "print(interrupts)\n"
     )
-    proc, parts_dir = start_traced(tmp_path, src, [target(tmp_path / "prog.py", "f")])
-    assert _communicate(proc, 60).strip() == "3" and proc.returncode == 0
+    with start_traced(tmp_path, src, [target(tmp_path / "prog.py", "f")]) as (
+        proc,
+        parts_dir,
+    ):
+        assert _communicate(proc, 60).strip() == "3" and proc.returncode == 0
     part = _part_file(parts_dir)
     ids = list(_call_ids(part))
     assert len(ids) == len(set(ids)) and _last_record(part)["k"] == "exit"
@@ -362,8 +368,11 @@ def test_sigint_during_the_final_flush_loses_and_repeats_nothing(tmp_path, when)
         "A._os_write = write\n"  # the tracer's own os.write
         "for _ in range(30_000):\n    f()\n"  # left for final_flush
     )
-    proc, parts_dir = start_traced(tmp_path, src, [target(tmp_path / "prog.py", "f")])
-    _communicate(proc, 30)
+    with start_traced(tmp_path, src, [target(tmp_path / "prog.py", "f")]) as (
+        proc,
+        parts_dir,
+    ):
+        _communicate(proc, 30)
     assert (tmp_path / "fired").exists() and proc.returncode == 0
     part = _part_file(parts_dir)
     ids = list(_call_ids(part))
@@ -429,3 +438,29 @@ def test_a_write_failure_turns_every_callback_off(tmp_path):
     assert parts.stdout.split() == ["True", "None", "0"]
     (marker,) = parts.markers
     assert marker["marker"] == "agent-error"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="process groups")
+def test_start_traced_leaves_nothing_running(tmp_path):
+    # F5 (ledger T2-M12): a traced hot loop writes about 90 MB/s into the
+    # parts directory, on a RAM-backed /tmp.  However a test using
+    # start_traced ends (here: an assertion fails), the program and
+    # everything it started are killed.
+    src = (
+        "import os, time\ndef f():\n    return 1\n"
+        "if os.fork() == 0:\n    print(os.getpid(), flush=True)\n"
+        "    while True:\n        f()\n"
+        "time.sleep(60)\n"
+    )
+    with pytest.raises(AssertionError, match="a failing test"):
+        with start_traced(tmp_path, src, [target(tmp_path / "prog.py", "f")]) as (
+            proc,
+            _,
+        ):
+            child = int(proc.stdout.readline())
+            raise AssertionError("a failing test")
+    assert proc.returncode == -signal.SIGKILL and proc.stdout.closed
+    end = time.monotonic() + 10
+    while Path(f"/proc/{child}").exists() and time.monotonic() < end:
+        time.sleep(0.05)  # init reaps the orphan
+    assert not Path(f"/proc/{child}").exists()

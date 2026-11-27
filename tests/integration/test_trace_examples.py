@@ -41,7 +41,10 @@ def _wait(proc: subprocess.Popen, what: str) -> None:
         raise AssertionError(f"{what} did not exit within 60 s") from None
 
 
-def test_two_services_merge(tmp_path):
+def run_walkthrough(tmp_path: Path) -> Path:
+    """The docs' walkthrough in tmp_path: both services traced, the driver
+    sends four orders, then ``--trace-merge``.  Returns all.perfetto.json;
+    inv.jsonl and ord.jsonl are next to it."""
     spec = str(EXAMPLES / "checkout.yaml")
 
     def traced(name, script, *args):
@@ -77,7 +80,12 @@ def test_two_services_merge(tmp_path):
         tmp_path, "--trace-merge", "inv.jsonl", "ord.jsonl", "--trace-out", "all"
     )
     assert merged.returncode == 0, merged.stderr
-    trace = json.loads((tmp_path / "all.perfetto.json").read_text(encoding="utf-8"))
+    return tmp_path / "all.perfetto.json"
+
+
+def test_two_services_merge(tmp_path):
+    out = run_walkthrough(tmp_path)
+    trace = json.loads(out.read_text(encoding="utf-8"))
     assert_nested(trace)
     process_names = [
         e["args"]["name"]
