@@ -94,7 +94,9 @@ def is_python_executable(path: str) -> bool:
 
 def pid_exists(pid: int) -> bool:
     """True if `pid` is running, or on Windows, where this can't tell:
-    `os.kill(pid, 0)` there terminates the process."""
+    `os.kill(pid, 0)` there terminates the process. A zombie (exited, not
+    yet reaped) answers `kill(pid, 0)` but is not running; in a container
+    with no init, a dead orphan stays one for good."""
     if sys.platform == "win32":
         return True
     try:
@@ -103,7 +105,16 @@ def pid_exists(pid: int) -> bool:
         return False
     except PermissionError:
         return True
-    return True
+    return not _is_zombie(pid)
+
+
+def _is_zombie(pid: int) -> bool:
+    """Linux only: elsewhere, with no /proc, a zombie counts as running."""
+    try:
+        with open(f"/proc/{pid}/stat", "rb") as f:
+            return f.read().rsplit(b")", 1)[1].split()[0] == b"Z"
+    except (OSError, IndexError):
+        return False
 
 
 def _cmdline(pid: str) -> str:

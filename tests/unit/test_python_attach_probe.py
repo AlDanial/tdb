@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import time
 from unittest.mock import Mock
 
 import pytest
@@ -201,6 +202,27 @@ def test_pid_exists_false_for_missing_process(monkeypatch):
     monkeypatch.setattr(f"{MODULE}.sys.platform", "linux")
     monkeypatch.setattr(f"{MODULE}.os.kill", Mock(side_effect=ProcessLookupError))
     assert pid_exists(4242) is False
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="/proc")
+def test_pid_exists_false_for_zombie():
+    # Exited, not yet reaped. In a container with no init, pid 1 reaps only
+    # its own children, so a dead orphan stays a zombie for good.
+    assert pid_exists(os.getpid()) is True
+    child = subprocess.Popen([sys.executable, "-c", "pass"])
+    try:
+        deadline = time.monotonic() + 10
+        while _state(child.pid) != "Z":
+            assert time.monotonic() < deadline, "child never exited"
+            time.sleep(0.01)
+        assert pid_exists(child.pid) is False
+    finally:
+        child.wait()
+
+
+def _state(pid: int) -> str:
+    with open(f"/proc/{pid}/stat") as f:
+        return f.read().rsplit(")", 1)[1].split()[0]
 
 
 TCP_HEADER = (
