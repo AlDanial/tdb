@@ -8,7 +8,8 @@ calls back again.  Spec'd functions get local ``PY_RETURN``/``PY_YIELD``/
 disabled per code object) and return at once for untraced code.  Records
 go to an in-memory buffer that a hidden flusher thread writes to
 ``PARTS/<pid>.jsonl`` every ``flush_interval`` seconds; ``final_flush``
-writes the rest at ``atexit`` or ``os._exit``.  Wrappers around
+writes the rest at ``atexit`` or ``os._exit``, and an exec writes it
+before the process is replaced (see "exec").  Wrappers around
 ``sys.excepthook`` and ``threading.excepthook``, which ``sitecustomize.py``
 installs with ``install_crash_hooks()`` after ``start()``, record uncaught
 exceptions.  A forked child starts a part file of its own (see "fork");
@@ -36,7 +37,9 @@ Never break the program:
   thread allocates), and that code may wait for a lock the waiter holds.
   So there are no agent locks during the run at all (see "writing").
 
-The part-file record formats are in the plan's "Shared formats" section.
+The part-file record formats are in the plan's "Shared formats" section,
+plus one written last before an exec, ``{"k": "exec", "t": ...}`` (see
+"exec").
 Per-part state (buffer, live calls, call ids, written definitions) is
 kept apart from per-process matching caches, so a forked child can start
 a new part while keeping what it inherited about code objects.
@@ -1799,7 +1802,7 @@ def _execve(*args, **kwargs):
 
 def _flush_for_exec(token):
     """Write every record buffered so far, then an exec record."""
-    global _flusher_ident
+    global _flusher_ident, _flushed
     if _stopped or _fence or _broken or _fd is None or _getpid() != _part_pid:
         return  # not tracing, or not this process's part (a forked child's gate)
     _before_fork()
@@ -1816,6 +1819,7 @@ def _flush_for_exec(token):
                 break
             _write_out(("\n".join(batch) + "\n").encode("ascii"))
             del _buf[: len(batch)]  # right after the write: no call between
+            _flushed += len(batch)  # progress, for backpressure waits
             n -= len(batch)
         record = _dumps({"k": "exec", "t": _perf_ns()})
         _write_out((record + "\n").encode("ascii"))
