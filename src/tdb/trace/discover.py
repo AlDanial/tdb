@@ -2,10 +2,12 @@
 
 In discover mode the agent counts the calls of every function in the
 program's own code and writes cumulative ``count`` records to its part
-files.  :func:`write_discovered_spec` reads them and writes a spec YAML,
-one entry per function with its count as a comment, ready to edit and
-pass to ``tdb --trace``.  PyYAML cannot write comments, so the YAML is
-written by hand, quoting whatever YAML would read back as something else.
+files.  :func:`read_counts` sums them, and :func:`write_spec` writes a
+spec YAML, one entry per function name with its count as a comment, ready
+to edit and pass to ``tdb --trace``.  It keeps only what ``load_spec``
+accepts: functions their source file defines (Ruling 27), and keys and
+names YAML reads back as they are.  PyYAML cannot write comments, so the
+YAML is written by hand.
 
 This module runs inside tdb, not the traced program; it must work on
 Python 3.11.
@@ -19,23 +21,33 @@ import os
 import re
 from datetime import datetime
 from pathlib import Path
+from typing import NamedTuple
 
 import yaml
 
 from tdb.trace.capture import PART_FILE
 from tdb.trace.contract import DISCOVER_CAP
 from tdb.trace.launch import write_atomic
-from tdb.trace.spec import norm_path
+from tdb.trace.spec import defined_functions, norm_path
 
 _PLAIN = re.compile(r"[A-Za-z0-9_./-]+")  # file keys written unquoted
 _MAX_UP = 3  # a relative file key climbs at most this many directories
+_MAX_SIMPLE_KEY = 1024  # characters: PyYAML reads no longer "key:" line
 _ASYNC_KINDS = ("coroutine", "async_generator")
 
 # Function -> (kind, calls, capped).  A function is (file, qualname, line).
-_Counts = dict[tuple[str, str, int], tuple[str, int, bool]]
+Counts = dict[tuple[str, str, int], tuple[str, int, bool]]
 
 
-def _read_counts(parts_dir: Path) -> _Counts:
+class Discovered(NamedTuple):
+    """What a spec was written with: its number of functions, and of
+    those left out because their source file does not define them."""
+
+    functions: int
+    omitted: int
+
+
+def read_counts(parts_dir: Path) -> Counts:
     """Each function's calls: the largest count of each part (they are
     cumulative), summed over the parts (one per process); capped if any
     part capped it.  Unreadable lines (a part cut off by a kill) are
@@ -106,17 +118,20 @@ def _printable(text: str) -> str:
 
 
 def _quoted(text: str) -> str:
-    """``text`` as a YAML double-quoted scalar: json.dumps's escapes, which
-    YAML shares, except that a character beyond U+FFFF is one ``\\U``
-    escape (PyYAML reads json's surrogate pair as two lone surrogates)."""
-    return (
-        '"'
-        + "".join(
-            json.dumps(c)[1:-1] if ord(c) <= 0xFFFF else f"\\U{ord(c):08x}"
-            for c in text
-        )
-        + '"'
-    )
+    """``text`` as a YAML double-quoted scalar.  Printable characters but
+    ``"`` and ``\\`` are written as they are (UTF-8), which keeps a
+    non-ASCII path short; the rest as json.dumps escapes them (YAML shares
+    its escapes), beyond U+FFFF as one ``\\U`` escape (PyYAML reads
+    json's surrogate pair as two lone surrogates)."""
+    out = []
+    for c in text:
+        if c.isprintable() and c not in '"\\':
+            out.append(c)
+        elif ord(c) <= 0xFFFF:
+            out.append(json.dumps(c)[1:-1])
+        else:
+            out.append(f"\\U{ord(c):08x}")
+    return '"' + "".join(out) + '"'
 
 
 def _reads_back(text: str) -> bool:
@@ -158,6 +173,49 @@ def _scalar(text: str, *, plain: re.Pattern | None = None) -> str:
     return _quoted(text)
 
 
+def _key_lines(key: str) -> list[str]:
+    """A file key's line, or (longer than PyYAML reads in one) the
+    explicit ``? key`` form's two."""
+    text = _scalar(key, plain=_PLAIN)
+    if len(text) > _MAX_SIMPLE_KEY:
+        return [f"? {text}", ":"]
+    return [f"{text}:"]
+
+
+def _in_source(counts: Counts) -> tuple[dict, int]:
+    """The functions of ``counts`` that their source file defines, which is
+    what load_spec checks (a file that is missing or not Python defines
+    none), merged by name: ``{(file, qual): [first line, async, calls,
+    capped]}``.  Also how many (file, qual) others there were: functions
+    compiled from a template under its own path, a zipapp's, 3.12's
+    ``type X = ...`` values."""
+    defined: dict[str, set[str] | None] = {}
+    kept: dict[tuple[str, str], list] = {}
+    dropped: set[tuple[str, str]] = set()
+    for (file, qual, line), (kind, n, capped) in counts.items():
+        if n < 1:
+            continue
+        if file not in defined:
+            try:
+                defined[file] = {q for q, _ in defined_functions(file)}
+            except (OSError, SyntaxError, ValueError, RecursionError):
+                defined[file] = None
+        names = defined[file]
+        if names is None or qual not in names:
+            dropped.add((file, qual))
+            continue
+        # One name, several defs (a property's getter and setter, a def in
+        # each branch of an if): one entry for load_spec, so one here.
+        is_async = kind in _ASYNC_KINDS
+        fn = kept.get((file, qual))
+        if fn is None:
+            kept[(file, qual)] = [line, is_async, n, capped]
+        else:
+            fn[0], fn[1] = min(fn[0], line), fn[1] or is_async
+            fn[2], fn[3] = fn[2] + n, fn[3] or capped
+    return kept, len(dropped)
+
+
 def _count_text(n: int, capped: bool, cap: int) -> str:
     if capped:
         return f"≥{cap:,} calls"
@@ -165,23 +223,20 @@ def _count_text(n: int, capped: bool, cap: int) -> str:
 
 
 def _render(
-    counts: _Counts,
+    functions: dict,
     spec_dir: str,
     *,
     program_desc: str,
     started: datetime,
     duration_s: float,
-    cap: int = DISCOVER_CAP,
-) -> tuple[str, int]:
-    """The spec text for ``counts`` and the number of functions in it.
-    Files are sorted by key, functions within a file by line."""
-    by_file: dict[str, list[tuple[int, str, str, int, bool]]] = {}
-    for (file, qual, line), (kind, n, capped) in counts.items():
-        if n < 1:
-            continue
-        key = _file_key(file, spec_dir)
-        by_file.setdefault(key, []).append(
-            (line, qual.replace(".", "::"), kind, n, capped or n >= cap)
+    cap: int,
+) -> str:
+    """The spec text for ``functions`` (from _in_source).  Files are sorted
+    by key, functions within a file by line."""
+    by_file: dict[str, list[tuple[int, str, bool, int, bool]]] = {}
+    for (file, qual), (line, is_async, n, capped) in functions.items():
+        by_file.setdefault(_file_key(file, spec_dir), []).append(
+            (line, qual.replace(".", "::"), is_async, n, capped or n >= cap)
         )
     header = (
         f"# tdb --trace-discover: {_printable(program_desc)}, "
@@ -189,21 +244,43 @@ def _render(
         "# Remove what you do not need; hot functions make traces large.\n"
     )
     blocks = []  # one per file, separated by a blank line
-    total = 0
     for key in sorted(by_file):
-        functions = sorted(by_file[key])
-        names = [_scalar(name) for _, name, _, _, _ in functions]
+        entries = sorted(by_file[key])
+        names = [_scalar(name) for _, name, _, _, _ in entries]
         width = max(len(name) for name in names)
-        lines = [f"{_scalar(key, plain=_PLAIN)}:"]
-        for name, (_, _, kind, n, capped) in zip(names, functions):
+        lines = _key_lines(key)
+        for name, (_, _, is_async, n, capped) in zip(names, entries):
             lines.append(
                 f"  - {name.ljust(width)}  # {_count_text(n, capped, cap)}"
-                f"{', async' if kind in _ASYNC_KINDS else ''}"
+                f"{', async' if is_async else ''}"
                 f"{'  (hot)' if capped else ''}"
             )
         blocks.append("".join(line + "\n" for line in lines))
-        total += len(functions)
-    return header + "\n" + "\n".join(blocks), total
+    return header + "\n" + "\n".join(blocks)
+
+
+def write_spec(
+    counts: Counts,
+    out_path: Path,
+    *,
+    program_desc: str,
+    started: datetime,
+    duration_s: float,
+    cap: int = DISCOVER_CAP,
+) -> Discovered:
+    """Write the spec of ``counts`` to ``out_path``, whole or not at all.
+    Raises OSError if it cannot be written."""
+    functions, omitted = _in_source(counts)
+    text = _render(
+        functions,
+        norm_path(Path(out_path).parent),
+        program_desc=program_desc,
+        started=started,
+        duration_s=duration_s,
+        cap=cap,
+    )
+    write_atomic(Path(out_path), lambda tmp: tmp.write_text(text, encoding="utf-8"))
+    return Discovered(len(functions), omitted)
 
 
 def write_discovered_spec(
@@ -214,17 +291,14 @@ def write_discovered_spec(
     started: datetime,
     duration_s: float,
     cap: int = DISCOVER_CAP,
-) -> int:
-    """Write the spec of the functions counted in ``parts_dir`` to
-    ``out_path``, whole or not at all; return the number of functions.
-    Raises OSError if the parts cannot be read or the spec written."""
-    text, total = _render(
-        _read_counts(parts_dir),
-        norm_path(Path(out_path).parent),
+) -> Discovered:
+    """read_counts, then write_spec.  Raises OSError if the parts cannot
+    be read or the spec written."""
+    return write_spec(
+        read_counts(parts_dir),
+        out_path,
         program_desc=program_desc,
         started=started,
         duration_s=duration_s,
         cap=cap,
     )
-    write_atomic(Path(out_path), lambda tmp: tmp.write_text(text, encoding="utf-8"))
-    return total

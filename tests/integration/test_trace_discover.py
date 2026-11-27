@@ -14,8 +14,9 @@ from pathlib import Path
 import pytest
 
 from tdb.trace.discover import write_discovered_spec
+from tdb.trace.launch import NO_PROCESS_WARNING
 from tdb.trace.spec import load_spec
-from tests.integration.test_trace_launch import listing, tdb, write_prog
+from tests.integration.test_trace_launch import _env, listing, tdb, write_prog
 from tests.integration.trace_helpers import run_traced
 
 pytestmark = pytest.mark.skipif(sys.version_info < (3, 12), reason="sys.monitoring")
@@ -175,7 +176,7 @@ def test_fork_child_counts_only_its_own_calls(tmp_path):
     n = write_discovered_spec(
         parts.dir, out, program_desc="prog.py", started=datetime.now(), duration_s=1
     )
-    assert n == 2
+    assert n == (2, 0)
     assert out.read_text(encoding="utf-8").split("\n")[3:] == [
         "prog.py:",
         "  - f  # 10 calls",
@@ -307,3 +308,132 @@ def test_a_signal_handlers_exception_reaches_the_program(tmp_path):
     )
     assert parts.returncode == 0, parts.stderr
     assert parts.stdout.split() == ["20"]
+
+
+# --- fix round 1 ------------------------------------------------------------
+
+
+@posix
+def test_no_traced_process_is_reported(tmp_path):
+    """Issue 1: a program started with -I loads no tracer; tdb says so
+    rather than write an empty spec without a word."""
+    script = tmp_path / "isolated"
+    script.write_text(f"#!{sys.executable} -I\ndef f():\n    pass\nf()\n")
+    script.chmod(0o755)
+    r = tdb(tmp_path, "--trace-discover", "out.yaml", "./isolated")
+    assert r.returncode == 0
+    assert r.stderr.splitlines() == [
+        "tdb: wrote out.yaml (0 functions)",
+        NO_PROCESS_WARNING,
+    ]
+
+
+def test_program_installed_in_site_packages_is_discovered(tmp_path):
+    """Ruling 26: the program is the user's code wherever it is installed;
+    the other modules of its site-packages directory stay library code."""
+    env = {**_env(tmp_path), "PYTHONUSERBASE": str(tmp_path / "userbase")}
+    where = subprocess.run(
+        [sys.executable, "-c", "import site; print(site.getusersitepackages())"],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    site_dir = Path(where.stdout.strip())
+    site_dir.mkdir(parents=True)
+    (site_dir / "neighbour.py").write_text("def helper():\n    pass\n")
+    prog = site_dir / "prog.py"
+    prog.write_text("import neighbour\n\ndef f():\n    neighbour.helper()\n\nf()\n")
+    r = tdb(tmp_path, "--trace-discover", "out.yaml", str(prog), env=env)
+    assert r.returncode == 0, r.stderr
+    assert r.stderr == "tdb: wrote out.yaml (1 function)\n"
+    key = prog.relative_to(tmp_path).as_posix()
+    lines = (tmp_path / "out.yaml").read_text(encoding="utf-8").splitlines()
+    assert lines[3:] == [f"{key}:", "  - f  # 1 call"]
+
+
+PY314 = next(
+    (
+        p
+        for p in ("/home/al/.local/bin/python3.14", shutil.which("python3.14"))
+        if p and os.path.exists(p)
+    ),
+    None,
+)
+
+DATACLASS = """\
+import typing
+from dataclasses import dataclass
+
+
+@dataclass
+class Point:
+    x: int
+
+    def norm(self) -> int:
+        return self.x
+
+
+def area(p: Point) -> int:
+    return p.norm()
+
+
+area(Point(2))
+typing.get_type_hints(area)
+"""
+
+
+@pytest.mark.skipif(PY314 is None, reason="no python3.14")
+def test_python_3_14_annotations_are_not_functions(tmp_path):
+    """Issue 2: 3.14 runs a compiler-made __annotate__ for each annotated
+    class and function that is introspected (@dataclass, get_type_hints);
+    no source defines it, so it is never counted."""
+    write_prog(tmp_path, DATACLASS)
+    r = tdb(tmp_path, "--trace-discover", "out.yaml", "--python", PY314, "prog.py")
+    assert r.returncode == 0, r.stderr
+    assert r.stderr == "tdb: wrote out.yaml (2 functions)\n"  # nothing omitted
+    lines = (tmp_path / "out.yaml").read_text(encoding="utf-8").splitlines()
+    assert lines[3:] == [
+        "prog.py:",
+        "  - Point::norm  # 1 call",
+        "  - area         # 1 call",
+    ]
+    load_spec(tmp_path / "out.yaml")
+
+
+RELOAD = """\
+import importlib
+import helper
+
+for _ in range(3):
+    helper.f()
+old = helper.f.__code__
+importlib.reload(helper)
+assert helper.f.__code__ is not old
+for _ in range(4):
+    helper.f()
+for _ in range(20):
+    helper.g()
+importlib.reload(helper)
+for _ in range(5):
+    helper.g()
+"""
+
+
+def test_code_objects_of_one_function_count_together(tmp_path):
+    """M6: a module reloaded gives its functions new code objects; they
+    count as one, and a function capped through one is DISABLEd at the
+    first call through another."""
+    parts = run_traced(
+        tmp_path,
+        RELOAD,
+        [],
+        mode="discover",
+        discover_cap=10,
+        files={"helper.py": "def f():\n    pass\n\ndef g():\n    pass\n"},
+    )
+    assert parts.returncode == 0, parts.stderr
+    helper = [r for r in parts.all("count") if Path(r["file"]).name == "helper.py"]
+    assert {(r["qual"], r["line"]) for r in helper} == {("f", 1), ("g", 4)}
+    last = {r["qual"]: (r["n"], r["capped"]) for r in helper}
+    assert last == {"f": (7, False), "g": (10, True)}

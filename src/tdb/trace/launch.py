@@ -43,7 +43,7 @@ import socket
 import subprocess
 import sys
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -59,7 +59,7 @@ from tdb.trace.contract import (
     write_config,
 )
 from tdb.trace.perfetto import write_trace
-from tdb.trace.spec import TraceSpec, unmatched_entries
+from tdb.trace.spec import TraceSpec, norm_path, unmatched_entries
 
 MIN_PYTHON = (3, 12)
 PROBE_TIMEOUT = 10  # seconds the interpreter version probe may take
@@ -244,7 +244,8 @@ def run(req: TraceRequest) -> int:
             "spec": None if req.spec is None else str(req.spec.path),
             "host": socket.gethostname(),
         }
-        _create_parts_dir(parts_dir, req, run_info)
+        roots = _user_roots(req, cmd) if discover else []
+        _create_parts_dir(parts_dir, req, run_info, user_roots=roots)
         created = True
         started, start = datetime.now(), time.monotonic()
         proc = _supervise(cmd, req, parts_dir)
@@ -253,11 +254,14 @@ def run(req: TraceRequest) -> int:
         if created:
             _remove_unused(parts_dir)
         return _INTERRUPTED
+    code, main_signal = _exit_status(proc.returncode)
     try:
         if discover:
-            written = _write_discovery(req, parts_dir, started, duration)
+            ended = (code, proc.pid, main_signal)
+            written = _write_discovery(
+                req, parts_dir, run_info, ended, started, duration
+            )
         else:
-            code, main_signal = _exit_status(proc.returncode)
             written = _write_outputs(
                 req, parts_dir, run_info, code, proc.pid, main_signal
             )
@@ -268,6 +272,36 @@ def run(req: TraceRequest) -> int:
 
 def _mode_flag(req: TraceRequest) -> str:
     return "--trace-discover" if req.mode == "discover" else "--trace"
+
+
+def _user_roots(req: TraceRequest, cmd: list[str]) -> list[str]:
+    """Discover mode (Ruling 26): paths whose code is the program's own
+    even under a library directory, so a program installed in
+    site-packages is still discovered.  A ``.py`` program gives its file
+    and its directory (the agent lets a library directory as deep or
+    deeper win, so a program right in site-packages does not take all of
+    it, nor a project directory its .venv); a command gives its file, if
+    that is a Python script; ``-m`` gives none (the module is found only
+    when the program imports it)."""
+    if req.module is not None:
+        return []
+    if is_py_program(req.program):
+        program = norm_path(cmd[1])
+        return [program, os.path.dirname(program)]
+    command = norm_path(cmd[0])
+    return [command] if _is_python_script(command) else []
+
+
+def _is_python_script(path: str) -> bool:
+    """A ``.py`` file, or one whose ``#!`` line runs a Python."""
+    if is_py_program(path):
+        return True
+    try:
+        with open(path, "rb") as f:
+            first = f.readline(256)
+    except OSError:
+        return False
+    return first.startswith(b"#!") and b"python" in first
 
 
 def say(text: str) -> None:
@@ -326,7 +360,9 @@ def _remove_unused(parts_dir: Path) -> None:
             shutil.rmtree(parts_dir)
 
 
-def _create_parts_dir(parts_dir: Path, req: TraceRequest, run_info: dict) -> None:
+def _create_parts_dir(
+    parts_dir: Path, req: TraceRequest, run_info: dict, *, user_roots: list[str]
+) -> None:
     try:
         parts_dir.mkdir()
     except FileExistsError:
@@ -349,6 +385,7 @@ def _create_parts_dir(parts_dir: Path, req: TraceRequest, run_info: dict) -> Non
             parts_dir=parts_dir,
             targets=[] if req.spec is None else req.spec.agent_targets(),
             max_events=req.max_events,
+            user_roots=user_roots,
         )
     except BaseException as exc:  # a Ctrl-C too: leave nothing behind
         shutil.rmtree(parts_dir, ignore_errors=True)
@@ -570,22 +607,37 @@ def _write_outputs(
 
 
 def _write_discovery(
-    req: TraceRequest, parts_dir: Path, started: datetime, duration_s: float
+    req: TraceRequest,
+    parts_dir: Path,
+    run_info: dict,
+    ended: tuple[int, int, str | None],
+    started: datetime,
+    duration_s: float,
 ) -> bool:
-    """Write the discovered spec, remove the parts, print the summary.
-    False if the spec could not be written (the parts are then kept)."""
+    """Write the discovered spec, remove the parts, print the summary with
+    --trace's warnings (what the counts may be missing).  False if the
+    parts could not be read or the spec written (the parts are then kept).
+    ``ended`` is the main process's (exit code, pid, signal name)."""
     from tdb.trace import discover  # it imports this module
 
+    code, main_pid, main_signal = ended
     out = req.discover_out
     desc = req.program if req.module is None else f"-m {req.module}"
     try:
         try:
-            n = discover.write_discovered_spec(
+            _, summary = assemble(
                 parts_dir,
-                out,
-                program_desc=desc,
-                started=started,
-                duration_s=duration_s,
+                header={**run_info, "exit_code": code},
+                main_pid=main_pid,
+                main_signal=main_signal,
+            )
+            counts = discover.read_counts(parts_dir)
+        except OSError as exc:
+            say(f"tdb: error: cannot read {parts_dir}: {exc}")
+            return False
+        try:
+            found = discover.write_spec(
+                counts, out, program_desc=desc, started=started, duration_s=duration_s
             )
         except OSError as exc:
             say(f"tdb: error: could not write {out}: {exc}; events kept in {parts_dir}")
@@ -593,7 +645,12 @@ def _write_discovery(
     except KeyboardInterrupt:
         say(f"tdb: interrupted; events kept in {parts_dir}")
         raise
-    lines = [f"tdb: wrote {out} ({_counted(n, 'function', 'functions', ',')})"]
+    functions = _counted(found.functions, "function", "functions", ",")
+    lines = [f"tdb: wrote {out} ({functions})"]
+    if found.omitted:
+        omitted = _counted(found.omitted, "function", "functions", ",")
+        lines.append(f"tdb: note: {omitted} omitted (not found in their source files)")
+    lines += _warning_lines(summary)
     try:
         shutil.rmtree(parts_dir)
     except OSError as exc:
@@ -623,11 +680,21 @@ def _summary_lines(
             _counted(s.calls, "call", "calls", ","),
         ]
     )
-    lines = [
+    return [
         f'tdb: trace "{name}": {counts}',
         f"tdb: wrote {jsonl}",
         f"tdb: wrote {perfetto}  (open in https://ui.perfetto.dev)",
+        *_warning_lines(s, never_called),
     ]
+
+
+def _warning_lines(
+    summary: CaptureSummary, never_called: Sequence[str] = ()
+) -> list[str]:
+    """What the outputs (a capture, or a discovered spec) may be missing,
+    one string per stderr line; shared by --trace and --trace-discover."""
+    s = summary
+    lines = []
     for m in s.skipped:
         argv0 = (m.get("argv") or ["?"])[0]
         lines.append(

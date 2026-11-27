@@ -165,6 +165,8 @@ _signal_nums = None  # signal numbers, once _from_signal_handler needs them
 # Discover mode (see "discovery"):
 _discover_cap = 10_000  # calls after which a function is no longer counted
 _lib_dirs = ()  # library directories (normalized, ending in os.sep)
+_root_paths = frozenset()  # user roots (normalized): the program's file, ...
+_root_dirs = ()  # ... and the same, ending in os.sep: its directory
 
 # --- the flusher ---------------------------------------------------------
 # Whether there is a flusher: not None while one runs (its thread ident) or
@@ -902,10 +904,13 @@ _CALLBACKS = (
 # Discover mode counts the calls of every function in user code, for tdb
 # to write a spec from.  Only PY_START is on, globally, with _on_count as
 # its callback.  User code is a function body (module and class bodies
-# are not functions) whose qualname, without ".<locals>", has no "<" (no
-# lambda, no generator expression), from a file that is not "<...>" (exec
-# and frozen code), not the agent's and not under a library directory:
-# the interpreter's standard library and site-packages (_library_dirs).
+# are not functions, nor is 3.14's compiler-made __annotate__) whose
+# qualname, without ".<locals>", has no "<" (no lambda, no generator
+# expression), from a file that is not "<...>" (exec and frozen code), not
+# the agent's and not library code (_user_file): under a library directory
+# (the standard library and site-packages, _library_dirs), unless it is
+# under one of the user roots tdb names (the program's file and directory)
+# that is deeper still.
 #
 # Overhead stays bounded: other code returns DISABLE at its first call, and
 # a function returns DISABLE once it has been counted _discover_cap times
@@ -959,29 +964,67 @@ def _library_dirs():
     for name in ("getsitepackages", "getusersitepackages"):
         try:
             dirs = getattr(site, name)()
-            found.extend([dirs] if isinstance(dirs, str) else dirs)
+            dirs = [dirs] if isinstance(dirs, str) else dirs
+            # Only directories of installed packages: on Windows site also
+            # names the bare prefix (in a venv, the venv's own directory).
+            found.extend([d for d in dirs if _basename(d) in _PACKAGE_DIRS])
         except Exception:  # an old virtualenv's site.py lacks getsitepackages
             pass
     out = set()
     for path in found:
         if path:
-            path = _norm_path(path)
-            out.add(path if path.endswith(os.sep) else path + os.sep)
+            out.add(_as_dir(_norm_path(path)))
     return tuple(sorted(out))
 
 
+_PACKAGE_DIRS = ("site-packages", "dist-packages")
+
+
+def _basename(path):
+    return os.path.basename(os.path.normcase(path).rstrip("/\\"))
+
+
+def _as_dir(path):
+    """A normalized directory, ending in os.sep."""
+    return path if path.endswith(os.sep) else path + os.sep
+
+
+def _deepest(nfile, dirs):
+    """The length of the longest of ``dirs`` (ending in os.sep) holding
+    ``nfile``, or 0."""
+    best = 0
+    for d in dirs:
+        if len(d) > best and nfile.startswith(d):
+            best = len(d)
+    return best
+
+
 def _user_file(filename):
-    """The normalized path of a file of user code, or None."""
+    """The normalized path of a file of user code, or None.
+
+    Library code is code under a library directory, unless a user root
+    holds it more closely: the program's own file, or its directory when
+    that is deeper than the library directory (a program inside an
+    installed package), so the program counts as user code wherever it
+    is installed.  A library directory inside a user root (a project's
+    .venv) is still library code, and so, at equal depth, are a program's
+    neighbours in site-packages itself."""
     nfile = _norm_path(filename)
-    if os.path.dirname(nfile) in _agent_dirs or nfile.startswith(_lib_dirs):
+    if os.path.dirname(nfile) in _agent_dirs:
         return None
-    return nfile
+    lib = _deepest(nfile, _lib_dirs)
+    if not lib:
+        return nfile
+    root = len(nfile) + 1 if nfile in _root_paths else _deepest(nfile, _root_dirs)
+    return nfile if root > lib else None
 
 
 def _new_count(code):
     """The _Count for ``code``, seen for the first time, or None if it is
     not user code."""
     if not code.co_flags & _CO_OPTIMIZED:  # a module or class body, exec code
+        return None
+    if code.co_name == "__annotate__":  # 3.14: made for annotations, no def
         return None
     filename = code.co_filename
     if filename.startswith("<"):
@@ -1728,7 +1771,7 @@ def start(config):
     that into an agent-error marker."""
     global _tool, _fd, _part_path, _part_id, _parts_dir, _stopped, _interval
     global _targets, _agent_dirs, _proc_name, _repr_limit, _repr, _max_events
-    global _mode, _part_pid, _discover_cap, _lib_dirs
+    global _mode, _part_pid, _discover_cap, _lib_dirs, _root_paths, _root_dirs
     if _tool is not None or _fd is not None:
         raise RuntimeError("the tracer is already started in this process")
     if config.get("version") != 1:
@@ -1748,6 +1791,7 @@ def start(config):
     if discover:
         cap = int(config["discover_cap"])
         lib_dirs = _library_dirs()  # before any callback: it imports sysconfig
+        roots = frozenset(_norm_path(r) for r in config["user_roots"])
 
     tool = pick_tool_id()
     if tool is None:
@@ -1759,6 +1803,7 @@ def start(config):
         _repr, _max_events, _mode = _make_repr(_repr_limit), max_events, mode
         if discover:
             _discover_cap, _lib_dirs = cap, lib_dirs
+            _root_paths, _root_dirs = roots, tuple(_as_dir(r) for r in roots)
         _fd, _part_path = _open_part(parts_dir)
         st = _fstat(_fd)
         _part_id, _parts_dir, _part_pid = (st.st_dev, st.st_ino), parts_dir, _getpid()

@@ -66,7 +66,17 @@ def test_write_config_uses_shared_format(tmp_path):
         "repr_limit": DEFAULT_REPR_LIMIT,
         "flush_interval": FLUSH_INTERVAL,
         "discover_cap": DISCOVER_CAP,
+        "user_roots": [],
     }
+    write_config(
+        tmp_path / "d.json",
+        mode="discover",
+        parts_dir=tmp_path / "p",
+        targets=[],
+        user_roots=["/w/prog.py", "/w"],
+    )
+    config = json.loads((tmp_path / "d.json").read_text())
+    assert (config["mode"], config["user_roots"]) == ("discover", ["/w/prog.py", "/w"])
 
 
 def test_agent_dir_has_only_two_files():
@@ -125,3 +135,75 @@ def test_hot_record_templates_match_json_dumps():
             assert template % (t, c, tid, arg) == json.dumps(
                 {"k": kind, "t": t, "c": c, "tid": tid, "task": task}, **compact
             )
+
+
+needs_monitoring = pytest.mark.skipif(
+    sys.version_info < (3, 12), reason="sys.monitoring"
+)
+
+
+@needs_monitoring
+def test_library_dirs_are_package_dirs_only(tmp_path, monkeypatch):
+    """On Windows site.getsitepackages() also names the bare prefix (in a
+    venv, the venv itself): a project there must not become library code.
+    Inputs are faked, so this runs on any OS."""
+    import sysconfig
+    import types
+
+    agent = _load_agent_file("tdb_trace_agent_under_test", "_tdb_trace_agent.py")
+    prefix = tmp_path / "venv"
+    stdlib = tmp_path / "base" / "Lib"
+    paths = {"stdlib": str(stdlib), "platstdlib": str(prefix / "Lib")}
+    paths.update(purelib=str(prefix / "Lib" / "site-packages"), platlib=None)
+    monkeypatch.setattr(sysconfig, "get_paths", lambda: paths)
+    site = types.SimpleNamespace(
+        getsitepackages=lambda: [str(prefix), str(prefix / "Lib" / "site-packages")],
+        getusersitepackages=lambda: str(tmp_path / "AppData" / "dist-packages"),
+    )
+    monkeypatch.setitem(sys.modules, "site", site)
+    norm = agent._norm_path
+    assert agent._library_dirs() == tuple(
+        sorted(
+            norm(p) + os.sep
+            for p in (
+                stdlib,
+                prefix / "Lib",
+                prefix / "Lib" / "site-packages",
+                tmp_path / "AppData" / "dist-packages",
+            )
+        )
+    )
+
+
+@needs_monitoring
+def test_user_roots_beat_library_dirs_only_when_deeper(tmp_path, monkeypatch):
+    """Ruling 26: the program is user code wherever it is installed, but
+    its directory does not make site-packages, or a .venv inside the
+    project, user code."""
+    agent = _load_agent_file("tdb_trace_agent_under_test", "_tdb_trace_agent.py")
+    site = agent._norm_path(tmp_path / "site-packages")
+    venv_site = agent._norm_path(tmp_path / "proj" / ".venv" / "site-packages")
+    monkeypatch.setattr(agent, "_lib_dirs", (site + os.sep, venv_site + os.sep))
+    monkeypatch.setattr(agent, "_agent_dirs", frozenset())
+
+    def user(*roots):
+        roots = [agent._norm_path(tmp_path / r) for r in roots]
+        monkeypatch.setattr(agent, "_root_paths", frozenset(roots))
+        monkeypatch.setattr(agent, "_root_dirs", tuple(r + os.sep for r in roots))
+        return lambda *path: agent._user_file(str(tmp_path.joinpath(*path))) is not None
+
+    # A program directly in site-packages, its directory given too.
+    is_user = user("site-packages/prog.py", "site-packages")
+    assert is_user("site-packages", "prog.py")
+    assert not is_user("site-packages", "neighbour.py")
+    # A program inside an installed package: the package is the program's.
+    is_user = user("site-packages/pkg/tool.py", "site-packages/pkg")
+    assert is_user("site-packages", "pkg", "helper.py")
+    assert not is_user("site-packages", "other", "mod.py")
+    # A project with its .venv inside: the venv stays library code.
+    is_user = user("proj/main.py", "proj")
+    assert is_user("proj", "main.py") and is_user("proj", "lib", "util.py")
+    assert not is_user("proj", ".venv", "site-packages", "requests", "api.py")
+    # No roots (-m): library code is library code.
+    is_user = user()
+    assert not is_user("site-packages", "prog.py") and is_user("proj", "main.py")

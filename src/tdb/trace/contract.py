@@ -36,8 +36,13 @@ def write_config(
     repr_limit: int = DEFAULT_REPR_LIMIT,
     flush_interval: float = FLUSH_INTERVAL,
     discover_cap: int = DISCOVER_CAP,
+    user_roots: list[str] | tuple[str, ...] = (),
 ) -> None:
-    """Write the agent config JSON (format: plan "Agent config JSON")."""
+    """Write the agent config JSON (format: plan "Agent config JSON").
+
+    ``user_roots`` (discover mode) are paths whose code is the program's
+    own even under a library directory: the program's file and directory.
+    """
     config = {
         "version": 1,
         "mode": mode,
@@ -48,6 +53,7 @@ def write_config(
         "repr_limit": repr_limit,
         "flush_interval": flush_interval,
         "discover_cap": discover_cap,
+        "user_roots": list(user_roots),
     }
     Path(path).write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
 
