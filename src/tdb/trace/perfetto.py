@@ -154,11 +154,13 @@ class _Builder:
 
     def add(self, si: int, service: str, capture: Capture) -> None:
         procs: dict = {}
+        spans: dict = {}  # pid -> [(start_ns, end_ns)] of its parts, in order
         for rec in capture.processes:
             pid = rec.get("pid")
             p = procs.get(pid)
             if p is None:
                 p = procs[pid] = self._new_proc(si, service, pid)
+            spans.setdefault(pid, []).append((rec.get("start_ns"), rec.get("end_ns")))
             start = rec.get("start_ns")
             if start is not None and (p.start is None or start < p.start):
                 p.start = start
@@ -205,8 +207,9 @@ class _Builder:
         for p in procs.values():
             if p.end is None:
                 p.end = p.last_ts if p.last_ts is not None else p.start
-        for c in calls.values():  # never ended: close at the process's end
-            self._unfinished(c, c.lane.proc.end)
+        for c in calls.values():  # never ended: close at its part's end
+            p = c.lane.proc
+            self._unfinished(c, _part_end(spans.get(p.pid), c.ev["ts"], p.end))
 
     def _new_proc(self, si: int, service: str, pid) -> _Proc:
         p = _Proc(si, service, pid)
@@ -362,6 +365,19 @@ class _Builder:
                     }
             for e in p.instants:
                 yield _process_instant(pid, p.anchor, e, base)
+
+
+def _part_end(spans: list | None, ts, default):
+    """The end of the part a call at ``ts`` began in, when its pid has
+    several (an exec: the calls open at it end with the part before it);
+    else ``default``, the process's end."""
+    if not spans or len(spans) < 2:
+        return default
+    end = None
+    for start, part_end in spans:
+        if start is not None and start <= ts:
+            end = part_end
+    return default if end is None else end
 
 
 def _lane_order(lanes: list[_Lane]) -> list[_Lane]:

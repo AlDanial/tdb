@@ -1340,10 +1340,14 @@ def _shielded(fn):
 
 def _give_up(error):
     """Stop tracing for good after a write failure, instead of retrying it
-    on every flush while the buffer grows; leave an agent-error marker."""
+    on every flush while the buffer grows; leave an agent-error marker.
+    Monitoring is torn down, so no callback runs again (the global
+    PY_UNWIND and PY_THROW ones included), in this process or in a child
+    it forks later."""
     global _stopped, _broken, _fence
     _stopped = _broken = _fence = True
     del _buf[:]
+    _teardown()  # never raises
     try:
         pid = _getpid()
         record = {
@@ -1750,6 +1754,87 @@ _CHILD_GATE = _partial(
 )
 
 
+# --- exec -------------------------------------------------------------------
+#
+# os.execv and os.execve replace the process, the flusher and the buffer
+# with it, and run no atexit handler: the events still in the buffer would
+# be lost.  So while tracing they are wrapped (every other os.exec* calls
+# them through os's globals), and before the real call:
+# - the flusher writes what is buffered and ends, as before a fork
+#   (_before_fork), within the same bound;
+# - the calling thread, now the one writer (it holds the flusher's slot,
+#   so no flusher starts meanwhile), writes the rest and then an exec
+#   record, {"k": "exec", "t": ...}: the last record of the part, which
+#   tells tdb the part ended at an exec rather than abruptly;
+# - if the exec fails (os.execvp's search of PATH fails at every
+#   directory but the last) or is interrupted, the slot is given back and
+#   a flusher started again; records written are gone from the buffer, so
+#   nothing is written twice, and the part goes on after the exec record.
+# A flusher that does not end in time (stuck) keeps the part: nothing is
+# written, and the part, with no exec record, is reported abrupt.
+
+_real_execv = os.execv
+_real_execve = os.execve
+
+
+def _execv(*args, **kwargs):
+    """``os.execv`` while tracing: write the trace first (see "exec")."""
+    token = []  # a new object, made without a call
+    try:
+        _flush_for_exec(token)
+        return _real_execv(*args, **kwargs)  # returns only by raising
+    finally:
+        _after_exec_failed(token)
+
+
+def _execve(*args, **kwargs):
+    """``os.execve`` while tracing: write the trace first (see "exec")."""
+    token = []
+    try:
+        _flush_for_exec(token)
+        return _real_execve(*args, **kwargs)
+    finally:
+        _after_exec_failed(token)
+
+
+def _flush_for_exec(token):
+    """Write every record buffered so far, then an exec record."""
+    global _flusher_ident
+    if _stopped or _fence or _broken or _fd is None or _getpid() != _part_pid:
+        return  # not tracing, or not this process's part (a forked child's gate)
+    _before_fork()
+    if _flusher_ident is not None:
+        return  # a flusher that did not stop: it keeps writing the part
+    _flusher_ident = token  # no call since the test: no flusher starts now
+    try:
+        if _count_keys:  # discover mode
+            _final_counts()
+        n = len(_buf)  # records other threads add from now on stay for later
+        while n > 0:
+            batch = _buf[: min(n, _CHUNK)]
+            if not batch:
+                break
+            _write_out(("\n".join(batch) + "\n").encode("ascii"))
+            del _buf[: len(batch)]  # right after the write: no call between
+            n -= len(batch)
+        record = _dumps({"k": "exec", "t": _perf_ns()})
+        _write_out((record + "\n").encode("ascii"))
+    except Exception as exc:  # the exec goes ahead whatever happened here
+        if _from_signal_handler(exc):
+            raise
+        if isinstance(exc, OSError) and exc.errno is not None:
+            _give_up(f"cannot write the part file: {exc}")
+
+
+def _after_exec_failed(token):
+    """The exec raised (or never ran): give the flusher's slot back, if
+    this thread holds it, and start a flusher if there is none."""
+    global _flusher_ident
+    if _flusher_ident is token:
+        _flusher_ident = None
+    _ensure_flusher()
+
+
 # --- public ---------------------------------------------------------------
 
 
@@ -1835,6 +1920,7 @@ def start(config):
             )
             os.register_at_fork(after_in_child=_ensure_flusher)
         os._exit = _exit
+        os.execv, os.execve = _execv, _execve
     except BaseException:
         _teardown()
         if _fd is not None:

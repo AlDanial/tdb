@@ -390,8 +390,12 @@ def test_records_of_one_pid_form_one_process():
         ]
     )
     assert list(process_names(trace).values()) == ["orders · worker (4121)"]
+    # Ruling 32 (review M6): a call left open at the exec ends where its own
+    # part ends, not at the pid's last event, after the exec.
     (spawn,) = xs(trace, "spawn")
-    assert (spawn["ts"], spawn["dur"], spawn["args"]["unfinished"]) == (0.0, 8.0, True)
+    assert (spawn["ts"], spawn["dur"], spawn["args"]["unfinished"]) == (0.0, 2.0, True)
+    (run,) = xs(trace, "run")
+    assert (run["ts"], run["dur"], "unfinished" in run["args"]) == (3.0, 1.0, False)
     assert_nested(trace)
 
 

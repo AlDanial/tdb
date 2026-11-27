@@ -12,6 +12,12 @@ definitions are resolved per part.  When a pid has several parts (a forked
 process that then exec'd another traced program), call and task ids are
 renumbered across that pid's parts so ``call_id`` stays unique per pid.
 
+Each part's ``ended`` comes from its own last records: ``exec`` when its
+last record is an ``exec`` record (``{"k": "exec", "t": ...}``, which the
+agent writes just before ``os.execv``/``os.execve``), ``clean`` when it has
+an ``exit`` record, else ``abrupt``; the main process's last part takes
+``signal:NAME`` when the program died by a signal.
+
 This module runs inside tdb, not the traced program; it must work on
 Python 3.11.
 """
@@ -46,6 +52,9 @@ class CaptureSummary:
     skipped: list[dict] = field(default_factory=list)
     agent_errors: list[dict] = field(default_factory=list)
     abrupt: list[int] = field(default_factory=list)
+    # (name, pid, signal name): the main process, killed by a signal before
+    # it wrote its exit record
+    killed: list[tuple[str, int, str]] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
     called: set[tuple[str, str]] = field(default_factory=set)
 
@@ -86,13 +95,13 @@ def _read_markers(parts_dir: Path, summary: CaptureSummary) -> None:
 
 
 class _PidState:
-    """Per-pid running maxima used to renumber ids across that pid's parts."""
+    """Per-pid running maxima used to renumber ids across that pid's parts,
+    and the pid's parts: (process record, how the part ended)."""
 
     def __init__(self) -> None:
         self.call_max = 0
         self.task_max = 0
-        self.last_process: dict | None = None
-        self.last_has_exit = False
+        self.parts: list[tuple[dict, str | None]] = []
 
 
 def _read_part(
@@ -102,8 +111,10 @@ def _read_part(
     events: list[dict],
     threads: set,
     tasks: set,
-) -> tuple[dict, bool] | None:
-    """Read one part; append its events.  Returns (process record, saw exit)."""
+) -> tuple[dict, str | None] | None:
+    """Read one part; append its events.  Returns (process record, how it
+    ended): "exec" if its last record is an exec record, else "exit" if it
+    has an exit record, else None."""
     bad = [0]
     it = _records(path, bad)
     hdr = next(it, None)
@@ -125,9 +136,10 @@ def _read_part(
     last_t = None
     saw_exit = False
     exit_t = None
+    last_k = None
 
     for rec in it:
-        k = rec.get("k")
+        k = last_k = rec.get("k")
         if k == "fn":
             fns[rec.get("id")] = rec
             continue
@@ -148,7 +160,7 @@ def _read_part(
             saw_exit = True
             exit_t = t
             continue
-        if k == "count" or k == "proc" or t is None:
+        if k == "count" or k == "proc" or k == "exec" or t is None:
             continue
 
         tid = rec.get("tid")
@@ -228,7 +240,7 @@ def _read_part(
         "end_ns": wall if end_t is None else base + end_t,
         "ended": None,
     }
-    return proc, saw_exit
+    return proc, "exec" if last_k == "exec" else "exit" if saw_exit else None
 
 
 def _fill_fn(ev: dict, fn: dict, summary: CaptureSummary) -> None:
@@ -265,24 +277,23 @@ def assemble(
         got = _read_part(path, state_for, summary, events, threads, tasks)
         if got is None:
             continue
-        proc, saw_exit = got
-        st = state_for(proc["pid"])
-        if st.last_process is not None:
-            st.last_process["ended"] = "exec"
-        st.last_process, st.last_has_exit = proc, saw_exit
-        processes.append(proc)
+        state_for(got[0]["pid"]).parts.append(got)
+        processes.append(got[0])
 
     for pid, st in states.items():
-        proc = st.last_process
-        if proc is None:
-            continue
-        if pid == main_pid and main_signal:
-            proc["ended"] = f"signal:{main_signal}"
-        elif st.last_has_exit:
-            proc["ended"] = "clean"
-        else:
-            proc["ended"] = "abrupt"
-            summary.abrupt.append(pid)
+        for i, (proc, how) in enumerate(st.parts):
+            if pid == main_pid and main_signal and i == len(st.parts) - 1:
+                proc["ended"] = f"signal:{main_signal}"
+                if how is None:  # killed before it could write its last records
+                    name = header.get("name") or proc["name"] or "the program"
+                    summary.killed.append((name, pid, main_signal))
+            elif how == "exec":
+                proc["ended"] = "exec"
+            elif how == "exit":
+                proc["ended"] = "clean"
+            else:
+                proc["ended"] = "abrupt"
+                summary.abrupt.append(pid)
 
     _read_markers(parts_dir, summary)
     events.sort(key=lambda e: e["ts"])  # stable: ties keep file order

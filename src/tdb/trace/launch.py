@@ -489,7 +489,8 @@ def _part_pid(name: str) -> int:
 
 
 def _has_exit(path: Path) -> bool:
-    """True if the part's last record is its ``exit`` (written last)."""
+    """True if the part's last record is its ``exit`` (written last), or
+    the ``exec`` record of a part that ended at an exec."""
     try:
         with open(path, "rb") as f:
             f.seek(0, os.SEEK_END)
@@ -498,16 +499,15 @@ def _has_exit(path: Path) -> bool:
         rec = json.loads(lines[-1]) if lines else None
     except (OSError, ValueError):
         return False
-    return isinstance(rec, dict) and rec.get("k") == "exit"
+    return isinstance(rec, dict) and rec.get("k") in ("exit", "exec")
 
 
 def _unflushed(parts_dir: Path, done: set[str]) -> bool:
     """True while a part has no exit record and its pid is alive.
 
     ``done`` collects the parts already found finished, so each is read
-    at most until then.  A pre-exec part (``fork`` + ``exec`` of another
-    traced program) never gets an exit record while its pid runs on as
-    the new program, so it holds the wait to its timeout.
+    at most until then.  A part that ended at an exec is finished, though
+    its pid runs on as the new program.
     """
     try:
         names = os.listdir(parts_dir)
@@ -707,6 +707,11 @@ def _warning_lines(
     for pid in s.abrupt:
         lines.append(
             f"tdb: warning: pid {pid} ended abruptly; its last events may be missing"
+        )
+    for name, pid, sig in s.killed:
+        lines.append(
+            f"tdb: warning: {name} (pid {pid}) was killed by {sig}; "
+            "its last events may be missing"
         )
     lines += [f"tdb: warning: {note}" for note in s.notes]
     lines += [f"tdb: never called: {entry}" for entry in never_called]

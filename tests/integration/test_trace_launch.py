@@ -462,22 +462,74 @@ def test_program_inherits_tdbs_descriptors(tmp_path):
 
 @posix
 def test_fork_then_exec_is_not_abrupt(tmp_path):
-    """Ruling 18: the pre-exec part of a forked child that exec'd another
-    traced program ends "exec" and is not reported as abrupt."""
+    """Ruling 18, and Ruling 32: the pre-exec part of a forked child that
+    exec'd another traced program keeps the calls it made before the exec,
+    ends "exec" and is not reported as abrupt."""
     write_prog(
         tmp_path,
-        "import os, sys\ndef f():\n    pass\nf()\npid = os.fork()\n"
-        "if pid == 0:\n    os.execv(sys.executable, [sys.executable, 'other.py'])\n"
+        "import os, sys\ndef f(tag):\n    pass\nf('parent')\npid = os.fork()\n"
+        "if pid == 0:\n    f('child')\n"
+        "    os.execv(sys.executable, [sys.executable, 'other.py'])\n"
         "os.waitpid(pid, 0)\n",
     )
     (tmp_path / "other.py").write_text("print('other ran')\n")
-    r = tdb(
-        tmp_path, "--trace", spec_for(tmp_path, "f"), "--trace-out", "out", "prog.py"
-    )
+    spec = tmp_path / "spec.yaml"
+    spec.write_text("prog.py:\n  - f:\n      capture: [tag]\n")
+    r = tdb(tmp_path, "--trace", str(spec), "--trace-out", "out", "prog.py")
     assert r.returncode == 0 and r.stdout == "other ran\n", r.stderr
     cap = load_capture(tmp_path / "out.jsonl")
     assert sorted(p["ended"] for p in cap.processes) == ["clean", "clean", "exec"]
+    assert sorted(e["values"]["tag"] for e in calls(cap, "f")) == [
+        "'child'",
+        "'parent'",
+    ]
     assert "ended abruptly" not in r.stderr and "warning" not in r.stderr
+
+
+EXEC_PROG = (
+    "import os, sys\n"
+    "def before():\n    pass\n"
+    "def main():\n    before()\n"
+    "    os.execv(sys.executable, [sys.executable, 'other.py'])\n"
+    "main()\n"
+)
+EXEC_OTHER = "def after():\n    pass\nafter()\n"
+EXEC_SPEC = "prog.py:\n  - main\n  - before\nother.py:\n  - after\n"
+
+
+def run_exec_program(tmp_path: Path) -> subprocess.CompletedProcess:
+    """``tdb --trace`` of a program whose main process execs another traced
+    program: writes out.jsonl and out.perfetto.json in tmp_path."""
+    write_prog(tmp_path, EXEC_PROG)
+    (tmp_path / "other.py").write_text(EXEC_OTHER)
+    (tmp_path / "spec.yaml").write_text(EXEC_SPEC)
+    return tdb(tmp_path, "--trace", "spec.yaml", "--trace-out", "out", "prog.py")
+
+
+@posix
+def test_exec_keeps_the_events_before_it(tmp_path):
+    """Final review F1: the calls made before an exec are in the capture
+    (they never end), the part before the exec ends "exec", and Perfetto
+    closes those calls where that part ends (Ruling 32), before the new
+    program's calls on the same thread."""
+    r = run_exec_program(tmp_path)
+    assert r.returncode == 0, r.stderr
+    assert "warning" not in r.stderr, r.stderr
+    cap = load_capture(tmp_path / "out.jsonl")
+    assert [p["ended"] for p in cap.processes] == ["exec", "clean"]
+    pre, post = cap.processes
+    assert pre["pid"] == post["pid"] and pre["start_ns"] < pre["end_ns"]
+    assert pre["end_ns"] <= post["start_ns"]
+    assert [e["function"] for e in calls(cap)] == ["main", "before", "after"]
+    assert list(open_calls(cap)) == [(pre["pid"], 1)]  # main: exec'd from inside
+    trace = json.loads((tmp_path / "out.perfetto.json").read_text())
+    assert_nested(trace)
+    x = {e["name"]: e for e in trace["traceEvents"] if e.get("ph") == "X"}
+    base = trace["metadata"]["tdb_base_epoch_ns"]
+    main_end = round((x["main"]["ts"] + x["main"]["dur"]) * 1000) + base
+    assert x["main"]["args"]["unfinished"] is True and main_end == pre["end_ns"]
+    assert x["main"]["tid"] == x["after"]["tid"]
+    assert round(x["after"]["ts"] * 1000) + base > main_end
 
 
 @posix
@@ -635,6 +687,11 @@ def test_sigkill_of_program_still_yields_outputs(tmp_path):
     assert [pr["ended"] for pr in cap.processes] == ["signal:SIGKILL"]
     assert cap.header["exit_code"] == 137
     assert "ended abruptly" not in err and "tdb: wrote" in err
+    # Final review F2: no atexit ran, so its last events may be missing.
+    assert (
+        f"tdb: warning: prog (pid {pid}) was killed by SIGKILL; "
+        "its last events may be missing\n"
+    ) in err
     assert (tmp_path / "out.perfetto.json").is_file()
 
 

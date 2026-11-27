@@ -407,3 +407,25 @@ def test_closed_part_descriptor_is_never_written_through_reuse(tmp_path):
     )
     (recs,) = parts.records.values()
     assert recs[-1]["k"] != "exit"  # ended early, and the part says so
+
+
+@pytest.mark.skipif(os.name == "nt", reason="fd numbering")
+def test_a_write_failure_turns_every_callback_off(tmp_path):
+    # Final review M1: after the tracer gives up, no callback runs again
+    # (PY_START's DISABLE, and the global PY_UNWIND and PY_THROW), and the
+    # tool id is free.
+    src = (
+        "import os, sys, time, _tdb_trace_agent as A\n"
+        "tool = A._tool\ndef f():\n    pass\n"
+        "os.close(A._fd)\nfd = os.open('mine.txt', os.O_WRONLY | os.O_CREAT)\n"
+        "f()\n"  # a record for the flusher to fail on
+        "end = time.monotonic() + 10\n"
+        "while not A._broken and time.monotonic() < end:\n    time.sleep(0.05)\n"
+        "print(A._broken, sys.monitoring.get_tool(tool), sys.monitoring.get_events(tool))\n"
+        "os.close(fd)\n"
+    )
+    parts = run_traced(tmp_path, src)
+    assert parts.returncode == 0 and parts.stderr == "", parts.stderr
+    assert parts.stdout.split() == ["True", "None", "0"]
+    (marker,) = parts.markers
+    assert marker["marker"] == "agent-error"

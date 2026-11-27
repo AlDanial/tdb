@@ -243,6 +243,7 @@ def test_summary_lines_order_and_plurals():
             {"marker": "agent-error", "pid": 6, "argv": [], "error": "OSError: boom"}
         ],
         abrupt=[7],
+        killed=[("orders", 4, "SIGKILL")],
         notes=["pid 7: event cap reached; 12 events dropped"],
     )
     lines = _summary_lines(
@@ -258,6 +259,10 @@ def test_summary_lines_order_and_plurals():
         ),
         "tdb: warning: tracer error in pid 6: OSError: boom",
         "tdb: warning: pid 7 ended abruptly; its last events may be missing",
+        (
+            "tdb: warning: orders (pid 4) was killed by SIGKILL; "
+            "its last events may be missing"
+        ),
         "tdb: warning: pid 7: event cap reached; 12 events dropped",
         "tdb: never called: prog.py: g",
     ]
@@ -292,6 +297,10 @@ def test_unflushed_parts(tmp_path):
     _part(live, HDR, EXIT)
     assert not _unflushed(tmp_path, done)
     assert live.name in done
+    # A part that ends at an exec is finished too, though its pid lives on.
+    pre_exec = tmp_path / f"{os.getpid()}-2.jsonl"
+    _part(pre_exec, HDR, {"k": "exec", "t": 1})
+    assert not _unflushed(tmp_path, done) and pre_exec.name in done
 
 
 @pytest.mark.skipif(os.name == "nt", reason="pid_exists cannot tell on Windows")

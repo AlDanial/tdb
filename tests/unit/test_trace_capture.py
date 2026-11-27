@@ -388,6 +388,7 @@ def test_multiple_parts_per_pid_renumber_and_exec(tmp_path):  # Rulings 17 and 1
             {"k": "task", "id": 1, "name": "T1", "tid": 7},
             {"k": "call", "t": 1, "c": 1, "fn": 1, "tid": 7, "task": 1},
             {"k": "call", "t": 2, "c": 2, "fn": 1, "tid": 7, "task": None},
+            {"k": "exec", "t": 3},
         ],
     )
     part(
@@ -409,6 +410,9 @@ def test_multiple_parts_per_pid_renumber_and_exec(tmp_path):  # Rulings 17 and 1
         (10, "signal:SIGTERM"),
     ]
     assert summ.abrupt == [] and summ.processes == 2
+    # F2: the main pid's last part has no exit record
+    assert summ.killed == [("o", 10, "SIGTERM")]
+    assert cap.processes[0]["end_ns"] == 3  # its exec record
     calls = [e for e in cap.events if e["type"] == "call"]
     assert [c["call_id"] for c in calls] == [1, 2, 3]
     assert [c["task_id"] for c in calls] == [1, None, 2]
@@ -418,13 +422,62 @@ def test_multiple_parts_per_pid_renumber_and_exec(tmp_path):  # Rulings 17 and 1
 
 
 def test_exec_part_without_main_is_not_abrupt_but_last_part_is(tmp_path):
-    part(tmp_path, 10, [H(10, 0, 0)])
+    part(tmp_path, 10, [H(10, 0, 0), {"k": "exec", "t": 5}])
     part(tmp_path, 10, [H(10, 10, 0)], suffix="-2")
     cap, summ = assemble(tmp_path, header=HDR)
     assert [p["ended"] for p in cap.processes] == [
         "exec",
         "abrupt",
     ] and summ.abrupt == [10]
+
+
+def test_each_part_of_a_pid_is_judged_on_its_own(tmp_path):
+    """Ruling 32 (review M5): a part ends "exec" only when its last record
+    is an exec record.  Other parts of the same pid (a pid reused, as on
+    Windows) end clean or abrupt by their own records."""
+    part(tmp_path, 10, [H(10, 0, 0), {"k": "exit", "t": 1, "how": "atexit"}])
+    part(tmp_path, 10, [H(10, 10, 0)], suffix="-2")
+    part(tmp_path, 10, [H(10, 20, 0), {"k": "exec", "t": 2}], suffix="-3")
+    cap, summ = assemble(tmp_path, header=HDR)
+    assert [p["ended"] for p in cap.processes] == ["clean", "abrupt", "exec"]
+    assert summ.abrupt == [10] and summ.killed == []
+
+
+def test_a_failed_exec_does_not_end_the_part(tmp_path):
+    """The exec record is written before the exec; when the exec fails the
+    program goes on, and the part ends as usual."""
+    part(
+        tmp_path,
+        10,
+        [
+            H(10, 0, 0),
+            FN,
+            {"k": "exec", "t": 1},
+            {"k": "call", "t": 2, "c": 1, "fn": 1, "tid": 7, "task": None},
+            {"k": "exit", "t": 3, "how": "atexit"},
+        ],
+    )
+    cap, summ = assemble(tmp_path, header=HDR)
+    assert [p["ended"] for p in cap.processes] == ["clean"]
+    assert [e["type"] for e in cap.events] == ["call"] and summ.abrupt == []
+
+
+def test_main_process_killed_by_a_signal_is_reported(tmp_path):
+    """Final review F2: a main process killed by a signal ends
+    "signal:NAME", and when its part has no exit record (no atexit ran)
+    the summary says its last events may be missing."""
+    part(tmp_path, 10, [H(10, 0, 0), FN])
+    part(tmp_path, 11, [H(11, 0, 0, ppid=10), {"k": "exit", "t": 1, "how": "_exit"}])
+    cap, summ = assemble(tmp_path, header=HDR, main_pid=10, main_signal="SIGKILL")
+    assert {p["pid"]: p["ended"] for p in cap.processes} == {
+        10: "signal:SIGKILL",
+        11: "clean",
+    }
+    assert summ.killed == [("o", 10, "SIGKILL")] and summ.abrupt == []
+    # With its exit record (a KeyboardInterrupt ran atexit), nothing is missing.
+    part(tmp_path, 10, [H(10, 0, 0), {"k": "exit", "t": 1, "how": "atexit"}])
+    cap, summ = assemble(tmp_path, header=HDR, main_pid=10, main_signal="SIGINT")
+    assert cap.processes[0]["ended"] == "signal:SIGINT" and summ.killed == []
 
 
 def test_empty_and_headerless_parts_skipped(tmp_path):  # Ruling 19

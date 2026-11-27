@@ -653,3 +653,125 @@ def test_tracer_never_calls_functions_the_program_replaced(tmp_path):
     assert parts.stdout.splitlines() == expected
     assert len(parts.calls("f")) == 2_000 + fork
     assert len(parts.records) == 1 + fork
+
+
+# --- exec (final review F1, Ruling 32) ---------------------------------------
+
+EXEC_OTHER = {"other.py": "def after():\n    pass\nafter()\n"}
+
+
+def _exec_targets(tmp_path):
+    return [
+        target(tmp_path / "prog.py", "main", "before", "f"),
+        target(tmp_path / "other.py", "after"),
+    ]
+
+
+def _kinds(recs):
+    return [r["k"] for r in recs if r["k"] not in ("fn", "th")]
+
+
+@pytest.mark.skipif(os.name == "nt", reason="exec keeps the pid")
+def test_exec_writes_the_buffered_events_then_an_exec_record(tmp_path):
+    # Before exec replaces the process (and with it the flusher and the
+    # buffer), the events so far are written, then an exec record, last.
+    src = (
+        "import os, sys\n"
+        "def before():\n    pass\n"
+        "def main():\n    before()\n"
+        "    os.execv(sys.executable, [sys.executable, 'other.py'])\n"
+        "main()\n"
+    )
+    parts = run_traced(
+        tmp_path, src, _exec_targets(tmp_path), files=EXEC_OTHER, own_group=True
+    )
+    assert parts.returncode == 0, parts.stderr
+    pid = str(parts.records[sorted(parts.records)[0]][0]["pid"])
+    assert sorted(parts.records) == [pid, f"{pid}-2"]
+    pre = parts.records[pid]
+    assert [parts.qual_of(pid, r["fn"]) for r in pre if r["k"] == "call"] == [
+        "main",
+        "before",
+    ]
+    assert _kinds(pre) == ["hdr", "call", "call", "ret", "exec"]
+    assert pre[-1] == {"k": "exec", "t": pre[-1]["t"]}
+    assert pre[-1]["t"] >= max(r["t"] for r in pre if "t" in r)
+    assert [r["k"] for r in parts.records[f"{pid}-2"] if r["k"] != "fn"][-3:] == [
+        "call",
+        "ret",
+        "exit",
+    ]
+
+
+def test_failed_exec_goes_on_tracing(tmp_path):
+    # The flusher stopped for the exec runs again when it fails, and
+    # nothing is written twice.
+    src = (
+        "import os, time, _tdb_trace_agent as A\n"
+        "def f():\n    pass\n"
+        "for _ in range(1_000):\n    f()\n"
+        "try:\n    os.execv('/no/such/program', ['x'])\n"
+        "except OSError as exc:\n    print(type(exc).__name__)\n"
+        "print(type(A._flusher_ident).__name__)\n"
+        "for _ in range(1_000):\n    f()\n"
+        "time.sleep(0.6)\n"  # the flusher writes the second thousand
+        "print(os.path.getsize(A._part_path) > 0)\n"
+    )
+    parts = run_traced(tmp_path, src, _exec_targets(tmp_path))
+    assert parts.returncode == 0, parts.stderr
+    assert parts.stdout.split() == ["FileNotFoundError", "int", "True"]
+    (recs,) = parts.records.values()
+    ids = [r["c"] for r in recs if r["k"] == "call"]
+    assert len(ids) == len(set(ids)) == 2_000
+    assert [r["k"] for r in recs if r["k"] in ("exec", "exit")] == ["exec", "exit"]
+
+
+@pytest.mark.skipif(os.name == "nt", reason="exec keeps the pid")
+def test_execvp_writes_each_event_once_across_its_path_search(tmp_path):
+    # os.execvp tries each PATH directory in turn: every failed attempt
+    # goes through the wrapper, and the events are still written once.
+    py = os.path.basename(sys.executable)
+    src = (
+        "import os, sys\n"
+        "def before():\n    pass\n"
+        "def main():\n    before()\n"
+        "    os.environ['PATH'] = os.pathsep.join(\n"
+        "        ['/no/such/dir', '/no/such/other', os.path.dirname(sys.executable)])\n"
+        f"    os.execvp({py!r}, [{py!r}, 'other.py'])\n"
+        "main()\n"
+    )
+    parts = run_traced(
+        tmp_path, src, _exec_targets(tmp_path), files=EXEC_OTHER, own_group=True
+    )
+    assert parts.returncode == 0, parts.stderr
+    pid = str(parts.records[sorted(parts.records)[0]][0]["pid"])
+    pre = parts.records[pid]
+    assert [parts.qual_of(pid, r["fn"]) for r in pre if r["k"] == "call"] == [
+        "main",
+        "before",
+    ]
+    assert pre[-1]["k"] == "exec" and len(parts.all("exec")) == 3
+    assert len(parts.calls("after")) == 1
+
+
+@pytest.mark.skipif(os.name == "nt", reason="preexec_fn, fork")
+def test_forked_to_exec_recognises_popen_on_this_python(tmp_path):
+    # Canary (final review L7): _forked_to_exec takes the code that forked
+    # from _getframe(2) inside the at-fork hook, and for a preexec_fn
+    # fork that must be subprocess.Popen._execute_child; a direct
+    # os.fork() is not.
+    src = (
+        "import os, subprocess, sys, _tdb_trace_agent as A\n"
+        "seen = os.pipe()\n"
+        "def probe():\n"  # one frame, as _after_fork_in_child is
+        "    os.write(seen[1], b'1' if A._forked_to_exec() else b'0')\n"
+        "os.register_at_fork(after_in_child=probe)\n"
+        "subprocess.run([sys.executable, '-c', 'pass'], check=True, preexec_fn=os.getpid)\n"
+        "pid = os.fork()\n"
+        "if pid == 0:\n    os._exit(0)\n"
+        "os.waitpid(pid, 0)\n"
+        "print(os.read(seen[0], 2).decode())\n"
+    )
+    parts = run_traced(tmp_path, src, own_group=True)
+    assert parts.returncode == 0, parts.stderr
+    assert parts.stdout.strip() == "10"
