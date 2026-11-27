@@ -577,6 +577,7 @@ def test_signals_while_writing_do_not_stop_the_writes(tmp_path, mode):
         text=True,
         timeout=60,
         preexec_fn=no_core_dumps,
+        check=False,
     )
     assert done.returncode == 0, done.stderr
     assert done.stdout == "SIGHUP still ignored\n"

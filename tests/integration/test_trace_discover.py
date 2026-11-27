@@ -471,7 +471,7 @@ def test_source_only_the_programs_python_can_parse(tmp_path):
         "prog.py",
     )
     assert r.returncode == 0, r.stderr
-    py = "%d.%d" % sys.version_info[:2]
+    py = "{}.{}".format(*sys.version_info[:2])
     assert r.stderr.startswith(
         f"tdb: warning: {norm_path(prog)}: cannot check names "
         f"(tdb's Python {py} cannot parse it: "

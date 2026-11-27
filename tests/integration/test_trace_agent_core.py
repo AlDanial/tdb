@@ -452,13 +452,10 @@ def test_start_traced_leaves_nothing_running(tmp_path):
         "    while True:\n        f()\n"
         "time.sleep(60)\n"
     )
-    with pytest.raises(AssertionError, match="a failing test"):
-        with start_traced(tmp_path, src, [target(tmp_path / "prog.py", "f")]) as (
-            proc,
-            _,
-        ):
-            child = int(proc.stdout.readline())
-            raise AssertionError("a failing test")
+    traced = start_traced(tmp_path, src, [target(tmp_path / "prog.py", "f")])
+    with pytest.raises(AssertionError, match="a failing test"), traced as (proc, _):
+        child = int(proc.stdout.readline())
+        raise AssertionError("a failing test")
     assert proc.returncode == -signal.SIGKILL and proc.stdout.closed
     end = time.monotonic() + 10
     while Path(f"/proc/{child}").exists() and time.monotonic() < end:

@@ -252,7 +252,7 @@ def load_spec(path: str | os.PathLike) -> TraceSpec:
     warnings: list[str] = []
     # file -> list of (qualname, lineno), or None if it failed to parse
     defs_cache: dict[str, list[tuple[str, int]] | None] = {}
-    py = "%d.%d" % sys.version_info[:2]
+    py = "{}.{}".format(*sys.version_info[:2])
 
     def names_in(f: str) -> list[str] | None:
         if f not in defs_cache:

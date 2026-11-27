@@ -271,7 +271,7 @@ def test_source_tdbs_python_cannot_parse_is_a_warning(tmp_path):
     )
     assert [f.pattern for f in s.entries[0].functions] == ["f", "not_checked"]
     (warning,) = s.warnings
-    py = "%d.%d" % sys.version_info[:2]
+    py = "{}.{}".format(*sys.version_info[:2])
     assert warning.startswith(
         f"{norm_path(new)}: cannot check names (tdb's Python {py} cannot parse it: "
     ) and warning.endswith(")")

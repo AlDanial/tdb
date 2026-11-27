@@ -686,7 +686,7 @@ def test_exec_writes_the_buffered_events_then_an_exec_record(tmp_path):
         tmp_path, src, _exec_targets(tmp_path), files=EXEC_OTHER, own_group=True
     )
     assert parts.returncode == 0, parts.stderr
-    pid = str(parts.records[sorted(parts.records)[0]][0]["pid"])
+    pid = str(parts.records[min(parts.records)][0]["pid"])
     assert sorted(parts.records) == [pid, f"{pid}-2"]
     pre = parts.records[pid]
     assert [parts.qual_of(pid, r["fn"]) for r in pre if r["k"] == "call"] == [
@@ -744,7 +744,7 @@ def test_execvp_writes_each_event_once_across_its_path_search(tmp_path):
         tmp_path, src, _exec_targets(tmp_path), files=EXEC_OTHER, own_group=True
     )
     assert parts.returncode == 0, parts.stderr
-    pid = str(parts.records[sorted(parts.records)[0]][0]["pid"])
+    pid = str(parts.records[min(parts.records)][0]["pid"])
     pre = parts.records[pid]
     assert [parts.qual_of(pid, r["fn"]) for r in pre if r["k"] == "call"] == [
         "main",

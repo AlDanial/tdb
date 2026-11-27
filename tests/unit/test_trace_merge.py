@@ -174,11 +174,9 @@ def test_parts_dir_input_repeats_its_warnings(tmp_path, capsys):
     (parts / "skipped-12.json").write_text(json.dumps(marker))
     assert merge_main([str(a), str(parts)], str(tmp_path / "m")) == 0
     err = capsys.readouterr().err.splitlines()
-    assert err[:2] == [
-        f"tdb: warning: {parts}: skipped /opt/py311 (pid 12): "
-        "python 3.11 is older than 3.12",
-        f"tdb: warning: {parts}: pid 11 ended abruptly; its last events may be missing",
-    ]
+    skipped = f"{parts}: skipped /opt/py311 (pid 12): python 3.11 is older than 3.12"
+    abrupt = f"{parts}: pid 11 ended abruptly; its last events may be missing"
+    assert err[:2] == [f"tdb: warning: {skipped}", f"tdb: warning: {abrupt}"]
     assert err[2].startswith("tdb: wrote ") and len(err) == 3
 
 

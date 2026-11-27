@@ -116,6 +116,7 @@ def _import(trace: Path, tmp_path: Path) -> list[list[str]]:
         capture_output=True,
         text=True,
         timeout=300,
+        check=False,
     )
     assert done.returncode == 0, f"{trace.name}: {done.stderr[-2000:]}"
     rows = csv.reader(io.StringIO(done.stdout))
