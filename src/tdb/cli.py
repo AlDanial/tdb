@@ -1082,6 +1082,14 @@ def _check_trace_args(
         if value:
             parser.error(f"{mode} cannot be combined with {flag}")
     if not runs:
+        # What runs a program, and how, means nothing to a merge.
+        for flag, value in (
+            ("--python/--pv", args.python),
+            ("--cwd", args.cwd),
+            ("--lang", args.lang),
+        ):
+            if value is not None:
+                parser.error(f"{mode} cannot be combined with {flag}")
         if args.trace_merge and args.program is not None:
             parser.error("--trace-merge takes no program")
         return
@@ -1110,6 +1118,8 @@ def _check_trace_args(
             parser.error(f"{mode} is not yet supported for {profile.display_name}")
     if args.trace_max_events is not None and args.trace_max_events < 1:
         parser.error("--trace-max-events must be a positive integer")
+    if args.trace_discover and Path(args.trace_discover).is_dir():
+        parser.error(f"--trace-discover: {args.trace_discover} is a directory")
     if args.trace:
         from tdb.trace.spec import SpecError, load_spec
 
@@ -1385,13 +1395,10 @@ def main(argv: list[str] | None = None) -> None:
         # Textual sets return_code 1 when the app crashed; None/0 is a
         # normal quit.
         sys.exit(vi.return_code or 0)
-    if args.trace:
+    if args.trace or args.trace_discover:
         _run_trace(args)
     if args.trace_merge:
         _run_trace_merge(args)
-    if args.trace_discover:
-        print("tdb: error: --trace-discover is not implemented yet", file=sys.stderr)
-        sys.exit(2)
     if args.doc:
         _run_doc()
     elif args.doc_text:
@@ -1675,9 +1682,10 @@ def _run_trace_merge(args: argparse.Namespace) -> NoReturn:
 
 
 def _run_trace(args: argparse.Namespace) -> NoReturn:
-    """Run the program under the function tracer (`--trace`), then end as
-    the program did: its exit code or death by its signal (1 if an output
-    could not be written, 2 if the program could not be started)."""
+    """Run the program under the function tracer (`--trace`, or
+    `--trace-discover`), then end as the program did: its exit code or
+    death by its signal (1 if an output could not be written, 2 if the
+    program could not be started)."""
     from datetime import datetime
 
     from tdb.trace import launch

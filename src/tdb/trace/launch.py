@@ -19,6 +19,11 @@
    temp file and renamed into place, removes the parts directory only
    after both are written, and prints the summary.
 
+``tdb --trace-discover OUT.yaml PROGRAM`` takes the same path in discover
+mode, with ``OUT.yaml.parts/`` as the parts directory, and in step 5
+writes the spec of the functions the program called to OUT.yaml (see
+:mod:`tdb.trace.discover`).
+
 The CLI then ends with :func:`exit_as`: the program's exit code, or death
 by the program's own signal, so a shell sees what it would without tdb.
 
@@ -205,7 +210,8 @@ def probe_version(interpreter: str) -> tuple[int, int]:
 
 
 def run(req: TraceRequest) -> int:
-    """Run the traced program to its end and write the outputs.
+    """Run the traced program to its end and write the outputs (in
+    discover mode, the spec).
 
     Returns tdb's status for :func:`exit_as`: the program's exit code;
     on POSIX ``-N`` when it died by signal N (``128 + N`` for one that
@@ -214,9 +220,12 @@ def run(req: TraceRequest) -> int:
     program's lifetime.  Raises LaunchError when the program cannot be
     started.
     """
-    if req.mode == "discover":
-        raise NotImplementedError("--trace-discover")
-    parts_dir = Path(f"{req.out_base}.parts")
+    discover = req.mode == "discover"
+    if discover:
+        out = req.discover_out
+        parts_dir = out.with_name(out.name + ".parts")
+    else:
+        parts_dir = Path(f"{req.out_base}.parts")
     created = False
     try:
         cmd = resolve_command(req)
@@ -224,7 +233,7 @@ def run(req: TraceRequest) -> int:
             version = probe_version(cmd[0])
             if version < MIN_PYTHON:
                 raise LaunchError(
-                    f"--trace needs Python 3.12 or newer; {cmd[0]} is "
+                    f"{_mode_flag(req)} needs Python 3.12 or newer; {cmd[0]} is "
                     f"{version[0]}.{version[1]}"
                 )
         run_info = {
@@ -237,17 +246,28 @@ def run(req: TraceRequest) -> int:
         }
         _create_parts_dir(parts_dir, req, run_info)
         created = True
+        started, start = datetime.now(), time.monotonic()
         proc = _supervise(cmd, req, parts_dir)
+        duration = time.monotonic() - start
     except KeyboardInterrupt:  # before tdb's handler was in place: nothing ran
         if created:
             _remove_unused(parts_dir)
         return _INTERRUPTED
-    code, main_signal = _exit_status(proc.returncode)
     try:
-        written = _write_outputs(req, parts_dir, run_info, code, proc.pid, main_signal)
+        if discover:
+            written = _write_discovery(req, parts_dir, started, duration)
+        else:
+            code, main_signal = _exit_status(proc.returncode)
+            written = _write_outputs(
+                req, parts_dir, run_info, code, proc.pid, main_signal
+            )
     except KeyboardInterrupt:
         return _INTERRUPTED
     return _end_status(proc.returncode) if written else 1
+
+
+def _mode_flag(req: TraceRequest) -> str:
+    return "--trace-discover" if req.mode == "discover" else "--trace"
 
 
 def say(text: str) -> None:
@@ -310,9 +330,12 @@ def _create_parts_dir(parts_dir: Path, req: TraceRequest, run_info: dict) -> Non
     try:
         parts_dir.mkdir()
     except FileExistsError:
+        if req.mode == "discover":  # counts, of no use to --trace-merge
+            what = "remove it"
+        else:
+            what = "merge it with --trace-merge or remove it"
         raise LaunchError(
-            f"{parts_dir} already exists (left by an earlier run?); "
-            "merge it with --trace-merge or remove it"
+            f"{parts_dir} already exists (left by an earlier run?); {what}"
         ) from None
     except OSError as exc:
         raise LaunchError(f"cannot create {parts_dir}: {exc}") from None
@@ -485,7 +508,7 @@ def _exit_status(returncode: int) -> tuple[int, str | None]:
     return 128 + n, name
 
 
-def _write_atomic(path: Path, write: Callable[[Path], None]) -> None:
+def write_atomic(path: Path, write: Callable[[Path], None]) -> None:
     """Have ``write`` fill a temp file next to ``path``, then rename it into
     place, so a failure never leaves a partial ``path``."""
     tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
@@ -526,7 +549,7 @@ def _write_outputs(
             (perfetto, lambda p: write_trace([capture], p)),
         ):
             try:
-                _write_atomic(path, write)
+                write_atomic(path, write)
             except OSError as exc:
                 say(
                     f"tdb: error: could not write {path}: {exc}; "
@@ -538,6 +561,39 @@ def _write_outputs(
         raise
     never = [] if req.spec is None else unmatched_entries(req.spec, summary.called)
     lines = _summary_lines(req.name, summary, never, jsonl, perfetto)
+    try:
+        shutil.rmtree(parts_dir)
+    except OSError as exc:
+        lines.append(f"tdb: warning: could not remove {parts_dir}: {exc}")
+    say("\n".join(lines))
+    return True
+
+
+def _write_discovery(
+    req: TraceRequest, parts_dir: Path, started: datetime, duration_s: float
+) -> bool:
+    """Write the discovered spec, remove the parts, print the summary.
+    False if the spec could not be written (the parts are then kept)."""
+    from tdb.trace import discover  # it imports this module
+
+    out = req.discover_out
+    desc = req.program if req.module is None else f"-m {req.module}"
+    try:
+        try:
+            n = discover.write_discovered_spec(
+                parts_dir,
+                out,
+                program_desc=desc,
+                started=started,
+                duration_s=duration_s,
+            )
+        except OSError as exc:
+            say(f"tdb: error: could not write {out}: {exc}; events kept in {parts_dir}")
+            return False
+    except KeyboardInterrupt:
+        say(f"tdb: interrupted; events kept in {parts_dir}")
+        raise
+    lines = [f"tdb: wrote {out} ({_counted(n, 'function', 'functions', ',')})"]
     try:
         shutil.rmtree(parts_dir)
     except OSError as exc:

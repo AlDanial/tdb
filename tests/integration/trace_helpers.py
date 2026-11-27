@@ -17,7 +17,12 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-from tdb.trace.contract import DEFAULT_MAX_EVENTS, build_env, write_config
+from tdb.trace.contract import (
+    DEFAULT_MAX_EVENTS,
+    DISCOVER_CAP,
+    build_env,
+    write_config,
+)
 from tdb.trace.spec import norm_path
 
 _PART = re.compile(r"^\d+(-\d+)?\.jsonl$")
@@ -118,7 +123,17 @@ def read_parts(
 
 
 def _prepare(
-    tmp_path, source, targets, *, mode, max_events, python, args, extra_env, files
+    tmp_path,
+    source,
+    targets,
+    *,
+    mode,
+    max_events,
+    discover_cap,
+    python,
+    args,
+    extra_env,
+    files,
 ):
     tmp_path = Path(tmp_path)
     prog = tmp_path / "prog.py"
@@ -130,7 +145,12 @@ def _prepare(
     parts_dir = Path(tempfile.mkdtemp(prefix="parts-", dir=tmp_path))
     config = parts_dir / "config.json"
     write_config(
-        config, mode=mode, parts_dir=parts_dir, targets=targets, max_events=max_events
+        config,
+        mode=mode,
+        parts_dir=parts_dir,
+        targets=targets,
+        max_events=max_events,
+        discover_cap=discover_cap,
     )
     extra_env = extra_env or {}
     base = dict(os.environ)
@@ -147,6 +167,7 @@ def run_traced(
     *,
     mode="trace",
     max_events=DEFAULT_MAX_EVENTS,
+    discover_cap=DISCOVER_CAP,
     python=sys.executable,
     args=(),
     timeout=60,
@@ -167,6 +188,7 @@ def run_traced(
         targets,
         mode=mode,
         max_events=max_events,
+        discover_cap=discover_cap,
         python=python,
         args=args,
         extra_env=extra_env,
@@ -215,6 +237,7 @@ def start_traced(
     *,
     mode="trace",
     max_events=DEFAULT_MAX_EVENTS,
+    discover_cap=DISCOVER_CAP,
     python=sys.executable,
     args=(),
     extra_env=None,
@@ -228,6 +251,7 @@ def start_traced(
         targets,
         mode=mode,
         max_events=max_events,
+        discover_cap=discover_cap,
         python=python,
         args=args,
         extra_env=extra_env,

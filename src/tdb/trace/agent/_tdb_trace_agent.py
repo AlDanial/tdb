@@ -12,7 +12,9 @@ writes the rest at ``atexit`` or ``os._exit``.  Wrappers around
 ``sys.excepthook`` and ``threading.excepthook``, which ``sitecustomize.py``
 installs with ``install_crash_hooks()`` after ``start()``, record uncaught
 exceptions.  A forked child starts a part file of its own (see "fork");
-other children load the hook themselves.
+other children load the hook themselves.  In discover mode (``tdb
+--trace-discover``) the tracer only counts the calls of the program's own
+functions (see "discovery").
 
 Never break the program:
 - stdlib only, and never ``import tdb``;
@@ -160,6 +162,9 @@ _max_events = 5_000_000  # the event cap (call/ret/raise/susp/res records)
 _targets = ()
 _agent_dirs = frozenset()
 _signal_nums = None  # signal numbers, once _from_signal_handler needs them
+# Discover mode (see "discovery"):
+_discover_cap = 10_000  # calls after which a function is no longer counted
+_lib_dirs = ()  # library directories (normalized, ending in os.sep)
 
 # --- the flusher ---------------------------------------------------------
 # Whether there is a flusher: not None while one runs (its thread ident) or
@@ -196,6 +201,7 @@ _file_funcs = {}  # co_filename -> (norm file, (_Target.functions items)) or Non
 _decisions = {}  # (co_filename, co_qualname, co_firstlineno) -> _Fn or None
 _armed = {}  # id(code) -> (code, _Fn): code with local events on
 _fn_ids = itertools.count(1)
+_user_files = {}  # co_filename -> norm file, or None: not user code (discover)
 
 # --- per-part state (a new part file starts these afresh) --------------
 _buf = []  # JSON text of the records not yet written, oldest first
@@ -210,6 +216,10 @@ _task_counter = itertools.count(1)
 _proc_name = "MainProcess"
 _n_dropped = 0  # calls not recorded because of the event cap
 _cap_noted = False
+# Discover mode's counts (see "discovery").
+_counts = {}  # id(code) -> (code, _Count)
+_count_keys = {}  # (norm file, qual, line) -> _Count
+_changed = set()  # the _Counts counted since the flusher last wrote them
 
 # Idents of the threads running the program's code for a callback (the
 # re-entrancy guard; see "options").
@@ -887,6 +897,160 @@ _CALLBACKS = (
 )
 
 
+# --- discovery ----------------------------------------------------------------
+#
+# Discover mode counts the calls of every function in user code, for tdb
+# to write a spec from.  Only PY_START is on, globally, with _on_count as
+# its callback.  User code is a function body (module and class bodies
+# are not functions) whose qualname, without ".<locals>", has no "<" (no
+# lambda, no generator expression), from a file that is not "<...>" (exec
+# and frozen code), not the agent's and not under a library directory:
+# the interpreter's standard library and site-packages (_library_dirs).
+#
+# Overhead stays bounded: other code returns DISABLE at its first call, and
+# a function returns DISABLE once it has been counted _discover_cap times
+# (it is then "capped").  Counts are kept per (file, qualname, first line), so
+# several code objects of one function (a module imported twice) count
+# together.  A counting callback only adds to its _Count and to _changed;
+# the flusher appends a cumulative "count" record for each _Count in
+# _changed at each flush, and final_flush one for each _Count not written
+# since it last changed.  Counts are per part: a forked child counts from
+# zero (_new_part), so tdb sums the parts.  Code a parent DISABLEd stays so
+# in its forked children: their parts have no counts for it.
+
+
+class _Count:
+    """One function's count in this part.  ``flushed`` is the count of the
+    last record the flusher made for it."""
+
+    __slots__ = ("head", "n", "capped", "flushed")
+
+    def __init__(self, file, qual, line, kind):
+        self.n = self.flushed = 0
+        self.capped = False
+        # The record's fixed fields, as _dumps gives them, without the "}".
+        self.head = _dumps(
+            {"k": "count", "file": file, "qual": qual, "line": line, "kind": kind}
+        )[:-1]
+
+    def record(self, n):
+        capped = "true" if self.capped else "false"
+        return '%s,"n":%d,"capped":%s}' % (self.head, n, capped)
+
+
+def _library_dirs():
+    """The directories of library code, normalized and ending in os.sep:
+    sysconfig's stdlib, platstdlib, purelib and platlib, and site's
+    site-packages directories, which can be elsewhere (Debian's and
+    Ubuntu's Pythons keep packages installed with apt in
+    /usr/lib/python3/dist-packages, which sysconfig does not name).
+    Editable installs keep their sources outside: they are user code."""
+    found = []
+    try:
+        import sysconfig  # lazily: only discover mode needs it
+
+        paths = sysconfig.get_paths()
+        found.extend(
+            paths.get(k) for k in ("stdlib", "platstdlib", "purelib", "platlib")
+        )
+    except Exception:
+        pass
+    site = sys.modules.get("site")  # imported already: it imported this
+    for name in ("getsitepackages", "getusersitepackages"):
+        try:
+            dirs = getattr(site, name)()
+            found.extend([dirs] if isinstance(dirs, str) else dirs)
+        except Exception:  # an old virtualenv's site.py lacks getsitepackages
+            pass
+    out = set()
+    for path in found:
+        if path:
+            path = _norm_path(path)
+            out.add(path if path.endswith(os.sep) else path + os.sep)
+    return tuple(sorted(out))
+
+
+def _user_file(filename):
+    """The normalized path of a file of user code, or None."""
+    nfile = _norm_path(filename)
+    if os.path.dirname(nfile) in _agent_dirs or nfile.startswith(_lib_dirs):
+        return None
+    return nfile
+
+
+def _new_count(code):
+    """The _Count for ``code``, seen for the first time, or None if it is
+    not user code."""
+    if not code.co_flags & _CO_OPTIMIZED:  # a module or class body, exec code
+        return None
+    filename = code.co_filename
+    if filename.startswith("<"):
+        return None
+    qual = code.co_qualname.replace(".<locals>", "")
+    if "<" in qual:  # <lambda>, <genexpr>, ...
+        return None
+    nfile = _user_files.get(filename, False)
+    if nfile is False:
+        nfile = _user_files[filename] = _user_file(filename)
+    if nfile is None:
+        return None
+    key = (nfile, qual, code.co_firstlineno)
+    count = _count_keys.get(key)
+    if count is None:
+        kind = _kind(code.co_flags)
+        count = _count_keys[key] = _Count(nfile, qual, code.co_firstlineno, kind)
+    _counts[id(code)] = (code, count)
+    return count
+
+
+def _on_count(code, offset):
+    """PY_START in discover mode: count a call of user code."""
+    global _n_starts
+    try:
+        if _stopped:
+            return None
+        if _inside and _get_ident() in _inside:
+            return None  # nested (see "options"); never DISABLE here
+        _n_starts += 1
+        hit = _counts.get(id(code))
+        if hit is not None and hit[0] is code:
+            count = hit[1]
+        else:
+            count = _new_count(code)
+            if count is None:
+                return DISABLE  # not user code: never seen again
+        if count.capped:  # another code object of a capped function
+            return DISABLE
+        count.n += 1
+        _changed.add(count)
+        if count.n >= _discover_cap:
+            count.capped = True
+            return DISABLE
+    except Exception as exc:
+        if _from_signal_handler(exc):
+            raise
+    return None
+
+
+def _flush_counts():
+    """The flusher's: append a record for each count changed since the
+    last flush.  Each leaves _changed before its count is read, so a call
+    counted meanwhile puts it back for the next flush."""
+    for count in list(_changed):
+        _changed.discard(count)
+        n = count.n
+        _buf.append(count.record(n))
+        count.flushed = n
+
+
+def _final_counts():
+    """final_flush's: append a record for each count not written since it
+    last changed (a flusher stopped half-way through _flush_counts may have
+    taken some out of _changed).  Safe to repeat: tdb takes a part's
+    largest count."""
+    _buf.extend([c.record(c.n) for c in list(_count_keys.values()) if c.n != c.flushed])
+
+
 # --- crashes ----------------------------------------------------------------
 #
 # install_crash_hooks() wraps sys.excepthook and threading.excepthook.
@@ -991,9 +1155,9 @@ def install_crash_hooks():
     """Wrap the current ``sys.excepthook`` and ``threading.excepthook``.
 
     Called by sitecustomize.py once the next sitecustomize has run.  Once
-    per process, and only while tracing."""
+    per process, and only while tracing (discovery records no crashes)."""
     global _prev_excepthook, _prev_thread_excepthook, _hooks_installed
-    if _hooks_installed or _tool is None:
+    if _hooks_installed or _tool is None or _mode == "discover":
         return
     _hooks_installed = True
     _prev_excepthook = sys.excepthook
@@ -1216,6 +1380,8 @@ def _flusher_loop(started, exited, token):
             halt = bool(_halt)  # a fork asked: write what is buffered, then end
             try:
                 _check_proc_name()
+                if _changed:  # discover mode
+                    _flush_counts()
                 _write_backlog(len(_buf))
             except OSError as exc:
                 if exc.errno is not None:  # a real I/O error
@@ -1472,6 +1638,10 @@ def _new_part():
         for item in t.functions:
             if item[2] is not None:
                 item[2].hits = 0
+    # The parent's counts are the parent's to write (see "discovery").
+    _counts.clear()
+    _count_keys.clear()
+    _changed.clear()
     _proc_name = _current_proc_name() or "MainProcess"
     data = (_header() + "\n").encode("ascii")
     fd, path = _open_part(_parts_dir)
@@ -1558,12 +1728,15 @@ def start(config):
     that into an agent-error marker."""
     global _tool, _fd, _part_path, _part_id, _parts_dir, _stopped, _interval
     global _targets, _agent_dirs, _proc_name, _repr_limit, _repr, _max_events
-    global _mode, _part_pid
+    global _mode, _part_pid, _discover_cap, _lib_dirs
     if _tool is not None or _fd is not None:
         raise RuntimeError("the tracer is already started in this process")
     if config.get("version") != 1:
         raise ValueError(f"unsupported trace config version {config.get('version')!r}")
     mode = config["mode"]
+    if mode not in ("trace", "discover"):
+        raise ValueError(f"unsupported trace mode {mode!r}")
+    discover = mode == "discover"
     parts_dir = config["parts"]
     _repr_limit = int(config["repr_limit"])  # first: it cuts compile errors
     max_events = int(config["max_events"])
@@ -1572,6 +1745,9 @@ def start(config):
     agent_dirs = {_norm_path(os.path.dirname(os.path.abspath(__file__)))}
     if config.get("agent_dir"):
         agent_dirs.add(_norm_path(config["agent_dir"]))
+    if discover:
+        cap = int(config["discover_cap"])
+        lib_dirs = _library_dirs()  # before any callback: it imports sysconfig
 
     tool = pick_tool_id()
     if tool is None:
@@ -1581,15 +1757,20 @@ def start(config):
     try:
         _targets, _interval, _agent_dirs = targets, interval, frozenset(agent_dirs)
         _repr, _max_events, _mode = _make_repr(_repr_limit), max_events, mode
+        if discover:
+            _discover_cap, _lib_dirs = cap, lib_dirs
         _fd, _part_path = _open_part(parts_dir)
         st = _fstat(_fd)
         _part_id, _parts_dir, _part_pid = (st.st_dev, st.st_ino), parts_dir, _getpid()
         _proc_name = _current_proc_name() or "MainProcess"
         _buf.append(_header())
-        for event, callback in _CALLBACKS:
-            _mon.register_callback(tool, event, callback)
+        if discover:  # PY_START only (see "discovery")
+            _mon.register_callback(tool, _EV.PY_START, _on_count)
+        else:
+            for event, callback in _CALLBACKS:
+                _mon.register_callback(tool, event, callback)
         _stopped = False
-        _mon.set_events(tool, _GLOBAL_EVENTS)
+        _mon.set_events(tool, _EV.PY_START if discover else _GLOBAL_EVENTS)
         # Write the header now, before the flusher exists, through the code
         # the flusher runs, so its wake-ups run no code start-up has not.
         _check_proc_name()
@@ -1679,6 +1860,11 @@ def final_flush(how):
         if not _broken:
             try:
                 _check_proc_name()  # pool workers are named after start-up
+            except BaseException:
+                pass
+            try:
+                if _count_keys:  # discover mode
+                    _shielded(_final_counts)
             except BaseException:
                 pass
             head, rest = _shielded(_take_over)

@@ -24,13 +24,13 @@ from tdb.trace.launch import (
     _supervise,
     _unflushed,
     _wait_for_children,
-    _write_atomic,
     default_name,
     default_out_base,
     probe_version,
     resolve_command,
     run,
     say,
+    write_atomic,
 )
 
 SRC_DIR = Path(__file__).resolve().parents[2] / "src"
@@ -321,9 +321,9 @@ def test_write_atomic_replaces_only_on_success(tmp_path):
         raise OSError("disk full")
 
     with pytest.raises(OSError, match="disk full"):
-        _write_atomic(out, failing)
+        write_atomic(out, failing)
     assert out.read_text() == "old\n" and os.listdir(tmp_path) == ["o.jsonl"]
-    _write_atomic(out, lambda path: Path(path).write_text("new\n"))
+    write_atomic(out, lambda path: Path(path).write_text("new\n"))
     assert out.read_text() == "new\n" and os.listdir(tmp_path) == ["o.jsonl"]
 
 
@@ -339,11 +339,6 @@ def test_existing_parts_dir_refused(tmp_path):
     ):
         run(req)
     assert os.listdir(tmp_path) == ["o.parts"]
-
-
-def test_discover_mode_not_yet_implemented(tmp_path):
-    with pytest.raises(NotImplementedError):
-        run(request(tmp_path, mode="discover", module="m"))
 
 
 # --- supervision, with a stand-in for the program (no process is started) ---

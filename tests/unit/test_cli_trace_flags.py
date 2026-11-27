@@ -256,6 +256,38 @@ def test_merge_takes_inputs(capsys):
     )
 
 
+@pytest.mark.parametrize(
+    "extra,flag",
+    [
+        (["--python", "python3"], "--python/--pv"),
+        (["--pv"], "--python/--pv"),
+        (["--cwd", "elsewhere"], "--cwd"),
+        (["--lang", "python"], "--lang"),
+    ],
+)
+def test_merge_rejects_launch_flags(capsys, extra, flag):
+    """What runs a program has no meaning for a merge (Task 9 M1)."""
+    assert f"--trace-merge cannot be combined with {flag}" in err(
+        capsys, ["--trace-merge", "a.jsonl", *extra]
+    )
+
+
+@pytest.mark.parametrize(
+    "extra", [["--pv"], ["--cwd", "elsewhere"], ["--lang", "python"]]
+)
+def test_launch_flags_allowed_with_discover(tmp_path, extra):
+    (tmp_path / "prog.py").write_text("")
+    a = parse_args(["--trace-discover", "o.yaml", *extra, str(tmp_path / "prog.py")])
+    assert a.trace_discover == "o.yaml"
+
+
+def test_discover_output_must_not_be_a_directory(tmp_path, capsys):
+    (tmp_path / "prog.py").write_text("")
+    assert f"--trace-discover: {tmp_path} is a directory" in err(
+        capsys, ["--trace-discover", str(tmp_path), str(tmp_path / "prog.py")]
+    )
+
+
 def test_non_trace_run_has_trace_defaults(tmp_path):
     p = tmp_path / "prog.py"
     p.write_text("pass\n")

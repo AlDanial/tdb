@@ -15,7 +15,7 @@ from datetime import datetime
 from pathlib import Path
 
 from tdb.trace.capture import Capture, load_input
-from tdb.trace.launch import _write_atomic, say
+from tdb.trace.launch import say, write_atomic
 from tdb.trace.perfetto import write_trace
 
 
@@ -53,7 +53,7 @@ def merge_main(
         out_base = (now or datetime.now()).strftime("merged-%Y%m%d-%H%M%S")
     out = Path(f"{out_base}.perfetto.json")
     try:
-        _write_atomic(out, lambda tmp: write_trace(captures, tmp))
+        write_atomic(out, lambda tmp: write_trace(captures, tmp))
     except OSError as exc:
         say(f"tdb: error: cannot write {out}: {exc}")
         return 2
