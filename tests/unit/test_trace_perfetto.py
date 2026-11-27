@@ -813,3 +813,86 @@ def test_write_trace_matches_build_trace(tmp_path):
     out = tmp_path / "t.perfetto.json"
     write_trace(captures, out)
     assert json.loads(out.read_text(encoding="utf-8")) == build_trace(captures)
+
+
+# --- final review L1-L3 ------------------------------------------------------
+
+
+def test_sync_generator_yield_ends_its_run_while_a_coroutine_is_open():
+    # L1: a generator on a task lane that steps a coroutine by hand
+    # (job.send(None)) yields while that coroutine is suspended.  The
+    # "await rule" is for async generators: a generator's suspend is a
+    # yield, and ends its run.
+    trace = build_trace(
+        [
+            cap(
+                "orders",
+                [proc()],
+                [
+                    call(0, 1, "steps", kind="generator", **T7),
+                    call(100, 2, "job", kind="coroutine", **T7),
+                    susp(200, 2, **T7),
+                    susp(300, 1, **T7),  # steps yields to its consumer
+                    res(1000, 1, **T7),
+                    res(1100, 2, **T7),
+                    ret(1200, 2, **T7),
+                    ret(1300, 1, **T7),
+                ],
+            )
+        ]
+    )
+    assert_nested(trace)
+    assert sorted(
+        (e["ts"], e["dur"], e["args"]["run"]) for e in xs(trace, "steps")
+    ) == [(0.0, 0.3, 1), (1.0, 0.3, 2)]
+
+
+def test_trimmed_suspension_past_its_own_call_is_dropped():
+    # L2: job outlives the sync call it started in, so its slice is cut at
+    # that call's end; its suspension, trimmed to start there too, would
+    # lie outside job altogether: it is dropped.
+    trace = build_trace(
+        [
+            cap(
+                "orders",
+                [proc()],
+                [
+                    call(0, 1, "outer", **T7),
+                    call(100, 2, "job", kind="coroutine", **T7),
+                    susp(300, 2, **T7),
+                    ret(400, 1, **T7),
+                    res(900, 2, **T7),
+                    ret(1000, 2, **T7),
+                ],
+            )
+        ]
+    )
+    assert_nested(trace)
+    (job,) = xs(trace, "job")
+    assert (job["ts"], job["dur"], job["args"]["clipped"]) == (0.1, 0.3, True)
+    assert xs(trace, "(suspended)") == []
+
+
+def test_generator_suspended_for_good_is_unfinished():
+    # L3: a per-run call that never ends while suspended: its last run is
+    # flagged unfinished (and keeps its own end).
+    trace = build_trace(
+        [
+            cap(
+                "orders",
+                [proc(end=9000, ended="abrupt")],
+                [
+                    call(0, 1, "rows", kind="generator"),
+                    susp(100, 1),
+                    call(200, 2, "rows", kind="generator"),
+                    susp(300, 2),
+                    res(400, 2),
+                ],
+            )
+        ]
+    )
+    runs = sorted(
+        (e["args"]["call_id"], e["ts"], e["dur"], e["args"].get("unfinished"))
+        for e in xs(trace, "rows")
+    )
+    assert runs == [(1, 0.0, 0.1, True), (2, 0.2, 0.1, None), (2, 0.4, 8.6, True)]

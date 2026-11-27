@@ -17,17 +17,20 @@ Drawing (a lane is one OS thread outside any asyncio task, or one task):
   where that run happened.  An async generator's run goes on across an
   await that suspends a traced coroutine it is awaiting: the agent records
   awaits and yields alike as ``suspend``, and ending the run there would cut
-  through that coroutine's slice.
+  through that coroutine's slice;
+- a call that never ended is ``args["unfinished"] = True``: closed where its
+  process ends (where its part ends, for a call open at an exec), or, for
+  one suspended for good, its last run as it was.
 
 Every event carries its own lane, and one call's events can span lanes, so
 events pair by ``(pid, call_id)``.  Perfetto drops slices that do not nest,
 so each lane is repaired after drawing, deterministically: a
 ``(suspended)`` slice that runs past the end of a slice enclosing its start
-is trimmed to start where that slice ends; a slice that starts inside a
-``(suspended)`` one and outlasts it ends that suspension where it starts;
-any other slice that runs past the end of its enclosing slice is cut to end
-there.  Repaired slices
-carry ``args["clipped"] = True``.
+is trimmed to start where that slice ends (and dropped if that is past
+the end of its own call); a slice that starts inside a ``(suspended)`` one
+and outlasts it ends that suspension where it starts; any other slice that
+runs past the end of its enclosing slice is cut to end there.  Repaired
+slices carry ``args["clipped"] = True``.
 
 This module runs inside tdb, not the traced program; it must work on
 Python 3.11.
@@ -270,10 +273,15 @@ class _Builder:
                 c.susp = ts
         elif c.mode == _PER_RUN and c.run is not None and not c.awaiting:
             inner = c.lane.open_lifetime
-            if inner and inner[-1].item[_SEQ] > c.run[_SEQ]:
+            if (
+                c.ev.get("kind") == "async_generator"
+                and inner
+                and inner[-1].item[_SEQ] > c.run[_SEQ]
+            ):
                 # A traced coroutine started in this run (creation order, not
                 # time: ticks tie) is still open, so this suspension is an
-                # await through it: the run goes on.
+                # await through it: the run goes on.  (A generator's suspend
+                # is always a yield, whatever it stepped meanwhile.)
                 c.awaiting = True
             else:
                 c.run[_END] = ts
@@ -306,12 +314,17 @@ class _Builder:
         return c.lane
 
     def _unfinished(self, c: _Call, end) -> None:
-        item = c.run if c.mode == _PER_RUN else c.item
         if c.susp is not None:
             self._close_susp(c, end)
-        if item is not None:
-            item[_END] = max(end, item[_START])
-            item[_FLAGS] |= _UNFINISHED
+        if c.mode == _PER_RUN and c.run is None:
+            # Suspended for good: its last run, as drawn, never ended.
+            if c.item is not None:
+                c.item[_FLAGS] |= _UNFINISHED
+        else:
+            item = c.run if c.mode == _PER_RUN else c.item
+            if item is not None:
+                item[_END] = max(end, item[_START])
+                item[_FLAGS] |= _UNFINISHED
         c.run = None
         if c.mode == _LIFETIME:
             c.lane.open_lifetime.remove(c)
@@ -438,7 +451,10 @@ def _nest(items: list[list]) -> list[list]:
             if item[_RANK] == _SUSP_RANK:  # trim the suspension's start
                 item[_START] = top[_END]
                 item[_FLAGS] |= _CLIPPED
-                heappush(later, (_key(item), item))
+                if item[_START] < item[_CALL].item[_END]:
+                    heappush(later, (_key(item), item))
+                # else it now starts where its own call (cut short) has
+                # ended: outside that call, so it is dropped
                 break
             if top[_RANK] == _SUSP_RANK:  # a slice starts: the wait is over
                 top[_END] = start
