@@ -141,13 +141,15 @@ class TdbApp(_AppMessageRoutes, App):
     BINDINGS = [
         Binding("ctrl+q", "quit_debugger", "Quit"),
         Binding("q", "confirm_quit", "Quit", show=False),
-        Binding("escape", "escape_handler", "Escape", show=False),
+        Binding("escape", "escape_handler", "Focus Code View", show=False),
         Binding("ctrl+c", "focus_code", "Code", show=False),
         Binding("ctrl+o", "focus_console", "Console", show=False),
         Binding("ctrl+e", "focus_eval", "Evaluate", show=False),
         Binding("ctrl+v", "focus_variables", "Variables", show=False),
         Binding("ctrl+s", "focus_stack", "Stack", show=False),
         Binding("ctrl+b", "focus_breakpoints", "Breakpoints", show=False),
+        # Not in the footer: the point is the keys that don't fit there.
+        Binding("K", "key_help", "Keys for this view", show=False),
         # Menu-bar shortcuts: Alt+first-letter matches the convention used
         # by nano, mc, htop, and every desktop menu bar. Hidden from the
         # footer to keep it uncluttered; they appear in the Keybindings modal.
@@ -1802,6 +1804,24 @@ class TdbApp(_AppMessageRoutes, App):
             return
         self._config.theme = theme
         save_config(self._config)
+
+    def action_key_help(self) -> None:
+        from tdb.widgets.key_help import KeyHelpModal, collect_key_help
+
+        self.push_screen(KeyHelpModal(collect_key_help(self.screen)))
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        if action == "key_help":
+            # The editor owns every key in Edit mode: no modal there.
+            code_view = self.query_one("#code-view", CodeView)
+            focused = self.screen.focused
+            if (
+                code_view.mode is Mode.EDIT
+                and focused is not None
+                and (focused is code_view or code_view in focused.ancestors)
+            ):
+                return False
+        return super().check_action(action, parameters)
 
     def action_keybindings(self) -> None:
         code_view = self.query_one("#code-view", CodeView)

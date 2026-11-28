@@ -14,6 +14,7 @@ from textual.containers import Horizontal
 from textual.content import Content
 from textual.css.query import NoMatches
 from textual.geometry import Offset, Region
+from textual.message import Message
 from textual.widget import Widget
 from textual.widgets import Input, Label, Markdown, MarkdownViewer, Static
 from textual.widgets._markdown import (
@@ -45,8 +46,12 @@ def find_matches(text: str, query: str) -> list[tuple[int, int]]:
     return matches
 
 
-SEARCH_HINT = "/ or Ctrl+F search · n/N next/prev"
-"""Key hint shown in the documentation modal's footer."""
+SEARCH_HINT = "/ or Ctrl+F search"
+"""Key hint shown in the documentation modal's footer outside results
+mode, where the result keys (RESULTS_HINT) do nothing."""
+
+RESULTS_HINT = "n/→ next · p/←/N previous · q exit search"
+"""The footer hint once Enter has put the results in front of the user."""
 
 
 _Spans = list[tuple[str, int, int]]
@@ -92,8 +97,71 @@ class _SearchFence(MarkdownFence):
             self.paint_search(self._search_spans)
 
 
+_NEXT = Binding.Group("next")
+_PREVIOUS = Binding.Group("previous")
+# One action per key: Textual's Footer shows a single key per action.
+_RESULT_ACTIONS = {
+    "next_match": 1,
+    "next_match_arrow": 1,
+    "prev_match": -1,
+    "prev_match_p": -1,
+    "prev_match_arrow": -1,
+}
+
+
 class _SearchableMarkdown(Markdown):
+    """The document. Its result keys act only while results show (the
+    search bar open, focus back here); otherwise check_action disables
+    them, so each key falls through to what it does without a search:
+    the viewer's arrow scrolling, the host's `q`."""
+
     BLOCKS = {**Markdown.BLOCKS, "fence": _SearchFence, "code_block": _SearchFence}
+
+    BINDINGS = [
+        Binding("n", "next_match", "next", group=_NEXT),
+        Binding("right", "next_match_arrow", "next", group=_NEXT),
+        Binding("p", "prev_match_p", "previous", group=_PREVIOUS),
+        Binding("left", "prev_match_arrow", "previous", group=_PREVIOUS),
+        Binding("N", "prev_match", "previous", group=_PREVIOUS),
+        Binding("q", "exit_search", "exit search"),
+    ]
+
+    def _viewer(self) -> SearchableMarkdownViewer | None:
+        return next(
+            (a for a in self.ancestors if isinstance(a, SearchableMarkdownViewer)),
+            None,
+        )
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        if action in _RESULT_ACTIONS or action == "exit_search":
+            viewer = self._viewer()
+            return viewer is not None and viewer.results_mode
+        return super().check_action(action, parameters)
+
+    def _step(self, action: str) -> None:
+        viewer = self._viewer()
+        if viewer is not None:
+            viewer._step(_RESULT_ACTIONS[action])
+
+    def action_next_match(self) -> None:
+        self._step("next_match")
+
+    def action_next_match_arrow(self) -> None:
+        self._step("next_match_arrow")
+
+    def action_prev_match(self) -> None:
+        self._step("prev_match")
+
+    def action_prev_match_p(self) -> None:
+        self._step("prev_match_p")
+
+    def action_prev_match_arrow(self) -> None:
+        self._step("prev_match_arrow")
+
+    def action_exit_search(self) -> None:
+        viewer = self._viewer()
+        if viewer is not None:
+            viewer.action_close_search()
 
 
 def _fence_target(fence: _SearchFence) -> _Target:
@@ -177,10 +245,16 @@ class SearchableMarkdownViewer(MarkdownViewer):
     BINDINGS = [
         Binding("slash", "open_search", "Search"),
         Binding("ctrl+f", "open_search", "Search", show=False),
-        Binding("n", "next_match", "Next match", show=False),
-        Binding("N", "prev_match", "Previous match", show=False),
         Binding("escape", "escape_search", show=False),
     ]
+    # n/N and the other result keys live on the document (_SearchableMarkdown).
+
+    class ResultsModeChanged(Message):
+        """Results mode began (`active`) or ended: hosts swap footer hints."""
+
+        def __init__(self, active: bool) -> None:
+            super().__init__()
+            self.active = active
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -188,6 +262,7 @@ class SearchableMarkdownViewer(MarkdownViewer):
         self._current: int | None = None
         self._last_query: str | None = None
         self._touched: list[_Target] = []
+        self._results_mode = False
 
     def compose(self) -> ComposeResult:
         # As MarkdownViewer.compose, but with fences that keep highlights.
@@ -218,6 +293,25 @@ class SearchableMarkdownViewer(MarkdownViewer):
     def current_index(self) -> int | None:
         return self._current
 
+    @property
+    def results_mode(self) -> bool:
+        """The search bar is open and focus is back in the document (after
+        Enter): the result keys n/→, p/←/N and q are live."""
+        return self.search_active and self.document.has_focus
+
+    def _sync_results_mode(self) -> None:
+        active = self.results_mode
+        if active != self._results_mode:
+            self._results_mode = active
+            self.refresh_bindings()
+            self.post_message(self.ResultsModeChanged(active))
+
+    def on_descendant_focus(self) -> None:
+        self._sync_results_mode()
+
+    def on_descendant_blur(self) -> None:
+        self._sync_results_mode()
+
     # -- actions -----------------------------------------------------------
 
     def action_open_search(self) -> None:
@@ -231,6 +325,9 @@ class SearchableMarkdownViewer(MarkdownViewer):
             search_input.value = ""
         self.query_one("#doc-search-bar").remove_class("-active")
         self.document.focus(scroll_visible=False)
+        # Focus may not move (it is often in the document already), so no
+        # focus event would end results mode.
+        self._sync_results_mode()
 
     def action_next_match(self) -> None:
         self._step(1)

@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import time
 from unittest.mock import Mock
 
 import pytest
@@ -203,6 +204,27 @@ def test_pid_exists_false_for_missing_process(monkeypatch):
     assert pid_exists(4242) is False
 
 
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="/proc")
+def test_pid_exists_false_for_zombie():
+    # Exited, not yet reaped. In a container with no init, pid 1 reaps only
+    # its own children, so a dead orphan stays a zombie for good.
+    assert pid_exists(os.getpid()) is True
+    child = subprocess.Popen([sys.executable, "-c", "pass"])
+    try:
+        deadline = time.monotonic() + 10
+        while _state(child.pid) != "Z":
+            assert time.monotonic() < deadline, "child never exited"
+            time.sleep(0.01)
+        assert pid_exists(child.pid) is False
+    finally:
+        child.wait()
+
+
+def _state(pid: int) -> str:
+    with open(f"/proc/{pid}/stat") as f:
+        return f.read().rsplit(")", 1)[1].split()[0]
+
+
 TCP_HEADER = (
     "  sl  local_address rem_address   st tx:rx tr:when retrnsmt uid timeout inode\n"
 )
@@ -357,3 +379,25 @@ def test_probe_refuses_already_debugged_target(monkeypatch, alive):
 def test_detect_deleted_interpreter_is_python():
     # After a package upgrade /proc/PID/exe names a file that is gone.
     assert registry.detect_executable("/usr/bin/python3.12 (deleted)") == "python"
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="/proc")
+def test_pid_exists_true_when_only_the_main_thread_exited():
+    # The thread-group leader shows Z once its own thread exits, while the
+    # process's other threads run on: that process is alive.
+    code = (
+        "import ctypes, threading, time\n"
+        "threading.Thread(target=time.sleep, args=(60,)).start()\n"
+        "ctypes.CDLL(None).pthread_exit(None)\n"
+    )
+    child = subprocess.Popen([sys.executable, "-c", code])
+    try:
+        deadline = time.monotonic() + 10
+        while _state(child.pid) != "Z":
+            assert time.monotonic() < deadline, "main thread never exited"
+            time.sleep(0.01)
+        assert len(os.listdir(f"/proc/{child.pid}/task")) > 1
+        assert pid_exists(child.pid) is True
+    finally:
+        child.kill()
+        child.wait()
